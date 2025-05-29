@@ -1,10 +1,10 @@
 "use client";
 
-import { TenantSwitcher } from "@/components/features/header/tenant-switcher";
-import { UserMenu } from "@/components/features/header/user-menu";
 import { Zap } from "lucide-react";
 import { HeaderProps } from "./types";
 import { FC } from "react";
+import { TenantSwitcher } from "./TenantSwitcher";
+import { UserMenu } from "./UserMenu";
 
 export const Header: FC<HeaderProps> = ({ user, onTenantSwitch }) => {
   return (

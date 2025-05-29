@@ -1,7 +1,7 @@
 // middleware.ts
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { auth0 } from "@/lib/server/auth0";
+import { auth0 } from "@/lib/auth";
 
 export async function middleware(request: NextRequest) {
   // Let Auth0 handle all auth routes and session management

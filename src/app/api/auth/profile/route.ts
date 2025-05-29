@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth0 } from "@/lib/server/auth0";
+import { auth0 } from "@/lib/auth";
 
 /**
  * Handle GET requests to /api/auth/profile

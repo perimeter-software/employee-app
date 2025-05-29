@@ -1,5 +1,5 @@
 import { FC, PropsWithChildren } from "react";
-import { clsxm } from "@/lib/utils/clsxm";
+import { clsxm } from "@/lib/utils/class-utils";
 import { badgeVariants } from "./config";
 import { BadgeProps } from "./types";
 

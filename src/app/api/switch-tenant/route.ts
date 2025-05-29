@@ -1,10 +1,10 @@
 // app/api/switch-tenant/route.ts
+import { TenantInfo } from "@/domains/tenant";
+import { updateTenantLastLoginDate } from "@/domains/user";
+import { auth0 } from "@/lib/auth";
+import redisService from "@/lib/cache/redis-client";
+import { mongoConn } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { auth0 } from "@/lib/server/auth0";
-import { updateTenantLastLoginDate } from "@/lib/server/mongoUtils";
-import { mongoConn } from "@/lib/server/dbConn";
-import redisService from "@/lib/server/redisClient";
-import type { TenantInfo } from "@/types/tenant";
 
 export async function POST(request: Request) {
   try {

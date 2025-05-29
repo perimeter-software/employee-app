@@ -1,12 +1,9 @@
 // app/api/user-data/route.ts
 import { NextResponse } from "next/server";
-import { auth0 } from "@/lib/server/auth0";
-import { mongoConn } from "@/lib/server/dbConn";
-import {
-  checkUserExistsByEmail,
-  checkUserMasterEmail,
-} from "@/lib/server/mongoUtils";
-import redisService from "@/lib/server/redisClient";
+import { auth0 } from "@/lib/auth";
+import { mongoConn } from "@/lib/db";
+import { checkUserExistsByEmail, checkUserMasterEmail } from "@/domains/user";
+import redisService from "@/lib/cache/redis-client";
 
 export async function GET() {
   try {

@@ -3,17 +3,17 @@
 import { useUser } from "@auth0/nextjs-auth0";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { EnhancedUser } from "@/types/user";
-import { Header } from "@/components/ui/header";
+import { EnhancedUser } from "@/domains/user";
+import { Header } from "@/components/ui/Header";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card/";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button/Button";
+} from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button/Button";
 import {
   Building2,
   Users,

@@ -1,13 +1,13 @@
 // app/layout.tsx
 import { Inter } from "next/font/google";
-import UserProvider from "@/components/providers/UserProvider";
+import { UserProvider } from "@/components/shared/UserProvider";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "Your App Name",
-  description: "Your app description",
+  title: "Employee Portal",
+  description: "Employee Portal",
 };
 
 export default function RootLayout({

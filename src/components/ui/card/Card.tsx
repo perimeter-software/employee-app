@@ -1,5 +1,5 @@
 import * as React from "react";
-import { clsxm } from "@/lib/utils/clsxm";
+import { clsxm } from "@/lib/utils/class-utils";
 
 export const Card = React.forwardRef<
   HTMLDivElement,

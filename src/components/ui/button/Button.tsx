@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
-import { clsxm } from "@/lib/utils/clsxm";
+import { clsxm } from "@/lib/utils/class-utils";
 import { ButtonProps } from "./types";
 import { buttonVariants } from "./config";
 

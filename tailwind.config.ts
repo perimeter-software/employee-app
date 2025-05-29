@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import { shadclockTheme } from "./theme";
 
 const config: Config = {
   content: [
@@ -42,6 +43,20 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Add your custom theme colors
+        appPrimary: shadclockTheme.appPrimary,
+        altPrimary: shadclockTheme.altPrimary,
+        appSecondary: shadclockTheme.appSecondary,
+        altSecondary: shadclockTheme.altSecondary,
+        appBackground: shadclockTheme.appBackground,
+        altPrimaryBackground: shadclockTheme.altPrimaryBackground,
+        altMutedBackground: shadclockTheme.altMutedBackground,
+        altSecondaryBackground: shadclockTheme.altSecondaryBackground,
+        successGreen: shadclockTheme.successGreen,
+        warningOrange: shadclockTheme.warningOrange,
+        errorRed: shadclockTheme.errorRed,
+        darkErrorRed: shadclockTheme.darkErrorRed,
+        altText: shadclockTheme.altText,
       },
       borderRadius: {
         lg: "var(--radius)",

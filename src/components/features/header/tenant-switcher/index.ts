@@ -1,1 +1,0 @@
-export { TenantSwitcher } from "./TenantSwitcher";

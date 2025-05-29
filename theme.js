@@ -1,0 +1,15 @@
+export const shadclockTheme = {
+  appPrimary: "#02B0F3",
+  altPrimary: "#C5EAF9",
+  appSecondary: "#BDE095",
+  altSecondary: "#DEEFCA",
+  appBackground: "#FFFFFF",
+  altPrimaryBackground: "#91DCF9",
+  altMutedBackground: "#E6F7FE",
+  altSecondaryBackground: "#DEEFCA",
+  successGreen: "#9BCB9F",
+  warningOrange: "#F4BF7B",
+  errorRed: "#F59E97",
+  darkErrorRed: "#F16F66",
+  altText: "#303030",
+};
