@@ -1,8 +1,8 @@
-import type { MongoClient, Db } from "mongodb";
+import { Db, MongoClient } from "mongodb";
 
 export interface MongoConnection {
   client: MongoClient;
-  db: Db;
-  dbTenant: Db;
-  userDb: Db;
+  db: Db; // Main database (stadiumpeople)
+  dbTenant: Db; // Tenant database
+  userDb: Db; // User master database
 }

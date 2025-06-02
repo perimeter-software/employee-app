@@ -1,60 +1,28 @@
-// app/api/user-data/route.ts
 import { NextResponse } from "next/server";
-import { auth0 } from "@/lib/auth";
+import { withEnhancedAuthAPI } from "@/lib/middleware";
 import { mongoConn } from "@/lib/db";
 import { checkUserExistsByEmail, checkUserMasterEmail } from "@/domains/user";
 import redisService from "@/lib/cache/redis-client";
+import type { AuthenticatedRequest, EnhancedUser } from "@/domains/user/types";
 
-export async function GET() {
+async function getUserDataHandler(request: AuthenticatedRequest) {
   try {
-    // In Auth0 v4, getSession() doesn't take parameters in API routes
-    const session = await auth0.getSession();
+    // User is authenticated AND exists in database AND has tenant access
+    const user = request.user;
+    const userEmail = user.email!;
 
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: "No authenticated user" },
-        { status: 401 }
-      );
-    }
+    console.log("Enhanced authenticated user:", user.sub, userEmail);
 
-    const { user } = session;
-
-    // Connect to databases
+    // Connect to databases (we know user exists because of withEnhancedAuth)
     const { db, dbTenant, userDb } = await mongoConn();
 
-    // Check if user exists in your database
-    const userExists = await checkUserExistsByEmail(db, user.email!);
-
-    console.log("userExists", userExists);
-
-    if (!userExists) {
-      return NextResponse.json(
-        {
-          error: "user-not-found",
-          message: "User not found in database",
-        },
-        { status: 404 }
-      );
-    }
-
-    // Get tenant information
+    // Get user and tenant info (we know they exist)
+    const userExists = await checkUserExistsByEmail(db, userEmail);
     const userMasterRecord = await checkUserMasterEmail(
       userDb,
       dbTenant,
-      user.email!
+      userEmail
     );
-
-    console.log("userMasterRecord", userMasterRecord);
-
-    if (!userMasterRecord.tenant) {
-      return NextResponse.json(
-        {
-          error: "no-tenant",
-          message: "No tenant found for user",
-        },
-        { status: 404 }
-      );
-    }
 
     // Store tenant data in Redis
     const tenantData = {
@@ -63,18 +31,19 @@ export async function GET() {
     };
 
     await redisService.setTenantData(
-      user.email!.toLowerCase(),
+      userEmail.toLowerCase(),
       tenantData,
-      60 * 60 * 24 // 1 day expiry
+      60 * 60 * 24
     );
 
     // Return enhanced user data
-    const enhancedUser = {
-      ...user,
-      _id: userExists._id,
-      applicantId: userExists.applicantId,
+    const enhancedUser: EnhancedUser = {
+      _id: userExists?._id,
+      applicantId: userExists?.applicantId,
       tenant: userMasterRecord.tenant,
       availableTenants: userMasterRecord.availableTenantObjects || [],
+      email: user.email,
+      name: user.name,
     };
 
     return NextResponse.json({ user: enhancedUser });
@@ -89,3 +58,9 @@ export async function GET() {
     );
   }
 }
+
+// Export with enhanced auth wrapper (validates database user AND tenant)
+export const GET = withEnhancedAuthAPI(getUserDataHandler, {
+  requireDatabaseUser: true,
+  requireTenant: true,
+});

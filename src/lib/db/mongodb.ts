@@ -1,17 +1,25 @@
-// lib/server/dbConn.ts
-import { MongoConnection } from "./types";
 import { MongoClient, Db } from "mongodb";
+import { MongoConnection } from "./types";
 
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
 let cachedDbTenant: Db | null = null;
 let cachedUserDb: Db | null = null;
 
-// Replicate your SvelteKit mongoConn function
+// Check if we're running on the server side
+const isServer = typeof window === "undefined";
+
+// Your existing mongoConn function - keeping it exactly the same
 export const mongoConn = async (
   dbName = "stadiumpeople",
   retries = 3
 ): Promise<MongoConnection> => {
+  if (!isServer) {
+    throw new Error(
+      "MongoDB operations can only be performed on the server side"
+    );
+  }
+
   // Use cached connections in development to prevent connection issues
   if (cachedClient && cachedDb && cachedDbTenant && cachedUserDb) {
     // If a specific dbName is requested and it's different from cached, create new connection
@@ -74,8 +82,53 @@ export const mongoConn = async (
   }
 };
 
+// Convenience functions for domain usage
+export async function getDatabase(): Promise<Db> {
+  if (!isServer) {
+    throw new Error(
+      "MongoDB operations can only be performed on the server side"
+    );
+  }
+  const { db } = await mongoConn();
+  return db;
+}
+
+export async function getTenantDatabase(): Promise<Db> {
+  if (!isServer) {
+    throw new Error(
+      "MongoDB operations can only be performed on the server side"
+    );
+  }
+  const { dbTenant } = await mongoConn();
+  return dbTenant;
+}
+
+export async function getUserMasterDatabase(): Promise<Db> {
+  if (!isServer) {
+    throw new Error(
+      "MongoDB operations can only be performed on the server side"
+    );
+  }
+  const { userDb } = await mongoConn();
+  return userDb;
+}
+
+export async function getAllDatabases(): Promise<MongoConnection> {
+  if (!isServer) {
+    throw new Error(
+      "MongoDB operations can only be performed on the server side"
+    );
+  }
+  return mongoConn();
+}
+
 // Helper function to close connections (useful for cleanup)
 export async function closeMongoConnection() {
+  if (!isServer) {
+    throw new Error(
+      "MongoDB operations can only be performed on the server side"
+    );
+  }
   if (cachedClient) {
     await cachedClient.close();
     cachedClient = null;
@@ -88,6 +141,11 @@ export async function closeMongoConnection() {
 
 // Health check function
 export async function checkMongoConnection(): Promise<boolean> {
+  if (!isServer) {
+    throw new Error(
+      "MongoDB operations can only be performed on the server side"
+    );
+  }
   try {
     if (!cachedClient) {
       await mongoConn();

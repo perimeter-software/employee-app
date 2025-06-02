@@ -26,8 +26,10 @@ import {
   User,
 } from "lucide-react";
 import Image from "next/image";
+import { NextPage } from "next";
+import { withAuth } from "@/domains/shared";
 
-export default function Dashboard() {
+const DashboardPage: NextPage = () => {
   const { user, error, isLoading } = useUser();
   const router = useRouter();
   const [enhancedUser, setEnhancedUser] = useState<EnhancedUser | null>(null);
@@ -388,4 +390,8 @@ export default function Dashboard() {
       </main>
     </div>
   );
-}
+};
+
+export default withAuth(DashboardPage, {
+  requireAuth: true, // optional, defaults to true
+});

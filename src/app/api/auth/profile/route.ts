@@ -1,24 +1,27 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth0 } from "@/lib/auth";
+import { NextResponse } from "next/server";
+import { withEnhancedAuthAPI } from "@/lib/middleware";
+import type { AuthenticatedRequest } from "@/domains/user/types";
 
 /**
  * Handle GET requests to /api/auth/profile
  * This returns the user's profile information
  */
-export async function GET(req: NextRequest): Promise<NextResponse> {
+async function getProfileHandler(request: AuthenticatedRequest) {
   try {
-    const session = await auth0.getSession(req);
+    const user = request.user;
 
-    if (!session?.user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    return NextResponse.json(session.user);
+    return NextResponse.json({ user });
   } catch (error) {
     console.error("Profile route error:", error);
     return NextResponse.json(
-      { error: "Failed to get profile" },
+      { error: "internal-error", message: "Failed to get profile" },
       { status: 500 }
     );
   }
 }
+
+// Export with enhanced auth wrapper (validates database user AND tenant)
+export const GET = withEnhancedAuthAPI(getProfileHandler, {
+  requireDatabaseUser: true,
+  requireTenant: true,
+});

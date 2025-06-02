@@ -1,6 +1,7 @@
 import type { GignologyJob } from "@/domains/job";
 import { LeaveRequest } from "@/domains/punch";
 import { TenantInfo } from "@/domains/tenant";
+import { NextRequest, NextResponse } from "next/server";
 
 export type UserType = "Master" | "User" | "Admin";
 
@@ -65,3 +66,41 @@ export type UserNoPassword = {
   employeeType: string;
   applicantId: string;
 };
+
+export type Auth0SessionUser = EnhancedUser & {
+  sub: string; // Auth0 user ID (always present)
+  email?: string; // Email (optional in Auth0)
+  email_verified?: boolean; // Email verification status
+  name?: string; // Display name
+  given_name?: string; // First name
+  family_name?: string; // Last name
+  nickname?: string; // Nickname
+  picture?: string; // Profile picture URL
+  updated_at?: string; // Last updated
+  iss?: string; // Issuer
+  aud?: string | string[]; // Audience
+  iat?: number; // Issued at
+  exp?: number; // Expires at
+  [key: string]: unknown; // Allow other custom claims
+};
+
+// Or extend the official UserProfile if you want to be more strict
+export interface AuthenticatedRequest extends NextRequest {
+  user: Auth0SessionUser;
+}
+
+export type RouteHandler<T = unknown> = {
+  (request: AuthenticatedRequest, context?: Record<string, unknown>): Promise<
+    NextResponse<T>
+  >;
+};
+
+// Type guard to ensure user has required fields
+export function isValidAuth0User(user: unknown): user is Auth0SessionUser {
+  if (!user || typeof user !== "object") {
+    return false;
+  }
+
+  const userObj = user as Record<string, unknown>;
+  return typeof userObj.sub === "string";
+}

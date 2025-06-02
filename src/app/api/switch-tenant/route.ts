@@ -1,32 +1,16 @@
 // app/api/switch-tenant/route.ts
 import { TenantInfo } from "@/domains/tenant";
 import { updateTenantLastLoginDate } from "@/domains/user";
-import { auth0 } from "@/lib/auth";
+import { withEnhancedAuthAPI } from "@/lib/middleware";
 import redisService from "@/lib/cache/redis-client";
 import { mongoConn } from "@/lib/db";
 import { NextResponse } from "next/server";
+import type { AuthenticatedRequest } from "@/domains/user/types";
 
-export async function POST(request: Request) {
+async function switchTenantHandler(request: AuthenticatedRequest) {
   try {
-    // Get the authenticated session
-    const session = await auth0.getSession();
-
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: "not-authenticated", message: "User not authenticated" },
-        { status: 401 }
-      );
-    }
-
-    const { user } = session;
-    const userEmail = user?.email?.toLowerCase() || "";
-
-    if (!userEmail) {
-      return NextResponse.json(
-        { error: "missing-user-email", message: "User email is required" },
-        { status: 400 }
-      );
-    }
+    const user = request.user;
+    const userEmail = user.email!.toLowerCase();
 
     const { tenantUrl } = await request.json();
 
@@ -93,3 +77,9 @@ export async function POST(request: Request) {
     );
   }
 }
+
+// Export with enhanced auth wrapper (validates database user AND tenant)
+export const POST = withEnhancedAuthAPI(switchTenantHandler, {
+  requireDatabaseUser: true,
+  requireTenant: true,
+});
