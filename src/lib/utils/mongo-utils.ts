@@ -1,5 +1,5 @@
+import "server-only"; // This will cause build errors if imported on client
 import { BSON, ObjectId as ObjectIdFunction, Document } from "mongodb";
-
 import { WithId } from "mongodb";
 
 export function convertToJSON(

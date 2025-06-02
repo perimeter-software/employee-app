@@ -1,3 +1,4 @@
+// src/lib/db/mongodb.ts - Updated version
 import { MongoClient, Db } from "mongodb";
 import { MongoConnection } from "./types";
 
@@ -12,11 +13,11 @@ const isServer = typeof window === "undefined";
 // Check if we're running in Edge Runtime
 const isEdgeRuntime = process.env.NEXT_RUNTIME === "edge";
 
-// Your existing mongoConn function - keeping it exactly the same
 export const mongoConn = async (
   dbName = "stadiumpeople",
   retries = 3
 ): Promise<MongoConnection> => {
+  // Early return for client-side or edge runtime
   if (!isServer) {
     throw new Error(
       "MongoDB operations can only be performed on the server side"
@@ -29,23 +30,35 @@ export const mongoConn = async (
 
   // Use cached connections in development to prevent connection issues
   if (cachedClient && cachedDb && cachedDbTenant && cachedUserDb) {
-    // If a specific dbName is requested and it's different from cached, create new connection
-    if (dbName && cachedDb.databaseName !== dbName) {
-      const db = cachedClient.db(dbName);
+    try {
+      // Test the connection
+      await cachedClient.db("admin").command({ ping: 1 });
+
+      // If a specific dbName is requested and it's different from cached, create new connection
+      if (dbName && cachedDb.databaseName !== dbName) {
+        const db = cachedClient.db(dbName);
+        return {
+          client: cachedClient,
+          db,
+          dbTenant: cachedDbTenant,
+          userDb: cachedUserDb,
+        };
+      }
+
       return {
         client: cachedClient,
-        db,
+        db: cachedDb,
         dbTenant: cachedDbTenant,
         userDb: cachedUserDb,
       };
+    } catch (error) {
+      console.warn("Cached connection invalid, reconnecting...", error);
+      // Clear cached connections if they're invalid
+      cachedClient = null;
+      cachedDb = null;
+      cachedDbTenant = null;
+      cachedUserDb = null;
     }
-
-    return {
-      client: cachedClient,
-      db: cachedDb,
-      dbTenant: cachedDbTenant,
-      userDb: cachedUserDb,
-    };
   }
 
   try {
@@ -54,13 +67,29 @@ export const mongoConn = async (
       throw new Error("MONGODB_CONNECTION_STRING is not defined");
     }
 
-    // Connect using the same pattern as your SvelteKit code
-    const client = await MongoClient.connect(connectionString);
+    console.log("🔄 Connecting to MongoDB...");
+
+    // Connect with specific options to avoid client-side encryption issues
+    const client = await MongoClient.connect(connectionString, {
+      // Disable client-side field level encryption
+      autoEncryption: undefined,
+      // Add connection options for stability
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
 
     // Use the exact same database names as your SvelteKit setup
     const db = client.db(dbName); // Default: "stadiumpeople"
     const dbTenant = client.db("tenant"); // Tenant database
     const userDb = client.db("usermaster"); // User master database
+
+    // Test the connections
+    await Promise.all([
+      db.command({ ping: 1 }),
+      dbTenant.command({ ping: 1 }),
+      userDb.command({ ping: 1 }),
+    ]);
 
     // Cache the connections
     cachedClient = client;
@@ -68,28 +97,32 @@ export const mongoConn = async (
     cachedDbTenant = dbTenant;
     cachedUserDb = userDb;
 
-    console.log("🔌 Connected to MongoDB databases:", {
-      main: db.databaseName, // stadiumpeople
-      tenant: dbTenant.databaseName, // tenant
-      user: userDb.databaseName, // usermaster
+    console.log("✅ Connected to MongoDB databases:", {
+      main: db.databaseName,
+      tenant: dbTenant.databaseName,
+      user: userDb.databaseName,
     });
 
     return { client, db, dbTenant, userDb };
   } catch (error) {
+    console.error("❌ MongoDB connection error:", error);
+
     if (retries > 0) {
-      console.log(
-        `MongoDB connection failed, retrying... (${retries} attempts left)`
-      );
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      console.log(`🔄 Retrying connection... (${retries} attempts left)`);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       return mongoConn(dbName, retries - 1);
     } else {
       console.error("❌ Failed to connect to MongoDB after multiple attempts");
-      throw error;
+      throw new Error(
+        `MongoDB connection failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 };
 
-// Convenience functions for domain usage
+// Rest of your functions remain the same...
 export async function getDatabase(): Promise<Db> {
   if (!isServer) {
     throw new Error(
@@ -141,7 +174,6 @@ export async function getAllDatabases(): Promise<MongoConnection> {
   return mongoConn();
 }
 
-// Helper function to close connections (useful for cleanup)
 export async function closeMongoConnection() {
   if (!isServer) {
     throw new Error(
@@ -161,15 +193,12 @@ export async function closeMongoConnection() {
   }
 }
 
-// Health check function
 export async function checkMongoConnection(): Promise<boolean> {
   if (!isServer) {
-    throw new Error(
-      "MongoDB operations can only be performed on the server side"
-    );
+    return false;
   }
   if (isEdgeRuntime) {
-    throw new Error("MongoDB operations are not supported in Edge Runtime");
+    return false;
   }
   try {
     if (!cachedClient) {

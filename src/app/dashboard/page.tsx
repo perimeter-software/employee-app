@@ -393,5 +393,5 @@ const DashboardPage: NextPage = () => {
 };
 
 export default withAuth(DashboardPage, {
-  requireAuth: true, // optional, defaults to true
+  requireAuth: true,
 });

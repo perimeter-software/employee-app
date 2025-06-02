@@ -1,4 +1,3 @@
-// middleware.ts (root file)
-import { middleware, matcher } from "@/lib/middleware";
+import { middleware as coreMiddleware, matcher } from "@/lib/middleware/core";
 
-export { middleware, matcher };
+export { coreMiddleware as middleware, matcher };

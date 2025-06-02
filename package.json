@@ -27,6 +27,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "redis": "^5.1.0",
+    "server-only": "^0.0.1",
     "tailwind-merge": "^3.3.0",
     "uuid": "^11.1.0",
     "zustand": "^5.0.5"
@@ -43,5 +44,13 @@
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
+  },
+  "overrides": {
+    "mongodb": {
+      "mongodb-client-encryption": false
+    }
+  },
+  "resolutions": {
+    "mongodb/mongodb-client-encryption": false
   }
 }
