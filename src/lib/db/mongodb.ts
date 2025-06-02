@@ -9,6 +9,9 @@ let cachedUserDb: Db | null = null;
 // Check if we're running on the server side
 const isServer = typeof window === "undefined";
 
+// Check if we're running in Edge Runtime
+const isEdgeRuntime = process.env.NEXT_RUNTIME === "edge";
+
 // Your existing mongoConn function - keeping it exactly the same
 export const mongoConn = async (
   dbName = "stadiumpeople",
@@ -18,6 +21,10 @@ export const mongoConn = async (
     throw new Error(
       "MongoDB operations can only be performed on the server side"
     );
+  }
+
+  if (isEdgeRuntime) {
+    throw new Error("MongoDB operations are not supported in Edge Runtime");
   }
 
   // Use cached connections in development to prevent connection issues
@@ -89,6 +96,9 @@ export async function getDatabase(): Promise<Db> {
       "MongoDB operations can only be performed on the server side"
     );
   }
+  if (isEdgeRuntime) {
+    throw new Error("MongoDB operations are not supported in Edge Runtime");
+  }
   const { db } = await mongoConn();
   return db;
 }
@@ -98,6 +108,9 @@ export async function getTenantDatabase(): Promise<Db> {
     throw new Error(
       "MongoDB operations can only be performed on the server side"
     );
+  }
+  if (isEdgeRuntime) {
+    throw new Error("MongoDB operations are not supported in Edge Runtime");
   }
   const { dbTenant } = await mongoConn();
   return dbTenant;
@@ -109,6 +122,9 @@ export async function getUserMasterDatabase(): Promise<Db> {
       "MongoDB operations can only be performed on the server side"
     );
   }
+  if (isEdgeRuntime) {
+    throw new Error("MongoDB operations are not supported in Edge Runtime");
+  }
   const { userDb } = await mongoConn();
   return userDb;
 }
@@ -119,6 +135,9 @@ export async function getAllDatabases(): Promise<MongoConnection> {
       "MongoDB operations can only be performed on the server side"
     );
   }
+  if (isEdgeRuntime) {
+    throw new Error("MongoDB operations are not supported in Edge Runtime");
+  }
   return mongoConn();
 }
 
@@ -128,6 +147,9 @@ export async function closeMongoConnection() {
     throw new Error(
       "MongoDB operations can only be performed on the server side"
     );
+  }
+  if (isEdgeRuntime) {
+    throw new Error("MongoDB operations are not supported in Edge Runtime");
   }
   if (cachedClient) {
     await cachedClient.close();
@@ -145,6 +167,9 @@ export async function checkMongoConnection(): Promise<boolean> {
     throw new Error(
       "MongoDB operations can only be performed on the server side"
     );
+  }
+  if (isEdgeRuntime) {
+    throw new Error("MongoDB operations are not supported in Edge Runtime");
   }
   try {
     if (!cachedClient) {
