@@ -1,16 +1,10 @@
-import { usePageAuth } from "@/domains/shared";
-import { ReactNode } from "react";
+import { usePageAuth, WithAuthOptions } from "@/domains/shared";
 import { NextPage, GetServerSideProps, GetStaticProps } from "next";
 import {
   AuthErrorState,
   AuthLoadingState,
   UnauthenticatedState,
 } from "@/components/shared/PageProtection";
-
-type WithAuthOptions = {
-  requireAuth?: boolean;
-  fallback?: ReactNode;
-};
 
 export function withAuth<
   P extends Record<string, unknown> = Record<string, unknown>

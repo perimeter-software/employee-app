@@ -36,10 +36,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {loading && (
-          <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent" />
+          <div className="animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent ml-2" />
         )}
         {!loading && leftIcon && leftIcon}
-        <span className={loading ? "ml-2" : ""}>{children}</span>
+        {children}
         {!loading && rightIcon && rightIcon}
       </Comp>
     );

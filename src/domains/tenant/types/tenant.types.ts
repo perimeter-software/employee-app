@@ -1,4 +1,4 @@
-export interface TenantInfo {
+export type TenantInfo = {
   _id: string;
   url: string;
   status: string;
@@ -7,9 +7,9 @@ export interface TenantInfo {
   lastLoginDate?: string;
   tenantLogo?: string;
   dbName?: string;
-}
+};
 
-export interface TenantDocument {
+export type TenantDocument = {
   _id?: string;
   clientName: string;
   clientDomain?: string;
@@ -17,9 +17,9 @@ export interface TenantDocument {
   type: string;
   tenantLogo?: string;
   dbName?: string;
-}
+};
 
-export interface TenantObjectsIndexed {
+export type TenantObjectsIndexed = {
   [key: string]: {
     clientName: string;
     type: string;
@@ -28,4 +28,4 @@ export interface TenantObjectsIndexed {
     additionalDomains?: string[];
     dbName?: string;
   };
-}
+};

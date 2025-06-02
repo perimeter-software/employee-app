@@ -55,7 +55,7 @@ export const UnauthenticatedState = ({
                 : "/api/auth/login";
               window.location.href = loginUrl;
             }}
-            className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-medium py-3 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"
+            className="w-full flex items-center justify-center bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-medium py-3 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"
           >
             <Lock className="w-4 h-4 mr-2" />
             Sign In to Continue
