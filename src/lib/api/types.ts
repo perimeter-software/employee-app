@@ -26,3 +26,11 @@ export type Interceptor = {
   response?: (response: Response) => Response | Promise<Response>;
   error?: (error: Error) => Error | Promise<Error>;
 };
+
+
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+}

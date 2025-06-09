@@ -12,7 +12,7 @@ export async function authMiddleware(
   }
 
   try {
-    const session = await auth0.getSession();
+    const session = await auth0.getSession(request);
 
     if (!session?.user) {
       console.log(`Unauthenticated access to: ${request.nextUrl.pathname}`);
@@ -22,9 +22,6 @@ export async function authMiddleware(
 
       return Response.redirect(redirectUrl);
     }
-
-    // REMOVED: Database operations for Edge Runtime compatibility
-    // Database checks will be handled in individual API routes using withEnhancedAuthAPI
 
     console.log(
       `Authenticated access: ${session.user.email} → ${request.nextUrl.pathname}`

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { withEnhancedAuthAPI } from "@/lib/middleware";
 import { mongoConn } from "@/lib/db";
-import { checkUserExistsByEmail, checkUserMasterEmail } from "@/domains/user";
+import {
+  checkUserExistsByEmail,
+  checkUserMasterEmail,
+} from "@/domains/user/utils";
 import redisService from "@/lib/cache/redis-client";
 import type { AuthenticatedRequest, EnhancedUser } from "@/domains/user/types";
 
@@ -43,7 +46,12 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
       tenant: userMasterRecord.tenant,
       availableTenants: userMasterRecord.availableTenantObjects || [],
       email: user.email,
+      firstName: userExists?.firstName,
+      lastName: userExists?.lastName,
       name: user.name,
+      userType: userExists?.userType,
+      employeeType: userExists?.employeeType,
+      status: userExists?.status,
     };
 
     return NextResponse.json({ user: enhancedUser });

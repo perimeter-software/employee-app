@@ -1,5 +1,6 @@
 import type { NextRequest, NextResponse } from "next/server";
 import { Auth0SessionUser } from "@/domains/user";
+import { ApiResponse } from "../api";
 
 export type MiddlewareFunction = (
   request: NextRequest
@@ -35,9 +36,6 @@ export type RouteHandler<T = unknown> = (
   request: AuthenticatedRequest,
   context?: Record<string, unknown>
 ) => Promise<NextResponse<T> | NextResponse<unknown>>;
-
-// Alternative: If you want to be more specific about error responses
-export type ApiResponse<T> = T | { error: string; message: string };
 
 export type StrictRouteHandler<T = unknown> = (
   request: AuthenticatedRequest,

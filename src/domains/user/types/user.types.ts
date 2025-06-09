@@ -1,6 +1,7 @@
 import type { GignologyJob } from "@/domains/job";
 import { LeaveRequest } from "@/domains/punch";
 import { TenantInfo } from "@/domains/tenant";
+import { ApiResponse } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 
 export type UserType = "Master" | "User" | "Admin";
@@ -47,6 +48,11 @@ export type EnhancedUser = {
   availableTenants?: TenantInfo[];
   email?: string;
   name?: string;
+  firstName?: string;
+  lastName?: string;
+  userType?: string;
+  employeeType?: string;
+  status?: string;
   [key: string]: unknown;
 };
 
@@ -104,3 +110,5 @@ export function isValidAuth0User(user: unknown): user is Auth0SessionUser {
   const userObj = user as Record<string, unknown>;
   return typeof userObj.sub === "string";
 }
+
+export type CurrentUserResponse = ApiResponse<{ user: EnhancedUser }>;

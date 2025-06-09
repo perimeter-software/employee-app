@@ -69,12 +69,12 @@ export default function LoginPage() {
   // Redirect if user is already authenticated
   useEffect(() => {
     if (user && !isLoading) {
-      router.push("/dashboard");
+      router.push("/time-attendance");
     }
   }, [user, isLoading, router]);
 
   const handleLogin = () => {
-    const returnUrl = searchParams.get("returnUrl") || "/dashboard";
+    const returnUrl = searchParams.get("returnUrl") || "/time-attendance";
     // v4 uses /auth/login instead of /api/auth/login
     window.location.href = `/auth/login?returnTo=${encodeURIComponent(
       returnUrl

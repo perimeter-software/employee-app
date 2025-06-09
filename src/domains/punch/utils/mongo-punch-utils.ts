@@ -10,7 +10,7 @@ import {
 } from "date-fns";
 import { convertToJSON } from "@/lib/utils/mongo-utils";
 import { calculateDistance } from "@/lib/utils/location-utils";
-import { Punch, PunchNoId } from "@/domains/job";
+import { Punch, PunchNoId } from "../types";
 import type { GignologyJob, Shift } from "@/domains/job/types";
 import type { ClockInCoordinates } from "@/domains/job/types/location.types";
 import {

@@ -6,13 +6,13 @@ import {
   TenantDocument,
   TenantObjectsIndexed,
 } from "@/domains/tenant";
-import { GignologyUser } from "../types/user.types";
+import { EnhancedUser, GignologyUser } from "../types/user.types";
 import { ObjectId as ObjectIdFunction, Db } from "mongodb";
 
 export async function checkUserExistsByEmail(
   db: Db,
   email: string
-): Promise<{ _id: string; applicantId: string } | undefined> {
+): Promise<EnhancedUser | undefined> {
   try {
     const userExists = await db.collection("users").findOne(
       { emailAddress: email },
@@ -20,6 +20,13 @@ export async function checkUserExistsByEmail(
         projection: {
           _id: 1,
           applicantId: 1,
+          firstName: 1,
+          lastName: 1,
+          emailAddress: 1,
+          userType: 1,
+          employeeType: 1,
+          status: 1,
+          tenant: 1,
         },
       }
     );
@@ -28,6 +35,13 @@ export async function checkUserExistsByEmail(
       ? {
           _id: userExists._id.toHexString(),
           applicantId: userExists.applicantId,
+          firstName: userExists.firstName,
+          lastName: userExists.lastName,
+          emailAddress: userExists.emailAddress,
+          userType: userExists.userType,
+          employeeType: userExists.employeeType,
+          status: userExists.status,
+          tenant: userExists.tenant,
         }
       : undefined;
   } catch (e) {

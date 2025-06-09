@@ -1,6 +1,6 @@
 // app/api/switch-tenant/route.ts
 import { TenantInfo } from "@/domains/tenant";
-import { updateTenantLastLoginDate } from "@/domains/user";
+import { updateTenantLastLoginDate } from "@/domains/user/utils";
 import { withEnhancedAuthAPI } from "@/lib/middleware";
 import redisService from "@/lib/cache/redis-client";
 import { mongoConn } from "@/lib/db";

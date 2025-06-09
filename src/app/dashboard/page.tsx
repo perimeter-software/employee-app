@@ -1,10 +1,7 @@
 "use client";
 
 import { useUser } from "@auth0/nextjs-auth0";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { EnhancedUser } from "@/domains/user";
-import { Header } from "@/components/ui/Header";
+import Layout from "@/components/layout/Layout";
 import {
   Card,
   CardContent,
@@ -28,60 +25,16 @@ import {
 import Image from "next/image";
 import { NextPage } from "next";
 import { withAuth } from "@/domains/shared";
+import { useCurrentUser } from "@/domains/user";
 
 const DashboardPage: NextPage = () => {
-  const { user, error, isLoading } = useUser();
-  const router = useRouter();
-  const [enhancedUser, setEnhancedUser] = useState<EnhancedUser | null>(null);
-  const [dataLoading, setDataLoading] = useState(false);
-  const [dataError, setDataError] = useState<string | null>(null);
-
-  const handleTenantSwitch = async (tenantUrl: string) => {
-    try {
-      const response = await fetch("/api/switch-tenant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantUrl }),
-      });
-
-      if (response.ok) {
-        window.location.reload();
-      } else {
-        throw new Error("Failed to switch tenant");
-      }
-    } catch (error) {
-      console.error("Tenant switch failed:", error);
-    }
-  };
-
-  // Fetch enhanced user data after authentication
-  useEffect(() => {
-    if (user && user.email && !enhancedUser && !dataLoading) {
-      setDataLoading(true);
-      fetch("/api/current-user")
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.error) {
-            setDataError(data.message || data.error);
-            router.push(`/?error=${data.error}`);
-          } else {
-            setEnhancedUser(data.user);
-          }
-        })
-        .catch((err) => {
-          console.error("Failed to fetch user data:", err);
-          setDataError("Failed to load user data");
-        })
-        .finally(() => {
-          setDataLoading(false);
-        });
-    }
-  }, [user, enhancedUser, dataLoading, router]);
+  const { user, error: authError, isLoading: authLoading } = useUser();
+  const { data: enhancedUser, isLoading: userLoading } = useCurrentUser();
 
   // Show loading state
-  if (isLoading || dataLoading) {
+  if (authLoading || userLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex flex-col items-center space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
           <p className="text-gray-600 font-medium">Loading your dashboard...</p>
@@ -91,14 +44,14 @@ const DashboardPage: NextPage = () => {
   }
 
   // Show error state
-  if (error || dataError) {
+  if (authError) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-red-600">Error</CardTitle>
             <CardDescription>
-              {error?.message || dataError || "Something went wrong"}
+              {authError.message || "Something went wrong"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -114,7 +67,7 @@ const DashboardPage: NextPage = () => {
   // Show not authenticated state
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-orange-50 to-red-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-yellow-600">
@@ -138,13 +91,6 @@ const DashboardPage: NextPage = () => {
   const displayUser =
     enhancedUser ||
     (user as { name?: string; given_name?: string; email: string });
-
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Good morning";
-    if (hour < 18) return "Good afternoon";
-    return "Good evening";
-  };
 
   const quickActions = [
     {
@@ -196,26 +142,8 @@ const DashboardPage: NextPage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-      {/* Header */}
-      {enhancedUser && (
-        <Header user={enhancedUser} onTenantSwitch={handleTenantSwitch} />
-      )}
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-8">
-        {/* Welcome Section */}
-        <div className="text-center space-y-4">
-          <h2 className="text-3xl font-bold text-gray-900">
-            {getGreeting()},{" "}
-            {(displayUser.name || displayUser.given_name) as string}! 👋
-          </h2>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Welcome back to your workspace. Here&apos;s what&apos;s happening
-            today.
-          </p>
-        </div>
-
+    <Layout>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         {/* Current Tenant Info */}
         {enhancedUser?.tenant && (
           <Card className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0">
@@ -261,7 +189,7 @@ const DashboardPage: NextPage = () => {
           {stats.map((stat, index) => (
             <Card
               key={index}
-              className="bg-white/60 backdrop-blur-sm border-white/20 hover:bg-white/80 transition-all"
+              className="bg-white hover:shadow-md transition-shadow"
             >
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -291,7 +219,7 @@ const DashboardPage: NextPage = () => {
             {quickActions.map((action, index) => (
               <Card
                 key={index}
-                className="bg-white/60 backdrop-blur-sm border-white/20 hover:bg-white/80 transition-all cursor-pointer group"
+                className="bg-white hover:shadow-md transition-all cursor-pointer group"
               >
                 <CardContent className="p-6 text-center">
                   <div
@@ -308,7 +236,7 @@ const DashboardPage: NextPage = () => {
 
         {/* User Information */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <Card className="bg-white/60 backdrop-blur-sm border-white/20">
+          <Card className="bg-white">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <User className="w-5 h-5" />
@@ -355,7 +283,7 @@ const DashboardPage: NextPage = () => {
 
           {/* Debug Information - Only show in development */}
           {process.env.NODE_ENV === "development" && (
-            <Card className="bg-gray-50/60 backdrop-blur-sm border-gray-200/20">
+            <Card className="bg-gray-50">
               <CardHeader>
                 <CardTitle className="text-gray-700">
                   Debug Information
@@ -387,8 +315,8 @@ const DashboardPage: NextPage = () => {
             </Card>
           )}
         </div>
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 };
 

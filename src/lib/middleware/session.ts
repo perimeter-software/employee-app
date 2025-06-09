@@ -1,5 +1,6 @@
+// lib/middleware/session.ts
 import { NextRequest, NextResponse } from "next/server";
-import { auth0 } from "@/lib/auth";
+import { auth0 } from "@/lib/auth/auth0";
 import { AuthenticatedRequest, RouteHandler } from "./types";
 import { Auth0SessionUser } from "@/domains/user";
 
@@ -9,7 +10,7 @@ export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
     context?: Record<string, unknown>
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
-      // Check authentication
+      // Use auth0.getSession(request) for API routes
       const session = await auth0.getSession();
 
       if (!session?.user?.email) {
@@ -19,11 +20,10 @@ export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
         );
       }
 
-      // Cast session.user to our type (it should match the structure)
+      // Add user to request
       const authenticatedRequest = request as AuthenticatedRequest;
       authenticatedRequest.user = session.user as Auth0SessionUser;
 
-      // Call the actual handler with authenticated request
       return handler(authenticatedRequest, context);
     } catch (error) {
       console.error("Auth middleware error:", error);
@@ -35,7 +35,6 @@ export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
   };
 }
 
-// Enhanced version with database validation (Node.js runtime only - for API routes)
 export function withEnhancedAuthAPI<T = unknown>(
   handler: RouteHandler<T>,
   options: {
@@ -48,7 +47,7 @@ export function withEnhancedAuthAPI<T = unknown>(
     context?: Record<string, unknown>
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
-      // Check Auth0 session
+      // Use auth0.getSession(request) for API routes
       const session = await auth0.getSession();
 
       if (!session?.user?.email) {
@@ -58,41 +57,61 @@ export function withEnhancedAuthAPI<T = unknown>(
         );
       }
 
-      // Get email safely
       const userEmail = session.user.email;
 
-      // Optional: Check if user exists in database (API routes only)
+      // Database validation
       if (options.requireDatabaseUser) {
-        const { mongoConn } = await import("@/lib/db");
-        const { checkUserExistsByEmail } = await import("@/domains/user");
+        try {
+          const { mongoConn } = await import("@/lib/db");
+          const { checkUserExistsByEmail } = await import(
+            "@/domains/user/utils"
+          );
 
-        const { db } = await mongoConn();
-        const userExists = await checkUserExistsByEmail(db, userEmail);
+          const { db } = await mongoConn();
+          const userExists = await checkUserExistsByEmail(db, userEmail);
 
-        if (!userExists) {
+          if (!userExists) {
+            return NextResponse.json(
+              {
+                error: "user-not-found",
+                message: "User not found in database",
+              },
+              { status: 404 }
+            );
+          }
+        } catch (dbError) {
+          console.error("Database validation error:", dbError);
           return NextResponse.json(
-            { error: "user-not-found", message: "User not found in database" },
-            { status: 404 }
+            { error: "database-error", message: "Database validation failed" },
+            { status: 500 }
           );
         }
       }
 
-      // Optional: Check tenant access (API routes only)
+      // Tenant validation
       if (options.requireTenant) {
-        const { mongoConn } = await import("@/lib/db");
-        const { checkUserMasterEmail } = await import("@/domains/user");
+        try {
+          const { mongoConn } = await import("@/lib/db");
+          const { checkUserMasterEmail } = await import("@/domains/user/utils");
 
-        const { dbTenant, userDb } = await mongoConn();
-        const userMasterRecord = await checkUserMasterEmail(
-          userDb,
-          dbTenant,
-          userEmail
-        );
+          const { dbTenant, userDb } = await mongoConn();
+          const userMasterRecord = await checkUserMasterEmail(
+            userDb,
+            dbTenant,
+            userEmail
+          );
 
-        if (!userMasterRecord.tenant) {
+          if (!userMasterRecord?.tenant) {
+            return NextResponse.json(
+              { error: "no-tenant", message: "No tenant found for user" },
+              { status: 404 }
+            );
+          }
+        } catch (tenantError) {
+          console.error("Tenant validation error:", tenantError);
           return NextResponse.json(
-            { error: "no-tenant", message: "No tenant found for user" },
-            { status: 404 }
+            { error: "tenant-error", message: "Tenant validation failed" },
+            { status: 500 }
           );
         }
       }

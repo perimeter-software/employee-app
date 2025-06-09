@@ -1,5 +1,5 @@
 export const shadclockTheme = {
-  appPrimary: "#02B0F3",
+  appPrimary: "#40C8FD",
   altPrimary: "#C5EAF9",
   appSecondary: "#BDE095",
   altSecondary: "#DEEFCA",

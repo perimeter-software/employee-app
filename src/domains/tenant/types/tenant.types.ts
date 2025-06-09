@@ -1,3 +1,5 @@
+import { ApiResponse } from "@/lib/api";
+
 export type TenantInfo = {
   _id: string;
   url: string;
@@ -29,3 +31,7 @@ export type TenantObjectsIndexed = {
     dbName?: string;
   };
 };
+
+export type SwitchTenantResponse = ApiResponse<{
+  tenant: TenantInfo;
+}>;
