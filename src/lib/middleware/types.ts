@@ -29,6 +29,9 @@ export type LogEntry = {
 
 export type AuthenticatedRequest = NextRequest & {
   user: Auth0SessionUser;
+  params: {
+    [key: string]: string;
+  };
 };
 
 // Fixed: Make RouteHandler more flexible to allow different response types

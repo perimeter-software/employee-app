@@ -93,6 +93,9 @@ export type Auth0SessionUser = EnhancedUser & {
 // Or extend the official UserProfile if you want to be more strict
 export interface AuthenticatedRequest extends NextRequest {
   user: Auth0SessionUser;
+  params: {
+    [key: string]: string;
+  };
 }
 
 export type RouteHandler<T = unknown> = {
