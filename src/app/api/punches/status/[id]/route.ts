@@ -32,7 +32,7 @@ async function getPunchStatusHandler(request: AuthenticatedRequest) {
       {
         success: true,
         message: "Punch status retrieved successfully",
-        punch,
+        data: punch,
       },
       { status: 200 }
     );

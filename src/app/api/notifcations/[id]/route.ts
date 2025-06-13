@@ -16,6 +16,7 @@ async function updateNotificationHandler(request: AuthenticatedRequest) {
     if (!notificationId || !ObjectId.isValid(notificationId)) {
       return NextResponse.json(
         {
+          success: false,
           error: "invalid-notification-id",
           message: "Invalid notification ID",
         },
@@ -27,7 +28,11 @@ async function updateNotificationHandler(request: AuthenticatedRequest) {
 
     if (!body || Object.keys(body).length === 0) {
       return NextResponse.json(
-        { error: "missing-data", message: "Missing notification data" },
+        {
+          success: false,
+          error: "missing-data",
+          message: "Missing notification data",
+        },
         { status: 400 }
       );
     }
@@ -39,7 +44,11 @@ async function updateNotificationHandler(request: AuthenticatedRequest) {
 
     if (!result || result.matchedCount === 0) {
       return NextResponse.json(
-        { error: "notification-not-found", message: "Notification not found" },
+        {
+          success: false,
+          error: "notification-not-found",
+          message: "Notification not found",
+        },
         { status: 404 }
       );
     }
@@ -48,14 +57,20 @@ async function updateNotificationHandler(request: AuthenticatedRequest) {
       {
         success: true,
         message: "Notification updated successfully!",
-        modifiedCount: result.modifiedCount,
+        data: {
+          modifiedCount: result.modifiedCount,
+        },
       },
       { status: 200 }
     );
   } catch (error) {
     console.error("Error updating notification:", error);
     return NextResponse.json(
-      { error: "internal-error", message: "Internal server error" },
+      {
+        success: false,
+        error: "internal-error",
+        message: "Internal server error",
+      },
       { status: 500 }
     );
   }
@@ -69,6 +84,7 @@ async function getNotificationHandler(request: AuthenticatedRequest) {
     if (!notificationId) {
       return NextResponse.json(
         {
+          success: false,
           error: "missing-notification-id",
           message: "Missing notification ID",
         },
@@ -79,6 +95,7 @@ async function getNotificationHandler(request: AuthenticatedRequest) {
     if (!ObjectId.isValid(notificationId)) {
       return NextResponse.json(
         {
+          success: false,
           error: "invalid-notification-id",
           message: "Invalid notification ID",
         },
@@ -93,7 +110,11 @@ async function getNotificationHandler(request: AuthenticatedRequest) {
 
     if (!notification) {
       return NextResponse.json(
-        { error: "notification-not-found", message: "Notification not found" },
+        {
+          success: false,
+          error: "notification-not-found",
+          message: "Notification not found",
+        },
         { status: 404 }
       );
     }
@@ -102,14 +123,18 @@ async function getNotificationHandler(request: AuthenticatedRequest) {
       {
         success: true,
         message: "Notification retrieved successfully",
-        notification,
+        data: notification,
       },
       { status: 200 }
     );
   } catch (error) {
     console.error("Error fetching notification:", error);
     return NextResponse.json(
-      { error: "internal-error", message: "Internal server error" },
+      {
+        success: false,
+        error: "internal-error",
+        message: "Internal server error",
+      },
       { status: 500 }
     );
   }

@@ -32,7 +32,7 @@ async function deletePunchHandler(request: AuthenticatedRequest) {
       {
         success: true,
         message: "Punch deleted successfully",
-        result,
+        data: result,
       },
       { status: 200 }
     );

@@ -3,7 +3,7 @@ import { PunchApiService } from "../services";
 import { ClockInCoordinates } from "@/domains/job/types/location.types";
 import { Shift } from "@/domains/job/types/job.types";
 
-interface ClockInData {
+export interface ClockInData {
   userNote?: string;
   clockInCoordinates: ClockInCoordinates;
   timeIn: string;

@@ -18,7 +18,7 @@ export type Location = {
 };
 
 export type GigLocation = Location & {
-  feetFromVenueCenter: number | null;
+  feetFromVenueCenter?: number | null;
 };
 
 export type Coordinates = number[];

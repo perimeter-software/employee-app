@@ -1,5 +1,3 @@
-// domains/tenant/services/tenant-api-service.ts
-
 import { baseInstance } from "@/lib/api/instance";
 import { SwitchTenantResponse } from "../types";
 
@@ -9,21 +7,17 @@ export const tenantQueryKeys = {
 } as const;
 
 export class TenantApiService {
-  // Remove 'private' to make it accessible, or use the class name instead of 'this'
   static readonly ENDPOINTS = {
     SWITCH_TENANT: "/switch-tenant",
   } as const;
 
   static async switchTenant(tenantUrl: string): Promise<SwitchTenantResponse> {
-    console.log("🔄 Making switch tenant API call to:", tenantUrl);
-    // Use TenantApiService.ENDPOINTS instead of this.ENDPOINTS
     console.log(
       "🔄 Making switch tenant API call to:",
       TenantApiService.ENDPOINTS.SWITCH_TENANT
     );
 
     try {
-      // Use TenantApiService.ENDPOINTS instead of this.ENDPOINTS
       const response = await baseInstance.post<SwitchTenantResponse>(
         TenantApiService.ENDPOINTS.SWITCH_TENANT,
         { tenantUrl }
@@ -31,23 +25,20 @@ export class TenantApiService {
 
       console.log("📡 Switch tenant API response:", response);
 
-      // Based on your API, it returns { success: true, message: "...", tenant: {...} } directly
-      if (response && response.success) {
-        console.log("✅ Tenant switch successful");
-        return response;
-      } else {
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
         console.error("❌ Tenant switch failed:", response);
-        throw new Error(response?.message || "Failed to switch tenant");
+        throw new Error("Failed to switch tenant");
       }
+
+      console.log("✅ Tenant switch successful:", response.data);
+      return response.data;
     } catch (error) {
       console.error("❌ Switch tenant API error:", error);
 
-      // If it's already an Error object, re-throw it
-      if (error instanceof Error) {
-        throw error;
-      }
-
-      throw new Error("Failed to switch tenant");
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
+      throw error;
     }
   }
 }

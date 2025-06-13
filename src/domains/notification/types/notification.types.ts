@@ -23,27 +23,3 @@ export type Notification = {
   persistent?: boolean;
   message?: string;
 };
-
-export interface NotificationResponse {
-  success: boolean;
-  message: string;
-  notification: Notification;
-}
-
-export interface NotificationError {
-  error: string;
-  message: string;
-}
-
-export interface MarkAllAsReadResponse {
-  success: boolean;
-  message: string;
-  modifiedCount: number;
-}
-
-export interface UserNotificationsResponse {
-  success: boolean;
-  message: string;
-  notifications: Notification[];
-  count: number;
-}

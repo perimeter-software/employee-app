@@ -9,7 +9,6 @@ async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
     // User is authenticated AND exists in database AND has tenant access
     const user = request.user;
     const userEmail = user.email!;
-
     console.log("Enhanced authenticated user:", user.sub, userEmail);
 
     // Connect to databases
@@ -20,16 +19,25 @@ async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
 
     if (!primaryCompany) {
       return NextResponse.json(
-        { error: "not-found", message: "Primary company not found" },
+        {
+          success: false,
+          error: "not-found",
+          message: "Primary company not found",
+        },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({ company: primaryCompany });
+    return NextResponse.json({
+      success: true,
+      message: "Primary company found",
+      data: primaryCompany,
+    });
   } catch (error) {
     console.error("Primary company API error:", error);
     return NextResponse.json(
       {
+        success: false,
         error: "internal-error",
         message: "Internal server error",
       },

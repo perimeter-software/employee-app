@@ -1,9 +1,3 @@
-export type ApiClientOptions = {
-  baseUrl?: string;
-  timeout?: number;
-  headers?: Record<string, string>;
-};
-
 export type RequestConfig = RequestInit & {
   timeout?: number;
   retries?: number;
@@ -27,10 +21,22 @@ export type Interceptor = {
   error?: (error: Error) => Error | Promise<Error>;
 };
 
-
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
   message?: string;
+  count?: number;
+}
+
+export type ApiClientOptions = {
+  baseUrl?: string;
+  timeout?: number;
+  headers?: Record<string, string>;
+};
+
+export interface ApiErrorWithDetails extends Error {
+  errorCode?: string;
+  status?: number;
+  apiResponse?: ApiResponse<unknown>;
 }

@@ -6,14 +6,27 @@ import { findAllOpenPunchesWithJobInfo } from "@/domains/punch";
 import { deletePunchById } from "@/domains/punch";
 
 // GET Handler for Fetching Punches
-async function getPunchesHandler(request: AuthenticatedRequest) {
+async function getPunchesHandler(
+  request: AuthenticatedRequest,
+  context?: Record<string, unknown>
+) {
   try {
     const user = request.user;
-    const { userId } = request.params as { userId: string };
+    const params = context?.params as { userId: string } | undefined;
+    const userId = params?.userId;
+
+    console.log("📍 GET punches endpoint hit:", {
+      userId,
+      userFromToken: user._id,
+    });
 
     if (!userId) {
       return NextResponse.json(
-        { error: "missing-parameters", message: "Missing required parameters" },
+        {
+          success: false,
+          error: "missing-parameters",
+          message: "Missing required parameters",
+        },
         { status: 400 }
       );
     }
@@ -22,12 +35,15 @@ async function getPunchesHandler(request: AuthenticatedRequest) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type");
 
+    console.log("📍 Request params:", { userId, type, url: request.url });
+
     // Connect to database
     const { db } = await mongoConn();
 
     let punches;
 
     if (type === "allOpen") {
+      console.log("📍 Fetching all open punches for user:", user._id);
       punches = await findAllOpenPunchesWithJobInfo(
         db,
         user._id || "",
@@ -35,51 +51,81 @@ async function getPunchesHandler(request: AuthenticatedRequest) {
       );
     } else {
       return NextResponse.json(
-        { error: "invalid-type", message: "Invalid or missing type parameter" },
+        {
+          success: false,
+          error: "invalid-type",
+          message: "Invalid or missing type parameter. Expected 'allOpen'",
+        },
         { status: 400 }
       );
     }
 
+    // Handle empty results
     if (
       !punches ||
+      (Array.isArray(punches) && punches.length === 0) ||
       (typeof punches === "object" && Object.keys(punches).length === 0)
     ) {
       return NextResponse.json(
-        { success: true, message: "No punches found", punches: [] },
+        {
+          success: true,
+          message: "No punches found",
+          data: [],
+        },
         { status: 200 }
       );
     }
+
+    // Ensure we return an array
+    const punchArray = Array.isArray(punches) ? punches : [punches];
 
     return NextResponse.json(
       {
         success: true,
         message: "Punches retrieved successfully",
-        punches,
+        data: punchArray,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error fetching punches:", error);
+    console.error("❌ Error fetching punches:", error);
     return NextResponse.json(
-      { error: "internal-error", message: "Internal server error" },
+      {
+        success: false,
+        error: "internal-error",
+        message: "Internal server error",
+      },
       { status: 500 }
     );
   }
 }
 
 // DELETE Handler for Deleting Punch by ID
-async function deletePunchHandler(request: AuthenticatedRequest) {
+async function deletePunchHandler(
+  request: AuthenticatedRequest,
+  context?: Record<string, unknown>
+) {
   try {
     const user = request.user;
-    const { userId } = request.params as { userId: string };
+    const params = context?.params as { userId: string } | undefined;
+    const userId = params?.userId;
+
+    console.log("📍 DELETE punch endpoint hit:", {
+      userId,
+      userFromToken: user._id,
+    });
 
     if (!user._id || !userId) {
-      console.error("Missing required parameters:", {
+      console.error("❌ Missing required parameters:", {
         userId: user._id,
         punchId: userId,
       });
       return NextResponse.json(
-        { error: "missing-parameters", message: "Missing required parameters" },
+        {
+          success: false,
+          error: "missing-parameters",
+          message: "Missing required parameters",
+        },
         { status: 400 }
       );
     }
@@ -89,23 +135,23 @@ async function deletePunchHandler(request: AuthenticatedRequest) {
 
     const result = await deletePunchById(db, userId);
 
-    console.log(`Deleted punch ${userId} for user ${user._id}`);
+    console.log(`✅ Deleted punch ${userId} for user ${user._id}`);
 
     return NextResponse.json(
       {
         success: true,
         message: "Punch deleted successfully",
-        result,
+        data: result,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error deleting punch:", error);
+    console.error("❌ Error deleting punch:", error);
     return NextResponse.json(
       {
+        success: false,
         error: "internal-error",
         message: "Internal server error",
-        details: (error as Error).message,
       },
       { status: 500 }
     );

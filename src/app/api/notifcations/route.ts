@@ -11,7 +11,11 @@ async function getUserNotificationsHandler(request: AuthenticatedRequest) {
 
     if (!user._id) {
       return NextResponse.json(
-        { error: "missing-user-id", message: "User ID not found" },
+        {
+          success: false,
+          error: "missing-user-id",
+          message: "User ID not found",
+        },
         { status: 400 }
       );
     }
@@ -31,8 +35,10 @@ async function getUserNotificationsHandler(request: AuthenticatedRequest) {
         {
           success: true,
           message: "No notifications found",
-          notifications: [],
-          count: 0,
+          data: {
+            notifications: [],
+            count: 0,
+          },
         },
         { status: 200 }
       );
@@ -46,15 +52,19 @@ async function getUserNotificationsHandler(request: AuthenticatedRequest) {
       {
         success: true,
         message: "Notifications retrieved successfully",
-        notifications: notificationArray,
         count: notificationArray.length,
+        data: notificationArray,
       },
       { status: 200 }
     );
   } catch (error) {
     console.error("Error fetching notifications:", error);
     return NextResponse.json(
-      { error: "internal-error", message: "Internal server error" },
+      {
+        success: false,
+        error: "internal-error",
+        message: "Internal server error",
+      },
       { status: 500 }
     );
   }

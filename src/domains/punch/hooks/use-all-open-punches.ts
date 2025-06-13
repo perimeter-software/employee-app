@@ -5,6 +5,8 @@ export const useAllOpenPunches = (userId: string) => {
   return useQuery({
     queryKey: punchQueryKeys.allOpen(userId),
     queryFn: () => PunchApiService.getAllOpenPunches(userId),
+    // Only run the query when we have a valid userId
+    enabled: !!userId && userId.length > 0,
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
     retry: (failureCount, error) => {

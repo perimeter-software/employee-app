@@ -1,14 +1,7 @@
 import { baseInstance } from "@/lib/api/instance";
-import {
-  Punch,
-  PunchWithJobInfo,
-  PunchListResponse,
-  PunchError,
-  PunchResponse,
-} from "../types";
+import { Punch, PunchWithJobInfo } from "../types";
 import { ClockInCoordinates } from "@/domains/job/types/location.types";
 import { Shift } from "@/domains/job/types/job.types";
-import { AxiosError, AxiosResponse } from "axios";
 
 export const punchQueryKeys = {
   all: ["punch"] as const,
@@ -22,16 +15,14 @@ export const punchQueryKeys = {
 
 export class PunchApiService {
   static readonly ENDPOINTS = {
-    CLOCK_IN: (userId: string, jobId: string) =>
-      `/api/punches/${userId}/${jobId}`,
-    CLOCK_OUT: (userId: string, jobId: string) =>
-      `/api/punches/${userId}/${jobId}`,
+    CLOCK_IN: (userId: string, jobId: string) => `/punches/${userId}/${jobId}`,
+    CLOCK_OUT: (userId: string, jobId: string) => `/punches/${userId}/${jobId}`,
     UPDATE_COORDINATES: (userId: string) =>
-      `/api/punches/${userId}/update-coordinates`,
-    ALL_OPEN_PUNCHES: (userId: string) => `/api/punches/${userId}?type=allOpen`,
-    PUNCH_STATUS: (id: string) => `/api/punches/status/${id}`,
-    FIND_BY_DATE_RANGE: () => `/api/punches`,
-    DELETE: (userId: string) => `/api/punches/remove/${userId}`,
+      `/punches/${userId}/update-coordinates`,
+    ALL_OPEN_PUNCHES: (userId: string) => `/punches/${userId}?type=allOpen`,
+    PUNCH_STATUS: (id: string) => `/punches/status/${id}`,
+    FIND_BY_DATE_RANGE: () => `/punches`,
+    DELETE: (userId: string) => `/punches/remove/${userId}`,
   } as const;
 
   /**
@@ -44,28 +35,25 @@ export class PunchApiService {
     );
 
     try {
-      const response = await baseInstance.get<AxiosResponse<PunchListResponse>>(
+      const response = await baseInstance.get<PunchWithJobInfo[]>(
         PunchApiService.ENDPOINTS.ALL_OPEN_PUNCHES(userId)
       );
 
       console.log("📡 Raw API Response:", response);
 
-      if (!response || !response.data?.punches) {
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
         console.error("❌ No punches data in response:", response);
         throw new Error("No punches data received from API");
       }
 
-      console.log(
-        "✅ Successfully fetched all open punches:",
-        response.data.punches
-      );
-      return response.data.punches;
+      console.log("✅ Successfully fetched all open punches:", response.data);
+      return response.data;
     } catch (error) {
       console.error("❌ getAllOpenPunches API error:", error);
-      if (error instanceof AxiosError && error.response?.data) {
-        const errorData = error.response.data as PunchError;
-        throw new Error(errorData.message || "Failed to fetch open punches");
-      }
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
       throw error;
     }
   }
@@ -91,26 +79,26 @@ export class PunchApiService {
     );
 
     try {
-      const response = await baseInstance.post<PunchResponse>(
+      const response = await baseInstance.post<PunchWithJobInfo>(
         PunchApiService.ENDPOINTS.CLOCK_IN(userId, jobId),
         data
       );
 
       console.log("📡 Raw API Response:", response);
 
-      if (!response || !response.punch) {
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
         console.error("❌ No punch data in response:", response);
         throw new Error("No punch data received from API");
       }
 
-      console.log("✅ Successfully clocked in:", response.punch);
-      return response.punch;
+      console.log("✅ Successfully clocked in:", response.data);
+      return response.data;
     } catch (error) {
       console.error("❌ clockIn API error:", error);
-      if (error instanceof AxiosError && error.response?.data) {
-        const errorData = error.response.data as PunchError;
-        throw new Error(errorData.message || "Failed to clock in");
-      }
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
       throw error;
     }
   }
@@ -129,7 +117,7 @@ export class PunchApiService {
     );
 
     try {
-      const response = await baseInstance.put<PunchResponse>(
+      const response = await baseInstance.put<PunchWithJobInfo>(
         PunchApiService.ENDPOINTS.CLOCK_OUT(userId, jobId),
         {
           action: "clockOut",
@@ -139,19 +127,19 @@ export class PunchApiService {
 
       console.log("📡 Raw API Response:", response);
 
-      if (!response || !response.punch) {
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
         console.error("❌ No punch data in response:", response);
         throw new Error("No punch data received from API");
       }
 
-      console.log("✅ Successfully clocked out:", response.punch);
-      return response.punch;
+      console.log("✅ Successfully clocked out:", response.data);
+      return response.data;
     } catch (error) {
       console.error("❌ clockOut API error:", error);
-      if (error instanceof AxiosError && error.response?.data) {
-        const errorData = error.response.data as PunchError;
-        throw new Error(errorData.message || "Failed to clock out");
-      }
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
       throw error;
     }
   }
@@ -170,7 +158,7 @@ export class PunchApiService {
     );
 
     try {
-      const response = await baseInstance.put<PunchResponse>(
+      const response = await baseInstance.put<PunchWithJobInfo>(
         PunchApiService.ENDPOINTS.CLOCK_OUT(userId, jobId),
         {
           action: "update",
@@ -180,19 +168,19 @@ export class PunchApiService {
 
       console.log("📡 Raw API Response:", response);
 
-      if (!response || !response.punch) {
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
         console.error("❌ No punch data in response:", response);
         throw new Error("No punch data received from API");
       }
 
-      console.log("✅ Successfully updated punch:", response.punch);
-      return response.punch;
+      console.log("✅ Successfully updated punch:", response.data);
+      return response.data;
     } catch (error) {
       console.error("❌ updatePunch API error:", error);
-      if (error instanceof AxiosError && error.response?.data) {
-        const errorData = error.response.data as PunchError;
-        throw new Error(errorData.message || "Failed to update punch");
-      }
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
       throw error;
     }
   }
@@ -210,34 +198,32 @@ export class PunchApiService {
     );
 
     try {
-      const response = await baseInstance.post<AxiosResponse<PunchResponse>>(
+      const response = await baseInstance.post<PunchWithJobInfo>(
         PunchApiService.ENDPOINTS.UPDATE_COORDINATES(userId),
         { location }
       );
 
       console.log("📡 Raw API Response:", response);
 
-      // If no updates were necessary, return null
-      if (response.status === 204) {
+      // Handle special case for 204 status (no content needed)
+      if (response.success && !response.data) {
+        console.log("✅ No coordinate updates were necessary");
         return null;
       }
 
-      if (!response || !response.data?.punch) {
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
         console.error("❌ No punch data in response:", response);
         throw new Error("No punch data received from API");
       }
 
-      console.log(
-        "✅ Successfully updated punch coordinates:",
-        response.data.punch
-      );
-      return response.data.punch;
+      console.log("✅ Successfully updated punch coordinates:", response.data);
+      return response.data;
     } catch (error) {
       console.error("❌ updateCoordinates API error:", error);
-      if (error instanceof AxiosError && error.response?.data) {
-        const errorData = error.response.data as PunchError;
-        throw new Error(errorData.message || "Failed to update coordinates");
-      }
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
       throw error;
     }
   }
@@ -249,25 +235,25 @@ export class PunchApiService {
     console.log("🔍 Making API call to:", this.ENDPOINTS.PUNCH_STATUS(id));
 
     try {
-      const response = await baseInstance.get<AxiosResponse<PunchResponse>>(
+      const response = await baseInstance.get<Punch>(
         PunchApiService.ENDPOINTS.PUNCH_STATUS(id)
       );
 
       console.log("📡 Raw API Response:", response);
 
-      if (!response || !response.data?.punch) {
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
         console.error("❌ No punch data in response:", response);
         throw new Error("No punch data received from API");
       }
 
-      console.log("✅ Successfully fetched punch status:", response.data.punch);
-      return response.data.punch;
+      console.log("✅ Successfully fetched punch status:", response.data);
+      return response.data;
     } catch (error) {
       console.error("❌ getPunchStatus API error:", error);
-      if (error instanceof AxiosError && error.response?.data) {
-        const errorData = error.response.data as PunchError;
-        throw new Error(errorData.message || "Failed to fetch punch status");
-      }
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
       throw error;
     }
   }
@@ -285,25 +271,26 @@ export class PunchApiService {
     console.log("🔍 Making API call to:", this.ENDPOINTS.FIND_BY_DATE_RANGE());
 
     try {
-      const response = await baseInstance.post<
-        AxiosResponse<PunchListResponse>
-      >(PunchApiService.ENDPOINTS.FIND_BY_DATE_RANGE(), params);
+      const response = await baseInstance.post<PunchWithJobInfo[]>(
+        PunchApiService.ENDPOINTS.FIND_BY_DATE_RANGE(),
+        params
+      );
 
       console.log("📡 Raw API Response:", response);
 
-      if (!response || !response.data?.punches) {
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
         console.error("❌ No punches data in response:", response);
         throw new Error("No punches data received from API");
       }
 
-      console.log("✅ Successfully fetched punches:", response.data.punches);
-      return response.data.punches;
+      console.log("✅ Successfully fetched punches:", response.data);
+      return response.data;
     } catch (error) {
       console.error("❌ findPunchesByDateRange API error:", error);
-      if (error instanceof AxiosError && error.response?.data) {
-        const errorData = error.response.data as PunchError;
-        throw new Error(errorData.message || "Failed to fetch punches");
-      }
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
       throw error;
     }
   }
@@ -315,25 +302,26 @@ export class PunchApiService {
     console.log("🔍 Making API call to:", this.ENDPOINTS.DELETE(userId));
 
     try {
-      const response = await baseInstance.delete<
-        AxiosResponse<{ success: boolean; message: string }>
-      >(PunchApiService.ENDPOINTS.DELETE(userId));
+      const response = await baseInstance.delete<{
+        success: boolean;
+        message: string;
+      }>(PunchApiService.ENDPOINTS.DELETE(userId));
 
       console.log("📡 Raw API Response:", response);
 
-      if (!response || !response.data?.success) {
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
         console.error("❌ Delete operation failed:", response);
         throw new Error("Failed to delete punch");
       }
 
       console.log("✅ Successfully deleted punch");
-      return true;
+      return response.data.success;
     } catch (error) {
       console.error("❌ deletePunch API error:", error);
-      if (error instanceof AxiosError && error.response?.data) {
-        const errorData = error.response.data as PunchError;
-        throw new Error(errorData.message || "Failed to delete punch");
-      }
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
       throw error;
     }
   }

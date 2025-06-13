@@ -6,13 +6,20 @@ export const baseInstance = new ApiClient({
   timeout: 10000,
 });
 
-// KEEP THIS - For 401 redirects to Auth0 login
-baseInstance.responseInterceptor.use((response) => {
-  if (response.status === 401) {
-    // Handle auth errors - redirect to Auth0 login
-    if (typeof window !== "undefined") {
-      window.location.href = "/auth/login";
+// Add 401 redirect interceptor
+baseInstance.responseInterceptor.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      console.log("Authentication expired, redirecting to login...");
+
+      if (typeof window !== "undefined") {
+        setTimeout(() => {
+          window.location.href = "/auth/login";
+        }, 0);
+      }
     }
+
+    return Promise.reject(error);
   }
-  return response;
-});
+);

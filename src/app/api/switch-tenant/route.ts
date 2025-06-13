@@ -67,7 +67,7 @@ async function switchTenantHandler(request: AuthenticatedRequest) {
     return NextResponse.json({
       success: true,
       message: "Tenant switched successfully",
-      tenant: selectedTenant,
+      data: selectedTenant,
     });
   } catch (error) {
     console.error("Tenant switch error:", error);

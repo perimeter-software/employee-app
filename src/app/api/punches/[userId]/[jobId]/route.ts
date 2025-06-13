@@ -76,13 +76,17 @@ function createNewPunch(
 }
 
 // POST Handler for Creating Punches (Clock In)
-async function createPunchHandler(request: AuthenticatedRequest) {
+async function createPunchHandler(
+  request: AuthenticatedRequest,
+  context?: Record<string, unknown>
+) {
   try {
     const user = request.user;
-    const { userId, jobId } = request.params as {
-      userId: string;
-      jobId: string;
-    };
+    const params = context?.params as
+      | { userId: string; jobId: string }
+      | undefined;
+    const userId = params?.userId;
+    const jobId = params?.jobId;
 
     if (!jobId || !userId) {
       return NextResponse.json(
@@ -283,7 +287,9 @@ async function createPunchHandler(request: AuthenticatedRequest) {
       {
         success: true,
         message: "Clocked in successfully!",
-        punch,
+        data: {
+          punch,
+        },
       },
       { status: 201 }
     );
@@ -369,7 +375,7 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
           action === "clockOut"
             ? "Clocked out successfully!"
             : "Punch updated successfully!",
-        punch: updatedPunch,
+        data: updatedPunch,
       },
       { status: 200 }
     );

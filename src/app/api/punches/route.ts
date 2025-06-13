@@ -43,7 +43,7 @@ async function findPunchesByDateRangeHandler(request: AuthenticatedRequest) {
         success: true,
         message: "Punches retrieved successfully",
         count: punches.length,
-        punches,
+        data: punches,
       },
       { status: 200 }
     );

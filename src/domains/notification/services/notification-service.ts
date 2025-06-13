@@ -1,12 +1,5 @@
 import { baseInstance } from "@/lib/api/instance";
-import {
-  Notification,
-  NotificationResponse,
-  NotificationError,
-  MarkAllAsReadResponse,
-  UserNotificationsResponse,
-} from "../types";
-import { AxiosError, AxiosResponse } from "axios";
+import { Notification } from "../types";
 
 export const notificationQueryKeys = {
   all: ["notification"] as const,
@@ -31,28 +24,25 @@ export class NotificationApiService {
     console.log("🔍 Making API call to:", this.ENDPOINTS.GET_NOTIFICATION(id));
 
     try {
-      const response = await baseInstance.get<
-        AxiosResponse<NotificationResponse>
-      >(NotificationApiService.ENDPOINTS.GET_NOTIFICATION(id));
+      const response = await baseInstance.get<Notification>(
+        NotificationApiService.ENDPOINTS.GET_NOTIFICATION(id)
+      );
 
       console.log("📡 Raw API Response:", response);
 
-      if (!response || !response.data?.notification) {
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
         console.error("❌ No notification data in response:", response);
         throw new Error("No notification data received from API");
       }
 
-      console.log(
-        "✅ Successfully fetched notification:",
-        response.data.notification
-      );
-      return response.data.notification;
+      console.log("✅ Successfully fetched notification:", response.data);
+      return response.data;
     } catch (error) {
       console.error("❌ getNotification API error:", error);
-      if (error instanceof AxiosError && error.response?.data) {
-        const errorData = error.response.data as NotificationError;
-        throw new Error(errorData.message || "Failed to fetch notification");
-      }
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
       throw error;
     }
   }
@@ -63,36 +53,33 @@ export class NotificationApiService {
   static async updateNotification(
     id: string,
     data: Partial<Notification>
-  ): Promise<Notification> {
+  ): Promise<{ modifiedCount: number }> {
     console.log(
       "🔍 Making API call to:",
       this.ENDPOINTS.UPDATE_NOTIFICATION(id)
     );
 
     try {
-      const response = await baseInstance.put<NotificationResponse>(
+      const response = await baseInstance.put<{ modifiedCount: number }>(
         NotificationApiService.ENDPOINTS.UPDATE_NOTIFICATION(id),
         data
       );
 
       console.log("📡 Raw API Response:", response);
 
-      if (!response || !response.notification) {
-        console.error("❌ No notification data in response:", response);
-        throw new Error("No notification data received from API");
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
+        console.error("❌ No notification update data in response:", response);
+        throw new Error("No notification update data received from API");
       }
 
-      console.log(
-        "✅ Successfully updated notification:",
-        response.notification
-      );
-      return response.notification;
+      console.log("✅ Successfully updated notification:", response.data);
+      return response.data;
     } catch (error) {
       console.error("❌ updateNotification API error:", error);
-      if (error instanceof AxiosError && error.response?.data) {
-        const errorData = error.response.data as NotificationError;
-        throw new Error(errorData.message || "Failed to update notification");
-      }
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
       throw error;
     }
   }
@@ -104,30 +91,28 @@ export class NotificationApiService {
     console.log("🔍 Making API call to:", this.ENDPOINTS.MARK_ALL_AS_READ());
 
     try {
-      const response = await baseInstance.put<MarkAllAsReadResponse>(
+      const response = await baseInstance.put<{ modifiedCount: number }>(
         NotificationApiService.ENDPOINTS.MARK_ALL_AS_READ()
       );
 
       console.log("📡 Raw API Response:", response);
 
-      if (!response || !response.success) {
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
         console.error("❌ Failed to mark notifications as read:", response);
         throw new Error("Failed to mark notifications as read");
       }
 
       console.log(
         "✅ Successfully marked notifications as read:",
-        response.modifiedCount
+        response.data
       );
-      return { modifiedCount: response.modifiedCount };
+      return response.data;
     } catch (error) {
       console.error("❌ markAllAsRead API error:", error);
-      if (error instanceof AxiosError && error.response?.data) {
-        const errorData = error.response.data as NotificationError;
-        throw new Error(
-          errorData.message || "Failed to mark notifications as read"
-        );
-      }
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
       throw error;
     }
   }
@@ -145,33 +130,26 @@ export class NotificationApiService {
     );
 
     try {
-      const response = await baseInstance.get<
-        AxiosResponse<UserNotificationsResponse>
-      >(NotificationApiService.ENDPOINTS.GET_USER_NOTIFICATIONS());
+      const response = await baseInstance.get<{
+        notifications: Notification[];
+        count: number;
+      }>(NotificationApiService.ENDPOINTS.GET_USER_NOTIFICATIONS());
 
       console.log("📡 Raw API Response:", response);
 
-      if (!response || !response.data?.notifications) {
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
         console.error("❌ No notifications data in response:", response);
         throw new Error("No notifications data received from API");
       }
 
-      console.log("✅ Successfully fetched user notifications:", {
-        count: response.data.count,
-        notifications: response.data.notifications,
-      });
-      return {
-        notifications: response.data.notifications,
-        count: response.data.count,
-      };
+      console.log("✅ Successfully fetched user notifications:", response.data);
+      return response.data;
     } catch (error) {
       console.error("❌ getUserNotifications API error:", error);
-      if (error instanceof AxiosError && error.response?.data) {
-        const errorData = error.response.data as NotificationError;
-        throw new Error(
-          errorData.message || "Failed to fetch user notifications"
-        );
-      }
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
       throw error;
     }
   }

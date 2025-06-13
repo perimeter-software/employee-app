@@ -79,21 +79,3 @@ export type PunchWJobInfoDayHours = PunchWithJobInfo & {
   hours: number;
   totalHours?: number;
 };
-
-export interface PunchResponse {
-  success: boolean;
-  message: string;
-  punch: PunchWithJobInfo;
-}
-
-export interface PunchListResponse {
-  success: boolean;
-  message: string;
-  punches: PunchWithJobInfo[];
-}
-
-export interface PunchError {
-  error: string;
-  message: string;
-  openPunch?: string;
-}

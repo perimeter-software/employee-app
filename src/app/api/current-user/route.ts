@@ -54,11 +54,16 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
       status: userExists?.status,
     };
 
-    return NextResponse.json({ user: enhancedUser });
+    return NextResponse.json({
+      success: true,
+      message: "User data retrieved successfully",
+      data: enhancedUser,
+    });
   } catch (error) {
     console.error("User data API error:", error);
     return NextResponse.json(
       {
+        success: false,
         error: "internal-error",
         message: "Internal server error",
       },

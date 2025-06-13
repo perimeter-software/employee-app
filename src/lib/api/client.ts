@@ -1,212 +1,183 @@
-import {
-  ApiError,
-  NetworkError,
-  TimeoutError,
-  ValidationError,
-} from "./errors";
-import { InterceptorManager } from "./interceptors";
-import type { ApiClientOptions, RequestConfig } from "./types";
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from "axios";
+import { ApiClientOptions, ApiErrorWithDetails, ApiResponse } from "./types";
 
 export class ApiClient {
-  private baseUrl: string;
-  private defaultHeaders: Record<string, string>;
-  private timeout: number;
-  private interceptors: InterceptorManager;
+  private axiosInstance: AxiosInstance;
 
   constructor(options: ApiClientOptions = {}) {
-    this.baseUrl = options.baseUrl || "";
-    this.timeout = options.timeout || 10000;
-    this.defaultHeaders = {
-      "Content-Type": "application/json",
-      ...options.headers,
-    };
-    this.interceptors = new InterceptorManager();
+    this.axiosInstance = axios.create({
+      baseURL: options.baseUrl || "",
+      timeout: options.timeout || 10000,
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+    });
+
+    // Add response interceptor for error handling
+    this.axiosInstance.interceptors.response.use(
+      (response) => {
+        // Check if the response has the expected ApiResponse structure
+        const data = response.data as ApiResponse<unknown>;
+
+        // If the API returns success: false, treat it as an error
+        if (
+          data &&
+          typeof data === "object" &&
+          "success" in data &&
+          !data.success
+        ) {
+          const error = new Error(
+            data.message || "API request failed"
+          ) as ApiErrorWithDetails;
+          // Attach additional error info
+          error.errorCode = data.error;
+          error.apiResponse = data;
+          throw error;
+        }
+
+        return response;
+      },
+      (error: AxiosError) => {
+        // Handle network/connection errors
+        if (error.code === "ECONNABORTED") {
+          throw new Error("Request timeout");
+        }
+
+        if (!error.response) {
+          throw new Error("Network connection failed");
+        }
+
+        // Try to extract error information from the standardized API response
+        const apiResponse = error.response.data as ApiResponse<unknown>;
+
+        if (apiResponse && typeof apiResponse === "object") {
+          // If it's our standardized error format
+          if ("success" in apiResponse && apiResponse.success === false) {
+            const errorMessage = apiResponse.message || "API request failed";
+            const apiError = new Error(errorMessage) as ApiErrorWithDetails;
+
+            // Attach additional error information
+            apiError.errorCode = apiResponse.error;
+            apiError.status = error.response.status;
+            apiError.apiResponse = apiResponse;
+
+            throw apiError;
+          }
+
+          // Legacy error handling for non-standardized responses
+          if ("message" in apiResponse) {
+            throw new Error(apiResponse.message as string);
+          }
+        }
+
+        // Fallback for validation errors (422) - legacy support
+        if (error.response.status === 422) {
+          const errorData = error.response.data as {
+            message?: string;
+            errors?: Record<string, string[]>;
+          };
+          throw new Error(errorData.message || "Validation failed");
+        }
+
+        // For other HTTP errors without proper API response format
+        throw new Error(`Request failed with status ${error.response.status}`);
+      }
+    );
   }
 
-  // Interceptor management
+  // Interceptor management - direct access to axios interceptors
   get requestInterceptor() {
-    return {
-      use: (
-        interceptor: (
-          config: RequestConfig
-        ) => RequestConfig | Promise<RequestConfig>
-      ) => this.interceptors.addRequestInterceptor(interceptor),
-      eject: (id: number) => this.interceptors.removeRequestInterceptor(id),
-    };
+    return this.axiosInstance.interceptors.request;
   }
 
   get responseInterceptor() {
-    return {
-      use: (
-        interceptor: (response: Response) => Response | Promise<Response>
-      ) => this.interceptors.addResponseInterceptor(interceptor),
-      eject: (id: number) => this.interceptors.removeResponseInterceptor(id),
-    };
+    return this.axiosInstance.interceptors.response;
   }
 
-  get errorInterceptor() {
-    return {
-      use: (interceptor: (error: Error) => Error | Promise<Error>) =>
-        this.interceptors.addErrorInterceptor(interceptor),
-      eject: (id: number) => this.interceptors.removeErrorInterceptor(id),
-    };
-  }
-
-  // Core request method
-  private async request<T>(
+  // HTTP Methods - these now return the full ApiResponse type
+  async get<T>(
     endpoint: string,
-    config: RequestConfig = {}
-  ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-    const timeout = config.timeout || this.timeout;
-
-    const processedConfig = await this.interceptors.processRequest(config);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-    try {
-      const requestConfig: RequestInit = {
-        signal: controller.signal,
-        headers: {
-          ...this.defaultHeaders,
-          ...processedConfig.headers,
-        },
-        ...processedConfig,
-      };
-
-      const response = await fetch(url, requestConfig);
-      clearTimeout(timeoutId);
-
-      const processedResponse = await this.interceptors.processResponse(
-        response
-      );
-
-      const validateStatus =
-        processedConfig.validateStatus ||
-        ((status) => status >= 200 && status < 300);
-
-      if (!validateStatus(processedResponse.status)) {
-        const errorData = await this.parseErrorResponse(processedResponse);
-
-        if (processedResponse.status === 422) {
-          throw new ValidationError(
-            errorData.message || "Validation failed",
-            errorData.errors
-          );
-        }
-
-        throw new ApiError(
-          `Request failed with status ${processedResponse.status}`,
-          processedResponse.status,
-          errorData
-        );
-      }
-
-      if (
-        processedResponse.status === 204 ||
-        processedResponse.headers.get("content-length") === "0"
-      ) {
-        return null as T;
-      }
-
-      const data = await processedResponse.json();
-      return data;
-    } catch (error: unknown) {
-      clearTimeout(timeoutId);
-
-      const processedError = await this.interceptors.processError(
-        error as Error
-      );
-
-      if (processedError instanceof ApiError) {
-        throw processedError;
-      }
-
-      if (
-        processedError instanceof Error &&
-        processedError.name === "AbortError"
-      ) {
-        throw new TimeoutError();
-      }
-
-      throw new NetworkError(
-        processedError instanceof Error
-          ? processedError.message
-          : "Unknown error"
-      );
-    }
-  }
-
-  private async parseErrorResponse(response: Response) {
-    try {
-      return await response.json();
-    } catch {
-      return { message: response.statusText };
-    }
-  }
-
-  // HTTP Methods
-  async get<T>(endpoint: string, config?: RequestConfig): Promise<T> {
-    return this.request<T>(endpoint, { ...config, method: "GET" });
+    config?: AxiosRequestConfig
+  ): Promise<ApiResponse<T>> {
+    const response = await this.axiosInstance.get<ApiResponse<T>>(
+      endpoint,
+      config
+    );
+    return response.data;
   }
 
   async post<T>(
     endpoint: string,
     data?: unknown,
-    config?: RequestConfig
-  ): Promise<T> {
-    return this.request<T>(endpoint, {
-      ...config,
-      method: "POST",
-      body: data ? JSON.stringify(data) : undefined,
-    });
+    config?: AxiosRequestConfig
+  ): Promise<ApiResponse<T>> {
+    const response = await this.axiosInstance.post<ApiResponse<T>>(
+      endpoint,
+      data,
+      config
+    );
+    return response.data;
   }
 
   async put<T>(
     endpoint: string,
     data?: unknown,
-    config?: RequestConfig
-  ): Promise<T> {
-    return this.request<T>(endpoint, {
-      ...config,
-      method: "PUT",
-      body: data ? JSON.stringify(data) : undefined,
-    });
+    config?: AxiosRequestConfig
+  ): Promise<ApiResponse<T>> {
+    const response = await this.axiosInstance.put<ApiResponse<T>>(
+      endpoint,
+      data,
+      config
+    );
+    return response.data;
   }
 
   async patch<T>(
     endpoint: string,
     data?: unknown,
-    config?: RequestConfig
-  ): Promise<T> {
-    return this.request<T>(endpoint, {
-      ...config,
-      method: "PATCH",
-      body: data ? JSON.stringify(data) : undefined,
-    });
+    config?: AxiosRequestConfig
+  ): Promise<ApiResponse<T>> {
+    const response = await this.axiosInstance.patch<ApiResponse<T>>(
+      endpoint,
+      data,
+      config
+    );
+    return response.data;
   }
 
-  async delete<T>(endpoint: string, config?: RequestConfig): Promise<T> {
-    return this.request<T>(endpoint, { ...config, method: "DELETE" });
+  async delete<T>(
+    endpoint: string,
+    config?: AxiosRequestConfig
+  ): Promise<ApiResponse<T>> {
+    const response = await this.axiosInstance.delete<ApiResponse<T>>(
+      endpoint,
+      config
+    );
+    return response.data;
   }
 
   async upload<T>(
     endpoint: string,
     formData: FormData,
-    config?: RequestConfig
-  ): Promise<T> {
-    const uploadConfig = { ...config };
-    if (uploadConfig.headers) {
-      const headers = { ...uploadConfig.headers } as Record<string, string>;
-      delete headers["Content-Type"];
-      uploadConfig.headers = headers;
-    }
+    config?: AxiosRequestConfig
+  ): Promise<ApiResponse<T>> {
+    const response = await this.axiosInstance.post<ApiResponse<T>>(
+      endpoint,
+      formData,
+      {
+        ...config,
+        headers: {
+          "Content-Type": "multipart/form-data",
+          ...config?.headers,
+        },
+      }
+    );
+    return response.data;
+  }
 
-    return this.request<T>(endpoint, {
-      ...uploadConfig,
-      method: "POST",
-      body: formData,
-    });
+  // Direct access to axios instance for advanced usage
+  get axios() {
+    return this.axiosInstance;
   }
 }

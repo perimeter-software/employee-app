@@ -11,7 +11,11 @@ async function markAllNotificationsReadHandler(request: AuthenticatedRequest) {
 
     if (!user._id) {
       return NextResponse.json(
-        { error: "unauthorized", message: "User ID not found" },
+        {
+          success: false,
+          error: "unauthorized",
+          message: "User ID not found",
+        },
         { status: 401 }
       );
     }
@@ -26,7 +30,9 @@ async function markAllNotificationsReadHandler(request: AuthenticatedRequest) {
         {
           success: true,
           message: "No unread notifications found.",
-          modifiedCount: 0,
+          data: {
+            modifiedCount: 0,
+          },
         },
         { status: 200 }
       );
@@ -36,14 +42,20 @@ async function markAllNotificationsReadHandler(request: AuthenticatedRequest) {
       {
         success: true,
         message: `Marked ${result.modifiedCount} notification(s) as read.`,
-        modifiedCount: result.modifiedCount,
+        data: {
+          modifiedCount: result.modifiedCount,
+        },
       },
       { status: 200 }
     );
   } catch (error) {
     console.error("Error marking notifications as read:", error);
     return NextResponse.json(
-      { error: "internal-error", message: "Failed to update notifications" },
+      {
+        success: false,
+        error: "internal-error",
+        message: "Failed to update notifications",
+      },
       { status: 500 }
     );
   }

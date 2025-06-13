@@ -1,6 +1,5 @@
 // app/page.tsx
 "use client";
-
 import { useUser } from "@auth0/nextjs-auth0";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -23,8 +22,9 @@ export default function LoginPage() {
     show: false,
   });
 
+  // FIXED: Split the useEffect hooks to avoid circular dependency
+  // Handle URL parameters for notifications (runs once on mount)
   useEffect(() => {
-    // Handle various URL parameters for notifications
     const expired = searchParams.get("expired");
     const loggedOut = searchParams.get("loggedout");
     const error = searchParams.get("error");
@@ -43,28 +43,28 @@ export default function LoginPage() {
       });
     } else if (error) {
       let message = "Error logging in, try again shortly.";
-
       if (error === "no-tenant") {
         message = "No active tenant found for your account.";
       } else if (error === "user-not-found") {
         message = "Account not found. Please contact support.";
       }
-
       setNotification({
         message,
         level: "error",
         show: true,
       });
     }
+  }, [searchParams]); // FIXED: Only depend on searchParams
 
-    // Auto-hide notification after 5 seconds
+  // FIXED: Separate useEffect for auto-hiding notification
+  useEffect(() => {
     if (notification.show) {
       const timer = setTimeout(() => {
         setNotification((prev) => ({ ...prev, show: false }));
       }, 5000);
       return () => clearTimeout(timer);
     }
-  }, [searchParams, notification.show]);
+  }, [notification.show]); // FIXED: Only depend on notification.show
 
   // Redirect if user is already authenticated
   useEffect(() => {

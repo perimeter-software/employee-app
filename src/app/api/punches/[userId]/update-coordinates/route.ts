@@ -42,7 +42,7 @@ async function updatePunchCoordinatesHandler(request: AuthenticatedRequest) {
       {
         success: true,
         message: "Punch coordinates updated successfully!",
-        punch: result,
+        data: result,
       },
       { status: 200 }
     );
