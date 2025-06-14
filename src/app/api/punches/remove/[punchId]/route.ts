@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withEnhancedAuthAPI } from "@/lib/middleware";
 import { mongoConn } from "@/lib/db";
 import type { AuthenticatedRequest } from "@/domains/user/types";
-import { deletePunchById } from "@/domains/punch";
+import { deletePunchById } from "@/domains/punch/utils";
 
 // DELETE Handler for Deleting Punch by ID
 async function deletePunchHandler(request: AuthenticatedRequest) {

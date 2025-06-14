@@ -269,3 +269,18 @@ export function formatDateTimeForServer(
 
   return toUTC(zonedDate).toISOString();
 }
+
+export const formatSessionTime = (startTime: string, endTime?: string) => {
+  const start = new Date(startTime);
+  const end = endTime ? new Date(endTime) : new Date();
+  const elapsed = (end.getTime() - start.getTime()) / 1000;
+
+  const hours = Math.floor(elapsed / 3600);
+  const minutes = Math.floor((elapsed % 3600) / 60);
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  } else {
+    return `${minutes}m`;
+  }
+};

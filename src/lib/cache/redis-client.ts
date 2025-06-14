@@ -82,6 +82,42 @@ class RedisService {
     }
   }
 
+  async set(key: string, value: unknown, expiry?: number) {
+    try {
+      const client = await this.getClient();
+      const serializedValue = JSON.stringify(value);
+
+      if (expiry) {
+        await client?.setEx(key, expiry, serializedValue);
+      } else {
+        await client?.set(key, serializedValue);
+      }
+    } catch (error) {
+      console.error("Error setting data in Redis:", error);
+    }
+  }
+
+  async get<T>(key: string): Promise<T | null> {
+    try {
+      const client = await this.getClient();
+      const data = await client?.get(key);
+      return data ? (JSON.parse(data) as T) : null;
+    } catch (error) {
+      console.error("Error getting data from Redis:", error);
+      return null;
+    }
+  }
+
+  // Added del method for cache clearing
+  async del(key: string): Promise<void> {
+    try {
+      const client = await this.getClient();
+      await client?.del(key);
+    } catch (error) {
+      console.error("Error deleting data from Redis:", error);
+    }
+  }
+
   async disconnect() {
     try {
       await this.client?.disconnect();

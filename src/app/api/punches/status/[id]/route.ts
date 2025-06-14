@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withEnhancedAuthAPI } from "@/lib/middleware";
 import { mongoConn } from "@/lib/db";
 import type { AuthenticatedRequest } from "@/domains/user/types";
-import { getPunchStatus } from "@/domains/punch";
+import { getPunchStatus } from "@/domains/punch/utils";
 
 // GET Handler for Fetching Punch Status
 async function getPunchStatusHandler(request: AuthenticatedRequest) {

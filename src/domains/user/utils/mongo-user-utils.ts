@@ -169,6 +169,20 @@ export async function getUserApplicantJobPipeline(db: Db, email: string) {
                 shifts: 1,
                 shiftJob: 1,
                 additionalConfig: 1,
+                // ADD THE MISSING LOCATION FIELD HERE
+                location: 1, // ✅ This was missing!
+                // Also add other fields that might be needed
+                address: 1,
+                venueCity: 1,
+                venueState: 1,
+                venueZip: 1,
+                companyCity: 1,
+                companyState: 1,
+                zip: 1,
+                description: 1,
+                startDate: 1,
+                endDate: 1,
+                // Applicant-specific job info
                 status: "$applicantJobInfo.status",
                 applicantStatus: "$applicantJobInfo.applicantStatus",
                 dateModified: "$applicantJobInfo.dateModified",
@@ -227,6 +241,23 @@ export async function getUserApplicantJobPipeline(db: Db, email: string) {
           ? userWithFilteredJobs.filteredApplicantJobs.length
           : 0
       );
+    }
+
+    // Add debug logging to check if location is included
+    if (userWithFilteredJobs.jobs && userWithFilteredJobs.jobs.length > 0) {
+      userWithFilteredJobs.jobs.forEach((job: GignologyJob, index: number) => {
+        console.log(`Job ${index + 1} (${job.title}):`, {
+          hasLocation: !!job.location,
+          locationData: job.location
+            ? {
+                locationName: job.location.locationName,
+                latitude: job.location.latitude,
+                longitude: job.location.longitude,
+                hasGeocoordinates: !!job.location.geocoordinates,
+              }
+            : null,
+        });
+      });
     }
 
     const convertedUser = convertToJSON(userWithFilteredJobs) as GignologyUser;
@@ -313,7 +344,6 @@ export async function checkUserMasterEmail(
   availableTenants?: string[];
   availableTenantObjects?: TenantInfo[];
 }> {
-  console.log("checkUserMasterEmail", userDb, dbTenant, email);
   try {
     if (!email) {
       return {

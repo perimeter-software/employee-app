@@ -1,3 +1,4 @@
+// next.config.ts
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -20,6 +21,33 @@ const nextConfig: NextConfig = {
         hostname: "s.gravatar.com",
       },
     ],
+  },
+
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com",
+              "script-src-elem 'self' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              // Added *.google.com and *.googleusercontent.com for broader coverage
+              "img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com https://*.google.com https://*.googleusercontent.com",
+              "connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com",
+              "frame-src 'self'",
+              "object-src 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+              "frame-ancestors 'self'",
+            ].join("; "),
+          },
+        ],
+      },
+    ];
   },
 };
 

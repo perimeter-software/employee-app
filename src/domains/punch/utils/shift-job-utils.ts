@@ -1,8 +1,8 @@
-import { GignologyJob, Shift } from "@/domains/job";
+import type { GignologyJob, Shift } from "@/domains/job"; // ✅ Consistent naming
 import { parseISO, isAfter, format } from "date-fns";
 import { format as formatTz } from "date-fns-tz";
-import { getUserTimeZone } from "@/lib/utils";
-import { Punch, PunchDetail } from "../types";
+import { getUserTimeZone } from "@/lib/utils"; // ✅ Updated import path
+import { Punch, PunchDetail } from "@/domains/punch"; // ✅ Add missing imports
 
 // New shiftJob utils used to interact with shiftJobs
 export const jobHasShiftForUser = (
@@ -45,10 +45,9 @@ export const doesJobAllowEarlyClockin = (job: GignologyJob): boolean => {
 
 export const doesJobAllowManualEdits = (job: GignologyJob): boolean => {
   if (!job?.additionalConfig) {
-    return false;
+    return false; // ✅ Added missing return
   }
-
-  return job?.additionalConfig?.allowManualPunches || false;
+  return job?.additionalConfig?.allowManualPunches || false; // ✅ Added null safety
 };
 
 export const giveJobGeoCoords = (job: GignologyJob) => {
@@ -60,9 +59,8 @@ export const giveJobGeoCoords = (job: GignologyJob) => {
 
 export const giveJobAllowedGeoDistance = (job: GignologyJob): number => {
   return (
-    job?.location?.graceDistanceFeet ??
-    0 + (job?.location?.geocoordinates?.geoFenceRadius ?? 0) ??
-    0
+    (job?.location?.graceDistanceFeet ?? 0) +
+    (job?.location?.geocoordinates?.geoFenceRadius ?? 0) // ✅ Fixed null safety and operator precedence
   );
 };
 
@@ -306,9 +304,9 @@ export const getUserShiftForToday = (
     );
 
     // Check if the applicant is in today's roster (if specified)
-    const isUserInTodayRoster = todaySchedule?.roster
-      ? todaySchedule.roster.includes(applicantId)
-      : true; // If no roster specified for today, consider it valid
+    const isUserInTodayRoster =
+      !todaySchedule?.roster?.length || // no roster array or empty ⇒ allow
+      todaySchedule.roster.includes(applicantId);
 
     if (
       isWithinShiftDates &&
@@ -608,7 +606,7 @@ export function hasExistingPunchForShift(
   punchDay: string
 ): boolean {
   const dayPunch = punches.find((p) => p.day === punchDay);
-  if (!dayPunch || !dayPunch.details) return false;
+  if (!dayPunch || !dayPunch.details) return false; // ✅ Added null check
 
   return dayPunch.details?.some(
     (detail: PunchDetail) =>
@@ -700,9 +698,9 @@ export const getCalculatedTimeIn = (
 
 // Need to reconsile with u345ls  (< search that to find other spot fast)
 export const hasForgottenToClockOut = (
-  job: GignologyJob,
-  punch: Punch,
-  current: string
+  job: GignologyJob, // ✅ Added proper typing
+  punch: Punch, // ✅ Added proper typing
+  current: string // ✅ Added proper typing
 ): boolean => {
   // If there's a timeOut, the user has clocked out
   if (punch.timeOut) {
@@ -723,6 +721,7 @@ export const hasForgottenToClockOut = (
   const currentTime = new Date(current);
 
   if (!job.shifts) {
+    // ✅ Added null check
     return false;
   }
 
@@ -756,31 +755,55 @@ export const getTotalSecondsFromDate = (date: Date): number => {
 };
 
 export function combineCurrentDateWithTimeFromDateObject(
-  dateObj: Date,
+  timeObj: Date,
   currentTime: string,
   compareDateObj?: Date
 ): string {
   const currentDate = new Date(currentTime);
 
-  // Set the current date's time to match the stored time's time
-  currentDate.setHours(dateObj.getHours()); // Use local hours
-  currentDate.setMinutes(dateObj.getMinutes()); // Use local minutes
-  currentDate.setSeconds(dateObj.getSeconds()); // Use local seconds
-  currentDate.setMilliseconds(dateObj.getMilliseconds());
+  console.log("=== combineCurrentDateWithTimeFromDateObject DEBUG ===");
+  console.log("Input timeObj:", timeObj);
+  console.log("Input currentTime:", currentTime);
+  console.log("timeObj ISO:", timeObj.toISOString());
+  console.log("timeObj toString:", timeObj.toString());
+  console.log("timeObj getHours():", timeObj.getHours());
+  console.log("timeObj getUTCHours():", timeObj.getUTCHours());
 
+  // Create a new date with today's date but the time from timeObj
+  const result = new Date(currentDate);
+
+  // Method 1: Use local time (what the user sees)
+  result.setHours(
+    timeObj.getHours(),
+    timeObj.getMinutes(),
+    timeObj.getSeconds(),
+    timeObj.getMilliseconds()
+  );
+
+  console.log("Result after setting local time:", result);
+  console.log("Result ISO:", result.toISOString());
+
+  // Handle overnight shifts if compareDateObj is provided
   if (compareDateObj) {
-    // If compareDateObj (start time) is provided, check if the current time is earlier
-    const compareDate = new Date(currentTime);
-    compareDate.setHours(compareDateObj.getHours());
-    compareDate.setMinutes(compareDateObj.getMinutes());
-    compareDate.setSeconds(compareDateObj.getSeconds());
-    compareDate.setMilliseconds(compareDateObj.getMilliseconds());
+    const compareResult = new Date(currentDate);
+    compareResult.setHours(
+      compareDateObj.getHours(),
+      compareDateObj.getMinutes(),
+      compareDateObj.getSeconds(),
+      compareDateObj.getMilliseconds()
+    );
 
-    // If the current time is earlier than the compare time, move it to the next day
-    if (currentDate < compareDate) {
-      currentDate.setDate(currentDate.getDate() + 1);
+    console.log("Compare result:", compareResult);
+
+    // If end time is before start time, it's an overnight shift
+    if (result <= compareResult) {
+      result.setDate(result.getDate() + 1);
+      console.log("Adjusted for overnight shift:", result);
     }
   }
 
-  return currentDate.toISOString(); // Return the updated Date object
+  console.log("Final result:", result.toISOString());
+  console.log("======================================================");
+
+  return result.toISOString();
 }

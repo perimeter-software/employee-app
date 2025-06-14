@@ -10,9 +10,7 @@ import {
   checkForOverlappingPunch,
   checkForPreviousPunchesWithinShift,
   getTotalWorkedHoursForWeek,
-  Punch,
-  PunchNoId,
-} from "@/domains/punch";
+} from "@/domains/punch/utils";
 import { parseClockInCoordinates } from "@/lib/utils";
 import { ClockInCoordinates, Shift } from "@/domains/job";
 import { findJobByjobId, getUserType } from "@/domains/user/utils";
@@ -22,6 +20,7 @@ import {
   isJobGeoFenced,
   jobHasShiftForUser,
 } from "@/domains/punch/utils/shift-job-utils";
+import { Punch, PunchNoId } from "@/domains/punch";
 
 // Utility Functions
 const calculateDistance = (
@@ -82,7 +81,7 @@ async function createPunchHandler(
 ) {
   try {
     const user = request.user;
-    const params = context?.params as
+    const params = (await context?.params) as
       | { userId: string; jobId: string }
       | undefined;
     const userId = params?.userId;
@@ -102,9 +101,8 @@ async function createPunchHandler(
       newStartDate,
       newEndDate,
       selectedShift,
+      applicantId,
     } = await request.json();
-
-    const applicantId = user.applicantId;
 
     // Connect to database
     const { db } = await mongoConn();
@@ -141,6 +139,9 @@ async function createPunchHandler(
         { status: 400 }
       );
     }
+
+    console.log("jobHasShiftForUser job: ", job);
+    console.log("jobHasShiftForUser applicantId: ", applicantId);
 
     if (!jobHasShiftForUser(job, applicantId || "")) {
       return NextResponse.json(

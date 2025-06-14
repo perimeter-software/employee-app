@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withEnhancedAuthAPI } from "@/lib/middleware";
 import { mongoConn } from "@/lib/db";
 import type { AuthenticatedRequest } from "@/domains/user/types";
-import { findAllPunchesByDateRange } from "@/domains/punch";
+import { findAllPunchesByDateRange } from "@/domains/punch/utils";
 
 // POST Handler for Finding Punches by Date Range
 async function findPunchesByDateRangeHandler(request: AuthenticatedRequest) {

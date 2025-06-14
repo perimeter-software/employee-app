@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { withEnhancedAuthAPI } from "@/lib/middleware";
 import { mongoConn } from "@/lib/db";
 import type { AuthenticatedRequest } from "@/domains/user/types";
-import { findAllOpenPunchesWithJobInfo } from "@/domains/punch";
-import { deletePunchById } from "@/domains/punch";
+import {
+  deletePunchById,
+  findAllOpenPunchesWithJobInfo,
+} from "@/domains/punch/utils";
 
 // GET Handler for Fetching Punches
 async function getPunchesHandler(
@@ -12,8 +14,10 @@ async function getPunchesHandler(
 ) {
   try {
     const user = request.user;
-    const params = context?.params as { userId: string } | undefined;
+    const params = (await context?.params) as { userId: string } | undefined;
     const userId = params?.userId;
+
+    console.log("user: ", user);
 
     console.log("📍 GET punches endpoint hit:", {
       userId,
@@ -107,7 +111,7 @@ async function deletePunchHandler(
 ) {
   try {
     const user = request.user;
-    const params = context?.params as { userId: string } | undefined;
+    const params = (await context?.params) as { userId: string } | undefined;
     const userId = params?.userId;
 
     console.log("📍 DELETE punch endpoint hit:", {

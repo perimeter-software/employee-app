@@ -15,6 +15,7 @@ export const useFindPunches = (params: FindPunchesParams) => {
     queryFn: () => PunchApiService.findPunchesByDateRange(params),
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
+    enabled: !!params.userId && !!params.jobIds.length,
     retry: (failureCount, error) => {
       console.log("❌ Query retry:", { failureCount, error: error.message });
       // Don't retry on auth errors (handled by interceptor)

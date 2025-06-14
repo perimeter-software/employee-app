@@ -1222,6 +1222,11 @@
     "@types/qs" "*"
     "@types/serve-static" "*"
 
+"@types/google.maps@^3.54.10":
+  version "3.58.1"
+  resolved "https://registry.yarnpkg.com/@types/google.maps/-/google.maps-3.58.1.tgz#71ce3dec44de1452f56641d2c87c7dd8ea964b4d"
+  integrity sha512-X9QTSvGJ0nCfMzYOnaVs/k6/4L+7F5uCS+4iUmkLEls6J9S/Phv+m/i3mDeyc49ZBgwab3EFO1HEoBY7k98EGQ==
+
 "@types/http-errors@*":
   version "2.0.4"
   resolved "https://registry.npmjs.org/@types/http-errors/-/http-errors-2.0.4.tgz"
@@ -1487,6 +1492,14 @@
   version "1.7.2"
   resolved "https://registry.yarnpkg.com/@unrs/resolver-binding-win32-x64-msvc/-/resolver-binding-win32-x64-msvc-1.7.2.tgz#7fd81d89e34a711d398ca87f6d5842735d49721e"
   integrity sha512-friS8NEQfHaDbkThxopGk+LuE5v3iY0StruifjQEt7SLbA46OnfgMO15sOTkbpJkol6RB+1l1TYPXh0sCddpvA==
+
+"@vis.gl/react-google-maps@^1.5.3":
+  version "1.5.3"
+  resolved "https://registry.yarnpkg.com/@vis.gl/react-google-maps/-/react-google-maps-1.5.3.tgz#8272878c649a61740d66b6a270cfd95c7b1ebe62"
+  integrity sha512-3EX3fXuEnNneuYlg5E3w6G5/o24H5vp/gH068q6tkdWss0M3/dSPVhRCnhUBagT14M8lqvPShjayWOLsLBkLiw==
+  dependencies:
+    "@types/google.maps" "^3.54.10"
+    fast-deep-equal "^3.1.3"
 
 acorn-jsx@^5.3.2:
   version "5.3.2"
@@ -4181,6 +4194,11 @@ simple-swizzle@^0.2.2:
   integrity sha512-JA//kQgZtbuY83m+xT+tXJkmJncGMTFT+C+g2h2R9uxkYIrE2yy9sgmcLhCnw57/WSD+Eh3J97FPEDFnbXnDUg==
   dependencies:
     is-arrayish "^0.3.1"
+
+sonner@^2.0.5:
+  version "2.0.5"
+  resolved "https://registry.yarnpkg.com/sonner/-/sonner-2.0.5.tgz#ffb70a6ffe3207c4302cffd3ee46a25242953477"
+  integrity sha512-YwbHQO6cSso3HBXlbCkgrgzDNIhws14r4MO87Ofy+cV2X7ES4pOoAK3+veSmVTvqNx1BWUxlhPmZzP00Crk2aQ==
 
 source-map-js@^1.0.2, source-map-js@^1.2.1:
   version "1.2.1"

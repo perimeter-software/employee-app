@@ -3,7 +3,7 @@ import { withEnhancedAuthAPI } from "@/lib/middleware";
 import { mongoConn } from "@/lib/db";
 import type { AuthenticatedRequest } from "@/domains/user/types";
 import { parseClockInCoordinates } from "@/lib/utils";
-import { updatePunchUserCoordinates } from "@/domains/punch";
+import { updatePunchUserCoordinates } from "@/domains/punch/utils";
 
 // POST Handler for Updating Punch Coordinates
 async function updatePunchCoordinatesHandler(request: AuthenticatedRequest) {
