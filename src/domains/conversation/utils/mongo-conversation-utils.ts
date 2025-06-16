@@ -1,19 +1,23 @@
-import type { AiConversation, AiConversationNoId } from "../types";
+// src/domains/conversation/utils/mongo-conversation-utils.ts
+import type { AiConversation } from "../types";
 import { convertToJSON } from "@/lib/utils/mongo-utils";
 import { Db } from "mongodb";
 import { ObjectId } from "bson";
 
-// Find all AI conversations by userId
-export async function findConversationsByUserId(
+export async function getAllConversions(
   db: Db,
   userId: string
 ): Promise<{ conversations: AiConversation[] }> {
   try {
-    // Attempt to find conversations by user ID
+    console.log("Fetching all conversations for user ID:", userId);
     const conversations = await db
       .collection("conversations")
       .find({ userId })
+      .sort({ created: -1 })
+      .limit(1)
       .toArray();
+
+    console.log("Conversations found:", conversations);
 
     // Convert each document to JSON individually
     const convertedConversations = conversations.map(
@@ -32,26 +36,31 @@ export async function findConversationsByUserId(
 
 export async function createConversation(
   db: Db,
-  conversation: AiConversationNoId
-): Promise<{ conversation: AiConversation | null }> {
+  conversation: AiConversation
+): Promise<AiConversation | null> {
   try {
-    const result = await db.collection("conversations").insertOne(conversation);
+    console.log("Creating conversation in util:", conversation);
+    const insertResult = await db.collection("conversations").insertOne({
+      ...conversation,
+      _id: conversation._id ? new ObjectId(conversation._id) : undefined,
+    });
 
-    if (!result.acknowledged) {
-      console.error("Failed to insert the document");
-      return { conversation: null };
+    if (!insertResult.insertedId) {
+      throw new Error("Failed to insert conversation");
     }
 
-    // Create the AiConversation object by combining the original data with the new _id
-    const conversationDocument: AiConversation = {
-      _id: result.insertedId.toHexString(),
-      ...conversation,
-    };
+    const result = await db
+      .collection("conversations")
+      .findOne({ _id: insertResult.insertedId });
 
-    return { conversation: conversationDocument };
+    if (!result) {
+      throw new Error("Failed to retrieve inserted conversation");
+    }
+
+    return convertToJSON(result) as AiConversation;
   } catch (error) {
     console.error("An error occurred:", error);
-    return { conversation: null };
+    return null;
   }
 }
 

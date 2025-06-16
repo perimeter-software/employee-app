@@ -55,9 +55,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     },
     {
       name: "Ask a Question",
-      href: "/help",
+      href: "/conversation",
       icon: MessageCircleQuestion,
-      current: pathname === "/help" || pathname.startsWith("/help"),
+      current:
+        pathname === "/conversation" || pathname.startsWith("/conversation"),
     },
     {
       name: "Documents",

@@ -26,10 +26,17 @@ import Image from "next/image";
 import { NextPage } from "next";
 import { withAuth } from "@/domains/shared";
 import { useCurrentUser } from "@/domains/user";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup";
+import React from "react";
 
 const DashboardPage: NextPage = () => {
   const { user, error: authError, isLoading: authLoading } = useUser();
   const { data: enhancedUser, isLoading: userLoading } = useCurrentUser();
+
+  // Add state for dashboard view toggle
+  const [dashboardView, setDashboardView] = React.useState<
+    "monthly" | "weekly" | "calendar"
+  >("monthly");
 
   // Show loading state
   if (authLoading || userLoading) {
@@ -144,177 +151,906 @@ const DashboardPage: NextPage = () => {
   return (
     <Layout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        {/* Current Tenant Info */}
-        {enhancedUser?.tenant && (
-          <Card className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  {enhancedUser.tenant.tenantLogo ? (
-                    <Image
-                      src={enhancedUser.tenant.tenantLogo}
-                      alt="tenant logo"
-                      width={48}
-                      height={48}
-                      className="rounded-lg object-cover bg-white/20 p-1"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                      <Building2 className="w-6 h-6" />
-                    </div>
-                  )}
-                  <div>
-                    <h3 className="text-xl font-semibold">
-                      {enhancedUser.tenant.clientName}
-                    </h3>
-                    <p className="text-blue-100">
-                      <MapPin className="w-4 h-4 inline mr-1" />
-                      {enhancedUser.tenant.url}
-                    </p>
-                  </div>
-                </div>
-                <Badge
-                  variant="secondary"
-                  className="bg-white/20 text-white border-white/30"
-                >
-                  {enhancedUser.tenant.type}
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {stats.map((stat, index) => (
-            <Card
-              key={index}
-              className="bg-white hover:shadow-md transition-shadow"
+        {/* Dashboard View Toggle */}
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
+          <ToggleGroup
+            className="flex gap-0 -space-x-px rounded-sm border overflow-hidden shadow-sm shadow-black/5"
+            type="single"
+            variant="outline"
+            value={dashboardView}
+            onValueChange={(value) =>
+              value && setDashboardView(value as typeof dashboardView)
+            }
+          >
+            <ToggleGroupItem
+              value="monthly"
+              className="w-full rounded-none shadow-none focus-visible:z-10 text-base flex items-center justify-center gap-2 relative border-none"
             >
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">
-                      {stat.label}
-                    </p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {stat.value}
-                    </p>
-                  </div>
-                  <div className={`p-3 rounded-full bg-gray-100 ${stat.color}`}>
-                    <stat.icon className="w-6 h-6" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+              Monthly
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="weekly"
+              className="w-full rounded-none shadow-none focus-visible:z-10 text-base flex items-center justify-center gap-2 relative border-none"
+            >
+              Weekly
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="calendar"
+              className="w-full rounded-none shadow-none focus-visible:z-10 text-base flex items-center justify-center gap-2 relative border-none"
+            >
+              Calendar
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
 
-        {/* Quick Actions */}
-        <div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-6">
-            Quick Actions
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {quickActions.map((action, index) => (
-              <Card
-                key={index}
-                className="bg-white hover:shadow-md transition-all cursor-pointer group"
-              >
-                <CardContent className="p-6 text-center">
-                  <div
-                    className={`w-12 h-12 ${action.color} rounded-lg mx-auto mb-4 flex items-center justify-center group-hover:scale-110 transition-transform`}
-                  >
-                    <action.icon className="w-6 h-6 text-white" />
+        {/* Conditional Dashboard Content */}
+        {dashboardView === "monthly" && (
+          <div className="space-y-8">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Total days
+                      </p>
+                      <p className="text-2xl font-bold text-blue-600">119</p>
+                      <p className="text-xs text-red-500 mt-1">
+                        ▼ 2 days from previous year
+                      </p>
+                    </div>
                   </div>
-                  <p className="font-medium text-gray-900">{action.label}</p>
                 </CardContent>
               </Card>
-            ))}
-          </div>
-        </div>
-
-        {/* User Information */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <Card className="bg-white">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <User className="w-5 h-5" />
-                <span>User Information</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-medium text-gray-500">
-                    Email
-                  </label>
-                  <p className="text-gray-900">{displayUser.email}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">
-                    Name
-                  </label>
-                  <p className="text-gray-900">{displayUser.name}</p>
-                </div>
-                {enhancedUser?._id && (
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">
-                      User ID
-                    </label>
-                    <p className="text-gray-900 font-mono text-sm">
-                      {enhancedUser._id}
-                    </p>
-                  </div>
-                )}
-                {enhancedUser?.applicantId && (
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">
-                      Applicant ID
-                    </label>
-                    <p className="text-gray-900 font-mono text-sm">
-                      {enhancedUser.applicantId}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Debug Information - Only show in development */}
-          {process.env.NODE_ENV === "development" && (
-            <Card className="bg-gray-50">
-              <CardHeader>
-                <CardTitle className="text-gray-700">
-                  Debug Information
-                </CardTitle>
-                <CardDescription>Development mode only</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="font-semibold text-sm text-gray-600 mb-2">
-                      Auth0 User Data
-                    </h4>
-                    <pre className="bg-gray-800 text-white p-3 rounded text-xs overflow-auto max-h-48">
-                      {JSON.stringify(user, null, 2)}
-                    </pre>
-                  </div>
-                  {enhancedUser && (
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="font-semibold text-sm text-gray-600 mb-2">
-                        Enhanced User Data
-                      </h4>
-                      <pre className="bg-gray-800 text-white p-3 rounded text-xs overflow-auto max-h-48">
-                        {JSON.stringify(enhancedUser, null, 2)}
-                      </pre>
+                      <p className="text-sm font-medium text-gray-600">
+                        Avg monthly
+                      </p>
+                      <p className="text-2xl font-bold text-green-600">20</p>
+                      <p className="text-xs text-red-500 mt-1">
+                        ▼ 1.6 days from previous year
+                      </p>
                     </div>
-                  )}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Best month
+                      </p>
+                      <p className="text-2xl font-bold text-yellow-600">23</p>
+                      <p className="text-xs text-green-600 mt-1">
+                        ▲ 2 days from previous year
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Lowest month
+                      </p>
+                      <p className="text-2xl font-bold text-red-600">15</p>
+                      <p className="text-xs text-red-500 mt-1">
+                        ▼ 1.5 days from previous year
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Attendance Trends Bar Chart */}
+            <Card>
+              <CardContent className="p-6">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      2025 Attendance Trends
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      Year-to-date employee attendance (Jan - Jun)
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-xs text-green-600 font-medium">
+                      Peak: June (23 days)
+                    </span>
+                    <span className="text-xs text-red-600 font-medium">
+                      Low: March (15 days)
+                    </span>
+                    <span className="text-xs text-blue-600 font-medium">
+                      YTD Attendance: 88%
+                    </span>
+                  </div>
+                </div>
+                {/* Placeholder for Bar Chart */}
+                <div className="w-full h-64 bg-gray-100 flex items-center justify-center rounded">
+                  <span className="text-gray-400">[Bar Chart Placeholder]</span>
                 </div>
               </CardContent>
             </Card>
-          )}
-        </div>
+
+            {/* Today's Attendance & Weekly Shift Details */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Today's Attendance */}
+              <Card className="lg:col-span-1">
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    Today&apos;s Attendance
+                  </CardTitle>
+                  <CardDescription>
+                    Live employee check-in status
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* Placeholder for attendance list */}
+                  <ul className="divide-y divide-gray-200">
+                    <li className="py-2 flex justify-between items-center">
+                      <span>Olivia Martin</span>
+                      <span className="text-xs text-gray-500">
+                        Checked in at 08:45 AM
+                      </span>
+                      <span className="text-xs text-gray-700 font-semibold">
+                        8h 30m
+                      </span>
+                    </li>
+                    <li className="py-2 flex justify-between items-center">
+                      <span>Jackson Lee</span>
+                      <span className="text-xs text-gray-500">
+                        Checked in at 09:15 AM
+                      </span>
+                      <span className="text-xs text-gray-700 font-semibold">
+                        7h 45m
+                      </span>
+                    </li>
+                    <li className="py-2 flex justify-between items-center">
+                      <span>Isabella Nguyen</span>
+                      <span className="text-xs text-gray-500">
+                        Checked in at 08:30 AM
+                      </span>
+                      <span className="text-xs text-gray-700 font-semibold">
+                        8h 45m
+                      </span>
+                    </li>
+                    <li className="py-2 flex justify-between items-center">
+                      <span>William Kim</span>
+                      <span className="text-xs text-gray-500">
+                        Not checked in
+                      </span>
+                      <span className="text-xs text-gray-400">--</span>
+                    </li>
+                    <li className="py-2 flex justify-between items-center">
+                      <span>John Doe</span>
+                      <span className="text-xs text-gray-500">
+                        Not checked in
+                      </span>
+                      <span className="text-xs text-gray-400">--</span>
+                    </li>
+                    <li className="py-2 flex justify-between items-center">
+                      <span>Sofia Davis</span>
+                      <span className="text-xs text-gray-500">
+                        Check in at 08:00 AM
+                      </span>
+                      <span className="text-xs text-gray-700 font-semibold">
+                        9h 15m
+                      </span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              {/* Weekly Shift Details Table */}
+              <div className="lg:col-span-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Weekly Shift Details
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {/* Placeholder for shift details table */}
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm text-left">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="px-4 py-2 font-medium text-gray-600">
+                              Date
+                            </th>
+                            <th className="px-4 py-2 font-medium text-gray-600">
+                              Job/Site
+                            </th>
+                            <th className="px-4 py-2 font-medium text-gray-600">
+                              Start - End Time
+                            </th>
+                            <th className="px-4 py-2 font-medium text-gray-600">
+                              Punches
+                            </th>
+                            <th className="px-4 py-2 font-medium text-gray-600">
+                              Total Hours
+                            </th>
+                            <th className="px-4 py-2 font-medium text-gray-600">
+                              Location
+                            </th>
+                            <th className="px-4 py-2 font-medium text-gray-600">
+                              Status
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          <tr>
+                            <td className="px-4 py-2">06/05/2025</td>
+                            <td className="px-4 py-2">Office</td>
+                            <td className="px-4 py-2">
+                              08:00 AM to 11:00 AM
+                              <br />
+                              01:00 PM to 03:00 PM
+                            </td>
+                            <td className="px-4 py-2">2</td>
+                            <td className="px-4 py-2">5 Hours</td>
+                            <td className="px-4 py-2">In Geofence</td>
+                            <td className="px-4 py-2 text-green-600 font-semibold">
+                              Complete
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="px-4 py-2">06/06/2025</td>
+                            <td className="px-4 py-2">Warehouse A</td>
+                            <td className="px-4 py-2">09:00 AM to 05:30 PM</td>
+                            <td className="px-4 py-2">1</td>
+                            <td className="px-4 py-2">7.5 Hours</td>
+                            <td className="px-4 py-2">In Geofence</td>
+                            <td className="px-4 py-2 text-green-600 font-semibold">
+                              Complete
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="px-4 py-2">06/07/2025</td>
+                            <td className="px-4 py-2">Office</td>
+                            <td className="px-4 py-2">08:30 AM to 04:55 PM</td>
+                            <td className="px-4 py-2">1</td>
+                            <td className="px-4 py-2">8.25 Hours</td>
+                            <td className="px-4 py-2 text-red-600">
+                              Outside Geofence
+                            </td>
+                            <td className="px-4 py-2 text-yellow-600 font-semibold">
+                              Geofence Violation
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="px-4 py-2">06/05/2025</td>
+                            <td className="px-4 py-2">Office</td>
+                            <td className="px-4 py-2">08:30 AM to 04:45 PM</td>
+                            <td className="px-4 py-2">1</td>
+                            <td className="px-4 py-2">8.25 Hours</td>
+                            <td className="px-4 py-2">In Geofence</td>
+                            <td className="px-4 py-2 text-green-600 font-semibold">
+                              Complete
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="px-4 py-2">06/06/2025</td>
+                            <td className="px-4 py-2">Warehouse B</td>
+                            <td className="px-4 py-2">--</td>
+                            <td className="px-4 py-2">0</td>
+                            <td className="px-4 py-2">0 Hours</td>
+                            <td className="px-4 py-2 text-red-600">
+                              Outside Geofence
+                            </td>
+                            <td className="px-4 py-2 text-red-600 font-semibold">
+                              Absent
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="px-4 py-2">06/07/2025</td>
+                            <td className="px-4 py-2">Warehouse C</td>
+                            <td className="px-4 py-2">10:00 AM to 04:30 PM</td>
+                            <td className="px-4 py-2">1</td>
+                            <td className="px-4 py-2">6.5 Hours</td>
+                            <td className="px-4 py-2 text-red-600">
+                              Outside Geofence
+                            </td>
+                            <td className="px-4 py-2 text-yellow-600 font-semibold">
+                              Geofence Violation
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Monthly Insights & Recommendations */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Monthly Insights & Recommendations
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                  <span className="font-medium text-gray-700">
+                    Productivity Trend
+                  </span>
+                  <span className="text-gray-500">
+                    Your productivity peaked on June with 23-day attendance.
+                    Consider scheduling important tasks on similar high-energy
+                    days.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
+                  <span className="font-medium text-gray-700">
+                    Geofence Alert
+                  </span>
+                  <span className="text-gray-500">
+                    2 geofence violations detected this month. Review location
+                    tracking settings and ensure proper check-in procedures.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span>
+                  <span className="font-medium text-gray-700">
+                    Goal Progress
+                  </span>
+                  <span className="text-gray-500">
+                    You&apos;re 96% towards your monthly target of 22-25 days.
+                    Maintain current pace to exceed expectations.
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+        {dashboardView === "weekly" && (
+          <div className="space-y-8">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Total hours this week
+                      </p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        38.5 hrs
+                      </p>
+                      <p className="text-xs text-green-600 mt-1">
+                        ▲ 2.5 hrs from last week
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Shifts Completed
+                      </p>
+                      <p className="text-2xl font-bold text-green-600">5</p>
+                      <p className="text-xs text-red-500 mt-1">
+                        ▼ 3 shifts from last month
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Absences
+                      </p>
+                      <p className="text-2xl font-bold text-yellow-600">1</p>
+                      <p className="text-xs text-red-500 mt-1">
+                        ▲ 1 from last month
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Geofence Violation
+                      </p>
+                      <p className="text-2xl font-bold text-red-600">2</p>
+                      <p className="text-xs text-red-500 mt-1">New</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Daily Trends Line Chart & Performance Summary */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Daily Trends Line Chart */}
+              <Card className="lg:col-span-2">
+                <CardContent className="p-6">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        Daily Trends
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        Week of June 1 - June 7, 2025
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-xs text-gray-600 font-medium">
+                        Total Break Time: 4.32 hrs
+                      </span>
+                      <span className="text-xs text-blue-600 font-medium">
+                        Productivity Score: 92%
+                      </span>
+                      <span className="text-xs text-yellow-600 font-medium">
+                        Efficiency Rating: 88%
+                      </span>
+                    </div>
+                  </div>
+                  {/* Placeholder for Line Chart */}
+                  <div className="w-full h-64 bg-gray-100 flex items-center justify-center rounded">
+                    <span className="text-gray-400">
+                      [Line Chart Placeholder]
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Performance Summary */}
+              <Card className="lg:col-span-1">
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    Performance Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">On-time Rate</span>
+                    <span className="font-semibold text-green-600">80%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Avg Hours/Day</span>
+                    <span className="font-semibold text-blue-600">7.7 hrs</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Violation Rate</span>
+                    <span className="font-semibold text-red-600">40%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Attendance Rate</span>
+                    <span className="font-semibold text-green-600">86%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Overtime Rate</span>
+                    <span className="font-semibold text-blue-600">3.5 hrs</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Weekly Shift Details Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Weekly Shift Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Placeholder for shift details table */}
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm text-left">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-4 py-2 font-medium text-gray-600">
+                          Date
+                        </th>
+                        <th className="px-4 py-2 font-medium text-gray-600">
+                          Job/Site
+                        </th>
+                        <th className="px-4 py-2 font-medium text-gray-600">
+                          Start - End Time
+                        </th>
+                        <th className="px-4 py-2 font-medium text-gray-600">
+                          Punches
+                        </th>
+                        <th className="px-4 py-2 font-medium text-gray-600">
+                          Total Hours
+                        </th>
+                        <th className="px-4 py-2 font-medium text-gray-600">
+                          Location
+                        </th>
+                        <th className="px-4 py-2 font-medium text-gray-600">
+                          Status
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      <tr>
+                        <td className="px-4 py-2">06/05/2025</td>
+                        <td className="px-4 py-2">Office</td>
+                        <td className="px-4 py-2">
+                          08:00 AM to 11:00 AM
+                          <br />
+                          01:00 PM to 03:00 PM
+                        </td>
+                        <td className="px-4 py-2">2</td>
+                        <td className="px-4 py-2">5 Hours</td>
+                        <td className="px-4 py-2">In Geofence</td>
+                        <td className="px-4 py-2 text-green-600 font-semibold">
+                          Complete
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-2">06/06/2025</td>
+                        <td className="px-4 py-2">Warehouse A</td>
+                        <td className="px-4 py-2">09:00 AM to 05:30 PM</td>
+                        <td className="px-4 py-2">1</td>
+                        <td className="px-4 py-2">7.5 Hours</td>
+                        <td className="px-4 py-2">In Geofence</td>
+                        <td className="px-4 py-2 text-green-600 font-semibold">
+                          Complete
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-2">06/07/2025</td>
+                        <td className="px-4 py-2">Office</td>
+                        <td className="px-4 py-2">08:30 AM to 04:55 PM</td>
+                        <td className="px-4 py-2">1</td>
+                        <td className="px-4 py-2">8.25 Hours</td>
+                        <td className="px-4 py-2 text-red-600">
+                          Outside Geofence
+                        </td>
+                        <td className="px-4 py-2 text-yellow-600 font-semibold">
+                          Geofence Violation
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-2">06/05/2025</td>
+                        <td className="px-4 py-2">Office</td>
+                        <td className="px-4 py-2">08:30 AM to 04:45 PM</td>
+                        <td className="px-4 py-2">1</td>
+                        <td className="px-4 py-2">8.25 Hours</td>
+                        <td className="px-4 py-2">In Geofence</td>
+                        <td className="px-4 py-2 text-green-600 font-semibold">
+                          Complete
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-2">06/06/2025</td>
+                        <td className="px-4 py-2">Warehouse B</td>
+                        <td className="px-4 py-2">--</td>
+                        <td className="px-4 py-2">0</td>
+                        <td className="px-4 py-2">0 Hours</td>
+                        <td className="px-4 py-2 text-red-600">
+                          Outside Geofence
+                        </td>
+                        <td className="px-4 py-2 text-red-600 font-semibold">
+                          Absent
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-2">06/07/2025</td>
+                        <td className="px-4 py-2">Warehouse C</td>
+                        <td className="px-4 py-2">10:00 AM to 04:30 PM</td>
+                        <td className="px-4 py-2">1</td>
+                        <td className="px-4 py-2">6.5 Hours</td>
+                        <td className="px-4 py-2 text-red-600">
+                          Outside Geofence
+                        </td>
+                        <td className="px-4 py-2 text-yellow-600 font-semibold">
+                          Geofence Violation
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Weekly Insights & Recommendations */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Weekly Insights & Recommendations
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                  <span className="font-medium text-gray-700">
+                    Productivity Trend
+                  </span>
+                  <span className="text-gray-500">
+                    Your productivity peaked on Tuesday with 8.2 hours. Consider
+                    scheduling important tasks on similar high-energy days.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
+                  <span className="font-medium text-gray-700">
+                    Geofence Alert
+                  </span>
+                  <span className="text-gray-500">
+                    2 geofence violations detected this week. Review location
+                    tracking settings and ensure proper check-in procedures.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span>
+                  <span className="font-medium text-gray-700">
+                    Goal Progress
+                  </span>
+                  <span className="text-gray-500">
+                    You&apos;re 96% towards your weekly target of 40 hours.
+                    Maintain current pace to exceed expectations.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-yellow-500 inline-block"></span>
+                  <span className="font-medium text-gray-700">
+                    Schedule Optimization
+                  </span>
+                  <span className="text-gray-500">
+                    Your Friday performance dropped significantly. Consider
+                    lighter workload or schedule adjustments for end-of-week
+                    periods.
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+        {dashboardView === "calendar" && (
+          <div className="space-y-8">
+            {/* Stats Cards (same as weekly) */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Total hours this week
+                      </p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        38.5 hrs
+                      </p>
+                      <p className="text-xs text-green-600 mt-1">
+                        ▲ 2.5 hrs from last week
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Shifts Completed
+                      </p>
+                      <p className="text-2xl font-bold text-green-600">5</p>
+                      <p className="text-xs text-red-500 mt-1">
+                        ▼ 3 shifts from last month
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Absences
+                      </p>
+                      <p className="text-2xl font-bold text-yellow-600">1</p>
+                      <p className="text-xs text-red-500 mt-1">
+                        ▲ 1 from last month
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Geofence Violation
+                      </p>
+                      <p className="text-2xl font-bold text-red-600">2</p>
+                      <p className="text-xs text-red-500 mt-1">New</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Attendance Trends Bar Chart */}
+            <Card>
+              <CardContent className="p-6">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      2025 Attendance Trends
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      Year-to-date employee attendance (Jan - Jun)
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-xs text-green-600 font-medium">
+                      Peak: June (23 days)
+                    </span>
+                    <span className="text-xs text-red-600 font-medium">
+                      Low: March (15 days)
+                    </span>
+                    <span className="text-xs text-blue-600 font-medium">
+                      YTD Attendance: 88%
+                    </span>
+                  </div>
+                </div>
+                {/* Placeholder for Bar Chart */}
+                <div className="w-full h-64 bg-gray-100 flex items-center justify-center rounded">
+                  <span className="text-gray-400">[Bar Chart Placeholder]</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Today's Attendance & Calendar Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Today's Attendance */}
+              <Card className="lg:col-span-1">
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    Today&apos;s Attendance
+                  </CardTitle>
+                  <CardDescription>
+                    Live employee check-in status
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* Placeholder for attendance list */}
+                  <ul className="divide-y divide-gray-200">
+                    <li className="py-2 flex justify-between items-center">
+                      <span>Olivia Martin</span>
+                      <span className="text-xs text-gray-500">
+                        Checked in at 08:45 AM
+                      </span>
+                      <span className="text-xs text-gray-700 font-semibold">
+                        8h 30m
+                      </span>
+                    </li>
+                    <li className="py-2 flex justify-between items-center">
+                      <span>Jackson Lee</span>
+                      <span className="text-xs text-gray-500">
+                        Checked in at 09:15 AM
+                      </span>
+                      <span className="text-xs text-gray-700 font-semibold">
+                        7h 45m
+                      </span>
+                    </li>
+                    <li className="py-2 flex justify-between items-center">
+                      <span>Isabella Nguyen</span>
+                      <span className="text-xs text-gray-500">
+                        Checked in at 08:30 AM
+                      </span>
+                      <span className="text-xs text-gray-700 font-semibold">
+                        8h 45m
+                      </span>
+                    </li>
+                    <li className="py-2 flex justify-between items-center">
+                      <span>William Kim</span>
+                      <span className="text-xs text-gray-500">
+                        Not checked in
+                      </span>
+                      <span className="text-xs text-gray-400">--</span>
+                    </li>
+                    <li className="py-2 flex justify-between items-center">
+                      <span>John Doe</span>
+                      <span className="text-xs text-gray-500">
+                        Not checked in
+                      </span>
+                      <span className="text-xs text-gray-400">--</span>
+                    </li>
+                    <li className="py-2 flex justify-between items-center">
+                      <span>Sofia Davis</span>
+                      <span className="text-xs text-gray-500">
+                        Check in at 08:00 AM
+                      </span>
+                      <span className="text-xs text-gray-700 font-semibold">
+                        9h 15m
+                      </span>
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              {/* Calendar Grid Placeholder */}
+              <div className="lg:col-span-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Weekly Shift Details
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {/* Placeholder for calendar grid */}
+                    <div className="w-full h-96 bg-gray-100 flex items-center justify-center rounded">
+                      <span className="text-gray-400">
+                        [Calendar Grid Placeholder]
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Insights & Recommendations */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Insights & Recommendations
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                  <span className="font-medium text-gray-700">
+                    Productivity Trend
+                  </span>
+                  <span className="text-gray-500">
+                    Your productivity peaked on June with 23-day attendance.
+                    Consider scheduling important tasks on similar high-energy
+                    days.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-red-500 inline-block"></span>
+                  <span className="font-medium text-gray-700">
+                    Geofence Alert
+                  </span>
+                  <span className="text-gray-500">
+                    2 geofence violations detected this month. Review location
+                    tracking settings and ensure proper check-in procedures.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500 inline-block"></span>
+                  <span className="font-medium text-gray-700">
+                    Goal Progress
+                  </span>
+                  <span className="text-gray-500">
+                    You&apos;re 96% towards your monthly target of 22-25 days.
+                    Maintain current pace to exceed expectations.
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
       </div>
     </Layout>
   );

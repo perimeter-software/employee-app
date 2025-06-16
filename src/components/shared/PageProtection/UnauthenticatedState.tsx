@@ -51,8 +51,8 @@ export const UnauthenticatedState = ({
           <Button
             onClick={() => {
               const loginUrl = returnUrl
-                ? `/api/auth/login?returnTo=${encodeURIComponent(returnUrl)}`
-                : "/api/auth/login";
+                ? `/auth/login?returnTo=${encodeURIComponent(returnUrl)}`
+                : "/auth/login";
               window.location.href = loginUrl;
             }}
             className="w-full flex items-center justify-center bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-medium py-3 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"

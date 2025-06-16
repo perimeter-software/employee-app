@@ -278,3 +278,23 @@ export function processHistoricalPunches(
   }
   return [];
 }
+
+export async function parseFormDataWithFile(request: Request): Promise<{
+  fields: Record<string, string>;
+  file: File | null;
+}> {
+  const formData = await request.formData();
+
+  const fields: Record<string, string> = {};
+  let file: File | null = null;
+
+  for (const [key, value] of formData.entries()) {
+    if (value instanceof File) {
+      file = value;
+    } else {
+      fields[key] = value;
+    }
+  }
+
+  return { fields, file };
+}
