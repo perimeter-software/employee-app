@@ -41,6 +41,7 @@ interface ShiftRowData {
   isWithinShift: boolean;
   hasActivePunch: boolean;
   isToday: boolean;
+  shiftHasEnded?: boolean; // Add this new property
 }
 
 interface ShiftsTableProps {
@@ -190,6 +191,8 @@ export function ShiftsTable({
           const endTime = new Date(daySchedule.end);
           const isToday = isSameDay(currentDate, now);
           const isWithinShift = isToday && now >= startTime && now <= endTime;
+          // Check if shift has ended (only matters for today)
+          const shiftHasEnded = isToday && now > endTime;
 
           // Find punches for this job and date from allPunches
           const todayPunches = (allPunches || [])
@@ -238,6 +241,7 @@ export function ShiftsTable({
           const canClockIn =
             isToday &&
             !hasActivePunch &&
+            !shiftHasEnded && // Don't allow clock in if shift has ended
             handleShiftJobClockInTime(
               job,
               userData.applicantId,
@@ -258,35 +262,67 @@ export function ShiftsTable({
           const isSelectedShift =
             selectedJob?._id === job._id && selectedShift?.slug === shift.slug;
 
-          rows.push({
-            date: formatDate(currentDate, "MM/dd/yyyy"),
-            dateObj: new Date(currentDate),
-            jobId: job._id,
-            jobTitle: job.title,
-            job: job,
-            shift: shift,
-            shiftName: shift.shiftName || shift.slug,
-            startTime: formatDate(startTime, "hh:mm a"),
-            endTime: formatDate(endTime, "hh:mm a"),
-            totalHours: Math.round(totalHours * 100) / 100,
-            punches: todayPunches,
-            canClockIn,
-            canClockOut,
-            allowBreaks,
-            isWithinShift,
-            hasActivePunch,
-            isToday,
-            // Add these for enhanced UI state
-            isSelectedShift,
-            isCurrentOpenPunchShift: hasActivePunch, // Same as hasActivePunch since we're being specific
-          } as ShiftRowData & { isSelectedShift: boolean; isCurrentOpenPunchShift: boolean });
+          const shouldShowRow =
+            !isToday ||
+            !shiftHasEnded ||
+            todayPunches.length > 0 ||
+            hasActivePunch;
+
+          if (shouldShowRow) {
+            rows.push({
+              date: formatDate(currentDate, "MM/dd/yyyy"),
+              dateObj: new Date(currentDate),
+              jobId: job._id,
+              jobTitle: job.title,
+              job: job,
+              shift: shift,
+              shiftName: shift.shiftName || shift.slug,
+              startTime: formatDate(startTime, "hh:mm a"),
+              endTime: formatDate(endTime, "hh:mm a"),
+              totalHours: Math.round(totalHours * 100) / 100,
+              punches: todayPunches,
+              canClockIn,
+              canClockOut,
+              allowBreaks,
+              isWithinShift,
+              hasActivePunch,
+              isToday,
+              shiftHasEnded, // Add this new property
+              // Add these for enhanced UI state
+              isSelectedShift,
+              isCurrentOpenPunchShift: hasActivePunch,
+            } as ShiftRowData & {
+              isSelectedShift: boolean;
+              isCurrentOpenPunchShift: boolean;
+              shiftHasEnded: boolean;
+            });
+          }
         });
       });
 
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    return rows.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
+    return rows.sort((a, b) => {
+      // First sort by date (newest first)
+      const dateSort = b.dateObj.getTime() - a.dateObj.getTime();
+      if (dateSort !== 0) return dateSort;
+
+      // For same date, prioritize active punches first
+      if (a.hasActivePunch && !b.hasActivePunch) return -1;
+      if (!a.hasActivePunch && b.hasActivePunch) return 1;
+
+      // Then prioritize shifts you can clock into
+      if (a.canClockIn && !b.canClockIn) return -1;
+      if (!a.canClockIn && b.canClockIn) return 1;
+
+      // Finally sort by start time for same-day shifts
+      if (a.isToday && b.isToday) {
+        return a.startTime.localeCompare(b.startTime);
+      }
+
+      return 0;
+    });
   }, [
     userData,
     allPunches,

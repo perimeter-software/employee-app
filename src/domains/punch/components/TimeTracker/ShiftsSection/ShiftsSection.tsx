@@ -1,19 +1,26 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent } from "@/components/ui/Card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup";
 import { CalendarEvent, Mode } from "@/components/ui/Calendar";
-import { generateMockEvents } from "@/lib/utils/mock-calendar-events";
 import CalendarProvider from "@/components/ui/Calendar/CalendarProvider";
 import CalendarBody from "@/components/ui/Calendar/Body/CalendarBody";
 import CalendarHeaderDate from "@/components/ui/Calendar/Header/Date/CalendarHeaderDate";
 import CalendarHeaderActionsMode from "@/components/ui/Calendar/Header/Actions/CalendarHeaderActionsMode";
+import { useCalendarContext } from "@/components/ui/Calendar/CalendarContext";
 import { ShiftsTable } from "./ShiftsTable";
+import { ShiftDetailsModal } from "../ShiftDetailsModal";
 import type { GignologyUser } from "@/domains/user/types";
 import type { PunchWithJobInfo } from "@/domains/punch/types";
+import type { GignologyJob, Shift } from "@/domains/job/types/job.types";
+import {
+  getUserShiftForToday,
+  jobHasShiftForUser,
+} from "@/domains/punch/utils/shift-job-utils";
 
 interface ShiftsSectionProps {
   userData: GignologyUser;
@@ -24,25 +31,287 @@ interface ShiftsSectionProps {
     startDate: string;
     endDate: string;
   };
+  onViewTypeChange?: (viewType: "table" | "calendar") => void;
+  onDateNavigation?: (direction: number) => void;
+  currentViewType?: "table" | "calendar";
 }
+
+// Enhanced CalendarEvent interface for shift data
+interface ShiftCalendarEvent extends CalendarEvent {
+  punchData?: PunchWithJobInfo;
+  jobData?: GignologyJob;
+  shiftData?: Shift;
+  status: "active" | "completed" | "scheduled" | "missed";
+}
+
+// Helper function to check if two dates are the same day
+const isSameDayHelper = (date1: Date, date2: Date) => {
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
+};
+
+// Enhanced helper function to generate calendar events from shift data
+const generateShiftEvents = (
+  userData: GignologyUser,
+  startDate: Date,
+  endDate: Date,
+  allPunches?: PunchWithJobInfo[]
+): ShiftCalendarEvent[] => {
+  if (!userData?.jobs) return [];
+
+  const events: ShiftCalendarEvent[] = [];
+  const currentDate = new Date(startDate);
+
+  // First, create events from actual punches
+  if (allPunches?.length) {
+    allPunches.forEach((punch) => {
+      const punchDate = new Date(punch.timeIn);
+
+      // Only include punches within our date range
+      if (punchDate >= startDate && punchDate <= endDate) {
+        const job = userData.jobs?.find((j) => j._id === punch.jobId);
+        if (!job) return;
+
+        const shift = job.shifts?.find((s) => s.slug === punch.shiftSlug);
+        const shiftName =
+          punch.shiftName || shift?.shiftName || punch.shiftSlug;
+
+        let endTime: Date;
+        let color: string;
+        let status: "active" | "completed" | "scheduled" | "missed";
+
+        if (punch.timeOut) {
+          // Completed punch
+          endTime = new Date(punch.timeOut);
+          color = "purple";
+          status = "completed";
+        } else {
+          // Active punch - estimate end time as now or next hour
+          const now = new Date();
+          endTime = new Date(
+            Math.max(now.getTime(), punchDate.getTime() + 60 * 60 * 1000)
+          );
+          color = "green";
+          status = "active";
+        }
+
+        events.push({
+          id: `punch-${punch._id}`,
+          title: `${job.title} - ${shiftName}`,
+          color,
+          start: punchDate,
+          end: endTime,
+          punchData: punch,
+          jobData: job,
+          shiftData: shift,
+          status,
+        });
+      }
+    });
+  }
+
+  // Then, create events for scheduled shifts that don't have punches
+  while (currentDate <= endDate) {
+    const dayOfWeek = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ][currentDate.getDay()];
+
+    userData.jobs?.forEach((job: GignologyJob) => {
+      if (!job.shifts || !jobHasShiftForUser(job, userData.applicantId)) return;
+
+      job.shifts.forEach((shift: Shift) => {
+        // Check if user has this shift on this day
+        const { start, end } = getUserShiftForToday(
+          job,
+          userData.applicantId,
+          currentDate.toISOString(),
+          shift
+        );
+
+        if (!start || !end) return;
+
+        const daySchedule =
+          shift.defaultSchedule?.[
+            dayOfWeek as keyof typeof shift.defaultSchedule
+          ];
+        if (!daySchedule?.start || !daySchedule?.end) return;
+
+        // Check if user is in roster for this day
+        const isInDayRoster =
+          !daySchedule.roster?.length ||
+          daySchedule.roster.includes(userData.applicantId);
+
+        if (!isInDayRoster) return;
+
+        // Check if there are any punches for this job/shift/date combination
+        const hasPunchesForThisShift = allPunches?.some(
+          (punch) =>
+            punch.jobId === job._id &&
+            punch.shiftSlug === shift.slug &&
+            isSameDayHelper(new Date(punch.timeIn), currentDate)
+        );
+
+        // Only create scheduled shift event if there are no actual punches
+        if (!hasPunchesForThisShift) {
+          const startTime = new Date(daySchedule.start);
+          const endTime = new Date(daySchedule.end);
+
+          // Check if shift has ended today
+          const now = new Date();
+          const isToday = isSameDayHelper(currentDate, now);
+          const shiftHasEnded = isToday && now > endTime;
+
+          let color = "blue";
+          let status: "active" | "completed" | "scheduled" | "missed" =
+            "scheduled";
+
+          if (shiftHasEnded) {
+            color = "red";
+            status = "missed";
+          }
+
+          events.push({
+            id: `scheduled-${job._id}-${
+              shift.slug
+            }-${currentDate.toISOString()}`,
+            title: `${job.title} - ${shift.shiftName || shift.slug}`,
+            color,
+            start: startTime,
+            end: endTime,
+            jobData: job,
+            shiftData: shift,
+            status,
+          });
+        }
+      });
+    });
+
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return events;
+};
+
+// Component that listens to calendar context for event selections
+const CalendarEventHandler = ({
+  shiftEvents,
+  onShiftClick,
+}: {
+  shiftEvents: ShiftCalendarEvent[];
+  onShiftClick: (shiftEvent: ShiftCalendarEvent) => void;
+}) => {
+  const { selectedEvent, manageEventDialogOpen, setManageEventDialogOpen } =
+    useCalendarContext();
+
+  useEffect(() => {
+    // When calendar selects an event and opens the dialog
+    if (selectedEvent && manageEventDialogOpen) {
+      console.log("🔔 Calendar event selected:", selectedEvent.id);
+
+      // Find the corresponding shift event
+      const shiftEvent = shiftEvents.find(
+        (event) => event.id === selectedEvent.id
+      );
+
+      if (shiftEvent) {
+        console.log("✅ Found matching shift event:", shiftEvent);
+
+        // Close the calendar's default dialog
+        setManageEventDialogOpen(false);
+
+        // Open our custom shift modal
+        onShiftClick(shiftEvent);
+      } else {
+        console.log("❌ No matching shift event found for:", selectedEvent.id);
+      }
+    }
+  }, [
+    selectedEvent,
+    manageEventDialogOpen,
+    shiftEvents,
+    onShiftClick,
+    setManageEventDialogOpen,
+  ]);
+
+  return null; // This component doesn't render anything
+};
 
 export function ShiftsSection({
   userData,
   openPunches,
   allPunches,
   punchesLoading,
+  dateRange: propDateRange,
+  onViewTypeChange,
+  onDateNavigation,
+  currentViewType: parentViewType,
 }: ShiftsSectionProps) {
-  const [viewType, setViewType] = useState<"table" | "calendar">("table");
+  // Use parent's view type if provided, otherwise use local state
+  const [localViewType, setLocalViewType] = useState<"table" | "calendar">(
+    "table"
+  );
+  const viewType = parentViewType || localViewType;
+
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [events, setEvents] = useState<CalendarEvent[]>(generateMockEvents());
   const [mode, setMode] = useState<Mode>("month");
-  const [calendarDate, setCalendarDate] = useState<Date>(new Date(2025, 5, 11));
+  const [calendarDate, setCalendarDate] = useState<Date>(new Date());
 
-  // Calculate weekly date range based on current date
+  // Shift Details Modal State
+  const [selectedShift, setSelectedShift] = useState<ShiftCalendarEvent | null>(
+    null
+  );
+  const [showShiftModal, setShowShiftModal] = useState(false);
+
+  // Query client for data refresh
+  const queryClient = useQueryClient();
+
+  // Handle view type change
+  const handleViewTypeChange = (newViewType: "table" | "calendar") => {
+    console.log("🔄 Changing view type from", viewType, "to", newViewType);
+
+    // Update local state if not controlled by parent
+    if (!parentViewType) {
+      setLocalViewType(newViewType);
+    }
+
+    // Notify parent component about the view change
+    if (onViewTypeChange) {
+      onViewTypeChange(newViewType);
+    }
+  };
+
+  // UNIFIED DATE RANGE LOGIC - Use the same date range for both views
   const dateRange = useMemo(() => {
-    const baseDate = new Date(currentDate);
+    // If date range is provided from parent, use it (this comes from TimeTrackerContainer)
+    if (propDateRange) {
+      return {
+        startDate: new Date(propDateRange.startDate),
+        endDate: new Date(propDateRange.endDate),
+        displayRange: `${new Date(propDateRange.startDate).toLocaleDateString(
+          "en-US",
+          {
+            month: "long",
+            day: "numeric",
+          }
+        )} - ${new Date(propDateRange.endDate).toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        })}`,
+      };
+    }
 
-    // Always use weekly view
+    // Fallback: Use weekly range based on currentDate (shouldn't be needed now)
+    const baseDate = new Date(currentDate);
     const startOfWeek = new Date(baseDate);
     const day = startOfWeek.getDay();
     const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
@@ -65,132 +334,211 @@ export function ShiftsSection({
         year: "numeric",
       })}`,
     };
-  }, [currentDate]);
+  }, [propDateRange, currentDate]);
+
+  // Generate calendar events from shift data using the SAME date range
+  const shiftEvents = useMemo(() => {
+    console.log("🎯 Generating shift calendar events:", {
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+      punchesCount: allPunches?.length || 0,
+      viewType,
+    });
+
+    return generateShiftEvents(
+      userData,
+      dateRange.startDate,
+      dateRange.endDate,
+      allPunches
+    );
+  }, [userData, dateRange.startDate, dateRange.endDate, allPunches, viewType]);
+
+  // Convert to regular CalendarEvent for the calendar component
+  const calendarEvents = useMemo(() => {
+    return shiftEvents.map((event) => ({
+      id: event.id,
+      title: event.title,
+      color: event.color,
+      start: event.start,
+      end: event.end,
+    }));
+  }, [shiftEvents]);
+
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+
+  // Update calendar events when shift events change
+  React.useEffect(() => {
+    setEvents(calendarEvents);
+  }, [calendarEvents]);
+
+  // Handle data refresh after successful operations
+  const handleDataRefresh = () => {
+    // Invalidate punch queries to refresh data
+    queryClient.invalidateQueries({ queryKey: ["punch"] });
+    queryClient.invalidateQueries({ queryKey: ["punches"] });
+  };
 
   const navigateDateRange = (direction: number) => {
-    const newDate = new Date(currentDate);
-    // Navigate by weeks
-    newDate.setDate(newDate.getDate() + direction * 7);
-    setCurrentDate(newDate);
+    if (onDateNavigation) {
+      // Use parent's navigation handler
+      onDateNavigation(direction);
+    } else {
+      // Fallback to local navigation
+      const newDate = new Date(currentDate);
+      if (viewType === "table") {
+        newDate.setDate(newDate.getDate() + direction * 7);
+      } else {
+        newDate.setMonth(newDate.getMonth() + direction);
+      }
+      setCurrentDate(newDate);
+    }
   };
 
   return (
-    <Card>
-      <CardContent className="p-6">
-        {/* Header with integrated calendar controls */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-6 gap-4">
-          <div className="flex items-center space-x-4">
-            <h2 className="text-xl font-semibold">Employee Shifts</h2>
-            {/* Use date range navigation for table view */}
-            {viewType === "table" && (
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigateDateRange(-1)}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <span className="text-sm font-medium min-w-[160px] text-center">
-                  {dateRange.displayRange}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigateDateRange(1)}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </div>
+    <>
+      <Card>
+        <CardContent className="p-6">
+          {/* Header with integrated calendar controls */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between mb-6 gap-4">
+            <div className="flex items-center space-x-4">
+              <h2 className="text-xl font-semibold">Employee Shifts</h2>
+              {/* Use date range navigation for table view */}
+              {viewType === "table" && (
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigateDateRange(-1)}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm font-medium min-w-[160px] text-center">
+                    {dateRange.displayRange}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigateDateRange(1)}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
 
-          {/* Right side controls */}
-          <div className="flex items-center space-x-4">
-            {/* Calendar controls when in calendar view */}
-            {viewType === "calendar" && (
-              <div className="flex items-center gap-4">
-                <CalendarProvider
-                  events={events}
-                  setEvents={setEvents}
-                  mode={mode}
-                  setMode={setMode}
-                  date={calendarDate}
-                  setDate={setCalendarDate}
-                  calendarIconIsToday={false}
-                >
-                  <CalendarHeaderDate />
-                </CalendarProvider>
-                <CalendarProvider
-                  events={events}
-                  setEvents={setEvents}
-                  mode={mode}
-                  setMode={setMode}
-                  date={calendarDate}
-                  setDate={setCalendarDate}
-                  calendarIconIsToday={false}
-                >
-                  <div className="flex items-center gap-2">
-                    <CalendarHeaderActionsMode />
-                  </div>
-                </CalendarProvider>
-              </div>
-            )}
+            {/* Right side controls */}
+            <div className="flex items-center space-x-4">
+              {/* Calendar controls when in calendar view */}
+              {viewType === "calendar" && (
+                <div className="flex items-center gap-4">
+                  <CalendarProvider
+                    events={events}
+                    setEvents={setEvents}
+                    mode={mode}
+                    setMode={setMode}
+                    date={calendarDate}
+                    setDate={setCalendarDate}
+                    calendarIconIsToday={false}
+                  >
+                    <CalendarHeaderDate />
+                  </CalendarProvider>
+                  <CalendarProvider
+                    events={events}
+                    setEvents={setEvents}
+                    mode={mode}
+                    setMode={setMode}
+                    date={calendarDate}
+                    setDate={setCalendarDate}
+                    calendarIconIsToday={false}
+                  >
+                    <div className="flex items-center gap-2">
+                      <CalendarHeaderActionsMode />
+                    </div>
+                  </CalendarProvider>
+                </div>
+              )}
 
-            {/* View Toggle */}
-            <ToggleGroup
-              type="single"
-              value={viewType}
-              onValueChange={(value) =>
-                value && setViewType(value as "table" | "calendar")
-              }
-              className="flex gap-0 -space-x-px rounded-sm border overflow-hidden shadow-sm shadow-black/5"
-            >
-              <ToggleGroupItem
-                value="table"
-                className="rounded-none shadow-none focus-visible:z-10 px-4 py-2"
+              {/* View Toggle */}
+              <ToggleGroup
+                type="single"
+                value={viewType}
+                onValueChange={(value) => {
+                  if (value) {
+                    handleViewTypeChange(value as "table" | "calendar");
+                  }
+                }}
+                className="flex gap-0 -space-x-px rounded-sm border overflow-hidden shadow-sm shadow-black/5"
               >
-                Table View
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="calendar"
-                className="rounded-none shadow-none focus-visible:z-10 px-4 py-2"
-              >
-                Calendar View
-              </ToggleGroupItem>
-            </ToggleGroup>
+                <ToggleGroupItem
+                  value="table"
+                  className="rounded-none shadow-none focus-visible:z-10 px-4 py-2"
+                >
+                  Table View
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="calendar"
+                  className="rounded-none shadow-none focus-visible:z-10 px-4 py-2"
+                >
+                  Calendar View
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
           </div>
-        </div>
 
-        {/* Content */}
-        {viewType === "calendar" ? (
-          <div className="border rounded-lg bg-white shadow-sm overflow-hidden">
-            <CalendarProvider
-              events={events}
-              setEvents={setEvents}
-              mode={mode}
-              setMode={setMode}
-              date={calendarDate}
-              setDate={setCalendarDate}
-              calendarIconIsToday={false}
-            >
-              <CalendarBody />
-            </CalendarProvider>
-          </div>
-        ) : (
-          <ShiftsTable
-            userData={userData}
-            openPunches={openPunches}
-            allPunches={allPunches}
-            punchesLoading={punchesLoading}
-            dateRange={{
-              startDate: dateRange.startDate.toISOString(),
-              endDate: dateRange.endDate.toISOString(),
-              displayRange: dateRange.displayRange,
-            }}
-          />
-        )}
-      </CardContent>
-    </Card>
+          {/* Content */}
+          {viewType === "calendar" ? (
+            <div className="border rounded-lg bg-white shadow-sm overflow-hidden">
+              <CalendarProvider
+                events={events}
+                setEvents={setEvents}
+                mode={mode}
+                setMode={setMode}
+                date={calendarDate}
+                setDate={setCalendarDate}
+                calendarIconIsToday={false}
+              >
+                <CalendarBody />
+                {/* Custom event handler - listen to calendar context */}
+                <CalendarEventHandler
+                  shiftEvents={shiftEvents}
+                  onShiftClick={(shiftEvent) => {
+                    setSelectedShift(shiftEvent);
+                    setShowShiftModal(true);
+                  }}
+                />
+              </CalendarProvider>
+            </div>
+          ) : (
+            <ShiftsTable
+              userData={userData}
+              openPunches={openPunches}
+              allPunches={allPunches}
+              punchesLoading={punchesLoading}
+              dateRange={{
+                startDate: dateRange.startDate.toISOString(),
+                endDate: dateRange.endDate.toISOString(),
+                displayRange: dateRange.displayRange,
+              }}
+            />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Shift Details Modal - Specific to shifts with full API integration */}
+      <ShiftDetailsModal
+        isOpen={showShiftModal}
+        onClose={() => {
+          setShowShiftModal(false);
+          setSelectedShift(null);
+        }}
+        shiftEvent={selectedShift}
+        userData={{
+          _id: userData._id,
+          applicantId: userData.applicantId,
+          userType: userData.userType,
+        }}
+        onSuccess={handleDataRefresh}
+      />
+    </>
   );
 }

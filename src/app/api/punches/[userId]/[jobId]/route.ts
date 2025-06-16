@@ -11,6 +11,7 @@ import {
   checkForPreviousPunchesWithinShift,
   getTotalWorkedHoursForWeek,
 } from "@/domains/punch/utils";
+import { ObjectId as ObjectIdFunction } from "mongodb";
 import { parseClockInCoordinates } from "@/lib/utils";
 import { ClockInCoordinates, Shift } from "@/domains/job";
 import { findJobByjobId, getUserType } from "@/domains/user/utils";
@@ -307,7 +308,6 @@ async function createPunchHandler(
 async function updatePunchHandler(request: AuthenticatedRequest) {
   try {
     const user = request.user;
-
     const { action, punch } = await request.json();
 
     if (!punch) {
@@ -331,22 +331,51 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
         );
       }
     } else if (action === "update") {
-      const overlap = await checkForOverlappingPunch(
-        db,
-        user.applicantId || "",
-        punch.timeIn,
-        punch.timeOut ?? null,
-        punch._id
-      );
+      // Get the original punch from database to compare times
+      const originalPunch = await db.collection("timecard").findOne({
+        _id: new ObjectIdFunction(punch._id),
+      });
 
-      if (overlap) {
+      if (!originalPunch) {
         return NextResponse.json(
-          {
-            error: "punch-overlap",
-            message: "Making this change would create a punch overlap!",
-          },
-          { status: 400 }
+          { error: "punch-not-found", message: "Original punch not found" },
+          { status: 404 }
         );
+      }
+
+      // Only check for overlap if timeIn or timeOut has actually changed
+      const timeInChanged = originalPunch.timeIn !== punch.timeIn;
+      const timeOutChanged = originalPunch.timeOut !== punch.timeOut;
+
+      if (timeInChanged || timeOutChanged) {
+        console.log("Time changed, checking for overlap:", {
+          timeInChanged,
+          timeOutChanged,
+          originalTimeIn: originalPunch.timeIn,
+          newTimeIn: punch.timeIn,
+          originalTimeOut: originalPunch.timeOut,
+          newTimeOut: punch.timeOut,
+        });
+
+        const overlap = await checkForOverlappingPunch(
+          db,
+          user.applicantId || "",
+          punch.timeIn,
+          punch.timeOut ?? null,
+          punch._id
+        );
+
+        if (overlap) {
+          return NextResponse.json(
+            {
+              error: "punch-overlap",
+              message: "Making this change would create a punch overlap!",
+            },
+            { status: 400 }
+          );
+        }
+      } else {
+        console.log("Only notes/metadata changed, skipping overlap check");
       }
 
       const updateData: Punch = {
@@ -356,6 +385,7 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
       };
 
       updatedPunch = await updatePunch(db, updateData);
+
       if (!updatedPunch) {
         return NextResponse.json(
           { error: "update-failed", message: "Error updating punch" },

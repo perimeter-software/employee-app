@@ -547,76 +547,159 @@ export async function findAllPunchesByDateRange(
   }
 }
 
-type TimeQuery = {
-  $lte?: string;
-  $lt?: string;
-  $gte?: string;
-  $gt?: string;
-};
-
 export async function checkForOverlappingPunch(
   db: Db,
   applicantId: string,
   timeIn: string,
   timeOut: string | null,
-  _id: string
+  excludePunchId: string
 ): Promise<boolean> {
   try {
-    const query: {
-      applicantId: string;
-      type: "punch";
-      $or: Array<{
-        timeIn: TimeQuery;
-        timeOut?: TimeQuery | null;
-        $or?: Array<{ timeOut: TimeQuery } | { timeOut: null }>;
-      }>;
-    } = {
+    console.log("🔍 === OVERLAP CHECK DEBUG START ===");
+    console.log("Parameters:", {
+      applicantId,
+      timeIn,
+      timeOut,
+      excludePunchId,
+    });
+
+    // Convert to Date objects for easier comparison
+    const newTimeIn = new Date(timeIn);
+    const newTimeOut = timeOut ? new Date(timeOut) : null;
+
+    console.log("Converted dates:", {
+      newTimeIn: newTimeIn.toISOString(),
+      newTimeOut: newTimeOut?.toISOString() || "null (active punch)",
+    });
+
+    // Get all punches for this applicant except the one being updated
+    const query = {
       applicantId,
       type: "punch",
-      $or: [
-        // Case 1: New punch starts during an existing punch
-        {
-          timeIn: { $lte: timeIn },
-          $or: [{ timeOut: { $gt: timeIn } }, { timeOut: null }],
-        },
-        // Case 2: New punch ends during an existing punch
-        {
-          timeIn: { $lt: timeOut || "" },
-          timeOut: { $gt: timeOut || "" },
-        },
-        // Case 3: New punch completely contains an existing punch
-        {
-          timeIn: { $gte: timeIn },
-          timeOut: { $lt: timeOut || "" },
-        },
-        // Case 4: Existing punch completely contains the new punch
-        {
-          timeIn: { $lte: timeIn },
-          $or: [{ timeOut: { $gt: timeOut || "" } }, { timeOut: null }],
-        },
-      ],
+      _id: { $ne: new ObjectIdFunction(excludePunchId) },
     };
 
-    // Remove Case 2 and adjust Case 3 if timeOut is null or empty string
-    if (!timeOut || timeOut === "") {
-      query.$or = query.$or.filter(
-        (condition) => !condition.timeOut || !condition.timeOut.$gte
-      );
-      const lastCase = query.$or[query.$or.length - 1];
-      if (lastCase && lastCase.timeIn && lastCase.timeIn.$gte) {
-        lastCase.timeOut = null;
+    console.log("MongoDB query:", JSON.stringify(query, null, 2));
+
+    const existingPunches = await db
+      .collection("timecard")
+      .find(query)
+      .toArray();
+
+    console.log(
+      `Found ${existingPunches.length} existing punches to check against`
+    );
+
+    if (existingPunches.length === 0) {
+      console.log("✅ No existing punches found - no overlap possible");
+      console.log("🔍 === OVERLAP CHECK DEBUG END ===");
+      return false;
+    }
+
+    // Log all existing punches
+    existingPunches.forEach((punch, index) => {
+      console.log(`Existing punch ${index + 1}:`, {
+        id: punch._id.toString(),
+        timeIn: punch.timeIn,
+        timeOut: punch.timeOut || "null (active)",
+        jobId: punch.jobId,
+        shiftSlug: punch.shiftSlug,
+      });
+    });
+
+    // Check each existing punch for overlap
+    for (let i = 0; i < existingPunches.length; i++) {
+      const existingPunch = existingPunches[i];
+      console.log(`\n--- Checking existing punch ${i + 1} ---`);
+
+      const existingTimeIn = new Date(existingPunch.timeIn);
+      const existingTimeOut = existingPunch.timeOut
+        ? new Date(existingPunch.timeOut)
+        : null;
+
+      console.log("Time comparison:", {
+        newRange: `${newTimeIn.toISOString()} → ${
+          newTimeOut?.toISOString() || "ACTIVE"
+        }`,
+        existingRange: `${existingTimeIn.toISOString()} → ${
+          existingTimeOut?.toISOString() || "ACTIVE"
+        }`,
+      });
+
+      // Case 1: Check for active punch conflicts
+      if (!newTimeOut && !existingTimeOut) {
+        console.log("❌ OVERLAP FOUND: Both punches are active (no timeOut)");
+        console.log("🔍 === OVERLAP CHECK DEBUG END ===");
+        return true;
+      }
+
+      if (!newTimeOut && existingTimeOut) {
+        // New punch is active, existing is completed
+        if (newTimeIn < existingTimeOut) {
+          console.log(
+            "❌ OVERLAP FOUND: New active punch starts before existing punch ends"
+          );
+          console.log(
+            `New starts: ${newTimeIn.toISOString()}, Existing ends: ${existingTimeOut.toISOString()}`
+          );
+          console.log("🔍 === OVERLAP CHECK DEBUG END ===");
+          return true;
+        }
+        console.log(
+          "✅ No overlap: New active punch starts after existing punch ends"
+        );
+        continue;
+      }
+
+      if (newTimeOut && !existingTimeOut) {
+        // New punch is completed, existing is active
+        if (existingTimeIn < newTimeOut) {
+          console.log(
+            "❌ OVERLAP FOUND: Existing active punch starts before new punch ends"
+          );
+          console.log(
+            `Existing starts: ${existingTimeIn.toISOString()}, New ends: ${newTimeOut.toISOString()}`
+          );
+          console.log("🔍 === OVERLAP CHECK DEBUG END ===");
+          return true;
+        }
+        console.log(
+          "✅ No overlap: Existing active punch starts after new punch ends"
+        );
+        continue;
+      }
+
+      // Case 2: Both punches are completed - check for time range overlap
+      if (newTimeOut && existingTimeOut) {
+        console.log("Checking completed punch overlap...");
+
+        // Two time ranges overlap if: start1 < end2 AND start2 < end1
+        const condition1 = newTimeIn < existingTimeOut;
+        const condition2 = existingTimeIn < newTimeOut;
+        const hasOverlap = condition1 && condition2;
+
+        console.log("Overlap conditions:", {
+          "newTimeIn < existingTimeOut": `${newTimeIn.toISOString()} < ${existingTimeOut.toISOString()} = ${condition1}`,
+          "existingTimeIn < newTimeOut": `${existingTimeIn.toISOString()} < ${newTimeOut.toISOString()} = ${condition2}`,
+          "hasOverlap (both true)": hasOverlap,
+        });
+
+        if (hasOverlap) {
+          console.log("❌ OVERLAP FOUND: Time ranges overlap");
+          console.log("🔍 === OVERLAP CHECK DEBUG END ===");
+          return true;
+        }
+        console.log("✅ No overlap: Time ranges don't overlap");
       }
     }
 
-    const punchDocs = await db.collection("timecard").find(query).toArray();
-    // check if the punchDocs length is one and the id of the punch is the same as the one being updated, then it is not an overlap
-    if (punchDocs.length === 1 && punchDocs[0]._id.toString() === _id) {
-      return false;
-    }
-    return punchDocs.length > 0;
+    console.log("✅ FINAL RESULT: No overlaps found with any existing punches");
+    console.log("🔍 === OVERLAP CHECK DEBUG END ===");
+    return false;
   } catch (e) {
-    console.error("Error checking for overlapping punch:", e);
-    return true;
+    console.error("❌ Error in overlap check:", e);
+    console.log("🔍 === OVERLAP CHECK DEBUG END (ERROR) ===");
+    return true; // Return true on error to be safe
   }
 }
 

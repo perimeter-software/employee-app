@@ -10,12 +10,22 @@ interface FindPunchesParams {
 }
 
 export const useFindPunches = (params: FindPunchesParams) => {
+  console.log("🐛 DEBUG: useFindPunches called with params:", params);
+
+  const enabled = !!params.userId && !!params.jobIds.length;
+  console.log("🐛 DEBUG: Query enabled:", enabled);
+
   return useQuery({
     queryKey: [...punchQueryKeys.list(), params],
-    queryFn: () => PunchApiService.findPunchesByDateRange(params),
+    queryFn: async () => {
+      console.log("🐛 DEBUG: Executing findPunchesByDateRange with:", params);
+      const result = await PunchApiService.findPunchesByDateRange(params);
+      console.log("🐛 DEBUG: findPunchesByDateRange result:", result);
+      return result;
+    },
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
-    enabled: !!params.userId && !!params.jobIds.length,
+    enabled,
     retry: (failureCount, error) => {
       console.log("❌ Query retry:", { failureCount, error: error.message });
       // Don't retry on auth errors (handled by interceptor)

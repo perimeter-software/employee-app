@@ -30,9 +30,7 @@ interface ShiftRowData {
   isWithinShift: boolean;
   hasActivePunch: boolean;
   isToday: boolean;
-  // Enhanced properties from timer card state
-  isSelectedShift?: boolean;
-  isCurrentOpenPunchShift?: boolean;
+  shiftHasEnded?: boolean; // Add this new property
 }
 
 interface ShiftRowProps {
@@ -98,6 +96,7 @@ export function ShiftRow({
   // Render action buttons
   const renderActionButtons = () => {
     const isDisabled = loading || !shiftData.isToday;
+    const shiftEnded = shiftData.shiftHasEnded;
 
     return (
       <div className="flex space-x-2">
@@ -105,7 +104,7 @@ export function ShiftRow({
           size="sm"
           variant="outline"
           onClick={() => onClockIn(shiftData)}
-          disabled={isDisabled || !shiftData.canClockIn}
+          disabled={isDisabled || !shiftData.canClockIn || shiftEnded}
           className="border-blue-500 text-blue-500 hover:bg-blue-50 disabled:opacity-50"
         >
           {loading ? <Clock className="h-3 w-3 animate-spin" /> : "Clock In"}
@@ -127,7 +126,9 @@ export function ShiftRow({
     <tr
       className={`border-b border-gray-100 hover:bg-gray-50 ${
         shiftData.isToday ? "bg-blue-50/30" : ""
-      } ${shiftData.hasActivePunch ? "bg-green-50/30" : ""}`}
+      } ${shiftData.hasActivePunch ? "bg-green-50/30" : ""} ${
+        shiftData.shiftHasEnded && !shiftData.hasActivePunch ? "opacity-75" : ""
+      }`}
     >
       <td className="py-3 px-4 text-sm">
         <div className="flex items-center gap-2">
@@ -135,6 +136,11 @@ export function ShiftRow({
           {shiftData.isToday && (
             <Badge variant="outline" className="text-xs">
               Today
+            </Badge>
+          )}
+          {shiftData.shiftHasEnded && !shiftData.hasActivePunch && (
+            <Badge variant="outline" className="text-xs text-gray-500">
+              Ended
             </Badge>
           )}
         </div>

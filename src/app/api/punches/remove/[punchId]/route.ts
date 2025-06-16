@@ -5,10 +5,14 @@ import type { AuthenticatedRequest } from "@/domains/user/types";
 import { deletePunchById } from "@/domains/punch/utils";
 
 // DELETE Handler for Deleting Punch by ID
-async function deletePunchHandler(request: AuthenticatedRequest) {
+async function deletePunchHandler(
+  request: AuthenticatedRequest,
+  context?: Record<string, unknown>
+) {
   try {
     const user = request.user;
-    const { punchId } = request.params as { punchId: string };
+    const params = (await context?.params) as { punchId: string } | undefined;
+    const punchId = params?.punchId;
 
     if (!user._id || !punchId) {
       console.error("Missing required parameters:", {
