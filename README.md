@@ -168,14 +168,6 @@ This project follows Domain-Driven Design (DDD) principles:
 3. Write tests for new functionality
 4. Submit a pull request
 
-## Deployment
-
-### Vercel (Recommended)
-
-1. Connect your repository to Vercel
-2. Configure environment variables in Vercel dashboard
-3. Deploy automatically on push to main branch
-
 ### Environment Variables for Production
 
 Ensure all environment variables are properly set in your production environment:
