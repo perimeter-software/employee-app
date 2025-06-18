@@ -14,7 +14,9 @@ export const useInsights = (
   }
 ) => {
   return useQuery({
-    queryKey: params ? dashboardQueryKeys.insights(params.userId, params.view) : ['dashboard-insights-disabled'],
+    queryKey: params
+      ? dashboardQueryKeys.insights(params.userId, params.view)
+      : ['dashboard-insights-disabled'],
     queryFn: () => {
       if (!params) throw new Error('No params provided');
       return DashboardApiService.getInsights(params);

@@ -14,7 +14,9 @@ export const usePerformanceMetrics = (
   }
 ) => {
   return useQuery({
-    queryKey: params ? dashboardQueryKeys.performance(params.userId) : ['dashboard-performance-disabled'],
+    queryKey: params
+      ? dashboardQueryKeys.performance(params.userId)
+      : ['dashboard-performance-disabled'],
     queryFn: () => {
       if (!params) throw new Error('No params provided');
       return DashboardApiService.getPerformanceMetrics(params);

@@ -6,7 +6,10 @@ import {
 import { DashboardParams } from '../types';
 
 export const useAttendanceData = (
-  params: Pick<DashboardParams, 'userId' | 'view' | 'startDate' | 'endDate'> | null,
+  params: Pick<
+    DashboardParams,
+    'userId' | 'view' | 'startDate' | 'endDate'
+  > | null,
   options?: {
     enabled?: boolean;
     staleTime?: number;
@@ -14,7 +17,9 @@ export const useAttendanceData = (
   }
 ) => {
   return useQuery({
-    queryKey: params ? dashboardQueryKeys.attendance(params.userId) : ['dashboard-attendance-disabled'],
+    queryKey: params
+      ? dashboardQueryKeys.attendance(params.userId)
+      : ['dashboard-attendance-disabled'],
     queryFn: () => {
       if (!params) throw new Error('No params provided');
       return DashboardApiService.getAttendanceData(params);

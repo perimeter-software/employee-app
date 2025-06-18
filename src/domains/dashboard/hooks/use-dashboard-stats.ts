@@ -6,7 +6,10 @@ import {
 import { DashboardParams } from '../types';
 
 export const useDashboardStats = (
-  params: Pick<DashboardParams, 'userId' | 'view' | 'startDate' | 'endDate'> | null,
+  params: Pick<
+    DashboardParams,
+    'userId' | 'view' | 'startDate' | 'endDate'
+  > | null,
   options?: {
     enabled?: boolean;
     staleTime?: number;
@@ -14,7 +17,9 @@ export const useDashboardStats = (
   }
 ) => {
   return useQuery({
-    queryKey: params ? dashboardQueryKeys.stats(params.userId, params.view) : ['dashboard-stats-disabled'],
+    queryKey: params
+      ? dashboardQueryKeys.stats(params.userId, params.view)
+      : ['dashboard-stats-disabled'],
     queryFn: () => {
       if (!params) throw new Error('No params provided');
       return DashboardApiService.getDashboardStats(params);
