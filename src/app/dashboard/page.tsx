@@ -919,18 +919,18 @@ const DashboardPage: NextPage = () => {
 
   // Fetch dashboard data using our hooks
   const { data: statsData, isLoading: statsLoading } = useDashboardStats(
-    dashboardParams!,
+    dashboardParams,
     { enabled: !!dashboardParams }
   );
 
   const { data: attendanceData, isLoading: attendanceLoading } =
-    useAttendanceData(dashboardParams!, { enabled: !!dashboardParams });
+    useAttendanceData(dashboardParams, { enabled: !!dashboardParams });
 
   const { data: performanceData, isLoading: performanceLoading } =
-    usePerformanceMetrics(dashboardParams!, { enabled: !!dashboardParams });
+    usePerformanceMetrics(dashboardParams, { enabled: !!dashboardParams });
 
   const { data: insightsData, isLoading: insightsLoading } = useInsights(
-    dashboardParams!,
+    dashboardParams,
     { enabled: !!dashboardParams }
   );
 

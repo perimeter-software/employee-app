@@ -6,7 +6,7 @@ import {
 import { DashboardParams } from '../types';
 
 export const usePerformanceMetrics = (
-  params: Pick<DashboardParams, 'userId' | 'startDate' | 'endDate'>,
+  params: Pick<DashboardParams, 'userId' | 'startDate' | 'endDate'> | null,
   options?: {
     enabled?: boolean;
     staleTime?: number;
@@ -14,13 +14,14 @@ export const usePerformanceMetrics = (
   }
 ) => {
   return useQuery({
-    queryKey: dashboardQueryKeys.performance(params.userId),
+    queryKey: params ? dashboardQueryKeys.performance(params.userId) : ['dashboard-performance-disabled'],
     queryFn: () => {
+      if (!params) throw new Error('No params provided');
       return DashboardApiService.getPerformanceMetrics(params);
     },
     staleTime: options?.staleTime ?? 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: options?.refetchOnWindowFocus ?? false,
-    enabled: options?.enabled ?? true,
+    enabled: (options?.enabled ?? true) && !!params,
     retry: (failureCount, error) => {
       if (error.message.includes('401') || error.message.includes('403')) {
         return false;

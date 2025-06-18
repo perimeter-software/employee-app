@@ -6,7 +6,7 @@ import {
 import { DashboardParams } from '../types';
 
 export const useDashboardStats = (
-  params: Pick<DashboardParams, 'userId' | 'view' | 'startDate' | 'endDate'>,
+  params: Pick<DashboardParams, 'userId' | 'view' | 'startDate' | 'endDate'> | null,
   options?: {
     enabled?: boolean;
     staleTime?: number;
@@ -14,13 +14,14 @@ export const useDashboardStats = (
   }
 ) => {
   return useQuery({
-    queryKey: dashboardQueryKeys.stats(params.userId, params.view),
+    queryKey: params ? dashboardQueryKeys.stats(params.userId, params.view) : ['dashboard-stats-disabled'],
     queryFn: () => {
+      if (!params) throw new Error('No params provided');
       return DashboardApiService.getDashboardStats(params);
     },
     staleTime: options?.staleTime ?? 2 * 60 * 1000, // 2 minutes
     refetchOnWindowFocus: options?.refetchOnWindowFocus ?? false,
-    enabled: options?.enabled ?? true,
+    enabled: (options?.enabled ?? true) && !!params,
     retry: (failureCount, error) => {
       if (error.message.includes('401') || error.message.includes('403')) {
         return false;

@@ -11,7 +11,11 @@ async function getAttendanceDataHandler(request: AuthenticatedRequest) {
       DashboardParams,
       'userId' | 'view' | 'startDate' | 'endDate'
     >;
-    const { userId, view, startDate, endDate } = body;
+    const user = request.user;
+
+    const { userId: requestUserId, view, startDate, endDate } = body;
+
+    const userId = user._id || requestUserId;
 
     if (!userId || !view) {
       return NextResponse.json(

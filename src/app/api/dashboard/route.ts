@@ -14,7 +14,12 @@ import {
 async function getDashboardDataHandler(request: AuthenticatedRequest) {
   try {
     const body = (await request.json()) as DashboardParams;
-    const { view, startDate, endDate, userId } = body;
+
+    const user = request.user;
+
+    const { view, startDate, endDate, userId: requestUserId } = body;
+
+    const userId = user._id || requestUserId;
 
     if (!userId || !view) {
       return NextResponse.json(

@@ -11,7 +11,11 @@ async function getPerformanceMetricsHandler(request: AuthenticatedRequest) {
       DashboardParams,
       'userId' | 'startDate' | 'endDate'
     >;
-    const { userId, startDate, endDate } = body;
+    const user = request.user;
+
+    const { userId: requestUserId, startDate, endDate } = body;
+
+    const userId = user._id || requestUserId;
 
     if (!userId) {
       return NextResponse.json(

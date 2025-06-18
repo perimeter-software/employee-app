@@ -11,7 +11,11 @@ async function getInsightsHandler(request: AuthenticatedRequest) {
       DashboardParams,
       'userId' | 'view'
     >;
-    const { userId, view } = body;
+    const user = request.user;
+
+    const { userId: requestUserId, view } = body;
+
+    const userId = user._id || requestUserId;
 
     if (!userId || !view) {
       return NextResponse.json(

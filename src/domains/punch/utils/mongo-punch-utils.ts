@@ -545,6 +545,8 @@ export async function findAllPunchesByDateRange(
   }
 }
 
+// IMPROVED: checkForOverlappingPunch with duration validation
+
 export async function checkForOverlappingPunch(
   db: Db,
   applicantId: string,
@@ -570,6 +572,21 @@ export async function checkForOverlappingPunch(
       newTimeOut: newTimeOut?.toISOString() || 'null (active punch)',
     });
 
+    // VALIDATION: Check if the new punch duration is reasonable
+    if (newTimeOut) {
+      const durationHours =
+        (newTimeOut.getTime() - newTimeIn.getTime()) / (1000 * 60 * 60);
+      const MAX_REASONABLE_HOURS = 24; // 24 hours max per punch
+
+      if (durationHours > MAX_REASONABLE_HOURS) {
+        console.log(
+          `⚠️ WARNING: New punch duration is ${durationHours.toFixed(2)} hours, which exceeds ${MAX_REASONABLE_HOURS} hours`
+        );
+        // You might want to return an error here or flag this for review
+      }
+    }
+
+    // IMPROVED: More specific query to only get punches that could potentially overlap
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const query: any = {
       applicantId,
@@ -579,25 +596,67 @@ export async function checkForOverlappingPunch(
 
     // OPTIMIZATION: Only check punches that could potentially overlap
     if (newTimeOut) {
-      // For completed punches, only check punches that start before our end time
-      // and end after our start time (or are still active)
+      // For completed punches, only check punches within a reasonable time window
+      const windowStart = new Date(
+        newTimeIn.getTime() - 7 * 24 * 60 * 60 * 1000
+      ); // 7 days before
+      const windowEnd = new Date(
+        newTimeOut.getTime() + 7 * 24 * 60 * 60 * 1000
+      ); // 7 days after
+
       query.$or = [
-        // Punches that are still active (no timeOut)
-        { timeOut: null },
+        // Active punches (no timeOut) that started within a reasonable window
+        {
+          timeOut: null,
+          timeIn: {
+            $gte: windowStart.toISOString(),
+            $lte: windowEnd.toISOString(),
+          },
+        },
         // Completed punches that could overlap
         {
           timeIn: { $lt: newTimeOut.toISOString() },
           timeOut: { $gt: newTimeIn.toISOString() },
+          // ADDED: Filter out unreasonably long punches
+          $expr: {
+            $lt: [
+              {
+                $subtract: [
+                  { $dateFromString: { dateString: '$timeOut' } },
+                  { $dateFromString: { dateString: '$timeIn' } },
+                ],
+              },
+              24 * 60 * 60 * 1000, // 24 hours in milliseconds
+            ],
+          },
         },
       ];
     } else {
-      // For active punches (no timeOut), check all punches that start before our start time
-      // and either have no end time or end after our start time
+      // For active punches, be more selective
+      const windowStart = new Date(newTimeIn.getTime() - 24 * 60 * 60 * 1000); // 24 hours before
+
       query.$or = [
-        // Other active punches
-        { timeOut: null },
-        // Completed punches that end after our start time
-        { timeOut: { $gt: newTimeIn.toISOString() } },
+        // Other active punches that started recently
+        {
+          timeOut: null,
+          timeIn: { $gte: windowStart.toISOString() },
+        },
+        // Completed punches that end after our start time and are reasonable duration
+        {
+          timeOut: { $gt: newTimeIn.toISOString() },
+          // ADDED: Filter out unreasonably long punches
+          $expr: {
+            $lt: [
+              {
+                $subtract: [
+                  { $dateFromString: { dateString: '$timeOut' } },
+                  { $dateFromString: { dateString: '$timeIn' } },
+                ],
+              },
+              24 * 60 * 60 * 1000, // 24 hours in milliseconds
+            ],
+          },
+        },
       ];
     }
 
@@ -618,15 +677,30 @@ export async function checkForOverlappingPunch(
       return false;
     }
 
-    // Log all existing punches
+    // Log all existing punches with duration analysis
     existingPunches.forEach((punch, index) => {
+      const punchTimeIn = new Date(punch.timeIn);
+      const punchTimeOut = punch.timeOut ? new Date(punch.timeOut) : null;
+      const duration = punchTimeOut
+        ? (punchTimeOut.getTime() - punchTimeIn.getTime()) / (1000 * 60 * 60)
+        : null;
+
       console.log(`Existing punch ${index + 1}:`, {
         id: punch._id.toString(),
         timeIn: punch.timeIn,
         timeOut: punch.timeOut || 'null (active)',
+        duration: duration ? `${duration.toFixed(2)} hours` : 'active',
+        isReasonableDuration: duration ? duration <= 24 : true,
         jobId: punch.jobId,
         shiftSlug: punch.shiftSlug,
       });
+
+      // FLAG: Unreasonable duration punches
+      if (duration && duration > 24) {
+        console.log(
+          `🚨 WARNING: Punch ${punch._id} has unreasonable duration of ${duration.toFixed(2)} hours - this may be a data quality issue`
+        );
+      }
     });
 
     // Check each existing punch for overlap
@@ -639,6 +713,19 @@ export async function checkForOverlappingPunch(
         ? new Date(existingPunch.timeOut)
         : null;
 
+      // ADDED: Skip punches with unreasonable durations (likely data errors)
+      if (existingTimeOut) {
+        const existingDuration =
+          (existingTimeOut.getTime() - existingTimeIn.getTime()) /
+          (1000 * 60 * 60);
+        if (existingDuration > 24) {
+          console.log(
+            `⏭️ SKIPPING: Existing punch has unreasonable duration of ${existingDuration.toFixed(2)} hours - treating as data error`
+          );
+          continue;
+        }
+      }
+
       console.log('Time comparison:', {
         newRange: `${newTimeIn.toISOString()} → ${
           newTimeOut?.toISOString() || 'ACTIVE'
@@ -647,8 +734,6 @@ export async function checkForOverlappingPunch(
           existingTimeOut?.toISOString() || 'ACTIVE'
         }`,
       });
-
-      // FIXED: Improved overlap detection logic
 
       // Case 1: Both punches are active (no timeOut)
       if (!newTimeOut && !existingTimeOut) {
@@ -659,7 +744,6 @@ export async function checkForOverlappingPunch(
 
       // Case 2: New punch is active, existing punch is completed
       if (!newTimeOut && existingTimeOut) {
-        // Active punch overlaps if it starts before the existing punch ends
         if (newTimeIn < existingTimeOut) {
           console.log(
             '❌ OVERLAP FOUND: New active punch starts before existing punch ends'
@@ -678,7 +762,6 @@ export async function checkForOverlappingPunch(
 
       // Case 3: New punch is completed, existing punch is active
       if (newTimeOut && !existingTimeOut) {
-        // Completed punch overlaps with active punch if active punch starts before completed punch ends
         if (existingTimeIn < newTimeOut) {
           console.log(
             '❌ OVERLAP FOUND: Existing active punch starts before new punch ends'
@@ -699,11 +782,6 @@ export async function checkForOverlappingPunch(
       if (newTimeOut && existingTimeOut) {
         console.log('Checking completed punch overlap...');
 
-        // FIXED: Two time ranges overlap if they are not completely separate
-        // Ranges are separate if: newEnd <= existingStart OR existingEnd <= newStart
-        // Therefore, they overlap if: NOT (newEnd <= existingStart OR existingEnd <= newStart)
-        // Which simplifies to: newEnd > existingStart AND existingEnd > newStart
-
         const condition1 = newTimeOut > existingTimeIn; // New punch ends after existing starts
         const condition2 = existingTimeOut > newTimeIn; // Existing punch ends after new starts
         const hasOverlap = condition1 && condition2;
@@ -717,7 +795,7 @@ export async function checkForOverlappingPunch(
         if (hasOverlap) {
           console.log('❌ OVERLAP FOUND: Time ranges overlap');
 
-          // ADDITIONAL CHECK: Allow touching time ranges (one ends exactly when another starts)
+          // ADDITIONAL CHECK: Allow touching time ranges
           const exactTouch =
             newTimeOut.getTime() === existingTimeIn.getTime() ||
             existingTimeOut.getTime() === newTimeIn.getTime();
