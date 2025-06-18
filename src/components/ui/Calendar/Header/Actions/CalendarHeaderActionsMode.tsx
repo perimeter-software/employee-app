@@ -40,13 +40,13 @@ export default function CalendarHeaderActionsMode() {
               <ToggleGroupItem
                 value={modeValue}
                 className={clsxm(
-                  "w-full rounded-none shadow-none focus-visible:z-10 text-base flex items-center justify-center gap-2 relative border-none",
+                  "w-full rounded-none shadow-none focus-visible:z-10 text-sm lg:text-base flex items-center justify-center gap-1 lg:gap-2 relative border-none",
                   isSelected && "z-10"
                 )}
               >
                 <motion.div
                   layout
-                  className="flex items-center justify-center gap-2 py-2 px-3"
+                  className="flex items-center justify-center gap-1 lg:gap-2 py-1.5 lg:py-2 px-2 lg:px-3"
                   initial={false}
                   animate={{
                     scale: isSelected ? 1 : 0.95,

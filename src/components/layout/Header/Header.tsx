@@ -1,21 +1,21 @@
-"use client";
+'use client';
 
 // components/layout/Header.tsx
 
-import { useUser } from "@auth0/nextjs-auth0";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { Button } from "@/components/ui/Button/Button";
+import { useUser } from '@auth0/nextjs-auth0';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { Button } from '@/components/ui/Button/Button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/DropdownMenu";
-import { Bell, ChevronDown, LogOut, Settings, User, Menu } from "lucide-react";
-import { TenantInfo, useSwitchTenant } from "@/domains/tenant";
-import { useCurrentUser } from "@/domains/user";
+} from '@/components/ui/DropdownMenu';
+import { Bell, ChevronDown, LogOut, Settings, User, Menu } from 'lucide-react';
+import { TenantInfo, useSwitchTenant } from '@/domains/tenant';
+import { useCurrentUser } from '@/domains/user';
 
 interface HeaderProps {
   onMobileMenuToggle?: () => void;
@@ -28,8 +28,6 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
   const { mutate: switchTenant, isPending: tenantSwitchLoading } =
     useSwitchTenant();
 
-  console.log("enhancedUser: ", enhancedUser);
-
   const displayUser = (enhancedUser || user) as {
     name?: string;
     given_name?: string;
@@ -39,22 +37,22 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
   } | null;
 
   const handleLogout = () => {
-    router.push("/auth/logout");
+    router.push('/auth/logout');
   };
 
   const getTenantInitials = (tenant: TenantInfo) => {
     if (tenant?.clientName) {
       return tenant.clientName
-        .split(" ")
+        .split(' ')
         .map((w: string) => w[0])
-        .join("")
+        .join('')
         .slice(0, 2)
         .toUpperCase();
     }
     if (tenant?.url) {
       return tenant.url.slice(0, 2).toUpperCase();
     }
-    return "??";
+    return '??';
   };
 
   const handleTenantSwitch = async (tenantUrl: string) => {
@@ -69,7 +67,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
       displayUser?.firstName ||
       displayUser?.name ||
       displayUser?.given_name ||
-      "John"
+      'John'
     );
   };
 
@@ -95,7 +93,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
             <div className="hidden lg:block">
               <h1 className="text-xl font-semibold text-appPrimary truncate">
                 <span className="text-black">Welcome back, </span>
-                {userLoading ? "Loading..." : getUserDisplayName()}
+                {userLoading ? 'Loading...' : getUserDisplayName()}
               </h1>
               <p className="text-sm text-zinc-500 truncate">
                 Explore your dashboard and check your logs.
@@ -106,7 +104,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
             <div className="hidden md:block lg:hidden">
               <h1 className="text-lg font-semibold text-appPrimary truncate">
                 <span className="text-black">Welcome, </span>
-                {userLoading ? "Loading..." : getUserDisplayName()}
+                {userLoading ? 'Loading...' : getUserDisplayName()}
               </h1>
             </div>
 
@@ -114,7 +112,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
             <div className="md:hidden">
               <h1 className="text-base font-semibold text-appPrimary truncate">
                 <span className="text-black">Hi, </span>
-                {userLoading ? "Loading..." : getUserDisplayName()}
+                {userLoading ? 'Loading...' : getUserDisplayName()}
               </h1>
             </div>
           </div>
@@ -149,7 +147,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                         </div>
                       )}
                       <span className="text-sm truncate max-w-[80px] sm:max-w-[120px]">
-                        {enhancedUser?.tenant?.clientName || "Default Tenant"}
+                        {enhancedUser?.tenant?.clientName || 'Default Tenant'}
                       </span>
                     </div>
                     <ChevronDown className="w-4 h-4" />
@@ -162,8 +160,8 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                   <div className="px-3 py-2 border-b">
                     <p className="text-sm font-medium">Switch Tenant</p>
                     <p className="text-xs text-gray-500">
-                      Currently:{" "}
-                      {enhancedUser?.tenant?.clientName || "Default Tenant"}
+                      Currently:{' '}
+                      {enhancedUser?.tenant?.clientName || 'Default Tenant'}
                     </p>
                   </div>
                   <div className="py-1">
@@ -224,10 +222,10 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                   {/* User Info - Hidden on mobile */}
                   <div className="text-right hidden md:block">
                     <p className="text-sm font-medium text-gray-900">
-                      {displayUser?.name || displayUser?.given_name || "User"}
+                      {displayUser?.name || displayUser?.given_name || 'User'}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {displayUser?.email || ""}
+                      {displayUser?.email || ''}
                     </p>
                   </div>
 
@@ -248,7 +246,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                         {(
                           displayUser?.name ||
                           displayUser?.given_name ||
-                          "U"
+                          'U'
                         ).charAt(0)}
                       </span>
                     </div>
@@ -261,10 +259,10 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
             <DropdownMenuContent align="end" className="w-56">
               <div className="px-3 py-2">
                 <p className="text-sm font-medium">
-                  {displayUser?.name || displayUser?.given_name || "User"}
+                  {displayUser?.name || displayUser?.given_name || 'User'}
                 </p>
                 <p className="text-xs text-gray-500">
-                  {displayUser?.email || ""}
+                  {displayUser?.email || ''}
                 </p>
               </div>
               <DropdownMenuSeparator />

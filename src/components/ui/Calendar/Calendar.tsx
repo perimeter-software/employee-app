@@ -14,6 +14,7 @@ export default function Calendar({
   date,
   setDate,
   calendarIconIsToday = true,
+  hideTotalColumn = false,
 }: CalendarProps) {
   return (
     <CalendarProvider
@@ -31,7 +32,7 @@ export default function Calendar({
           <CalendarHeaderActionsMode />
         </CalendarHeaderActions>
       </CalendarHeader>
-      <CalendarBody />
+      <CalendarBody hideTotalColumn={hideTotalColumn} />
     </CalendarProvider>
   );
 }

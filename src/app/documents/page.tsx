@@ -1,15 +1,15 @@
-"use client";
+'use client';
 
-import { useUser } from "@auth0/nextjs-auth0";
-import Layout from "@/components/layout/Layout";
+import { useUser } from '@auth0/nextjs-auth0';
+import Layout from '@/components/layout/Layout';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button/Button";
+} from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button/Button';
 import {
   FileText,
   Search,
@@ -19,11 +19,11 @@ import {
   Trash2,
   ChevronDown,
   File,
-} from "lucide-react";
-import { NextPage } from "next";
-import { withAuth } from "@/domains/shared";
-import { useCurrentUser } from "@/domains/user";
-import { useState } from "react";
+} from 'lucide-react';
+import { NextPage } from 'next';
+import { withAuth } from '@/domains/shared';
+import { useCurrentUser } from '@/domains/user';
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -31,15 +31,15 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/Dialog";
+} from '@/components/ui/Dialog';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/Select";
-import { FileDropzone } from "@/components/ui/FileDropzone/FileDropzone";
+} from '@/components/ui/Select';
+import { FileDropzone } from '@/components/ui/FileDropzone/FileDropzone';
 
 interface Document {
   id: string;
@@ -65,9 +65,9 @@ const DocumentUploadModal: React.FC<{
   onSubmit: (data: DocumentUploadData) => void;
 }> = ({ isOpen, onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
-    documentName: "",
-    category: "Company Document",
-    description: "",
+    documentName: '',
+    category: 'Company Document',
+    description: '',
   });
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -75,7 +75,7 @@ const DocumentUploadModal: React.FC<{
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) {
-      alert("Please select a file to upload");
+      alert('Please select a file to upload');
       return;
     }
 
@@ -88,9 +88,9 @@ const DocumentUploadModal: React.FC<{
 
     // Reset form
     setFormData({
-      documentName: "",
-      category: "Company Document",
-      description: "",
+      documentName: '',
+      category: 'Company Document',
+      description: '',
     });
     setSelectedFile(null);
     onClose();
@@ -133,7 +133,7 @@ const DocumentUploadModal: React.FC<{
               type="text"
               value={formData.documentName}
               onChange={(e) =>
-                handleInputChange("documentName", e.target.value)
+                handleInputChange('documentName', e.target.value)
               }
               placeholder="Enter document name"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -148,7 +148,7 @@ const DocumentUploadModal: React.FC<{
             </label>
             <Select
               value={formData.category}
-              onValueChange={(value) => handleInputChange("category", value)}
+              onValueChange={(value) => handleInputChange('category', value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select category" />
@@ -179,7 +179,7 @@ const DocumentUploadModal: React.FC<{
             </label>
             <textarea
               value={formData.description}
-              onChange={(e) => handleInputChange("description", e.target.value)}
+              onChange={(e) => handleInputChange('description', e.target.value)}
               placeholder="Enter document description..."
               rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
@@ -213,139 +213,139 @@ const DocumentUploadModal: React.FC<{
 const DocumentsPage: NextPage = () => {
   const { user, error: authError, isLoading: authLoading } = useUser();
   const { isLoading: userLoading } = useCurrentUser();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
   // Mock documents data - replace with actual API calls
   const documents: Document[] = [
     {
-      id: "1",
-      name: "mongb",
-      createdDate: "04/16/2025",
-      createdTime: "5:01 PM",
-      size: "27KB",
-      type: "PDF Document",
-      fileIcon: "pdf",
+      id: '1',
+      name: 'mongb',
+      createdDate: '04/16/2025',
+      createdTime: '5:01 PM',
+      size: '27KB',
+      type: 'PDF Document',
+      fileIcon: 'pdf',
     },
     {
-      id: "2",
-      name: "mongodb_company_info",
-      createdDate: "04/16/2025",
-      createdTime: "4:34 PM",
-      size: "57KB",
-      type: "PDF Document",
-      fileIcon: "pdf",
+      id: '2',
+      name: 'mongodb_company_info',
+      createdDate: '04/16/2025',
+      createdTime: '4:34 PM',
+      size: '57KB',
+      type: 'PDF Document',
+      fileIcon: 'pdf',
     },
     {
-      id: "3",
-      name: "mongodb_company_info",
-      createdDate: "04/16/2025",
-      createdTime: "4:33 PM",
-      size: "57KB",
-      type: "PDF Document",
-      fileIcon: "pdf",
+      id: '3',
+      name: 'mongodb_company_info',
+      createdDate: '04/16/2025',
+      createdTime: '4:33 PM',
+      size: '57KB',
+      type: 'PDF Document',
+      fileIcon: 'pdf',
     },
     {
-      id: "4",
-      name: "mend",
-      createdDate: "04/15/2025",
-      createdTime: "3:45 PM",
-      size: "77KB",
-      type: "PDF Document",
-      fileIcon: "pdf",
+      id: '4',
+      name: 'mend',
+      createdDate: '04/15/2025',
+      createdTime: '3:45 PM',
+      size: '77KB',
+      type: 'PDF Document',
+      fileIcon: 'pdf',
     },
     {
-      id: "5",
-      name: "lab7-cloud-computing",
-      createdDate: "04/14/2025",
-      createdTime: "4:40 PM",
-      size: "5MB",
-      type: "PDF Document",
-      fileIcon: "pdf",
+      id: '5',
+      name: 'lab7-cloud-computing',
+      createdDate: '04/14/2025',
+      createdTime: '4:40 PM',
+      size: '5MB',
+      type: 'PDF Document',
+      fileIcon: 'pdf',
     },
     {
-      id: "6",
-      name: "final_practice_up_de-1",
-      createdDate: "04/14/2025",
-      createdTime: "4:29 PM",
-      size: "120KB",
-      type: "DOCX Document",
-      fileIcon: "docx",
+      id: '6',
+      name: 'final_practice_up_de-1',
+      createdDate: '04/14/2025',
+      createdTime: '4:29 PM',
+      size: '120KB',
+      type: 'DOCX Document',
+      fileIcon: 'docx',
     },
     {
-      id: "7",
-      name: "final-project-proposal-te...",
-      createdDate: "04/14/2025",
-      createdTime: "4:29 PM",
-      size: "14KB",
-      type: "DOCX Document",
-      fileIcon: "docx",
+      id: '7',
+      name: 'final-project-proposal-te...',
+      createdDate: '04/14/2025',
+      createdTime: '4:29 PM',
+      size: '14KB',
+      type: 'DOCX Document',
+      fileIcon: 'docx',
     },
   ];
 
   const fileTypeButtons = [
     {
-      type: "PDF",
+      type: 'PDF',
       icon: FileText,
-      bgColor: "bg-red-100",
-      textColor: "text-red-700",
-      borderColor: "border-red-200",
+      bgColor: 'bg-red-100',
+      textColor: 'text-red-700',
+      borderColor: 'border-red-200',
     },
     {
-      type: "Docx",
+      type: 'Docx',
       icon: FileText,
-      bgColor: "bg-blue-100",
-      textColor: "text-blue-700",
-      borderColor: "border-blue-200",
+      bgColor: 'bg-blue-100',
+      textColor: 'text-blue-700',
+      borderColor: 'border-blue-200',
     },
     {
-      type: "Xlsx",
+      type: 'Xlsx',
       icon: FileText,
-      bgColor: "bg-green-100",
-      textColor: "text-green-700",
-      borderColor: "border-green-200",
+      bgColor: 'bg-green-100',
+      textColor: 'text-green-700',
+      borderColor: 'border-green-200',
     },
     {
-      type: "Zip",
+      type: 'Zip',
       icon: File,
-      bgColor: "bg-gray-100",
-      textColor: "text-gray-700",
-      borderColor: "border-gray-200",
+      bgColor: 'bg-gray-100',
+      textColor: 'text-gray-700',
+      borderColor: 'border-gray-200',
     },
     {
-      type: "Html",
+      type: 'Html',
       icon: FileText,
-      bgColor: "bg-orange-100",
-      textColor: "text-orange-700",
-      borderColor: "border-orange-200",
+      bgColor: 'bg-orange-100',
+      textColor: 'text-orange-700',
+      borderColor: 'border-orange-200',
     },
     {
-      type: "Txt",
+      type: 'Txt',
       icon: FileText,
-      bgColor: "bg-gray-100",
-      textColor: "text-gray-700",
-      borderColor: "border-gray-200",
+      bgColor: 'bg-gray-100',
+      textColor: 'text-gray-700',
+      borderColor: 'border-gray-200',
     },
     {
-      type: "Rtf",
+      type: 'Rtf',
       icon: FileText,
-      bgColor: "bg-purple-100",
-      textColor: "text-purple-700",
-      borderColor: "border-purple-200",
+      bgColor: 'bg-purple-100',
+      textColor: 'text-purple-700',
+      borderColor: 'border-purple-200',
     },
     {
-      type: "htm",
+      type: 'htm',
       icon: FileText,
-      bgColor: "bg-orange-100",
-      textColor: "text-orange-700",
-      borderColor: "border-orange-200",
+      bgColor: 'bg-orange-100',
+      textColor: 'text-orange-700',
+      borderColor: 'border-orange-200',
     },
     {
-      type: "HTM",
+      type: 'HTM',
       icon: FileText,
-      bgColor: "bg-orange-100",
-      textColor: "text-orange-700",
-      borderColor: "border-orange-200",
+      bgColor: 'bg-orange-100',
+      textColor: 'text-orange-700',
+      borderColor: 'border-orange-200',
     },
   ];
 
@@ -369,7 +369,7 @@ const DocumentsPage: NextPage = () => {
           <CardHeader>
             <CardTitle className="text-red-600">Error</CardTitle>
             <CardDescription>
-              {authError.message || "Something went wrong"}
+              {authError.message || 'Something went wrong'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -404,13 +404,13 @@ const DocumentsPage: NextPage = () => {
   }
 
   const getFileIcon = (fileType: string) => {
-    if (fileType === "pdf") {
+    if (fileType === 'pdf') {
       return (
         <div className="w-8 h-8 bg-red-100 rounded flex items-center justify-center">
           <FileText className="w-5 h-5 text-red-600" />
         </div>
       );
-    } else if (fileType === "docx") {
+    } else if (fileType === 'docx') {
       return (
         <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center">
           <FileText className="w-5 h-5 text-blue-600" />
@@ -430,11 +430,8 @@ const DocumentsPage: NextPage = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
-          <Button
-            className="bg-blue-500 hover:bg-blue-600 text-white"
-            onClick={() => setIsUploadModalOpen(true)}
-          >
-            <Plus className="w-4 h-4 mr-2" />
+          <Button onClick={() => setIsUploadModalOpen(true)}>
+            <Plus className="w-4 h-4" />
             Add New Document
           </Button>
         </div>
@@ -579,10 +576,7 @@ const DocumentsPage: NextPage = () => {
         <DocumentUploadModal
           isOpen={isUploadModalOpen}
           onClose={() => setIsUploadModalOpen(false)}
-          onSubmit={(data) => {
-            console.log("Document upload data:", data);
-            // Handle document upload logic here
-          }}
+          onSubmit={() => {}}
         />
       </div>
     </Layout>

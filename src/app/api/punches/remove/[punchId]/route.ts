@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
-import { withEnhancedAuthAPI } from "@/lib/middleware";
-import { mongoConn } from "@/lib/db";
-import type { AuthenticatedRequest } from "@/domains/user/types";
-import { deletePunchById } from "@/domains/punch/utils";
+import { NextResponse } from 'next/server';
+import { withEnhancedAuthAPI } from '@/lib/middleware';
+import { mongoConn } from '@/lib/db';
+import type { AuthenticatedRequest } from '@/domains/user/types';
+import { deletePunchById } from '@/domains/punch/utils';
 
 // DELETE Handler for Deleting Punch by ID
 async function deletePunchHandler(
@@ -15,12 +15,12 @@ async function deletePunchHandler(
     const punchId = params?.punchId;
 
     if (!user._id || !punchId) {
-      console.error("Missing required parameters:", {
+      console.error('Missing required parameters:', {
         userId: user._id,
         punchId,
       });
       return NextResponse.json(
-        { error: "missing-parameters", message: "Missing required parameters" },
+        { error: 'missing-parameters', message: 'Missing required parameters' },
         { status: 400 }
       );
     }
@@ -30,22 +30,20 @@ async function deletePunchHandler(
 
     const result = await deletePunchById(db, punchId);
 
-    console.log(`Deleted punch ${punchId} for user ${user._id}`);
-
     return NextResponse.json(
       {
         success: true,
-        message: "Punch deleted successfully",
+        message: 'Punch deleted successfully',
         data: result,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error deleting punch:", error);
+    console.error('Error deleting punch:', error);
     return NextResponse.json(
       {
-        error: "internal-error",
-        message: "Internal server error",
+        error: 'internal-error',
+        message: 'Internal server error',
         details: (error as Error).message,
       },
       { status: 500 }

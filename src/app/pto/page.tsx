@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { Textarea } from "@/components/ui/Textarea";
-import { Dialog, DialogContent } from "@/components/ui/Dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/Dialog";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup";
 import { CalendarEvent, Mode } from "@/components/ui/Calendar";
 import CalendarProvider from "@/components/ui/Calendar/CalendarProvider";
@@ -35,6 +35,9 @@ import {
   SelectValue,
 } from "@/components/ui/Select";
 import Layout from "@/components/layout/Layout";
+import { Table } from "@/components/ui/Table";
+import { TableColumn } from "@/components/ui/Table/types";
+import { clsxm } from "@/lib/utils";
 
 // PTO Types
 type PTOType = "vacation" | "sick" | "fmla" | "sabbatical" | "personal";
@@ -51,6 +54,19 @@ interface PTORequest {
   requestedDate: Date;
   approvedBy?: string;
   attachment?: File;
+}
+
+interface PTOTableData extends Record<string, unknown> {
+  id: string;
+  dateRange: string;
+  type: PTOType;
+  days: number;
+  reason: string;
+  requestedDate: string;
+  status: PTOStatus;
+  approvedBy: string | undefined;
+  startDate: Date;
+  endDate: Date;
 }
 
 // Static PTO data
@@ -290,11 +306,15 @@ const PTORequestModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md p-0 gap-0">
-        <div className="flex items-center justify-between p-6 border-b">
-          <h2 className="text-lg font-semibold text-gray-900">Request PTO</h2>
-          <p className="text-sm text-gray-600">Fill your Paid time-off here.</p>
-        </div>
+      <DialogContent className="w-full max-w-xs sm:max-w-md p-0 gap-0">
+        <DialogTitle asChild>
+          <div className="flex items-center justify-between p-6 border-b">
+            <h2 className="text-lg font-semibold text-gray-900">Request PTO</h2>
+            <p className="text-sm text-gray-600">
+              Fill your Paid time-off here.
+            </p>
+          </div>
+        </DialogTitle>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -513,59 +533,150 @@ export default function PTODashboard() {
     return ptoRequests;
   }, [ptoRequests, viewType]);
 
+  const columns: TableColumn<PTOTableData>[] = [
+    {
+      key: "dateRange",
+      header: "Date/s",
+      render: (value: unknown) => String(value),
+    },
+    {
+      key: "type",
+      header: "Type",
+      render: (value: unknown, row: PTOTableData) => (
+        <Badge className={ptoTypeConfig[row.type].color}>
+          {ptoTypeConfig[row.type].label}
+        </Badge>
+      ),
+    },
+    {
+      key: "days",
+      header: "Days",
+      render: (value: unknown) => String(value),
+    },
+    {
+      key: "reason",
+      header: "Reason",
+      render: (value: unknown) => (
+        <span className="max-w-xs truncate">{String(value)}</span>
+      ),
+    },
+    {
+      key: "requestedDate",
+      header: "Requested",
+      render: (value: unknown) => String(value),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (value: unknown, row: PTOTableData) => {
+        const StatusIcon = statusConfig[row.status].icon;
+        return (
+          <div
+            className={`flex items-center gap-1 ${
+              statusConfig[row.status].color
+            }`}
+          >
+            <StatusIcon className="h-4 w-4" />
+            <span className="font-medium">
+              {statusConfig[row.status].label}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      key: "approvedBy",
+      header: "Approved by",
+      render: (value: unknown) => (value ? String(value) : "-"),
+    },
+  ];
+
+  // Transform the filtered requests into the table data format
+  const tableData: PTOTableData[] = filteredRequests.map((request) => ({
+    id: request.id,
+    dateRange:
+      request.startDate.getTime() === request.endDate.getTime()
+        ? format(request.startDate, "MM/dd/yyyy")
+        : `${format(request.startDate, "MM/dd/yyyy")} - ${format(
+            request.endDate,
+            "MM/dd/yyyy"
+          )}`,
+    type: request.type,
+    days: request.days,
+    reason: request.reason,
+    requestedDate: format(request.requestedDate, "MM/dd/yyyy"),
+    status: request.status,
+    approvedBy: request.approvedBy,
+    startDate: request.startDate,
+    endDate: request.endDate,
+  }));
+
   return (
     <Layout title="Paid Time Off">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 space-y-6">
         {/* Header */}
-        <h1 className="text-2xl font-bold text-gray-900">
+        <h1 className="text-2xl sm:text-2xl font-bold text-gray-900">
           Paid Time Off (PTO)
         </h1>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center justify-start">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center justify-start w-full sm:w-auto">
             {/* View Toggle */}
             <ToggleGroup
-              className="flex gap-0 -space-x-px rounded-sm border overflow-hidden shadow-sm shadow-black/5 rtl:space-x-reverse"
-              type="single"
-              variant="outline"
+                className="inline-flex rounded-lg border border-gray-30 p-1 self-start sm:self-auto shadow-sm"
+                type="single"
               value={viewType}
               onValueChange={(value) =>
                 value && setViewType(value as typeof viewType)
               }
             >
               <ToggleGroupItem
-                value="monthly"
-                className="w-full rounded-none shadow-none focus-visible:z-10 text-base flex items-center justify-center gap-2 relative border-none"
-              >
+                  value="monthly"
+                  className={clsxm(
+                    "rounded-md px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all",
+                    viewType === "monthly" ?
+                      "bg-appPrimary text-white shadow-md":
+                      "text-gray-600 hover:text-gray-900 hover:bg-gray-200"
+                  )}
+                >
                 Monthly
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="weekly"
-                className="w-full rounded-none shadow-none focus-visible:z-10 text-base flex items-center justify-center gap-2 relative border-none"
+                className={clsxm(
+                  "rounded-md px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all",
+                  viewType === "weekly" ?
+                    "bg-appPrimary text-white shadow-md":
+                    "text-gray-600 hover:text-gray-900 hover:bg-gray-200"
+                )}
               >
                 Weekly
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="calendar"
-                className="w-full rounded-none shadow-none focus-visible:z-10 text-base flex items-center justify-center gap-2 relative border-none"
-              >
+                className={clsxm(
+                  "rounded-md px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all",
+                  viewType === "calendar" ?
+                    "bg-appPrimary text-white shadow-md":
+                    "text-gray-600 hover:text-gray-900 hover:bg-gray-200"
+                )}              >
                 Calendar
               </ToggleGroupItem>
             </ToggleGroup>
           </div>
 
           <Button
-            className="bg-blue-500 hover:bg-blue-600 text-white"
             onClick={() => setShowRequestModal(true)}
+            className="w-full sm:w-auto"
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Request Time Off
+            <Plus className="w-4 h-4" />
+            Request PTO
           </Button>
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">PTO used</p>
@@ -580,7 +691,7 @@ export default function PTODashboard() {
           </Card>
 
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">
@@ -597,7 +708,7 @@ export default function PTODashboard() {
           </Card>
 
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">
@@ -614,7 +725,7 @@ export default function PTODashboard() {
           </Card>
 
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total PTO</p>
@@ -632,10 +743,12 @@ export default function PTODashboard() {
         {/* Calendar View */}
         {viewType === "calendar" && (
           <Card>
-            <CardContent className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold">PTO Calendar</h2>
-                <div className="flex items-center gap-4">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 md:gap-0">
+                <h2 className="text-lg sm:text-xl font-semibold">
+                  PTO Calendar
+                </h2>
+                <div className="flex items-center gap-2 sm:gap-4 w-full md:w-auto">
                   <CalendarProvider
                     events={events}
                     setEvents={setEvents}
@@ -661,7 +774,7 @@ export default function PTODashboard() {
                 </div>
               </div>
 
-              <div className="border rounded-lg overflow-hidden">
+              <div className="border rounded-lg overflow-x-auto">
                 <CalendarProvider
                   events={events}
                   setEvents={setEvents}
@@ -671,7 +784,7 @@ export default function PTODashboard() {
                   setDate={setCurrentDate}
                   calendarIconIsToday={false}
                 >
-                  <CalendarBody />
+                  <CalendarBody hideTotalColumn={true} />
                   <CalendarEventHandler
                     ptoRequests={ptoRequests}
                     onEventClick={setSelectedPTO}
@@ -680,7 +793,7 @@ export default function PTODashboard() {
               </div>
 
               {/* Legend */}
-              <div className="flex flex-wrap gap-4 mt-4">
+              <div className="flex flex-wrap gap-2 sm:gap-4 mt-4">
                 {Object.entries(ptoTypeConfig).map(([key, config]) => (
                   <div key={key} className="flex items-center gap-2">
                     <div
@@ -696,106 +809,31 @@ export default function PTODashboard() {
           </Card>
         )}
 
-        {/* PTO Request History */}
-        <Card>
-          <CardContent className="p-6">
-            <h2 className="text-xl font-semibold mb-6">
-              PTO Request History{" "}
-              {viewType === "weekly"
-                ? "(Weekly)"
-                : viewType === "monthly"
-                ? "(Monthly)"
-                : ""}
-            </h2>
+        {viewType !== "calendar" && (
+          <Card>
+            <CardContent className="p-4 sm:p-6">
+              <h2 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6">
+                PTO Request History{" "}
+                {viewType === "weekly"
+                  ? "(Weekly)"
+                  : viewType === "monthly"
+                  ? "(Monthly)"
+                  : ""}
+              </h2>
 
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">
-                      Date/s
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">
-                      Type
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">
-                      Days
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">
-                      Reason
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">
-                      Requested
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">
-                      Status
-                    </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">
-                      Approved by
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredRequests.map((request) => {
-                    const StatusIcon = statusConfig[request.status].icon;
-                    return (
-                      <tr
-                        key={request.id}
-                        className="border-b hover:bg-gray-50"
-                      >
-                        <td className="py-3 px-4">
-                          {format(request.startDate, "MM/dd/yyyy")}
-                          {request.startDate.getTime() !==
-                            request.endDate.getTime() &&
-                            ` - ${format(request.endDate, "MM/dd/yyyy")}`}
-                        </td>
-                        <td className="py-3 px-4">
-                          <Badge className={ptoTypeConfig[request.type].color}>
-                            {ptoTypeConfig[request.type].label}
-                          </Badge>
-                        </td>
-                        <td className="py-3 px-4">{request.days}</td>
-                        <td className="py-3 px-4 max-w-xs truncate">
-                          {request.reason}
-                        </td>
-                        <td className="py-3 px-4">
-                          {format(request.requestedDate, "MM/dd/yyyy")}
-                        </td>
-                        <td className="py-3 px-4">
-                          <div
-                            className={`flex items-center gap-1 ${
-                              statusConfig[request.status].color
-                            }`}
-                          >
-                            <StatusIcon className="h-4 w-4" />
-                            <span className="font-medium">
-                              {statusConfig[request.status].label}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          {request.approvedBy || "-"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <span>0 of {filteredRequests.length} row(s) selected.</span>
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm">
-                  Previous
-                </Button>
-                <Button variant="ghost" size="sm">
-                  Next
-                </Button>
+              <div className="w-full overflow-x-auto">
+                <Table
+                  columns={columns}
+                  data={tableData}
+                  showPagination={true}
+                  selectable={true}
+                  className="min-w-[600px] w-full"
+                  emptyMessage="No PTO requests found."
+                />
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* PTO Request Modal */}
         <PTORequestModal

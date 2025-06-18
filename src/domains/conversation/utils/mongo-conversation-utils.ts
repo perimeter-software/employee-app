@@ -1,23 +1,20 @@
 // src/domains/conversation/utils/mongo-conversation-utils.ts
-import type { AiConversation } from "../types";
-import { convertToJSON } from "@/lib/utils/mongo-utils";
-import { Db } from "mongodb";
-import { ObjectId } from "bson";
+import type { AiConversation } from '../types';
+import { convertToJSON } from '@/lib/utils/mongo-utils';
+import { Db } from 'mongodb';
+import { ObjectId } from 'bson';
 
 export async function getAllConversions(
   db: Db,
   userId: string
 ): Promise<{ conversations: AiConversation[] }> {
   try {
-    console.log("Fetching all conversations for user ID:", userId);
     const conversations = await db
-      .collection("conversations")
+      .collection('conversations')
       .find({ userId })
       .sort({ created: -1 })
       .limit(1)
       .toArray();
-
-    console.log("Conversations found:", conversations);
 
     // Convert each document to JSON individually
     const convertedConversations = conversations.map(
@@ -27,7 +24,7 @@ export async function getAllConversions(
     // Return the converted conversations
     return { conversations: convertedConversations };
   } catch (error) {
-    console.error("An error occurred:", error);
+    console.error('An error occurred:', error);
 
     // Return an empty array in case of any error
     return { conversations: [] };
@@ -39,27 +36,26 @@ export async function createConversation(
   conversation: AiConversation
 ): Promise<AiConversation | null> {
   try {
-    console.log("Creating conversation in util:", conversation);
-    const insertResult = await db.collection("conversations").insertOne({
+    const insertResult = await db.collection('conversations').insertOne({
       ...conversation,
       _id: conversation._id ? new ObjectId(conversation._id) : undefined,
     });
 
     if (!insertResult.insertedId) {
-      throw new Error("Failed to insert conversation");
+      throw new Error('Failed to insert conversation');
     }
 
     const result = await db
-      .collection("conversations")
+      .collection('conversations')
       .findOne({ _id: insertResult.insertedId });
 
     if (!result) {
-      throw new Error("Failed to retrieve inserted conversation");
+      throw new Error('Failed to retrieve inserted conversation');
     }
 
     return convertToJSON(result) as AiConversation;
   } catch (error) {
-    console.error("An error occurred:", error);
+    console.error('An error occurred:', error);
     return null;
   }
 }
@@ -77,22 +73,22 @@ export async function updateConversationById(
 
   try {
     const result = await db
-      .collection("conversations")
+      .collection('conversations')
       .findOneAndUpdate(
         { _id: new ObjectId(conversationId) },
         { $set: updatesWithoutId },
-        { returnDocument: "after" }
+        { returnDocument: 'after' }
       );
 
     if (!result) {
-      console.error("Conversation not found or update failed");
+      console.error('Conversation not found or update failed');
       return { conversation: null };
     }
 
     const updatedConversation = convertToJSON(result) as AiConversation;
     return { conversation: updatedConversation };
   } catch (error) {
-    console.error("An error occurred:", error);
+    console.error('An error occurred:', error);
     return { conversation: null };
   }
 }
@@ -103,17 +99,17 @@ export async function deleteConversationById(
 ): Promise<{ success: boolean }> {
   try {
     const result = await db
-      .collection("conversations")
+      .collection('conversations')
       .deleteOne({ _id: new ObjectId(conversationId) });
 
     if (result.deletedCount === 0) {
-      console.error("Conversation not found or delete failed");
+      console.error('Conversation not found or delete failed');
       return { success: false };
     }
 
     return { success: true };
   } catch (error) {
-    console.error("An error occurred:", error);
+    console.error('An error occurred:', error);
     return { success: false };
   }
 }

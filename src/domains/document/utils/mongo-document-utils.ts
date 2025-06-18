@@ -1,6 +1,11 @@
-import { convertToJSON } from "@/lib/utils/mongo-utils";
-import { ObjectId, type Db, type UpdateResult, type InsertOneResult } from "mongodb";
-import { Document } from "../types";
+import { convertToJSON } from '@/lib/utils/mongo-utils';
+import {
+  ObjectId,
+  type Db,
+  type UpdateResult,
+  type InsertOneResult,
+} from 'mongodb';
+import { Document } from '../types';
 
 export async function getAllDocuments(
   db: Db,
@@ -10,12 +15,12 @@ export async function getAllDocuments(
 
   try {
     const documentDocs = await db
-      .collection("applicants")
+      .collection('applicants')
       .aggregate([
         {
           $match: {
             uploadedBy: userId,
-            status: { $ne: "deleted" },
+            status: { $ne: 'deleted' },
             isActive: true,
           },
         },
@@ -25,32 +30,15 @@ export async function getAllDocuments(
       ])
       .toArray();
 
-    documents = documentDocs.reduce(
-      (acc: Document[], documentDoc) => {
-        const conversionResult = convertToJSON(documentDoc);
-        if (conversionResult) {
-          acc.push(conversionResult as Document);
-        } else {
-          console.log(
-            "MongoDB conversion error for document:",
-            documentDoc._id
-          );
-        }
-        return acc;
-      },
-      []
-    );
-
-    if (documents.length === 0) {
-      console.log("No documents found for user:", userId);
-    } else {
-      console.log(
-        `Found ${documents.length} document(s) for user:`,
-        userId
-      );
-    }
+    documents = documentDocs.reduce((acc: Document[], documentDoc) => {
+      const conversionResult = convertToJSON(documentDoc);
+      if (conversionResult) {
+        acc.push(conversionResult as Document);
+      }
+      return acc;
+    }, []);
   } catch (e) {
-    console.error("Error finding documents:", e);
+    console.error('Error finding documents:', e);
   }
 
   return documents;
@@ -61,36 +49,36 @@ export async function findDocumentById(
   documentId: string
 ): Promise<Document | null> {
   try {
-    const documentDoc = await db
-      .collection("applicants")
-      .findOne({
-        _id: new ObjectId(documentId),
-        status: { $ne: "deleted" },
-        isActive: true
-      });
+    const documentDoc = await db.collection('applicants').findOne({
+      _id: new ObjectId(documentId),
+      status: { $ne: 'deleted' },
+      isActive: true,
+    });
 
     if (!documentDoc) {
-      console.log("Document not found:", documentId);
       return null;
     }
 
     const document = convertToJSON(documentDoc) as Document;
     return document;
   } catch (error) {
-    console.error("Error finding document by ID:", error);
+    console.error('Error finding document by ID:', error);
     return null;
   }
 }
 
 export async function createDocument(
   db: Db,
-  documentData: Omit<Document, "_id" | "createdAt" | "updatedAt" | "downloadCount">
+  documentData: Omit<
+    Document,
+    '_id' | 'createdAt' | 'updatedAt' | 'downloadCount'
+  >
 ): Promise<InsertOneResult<Document>> {
   if (!documentData) {
-    throw new Error("Invalid document data");
+    throw new Error('Invalid document data');
   }
 
-  const Documents = db.collection("documents");
+  const Documents = db.collection('documents');
 
   try {
     const now = new Date();
@@ -100,13 +88,14 @@ export async function createDocument(
       updatedAt: now,
       downloadCount: 0,
       isActive: true,
-      status: "active" as const,
+      status: 'active' as const,
     };
 
-    const result: InsertOneResult<Document> = await Documents.insertOne(newDocument);
+    const result: InsertOneResult<Document> =
+      await Documents.insertOne(newDocument);
     return result;
   } catch (error) {
-    console.error("Error creating document:", error);
+    console.error('Error creating document:', error);
     throw error;
   }
 }
@@ -116,19 +105,18 @@ export async function updateDocument(
   id: string,
   body: Partial<Document>
 ): Promise<UpdateResult<Document>> {
-
   if (body.createdAt) {
     delete body.createdAt;
   }
 
-  const Documents = db.collection("applicants");
+  const Documents = db.collection('applicants');
 
   try {
     const result: UpdateResult<Document> = await Documents.updateOne(
       {
         _id: new ObjectId(id),
-        status: { $ne: "deleted" },
-        isActive: true
+        status: { $ne: 'deleted' },
+        isActive: true,
       },
       { $set: body },
       { upsert: false }
@@ -136,7 +124,7 @@ export async function updateDocument(
 
     return result;
   } catch (error) {
-    console.error("Error updating document:", error);
+    console.error('Error updating document:', error);
     throw error;
   }
 }
@@ -146,8 +134,7 @@ export async function deleteDocument(
   documentId: string,
   userId: string
 ): Promise<UpdateResult<Document>> {
-
-  const Documents = db.collection("applicants");
+  const Documents = db.collection('applicants');
 
   try {
     // Soft delete - mark as deleted instead of removing
@@ -155,21 +142,21 @@ export async function deleteDocument(
       {
         _id: new ObjectId(documentId),
         uploadedBy: userId, // Ensure user owns the document
-        status: { $ne: "deleted" }
+        status: { $ne: 'deleted' },
       },
       {
         $set: {
-          status: "deleted",
+          status: 'deleted',
           isActive: false,
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       },
       { upsert: false }
     );
 
     return result;
   } catch (error) {
-    console.error("Error deleting document:", error);
+    console.error('Error deleting document:', error);
     throw error;
   }
 }
@@ -183,19 +170,19 @@ export async function searchDocuments(
 
   try {
     const documentDocs = await db
-      .collection("applicants")
+      .collection('applicants')
       .aggregate([
         {
           $match: {
             uploadedBy: userId,
-            status: { $ne: "deleted" },
+            status: { $ne: 'deleted' },
             isActive: true,
             $or: [
-              { name: { $regex: query, $options: "i" } },
-              { description: { $regex: query, $options: "i" } },
-              { tags: { $in: [new RegExp(query, "i")] } },
-              { category: { $regex: query, $options: "i" } },
-              { company: { $regex: query, $options: "i" } },
+              { name: { $regex: query, $options: 'i' } },
+              { description: { $regex: query, $options: 'i' } },
+              { tags: { $in: [new RegExp(query, 'i')] } },
+              { category: { $regex: query, $options: 'i' } },
+              { company: { $regex: query, $options: 'i' } },
             ],
           },
         },
@@ -205,28 +192,15 @@ export async function searchDocuments(
       ])
       .toArray();
 
-    documents = documentDocs.reduce(
-      (acc: Document[], documentDoc) => {
-        const conversionResult = convertToJSON(documentDoc);
-        if (conversionResult) {
-          acc.push(conversionResult as Document);
-        } else {
-          console.log(
-            "MongoDB conversion error for document:",
-            documentDoc._id
-          );
-        }
-        return acc;
-      },
-      []
-    );
-
-    console.log(
-      `Found ${documents.length} document(s) matching query "${query}" for user:`,
-      userId
-    );
+    documents = documentDocs.reduce((acc: Document[], documentDoc) => {
+      const conversionResult = convertToJSON(documentDoc);
+      if (conversionResult) {
+        acc.push(conversionResult as Document);
+      }
+      return acc;
+    }, []);
   } catch (e) {
-    console.error("Error searching documents:", e);
+    console.error('Error searching documents:', e);
   }
 
   return documents;
@@ -241,13 +215,13 @@ export async function findDocumentsByCompany(
 
   try {
     const documentDocs = await db
-      .collection("applicants")
+      .collection('applicants')
       .aggregate([
         {
           $match: {
             uploadedBy: userId,
             company: company,
-            status: { $ne: "deleted" },
+            status: { $ne: 'deleted' },
             isActive: true,
           },
         },
@@ -257,28 +231,15 @@ export async function findDocumentsByCompany(
       ])
       .toArray();
 
-    documents = documentDocs.reduce(
-      (acc: Document[], documentDoc) => {
-        const conversionResult = convertToJSON(documentDoc);
-        if (conversionResult) {
-          acc.push(conversionResult as Document);
-        } else {
-          console.log(
-            "MongoDB conversion error for document:",
-            documentDoc._id
-          );
-        }
-        return acc;
-      },
-      []
-    );
-
-    console.log(
-      `Found ${documents.length} document(s) for company "${company}" and user:`,
-      userId
-    );
+    documents = documentDocs.reduce((acc: Document[], documentDoc) => {
+      const conversionResult = convertToJSON(documentDoc);
+      if (conversionResult) {
+        acc.push(conversionResult as Document);
+      }
+      return acc;
+    }, []);
   } catch (e) {
-    console.error("Error finding documents by company:", e);
+    console.error('Error finding documents by company:', e);
   }
 
   return documents;
@@ -293,13 +254,13 @@ export async function findDocumentsByType(
 
   try {
     const documentDocs = await db
-      .collection("applicants")
+      .collection('applicants')
       .aggregate([
         {
           $match: {
             uploadedBy: userId,
             fileExtension: fileType.toLowerCase(),
-            status: { $ne: "deleted" },
+            status: { $ne: 'deleted' },
             isActive: true,
           },
         },
@@ -309,28 +270,15 @@ export async function findDocumentsByType(
       ])
       .toArray();
 
-    documents = documentDocs.reduce(
-      (acc: Document[], documentDoc) => {
-        const conversionResult = convertToJSON(documentDoc);
-        if (conversionResult) {
-          acc.push(conversionResult as Document);
-        } else {
-          console.log(
-            "MongoDB conversion error for document:",
-            documentDoc._id
-          );
-        }
-        return acc;
-      },
-      []
-    );
-
-    console.log(
-      `Found ${documents.length} document(s) of type "${fileType}" for user:`,
-      userId
-    );
+    documents = documentDocs.reduce((acc: Document[], documentDoc) => {
+      const conversionResult = convertToJSON(documentDoc);
+      if (conversionResult) {
+        acc.push(conversionResult as Document);
+      }
+      return acc;
+    }, []);
   } catch (e) {
-    console.error("Error finding documents by type:", e);
+    console.error('Error finding documents by type:', e);
   }
 
   return documents;
@@ -342,37 +290,37 @@ export async function bulkDeleteDocuments(
   userId: string
 ): Promise<UpdateResult<Document[]>> {
   if (!documentIds || documentIds.length === 0) {
-    throw new Error("Invalid document IDs");
+    throw new Error('Invalid document IDs');
   }
 
   if (!userId) {
-    throw new Error("Invalid user ID");
+    throw new Error('Invalid user ID');
   }
 
-  const Documents = db.collection("applicants");
+  const Documents = db.collection('applicants');
 
   try {
-    const objectIds = documentIds.map(id => new ObjectId(id));
+    const objectIds = documentIds.map((id) => new ObjectId(id));
 
     const result: UpdateResult<Document[]> = await Documents.updateMany(
       {
         _id: { $in: objectIds },
         uploadedBy: userId, // Ensure user owns the documents
-        status: { $ne: "deleted" }
+        status: { $ne: 'deleted' },
       },
       {
         $set: {
-          status: "deleted",
+          status: 'deleted',
           isActive: false,
-          updatedAt: new Date()
-        }
+          updatedAt: new Date(),
+        },
       },
       { upsert: false }
     );
 
     return result;
   } catch (error) {
-    console.error("Error bulk deleting documents:", error);
+    console.error('Error bulk deleting documents:', error);
     throw error;
   }
 }

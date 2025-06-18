@@ -1,0 +1,12 @@
+# dependencies
+node_modules/
+
+# Next.js build output
+.next/
+
+# Other build folders
+dist/
+build/
+
+# VS Code workspace settings
+.vscode/

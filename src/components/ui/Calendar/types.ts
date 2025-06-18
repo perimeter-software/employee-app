@@ -6,6 +6,7 @@ export type CalendarProps = {
   date: Date;
   setDate: (date: Date) => void;
   calendarIconIsToday?: boolean;
+  hideTotalColumn?: boolean;
 };
 
 export type CalendarContextType = CalendarProps & {

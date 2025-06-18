@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
-import { withEnhancedAuthAPI } from "@/lib/middleware";
-import { mongoConn } from "@/lib/db";
-import type { AuthenticatedRequest } from "@/domains/user/types";
-import { findAllPunchesByDateRange } from "@/domains/punch/utils";
+import { NextResponse } from 'next/server';
+import { withEnhancedAuthAPI } from '@/lib/middleware';
+import { mongoConn } from '@/lib/db';
+import type { AuthenticatedRequest } from '@/domains/user/types';
+import { findAllPunchesByDateRange } from '@/domains/punch/utils';
 
 // POST Handler for Finding Punches by Date Range
 async function findPunchesByDateRangeHandler(request: AuthenticatedRequest) {
@@ -10,14 +10,14 @@ async function findPunchesByDateRangeHandler(request: AuthenticatedRequest) {
     const { userId, jobIds, startDate, endDate, status } = await request.json();
 
     if (!userId || !jobIds || jobIds.length === 0 || !startDate || !endDate) {
-      console.error("Missing required parameters:", {
+      console.error('Missing required parameters:', {
         userId,
         jobIds,
         startDate,
         endDate,
       });
       return NextResponse.json(
-        { error: "missing-parameters", message: "Missing required parameters" },
+        { error: 'missing-parameters', message: 'Missing required parameters' },
         { status: 400 }
       );
     }
@@ -34,25 +34,21 @@ async function findPunchesByDateRangeHandler(request: AuthenticatedRequest) {
       status
     );
 
-    console.log(
-      `Found ${punches.length} punches for user ${userId} from ${startDate} to ${endDate}`
-    );
-
     return NextResponse.json(
       {
         success: true,
-        message: "Punches retrieved successfully",
+        message: 'Punches retrieved successfully',
         count: punches.length,
         data: punches,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error fetching punches:", error);
+    console.error('Error fetching punches:', error);
     return NextResponse.json(
       {
-        error: "internal-error",
-        message: "Internal server error",
+        error: 'internal-error',
+        message: 'Internal server error',
         details: (error as Error).message,
       },
       { status: 500 }

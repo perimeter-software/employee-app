@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
-import { withEnhancedAuthAPI } from "@/lib/middleware";
-import { mongoConn } from "@/lib/db";
-import type { AuthenticatedRequest } from "@/domains/user/types";
+import { NextResponse } from 'next/server';
+import { withEnhancedAuthAPI } from '@/lib/middleware';
+import { mongoConn } from '@/lib/db';
+import type { AuthenticatedRequest } from '@/domains/user/types';
 import {
   deletePunchById,
   findAllOpenPunchesWithJobInfo,
-} from "@/domains/punch/utils";
+} from '@/domains/punch/utils';
 
 // GET Handler for Fetching Punches
 async function getPunchesHandler(
@@ -17,19 +17,12 @@ async function getPunchesHandler(
     const params = (await context?.params) as { userId: string } | undefined;
     const userId = params?.userId;
 
-    console.log("user: ", user);
-
-    console.log("📍 GET punches endpoint hit:", {
-      userId,
-      userFromToken: user._id,
-    });
-
     if (!userId) {
       return NextResponse.json(
         {
           success: false,
-          error: "missing-parameters",
-          message: "Missing required parameters",
+          error: 'missing-parameters',
+          message: 'Missing required parameters',
         },
         { status: 400 }
       );
@@ -37,27 +30,24 @@ async function getPunchesHandler(
 
     // Get search params from URL
     const { searchParams } = new URL(request.url);
-    const type = searchParams.get("type");
-
-    console.log("📍 Request params:", { userId, type, url: request.url });
+    const type = searchParams.get('type');
 
     // Connect to database
     const { db } = await mongoConn();
 
     let punches;
 
-    if (type === "allOpen") {
-      console.log("📍 Fetching all open punches for user:", user._id);
+    if (type === 'allOpen') {
       punches = await findAllOpenPunchesWithJobInfo(
         db,
-        user._id || "",
-        user.applicantId || ""
+        user._id || '',
+        user.applicantId || ''
       );
     } else {
       return NextResponse.json(
         {
           success: false,
-          error: "invalid-type",
+          error: 'invalid-type',
           message: "Invalid or missing type parameter. Expected 'allOpen'",
         },
         { status: 400 }
@@ -68,12 +58,12 @@ async function getPunchesHandler(
     if (
       !punches ||
       (Array.isArray(punches) && punches.length === 0) ||
-      (typeof punches === "object" && Object.keys(punches).length === 0)
+      (typeof punches === 'object' && Object.keys(punches).length === 0)
     ) {
       return NextResponse.json(
         {
           success: true,
-          message: "No punches found",
+          message: 'No punches found',
           data: [],
         },
         { status: 200 }
@@ -86,18 +76,18 @@ async function getPunchesHandler(
     return NextResponse.json(
       {
         success: true,
-        message: "Punches retrieved successfully",
+        message: 'Punches retrieved successfully',
         data: punchArray,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("❌ Error fetching punches:", error);
+    console.error('❌ Error fetching punches:', error);
     return NextResponse.json(
       {
         success: false,
-        error: "internal-error",
-        message: "Internal server error",
+        error: 'internal-error',
+        message: 'Internal server error',
       },
       { status: 500 }
     );
@@ -114,21 +104,16 @@ async function deletePunchHandler(
     const params = (await context?.params) as { userId: string } | undefined;
     const userId = params?.userId;
 
-    console.log("📍 DELETE punch endpoint hit:", {
-      userId,
-      userFromToken: user._id,
-    });
-
     if (!user._id || !userId) {
-      console.error("❌ Missing required parameters:", {
+      console.error('❌ Missing required parameters:', {
         userId: user._id,
         punchId: userId,
       });
       return NextResponse.json(
         {
           success: false,
-          error: "missing-parameters",
-          message: "Missing required parameters",
+          error: 'missing-parameters',
+          message: 'Missing required parameters',
         },
         { status: 400 }
       );
@@ -139,23 +124,21 @@ async function deletePunchHandler(
 
     const result = await deletePunchById(db, userId);
 
-    console.log(`✅ Deleted punch ${userId} for user ${user._id}`);
-
     return NextResponse.json(
       {
         success: true,
-        message: "Punch deleted successfully",
+        message: 'Punch deleted successfully',
         data: result,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("❌ Error deleting punch:", error);
+    console.error('❌ Error deleting punch:', error);
     return NextResponse.json(
       {
         success: false,
-        error: "internal-error",
-        message: "Internal server error",
+        error: 'internal-error',
+        message: 'Internal server error',
       },
       { status: 500 }
     );

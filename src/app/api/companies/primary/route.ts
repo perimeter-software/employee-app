@@ -1,16 +1,10 @@
-import { NextResponse } from "next/server";
-import { withEnhancedAuthAPI } from "@/lib/middleware";
-import { mongoConn } from "@/lib/db";
-import { findPrimaryCompany } from "@/domains/company";
-import type { AuthenticatedRequest } from "@/domains/user/types";
+import { NextResponse } from 'next/server';
+import { withEnhancedAuthAPI } from '@/lib/middleware';
+import { mongoConn } from '@/lib/db';
+import { findPrimaryCompany } from '@/domains/company';
 
-async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
+async function getPrimaryCompanyHandler() {
   try {
-    // User is authenticated AND exists in database AND has tenant access
-    const user = request.user;
-    const userEmail = user.email!;
-    console.log("Enhanced authenticated user:", user.sub, userEmail);
-
     // Connect to databases
     const { db } = await mongoConn();
 
@@ -21,8 +15,8 @@ async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "not-found",
-          message: "Primary company not found",
+          error: 'not-found',
+          message: 'Primary company not found',
         },
         { status: 404 }
       );
@@ -30,16 +24,16 @@ async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Primary company found",
+      message: 'Primary company found',
       data: primaryCompany,
     });
   } catch (error) {
-    console.error("Primary company API error:", error);
+    console.error('Primary company API error:', error);
     return NextResponse.json(
       {
         success: false,
-        error: "internal-error",
-        message: "Internal server error",
+        error: 'internal-error',
+        message: 'Internal server error',
       },
       { status: 500 }
     );

@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import React, { useMemo, useState } from "react";
-import { Button } from "@/components/ui/Button";
-import { MapPin } from "lucide-react";
-import { GoogleMapsModal } from "./MapModal"; // Import your new modal
-import { GignologyJob } from "@/domains/job/types/job.types";
-import { GigLocation } from "@/domains/job/types/location.types";
+import React, { useMemo, useState } from 'react';
+import { Button } from '@/components/ui/Button';
+import { MapPin } from 'lucide-react';
+import { GoogleMapsModal } from '../MapModal'; // Import your new modal
+import { GignologyJob } from '@/domains/job/types/job.types';
+import { GigLocation } from '@/domains/job/types/location.types';
 
 interface ClockControlsProps {
   currentDate: string;
@@ -130,7 +130,7 @@ export function ClockControls({
         jobLocation={jobLocation}
         geoFenceRadius={geoFenceRadius}
         title={
-          selectedJob ? `${selectedJob.title} - Location Map` : "Location Map"
+          selectedJob ? `${selectedJob.title} - Location Map` : 'Location Map'
         }
       />
     </>

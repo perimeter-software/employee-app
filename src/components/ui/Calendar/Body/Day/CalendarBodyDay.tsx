@@ -17,16 +17,18 @@ export default function CalendarBodyDay() {
         {/* Day header for main area only */}
         <div className="flex bg-appPrimary text-white">
           {/* Time column header */}
-          <div className="w-20 py-3 px-4 border-r border-cyan-400 flex-shrink-0"></div>
+          <div className="hidden lg:block w-20 py-3 px-4 border-r border-cyan-400 flex-shrink-0"></div>
 
           {/* Day header */}
-          <div className="flex-1 py-3 px-2 text-center">
+          <div className="flex-1 py-2 lg:py-3 px-2 text-center">
             <div
-              className={`text-sm font-medium ${isToday ? "font-bold" : ""}`}
+              className={`text-xs lg:text-sm font-medium ${
+                isToday ? "font-bold" : ""
+              }`}
             >
               {format(date, "EEEE")}
             </div>
-            <div className="text-sm">{format(date, "dd")}</div>
+            <div className="text-xs lg:text-sm">{format(date, "dd")}</div>
           </div>
         </div>
 
@@ -40,7 +42,7 @@ export default function CalendarBodyDay() {
       </div>
 
       {/* Sidebar */}
-      <div className="lg:flex hidden flex-col flex-grow divide-y max-w-[276px]">
+      <div className="hidden lg:flex flex-col flex-grow divide-y max-w-[276px]">
         <CalendarBodyDayCalendar />
         <CalendarBodyDayEvents />
       </div>

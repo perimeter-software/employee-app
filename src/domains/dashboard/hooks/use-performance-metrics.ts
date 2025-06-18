@@ -1,0 +1,31 @@
+import { useQuery } from '@tanstack/react-query';
+import {
+  dashboardQueryKeys,
+  DashboardApiService,
+} from '../services/dashboard-service';
+import { DashboardParams } from '../types';
+
+export const usePerformanceMetrics = (
+  params: Pick<DashboardParams, 'userId' | 'startDate' | 'endDate'>,
+  options?: {
+    enabled?: boolean;
+    staleTime?: number;
+    refetchOnWindowFocus?: boolean;
+  }
+) => {
+  return useQuery({
+    queryKey: dashboardQueryKeys.performance(params.userId),
+    queryFn: () => {
+      return DashboardApiService.getPerformanceMetrics(params);
+    },
+    staleTime: options?.staleTime ?? 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: options?.refetchOnWindowFocus ?? false,
+    enabled: options?.enabled ?? true,
+    retry: (failureCount, error) => {
+      if (error.message.includes('401') || error.message.includes('403')) {
+        return false;
+      }
+      return failureCount < 3;
+    },
+  });
+};

@@ -1,5 +1,5 @@
-import type { Db } from "mongodb";
-import { ObjectId as ObjectIdFunction } from "mongodb";
+import type { Db } from 'mongodb';
+import { ObjectId as ObjectIdFunction } from 'mongodb';
 import {
   formatISO,
   startOfDay,
@@ -7,31 +7,29 @@ import {
   parseISO,
   startOfWeek,
   endOfWeek,
-} from "date-fns";
-import { convertToJSON } from "@/lib/utils/mongo-utils";
-import { calculateDistance } from "@/lib/utils/location-utils";
-import { Punch, PunchNoId } from "../types";
-import type { GignologyJob, Shift } from "@/domains/job/types";
-import type { ClockInCoordinates } from "@/domains/job/types/location.types";
+} from 'date-fns';
+import { convertToJSON } from '@/lib/utils/mongo-utils';
+import { calculateDistance } from '@/lib/utils/location-utils';
+import { Punch, PunchNoId } from '../types';
+import type { GignologyJob, Shift } from '@/domains/job/types';
+import type { ClockInCoordinates } from '@/domains/job/types/location.types';
 import {
   giveJobGeoCoords,
   giveJobAllowedGeoDistance,
-} from "@/domains/punch/utils/shift-job-utils";
-import { UpdateFilter, Document } from "mongodb";
+} from '@/domains/punch/utils/shift-job-utils';
+import { UpdateFilter, Document } from 'mongodb';
 
 export async function createPunchIn(db: Db, punch: PunchNoId): Promise<Punch> {
   try {
-    const result = await db.collection("timecard").insertOne({ ...punch });
+    const result = await db.collection('timecard').insertOne({ ...punch });
     if (!result.insertedId) {
-      console.log("Punch not created");
-      throw new Error("Punch not created");
+      throw new Error('Punch not created');
     }
     // @ts-expect-error - insertedId is not null if successful
     punch._id = result.insertedId.toString();
   } catch (e) {
-    console.log("Error creating punch", e);
+    console.log('Error creating punch', e);
   }
-  console.log("punch", punch);
   return punch as unknown as Punch;
 }
 
@@ -41,11 +39,11 @@ export async function deletePunchById(
 ): Promise<boolean> {
   try {
     const result = await db
-      .collection("timecard")
+      .collection('timecard')
       .deleteOne({ _id: new ObjectIdFunction(punchId) });
     return result.deletedCount === 1;
   } catch (e) {
-    console.error("Error deleting punch:", e);
+    console.error('Error deleting punch:', e);
     return false;
   }
 }
@@ -57,16 +55,15 @@ export async function getPunchStatus(
   const objectId = new ObjectIdFunction(punchId);
 
   try {
-    const result = await db.collection("timecard").findOne({ _id: objectId });
+    const result = await db.collection('timecard').findOne({ _id: objectId });
 
     if (!result) {
-      console.log("Punch not found");
       return null;
     }
 
     return convertToJSON(result) as Punch;
   } catch (e) {
-    console.error("Error getting punch status:", e);
+    console.error('Error getting punch status:', e);
     throw e;
   }
 }
@@ -85,21 +82,20 @@ export async function createPunchOut(
 
   try {
     const result = await db
-      .collection("timecard")
+      .collection('timecard')
       .findOneAndUpdate(
         { _id: punchID },
         { $set: updatedPunch },
-        { returnDocument: "after" }
+        { returnDocument: 'after' }
       );
 
     if (!result) {
-      console.log("Punch not found or already clocked out");
       return null;
     }
 
     return convertToJSON(result) as Punch;
   } catch (e) {
-    console.error("Error creating punch out:", e);
+    console.error('Error creating punch out:', e);
     throw e;
   }
 }
@@ -117,21 +113,20 @@ export async function updatePunch(db: Db, punch: Punch): Promise<Punch | null> {
 
   try {
     const result = await db
-      .collection("timecard")
+      .collection('timecard')
       .findOneAndUpdate(
         { _id: punchID },
         { $set: punchData },
-        { returnDocument: "after" }
+        { returnDocument: 'after' }
       );
 
     if (!result) {
-      console.log("Punch not found");
       return null;
     }
 
     return convertToJSON(result) as Punch;
   } catch (e) {
-    console.error("Error updating punch:", e);
+    console.error('Error updating punch:', e);
     throw e;
   }
 }
@@ -144,7 +139,7 @@ export async function updatePunchUserCoordinates(
 ): Promise<Punch | null> {
   try {
     // Step 1: Find the active punch where timeOut is null
-    const punch = await db.collection("timecard").findOne({
+    const punch = await db.collection('timecard').findOne({
       userId: userId,
       applicantId: applicantId,
       timeOut: null, // Active punch (not clocked out)
@@ -152,18 +147,18 @@ export async function updatePunchUserCoordinates(
 
     // If no active punch is found, just return null (no update needed)
     if (!punch) {
-      console.log("Active punch not found for this user");
+      console.log('Active punch not found for this user');
       return null; // Normal scenario, no error
     }
 
     // Step 2: Retrieve the job details using the jobId from the punch
-    const job = await db.collection("jobs").findOne({
+    const job = await db.collection('jobs').findOne({
       _id: new ObjectIdFunction(punch.jobId),
     });
 
     // If no job is found, return null (no update needed)
     if (!job) {
-      console.log("Job not found for this punch");
+      console.log('Job not found for this punch');
       return null; // Normal scenario, no error
     }
 
@@ -172,12 +167,12 @@ export async function updatePunchUserCoordinates(
       !job.additionalConfig.autoClockoutShiftEnd &&
       !job.additionalConfig.geofence
     ) {
-      console.log("Neither autoClockOut nor geofence are enabled for this job");
+      console.log('Neither autoClockOut nor geofence are enabled for this job');
       return null; // No update needed
     }
 
     if (!location) {
-      console.log("Invalid clockInCoordinates object");
+      console.log('Invalid clockInCoordinates object');
       return null;
     }
 
@@ -186,7 +181,7 @@ export async function updatePunchUserCoordinates(
     const jobsCoordinates = giveJobGeoCoords(parsedJob);
 
     if (jobsCoordinates?.lat === 0 || jobsCoordinates?.long === 0) {
-      console.log("Missing required job coordinates");
+      console.log('Missing required job coordinates');
       return null;
     }
 
@@ -201,7 +196,7 @@ export async function updatePunchUserCoordinates(
       !job.location?.graceDistanceFeet ||
       !job.location.geocoordinates?.geoFenceRadius
     ) {
-      console.log("Missing required job coordinates");
+      console.log('Missing required job coordinates');
       return null;
     }
     let isWithinGeofence = true;
@@ -209,13 +204,13 @@ export async function updatePunchUserCoordinates(
     const allowedDistance = giveJobAllowedGeoDistance(parsedJob);
     if (currentDistance > allowedDistance) {
       console.log(
-        "Unauthorized: Not within allowable distance of job location"
+        'Unauthorized: Not within allowable distance of job location'
       );
       isWithinGeofence = false;
     }
 
     // Step 5: Push new coordinates to the punch's userCoordinates array
-    const result = await db.collection("timecard").findOneAndUpdate(
+    const result = await db.collection('timecard').findOneAndUpdate(
       { _id: new ObjectIdFunction(punch._id) },
       {
         $push: {
@@ -225,18 +220,18 @@ export async function updatePunchUserCoordinates(
           modifiedDate: new Date().toISOString(),
         },
       } as unknown as UpdateFilter<Document>,
-      { returnDocument: "after" }
+      { returnDocument: 'after' }
     );
 
     // If the punch was not updated, return null
     if (!result) {
-      console.log("Failed to update punch");
+      console.log('Failed to update punch');
       return null;
     }
 
     return convertToJSON(result) as Punch;
   } catch (e) {
-    console.error("Error updating punch:", e);
+    console.error('Error updating punch:', e);
     throw e; // Only throw an error for actual unexpected issues
   }
 }
@@ -248,29 +243,29 @@ export async function findOpenPunchByApplicantIdAndJobId(
 ): Promise<Punch | undefined> {
   let punch: Punch | undefined = undefined;
   try {
-    const punchDoc = await db.collection("timecard").findOne({
+    const punchDoc = await db.collection('timecard').findOne({
       applicantId: applicantId,
       jobId: jobId,
       timeOut: null,
-      type: "punch",
+      type: 'punch',
     });
     if (punchDoc) {
       const conversionResult = convertToJSON(punchDoc);
       if (conversionResult) punch = conversionResult as Punch;
       if (!conversionResult) {
-        console.log("MongoDB conversion error");
+        console.log('MongoDB conversion error');
       }
     }
     if (!punch) {
       console.log(
-        "No Open Punches Found For Applicant:",
+        'No Open Punches Found For Applicant:',
         applicantId,
-        "and Job:",
+        'and Job:',
         jobId
       );
     }
   } catch (e) {
-    console.log("Error checking for open punch", e);
+    console.log('Error checking for open punch', e);
   }
   return punch;
 }
@@ -281,26 +276,26 @@ export async function findOpenPunchByApplicantId(
 ): Promise<Punch | undefined> {
   let punch: Punch | undefined = undefined;
   try {
-    const punchDoc = await db.collection("timecard").findOne({
+    const punchDoc = await db.collection('timecard').findOne({
       applicantId: applicantId,
       timeOut: null,
-      type: "punch",
+      type: 'punch',
     });
     if (punchDoc) {
       const conversionResult = convertToJSON(punchDoc);
       if (conversionResult) punch = conversionResult as Punch;
       if (!conversionResult) {
-        console.log("MongoDB conversion error");
+        console.log('MongoDB conversion error');
       }
     }
     if (!punch) {
       console.log(
-        "No open punches, for any job found For applicant:",
+        'No open punches, for any job found For applicant:',
         applicantId
       );
     }
   } catch (e) {
-    console.log("Error checking for open punch", e);
+    console.log('Error checking for open punch', e);
   }
   return punch;
 }
@@ -313,12 +308,12 @@ export async function findAllOpenPunchesWithJobInfo(
   try {
     // Step 1: Find all open punches for the user and applicant
     const punches = await db
-      .collection("timecard")
+      .collection('timecard')
       .find({
         userId,
         applicantId,
         timeOut: null,
-        type: "punch",
+        type: 'punch',
       })
       .toArray();
 
@@ -332,18 +327,21 @@ export async function findAllOpenPunchesWithJobInfo(
 
     // Step 3: Fetch the corresponding jobs from the jobs collection
     const jobs = await db
-      .collection("jobs")
+      .collection('jobs')
       .find({
         _id: { $in: jobIds },
       })
       .toArray();
 
     // Step 4: Create a map of jobId to jobInfo for easy lookup
-    const jobsMap = jobs.reduce((acc, job) => {
-      const convertedJob = convertToJSON(job) as GignologyJob;
-      acc[job._id.toString()] = convertedJob;
-      return acc;
-    }, {} as { [key: string]: GignologyJob });
+    const jobsMap = jobs.reduce(
+      (acc, job) => {
+        const convertedJob = convertToJSON(job) as GignologyJob;
+        acc[job._id.toString()] = convertedJob;
+        return acc;
+      },
+      {} as { [key: string]: GignologyJob }
+    );
 
     // Step 5: Attach jobInfo to each punch by matching jobId
     const punchesWithJobInfo = punches.map((punch) => ({
@@ -360,7 +358,7 @@ export async function findAllOpenPunchesWithJobInfo(
 
     return punchesWithJobInfo;
   } catch (e) {
-    console.error("Error finding open punches with job info:", e);
+    console.error('Error finding open punches with job info:', e);
     return [];
   }
 }
@@ -377,20 +375,20 @@ export async function findOpenPunchesByJobIdsAndUserId(
       userId: string;
       jobId: { $in: string[] };
       timeOut: null;
-      type: "punch";
+      type: 'punch';
       status?: string;
     } = {
       userId: userId,
       jobId: { $in: jobIds },
       timeOut: null,
-      type: "punch",
+      type: 'punch',
     };
 
     if (status) {
       query.status = status;
     }
 
-    const punchDocs = await db.collection("timecard").find(query).toArray();
+    const punchDocs = await db.collection('timecard').find(query).toArray();
 
     punches = punchDocs
       .map((punchDoc) => {
@@ -399,7 +397,7 @@ export async function findOpenPunchesByJobIdsAndUserId(
       })
       .filter((punch): punch is Punch => punch !== null);
   } catch (e) {
-    console.error("Error finding open punches:", e);
+    console.error('Error finding open punches:', e);
   }
   return punches;
 }
@@ -416,7 +414,7 @@ export async function findOpenPunchesByDateRange(
   try {
     const query: {
       userId: string;
-      type: "punch";
+      type: 'punch';
       jobId: { $in: string[] };
       timeIn: {
         $ne: null;
@@ -427,7 +425,7 @@ export async function findOpenPunchesByDateRange(
       status?: string;
     } = {
       userId: userId,
-      type: "punch",
+      type: 'punch',
       jobId: { $in: jobIds },
       timeIn: {
         $ne: null,
@@ -441,7 +439,7 @@ export async function findOpenPunchesByDateRange(
       query.status = status;
     }
 
-    const punchDocs = await db.collection("timecard").find(query).toArray();
+    const punchDocs = await db.collection('timecard').find(query).toArray();
 
     punches = punchDocs
       .map((punchDoc) => {
@@ -450,7 +448,7 @@ export async function findOpenPunchesByDateRange(
       })
       .filter((punch): punch is Punch => punch !== null);
   } catch (e) {
-    console.error("Error finding open punches:", e);
+    console.error('Error finding open punches:', e);
   }
   return punches;
 }
@@ -475,7 +473,7 @@ export async function findAllPunchesByDateRange(
 
     const query: {
       userId: string;
-      type: "punch";
+      type: 'punch';
       jobId: { $in: string[] };
       timeIn: {
         $ne: null;
@@ -485,7 +483,7 @@ export async function findAllPunchesByDateRange(
       status?: string;
     } = {
       userId: userId,
-      type: "punch",
+      type: 'punch',
       jobId: { $in: jobIds },
       timeIn: {
         $ne: null,
@@ -498,12 +496,12 @@ export async function findAllPunchesByDateRange(
       query.status = status;
     }
 
-    const punchDocs = await db.collection("timecard").find(query).toArray();
+    const punchDocs = await db.collection('timecard').find(query).toArray();
 
     console.log(`Found ${punchDocs.length} punches for user ${userId}`);
 
     const jobDocs = await db
-      .collection("jobs")
+      .collection('jobs')
       .find({ _id: { $in: jobIds.map((id) => new ObjectIdFunction(id)) } })
       .toArray();
 
@@ -542,7 +540,7 @@ export async function findAllPunchesByDateRange(
 
     return punches;
   } catch (e) {
-    console.error("Error finding punches:", e);
+    console.error('Error finding punches:', e);
     throw new Error(`Failed to fetch punches: ${(e as Error).message}`);
   }
 }
@@ -555,8 +553,8 @@ export async function checkForOverlappingPunch(
   excludePunchId: string
 ): Promise<boolean> {
   try {
-    console.log("🔍 === OVERLAP CHECK DEBUG START ===");
-    console.log("Parameters:", {
+    console.log('🔍 === OVERLAP CHECK DEBUG START ===');
+    console.log('Parameters:', {
       applicantId,
       timeIn,
       timeOut,
@@ -567,22 +565,46 @@ export async function checkForOverlappingPunch(
     const newTimeIn = new Date(timeIn);
     const newTimeOut = timeOut ? new Date(timeOut) : null;
 
-    console.log("Converted dates:", {
+    console.log('Converted dates:', {
       newTimeIn: newTimeIn.toISOString(),
-      newTimeOut: newTimeOut?.toISOString() || "null (active punch)",
+      newTimeOut: newTimeOut?.toISOString() || 'null (active punch)',
     });
 
-    // Get all punches for this applicant except the one being updated
-    const query = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const query: any = {
       applicantId,
-      type: "punch",
+      type: 'punch',
       _id: { $ne: new ObjectIdFunction(excludePunchId) },
     };
 
-    console.log("MongoDB query:", JSON.stringify(query, null, 2));
+    // OPTIMIZATION: Only check punches that could potentially overlap
+    if (newTimeOut) {
+      // For completed punches, only check punches that start before our end time
+      // and end after our start time (or are still active)
+      query.$or = [
+        // Punches that are still active (no timeOut)
+        { timeOut: null },
+        // Completed punches that could overlap
+        {
+          timeIn: { $lt: newTimeOut.toISOString() },
+          timeOut: { $gt: newTimeIn.toISOString() },
+        },
+      ];
+    } else {
+      // For active punches (no timeOut), check all punches that start before our start time
+      // and either have no end time or end after our start time
+      query.$or = [
+        // Other active punches
+        { timeOut: null },
+        // Completed punches that end after our start time
+        { timeOut: { $gt: newTimeIn.toISOString() } },
+      ];
+    }
+
+    console.log('MongoDB query:', JSON.stringify(query, null, 2));
 
     const existingPunches = await db
-      .collection("timecard")
+      .collection('timecard')
       .find(query)
       .toArray();
 
@@ -591,8 +613,8 @@ export async function checkForOverlappingPunch(
     );
 
     if (existingPunches.length === 0) {
-      console.log("✅ No existing punches found - no overlap possible");
-      console.log("🔍 === OVERLAP CHECK DEBUG END ===");
+      console.log('✅ No existing punches found - no overlap possible');
+      console.log('🔍 === OVERLAP CHECK DEBUG END ===');
       return false;
     }
 
@@ -601,7 +623,7 @@ export async function checkForOverlappingPunch(
       console.log(`Existing punch ${index + 1}:`, {
         id: punch._id.toString(),
         timeIn: punch.timeIn,
-        timeOut: punch.timeOut || "null (active)",
+        timeOut: punch.timeOut || 'null (active)',
         jobId: punch.jobId,
         shiftSlug: punch.shiftSlug,
       });
@@ -617,88 +639,109 @@ export async function checkForOverlappingPunch(
         ? new Date(existingPunch.timeOut)
         : null;
 
-      console.log("Time comparison:", {
+      console.log('Time comparison:', {
         newRange: `${newTimeIn.toISOString()} → ${
-          newTimeOut?.toISOString() || "ACTIVE"
+          newTimeOut?.toISOString() || 'ACTIVE'
         }`,
         existingRange: `${existingTimeIn.toISOString()} → ${
-          existingTimeOut?.toISOString() || "ACTIVE"
+          existingTimeOut?.toISOString() || 'ACTIVE'
         }`,
       });
 
-      // Case 1: Check for active punch conflicts
+      // FIXED: Improved overlap detection logic
+
+      // Case 1: Both punches are active (no timeOut)
       if (!newTimeOut && !existingTimeOut) {
-        console.log("❌ OVERLAP FOUND: Both punches are active (no timeOut)");
-        console.log("🔍 === OVERLAP CHECK DEBUG END ===");
+        console.log('❌ OVERLAP FOUND: Both punches are active (no timeOut)');
+        console.log('🔍 === OVERLAP CHECK DEBUG END ===');
         return true;
       }
 
+      // Case 2: New punch is active, existing punch is completed
       if (!newTimeOut && existingTimeOut) {
-        // New punch is active, existing is completed
+        // Active punch overlaps if it starts before the existing punch ends
         if (newTimeIn < existingTimeOut) {
           console.log(
-            "❌ OVERLAP FOUND: New active punch starts before existing punch ends"
+            '❌ OVERLAP FOUND: New active punch starts before existing punch ends'
           );
           console.log(
             `New starts: ${newTimeIn.toISOString()}, Existing ends: ${existingTimeOut.toISOString()}`
           );
-          console.log("🔍 === OVERLAP CHECK DEBUG END ===");
+          console.log('🔍 === OVERLAP CHECK DEBUG END ===');
           return true;
         }
         console.log(
-          "✅ No overlap: New active punch starts after existing punch ends"
+          '✅ No overlap: New active punch starts after existing punch ends'
         );
         continue;
       }
 
+      // Case 3: New punch is completed, existing punch is active
       if (newTimeOut && !existingTimeOut) {
-        // New punch is completed, existing is active
+        // Completed punch overlaps with active punch if active punch starts before completed punch ends
         if (existingTimeIn < newTimeOut) {
           console.log(
-            "❌ OVERLAP FOUND: Existing active punch starts before new punch ends"
+            '❌ OVERLAP FOUND: Existing active punch starts before new punch ends'
           );
           console.log(
             `Existing starts: ${existingTimeIn.toISOString()}, New ends: ${newTimeOut.toISOString()}`
           );
-          console.log("🔍 === OVERLAP CHECK DEBUG END ===");
+          console.log('🔍 === OVERLAP CHECK DEBUG END ===');
           return true;
         }
         console.log(
-          "✅ No overlap: Existing active punch starts after new punch ends"
+          '✅ No overlap: Existing active punch starts after new punch ends'
         );
         continue;
       }
 
-      // Case 2: Both punches are completed - check for time range overlap
+      // Case 4: Both punches are completed
       if (newTimeOut && existingTimeOut) {
-        console.log("Checking completed punch overlap...");
+        console.log('Checking completed punch overlap...');
 
-        // Two time ranges overlap if: start1 < end2 AND start2 < end1
-        const condition1 = newTimeIn < existingTimeOut;
-        const condition2 = existingTimeIn < newTimeOut;
+        // FIXED: Two time ranges overlap if they are not completely separate
+        // Ranges are separate if: newEnd <= existingStart OR existingEnd <= newStart
+        // Therefore, they overlap if: NOT (newEnd <= existingStart OR existingEnd <= newStart)
+        // Which simplifies to: newEnd > existingStart AND existingEnd > newStart
+
+        const condition1 = newTimeOut > existingTimeIn; // New punch ends after existing starts
+        const condition2 = existingTimeOut > newTimeIn; // Existing punch ends after new starts
         const hasOverlap = condition1 && condition2;
 
-        console.log("Overlap conditions:", {
-          "newTimeIn < existingTimeOut": `${newTimeIn.toISOString()} < ${existingTimeOut.toISOString()} = ${condition1}`,
-          "existingTimeIn < newTimeOut": `${existingTimeIn.toISOString()} < ${newTimeOut.toISOString()} = ${condition2}`,
-          "hasOverlap (both true)": hasOverlap,
+        console.log('Overlap conditions:', {
+          'newTimeOut > existingTimeIn': `${newTimeOut.toISOString()} > ${existingTimeIn.toISOString()} = ${condition1}`,
+          'existingTimeOut > newTimeIn': `${existingTimeOut.toISOString()} > ${newTimeIn.toISOString()} = ${condition2}`,
+          'hasOverlap (both true)': hasOverlap,
         });
 
         if (hasOverlap) {
-          console.log("❌ OVERLAP FOUND: Time ranges overlap");
-          console.log("🔍 === OVERLAP CHECK DEBUG END ===");
+          console.log('❌ OVERLAP FOUND: Time ranges overlap');
+
+          // ADDITIONAL CHECK: Allow touching time ranges (one ends exactly when another starts)
+          const exactTouch =
+            newTimeOut.getTime() === existingTimeIn.getTime() ||
+            existingTimeOut.getTime() === newTimeIn.getTime();
+
+          if (exactTouch) {
+            console.log(
+              '✅ Actually OK: Punches only touch at endpoints (no actual overlap)'
+            );
+            continue;
+          }
+
+          console.log('🔍 === OVERLAP CHECK DEBUG END ===');
           return true;
         }
-        console.log("✅ No overlap: Time ranges don't overlap");
+        console.log('✅ No overlap: Time ranges are separate');
       }
     }
 
-    console.log("✅ FINAL RESULT: No overlaps found with any existing punches");
-    console.log("🔍 === OVERLAP CHECK DEBUG END ===");
+    console.log('✅ FINAL RESULT: No overlaps found with any existing punches');
+    console.log('🔍 === OVERLAP CHECK DEBUG END ===');
     return false;
   } catch (e) {
-    console.error("❌ Error in overlap check:", e);
-    console.log("🔍 === OVERLAP CHECK DEBUG END (ERROR) ===");
+    console.error('❌ Error in overlap check:', e);
+    console.log('🔍 === OVERLAP CHECK DEBUG END (ERROR) ===');
     return true; // Return true on error to be safe
   }
 }
@@ -713,12 +756,12 @@ export async function checkForPreviousPunchesWithinShift(
 ): Promise<boolean> {
   // Find punches that overlap with the shift
   const punches = await db
-    .collection("timecard")
+    .collection('timecard')
     .find({
       userId,
       applicantId,
       jobId,
-      type: "punch",
+      type: 'punch',
       $or: [
         { timeIn: { $gte: shiftStart, $lt: shiftEnd } },
         { timeOut: { $gte: shiftStart, $lt: shiftEnd } },
@@ -742,7 +785,7 @@ export async function getTotalWorkedHoursForWeek(
   const endOfWeekDate = endOfWeek(now, { weekStartsOn: 1 }); // End of week is Sunday
 
   const punches = await db
-    .collection("timecard")
+    .collection('timecard')
     .aggregate([
       {
         $match: {
@@ -759,10 +802,10 @@ export async function getTotalWorkedHoursForWeek(
       {
         $addFields: {
           timeInDate: {
-            $dateFromString: { dateString: "$timeIn" }, // Ensure timeIn is treated as Date
+            $dateFromString: { dateString: '$timeIn' }, // Ensure timeIn is treated as Date
           },
           timeOutDate: {
-            $dateFromString: { dateString: "$timeOut" }, // Ensure timeOut is treated as Date
+            $dateFromString: { dateString: '$timeOut' }, // Ensure timeOut is treated as Date
           },
         },
       },
@@ -771,7 +814,7 @@ export async function getTotalWorkedHoursForWeek(
           timeIn: 1,
           timeOut: 1,
           duration: {
-            $subtract: ["$timeOutDate", "$timeInDate"], // Calculate duration
+            $subtract: ['$timeOutDate', '$timeInDate'], // Calculate duration
           },
         },
       },
@@ -795,8 +838,8 @@ export async function getTotalWorkedHoursForWeek(
 
 export async function getTimezone(db: Db, venueSlug: string): Promise<string> {
   const event = await db
-    .collection("events")
+    .collection('events')
     .findOne({ venueSlug }, { projection: { timeZone: 1 } });
 
-  return event ? event.timeZone : "America/Chicago";
+  return event ? event.timeZone : 'America/Chicago';
 }

@@ -1,8 +1,8 @@
-import type { Db } from "mongodb";
-import { ObjectId } from "mongodb";
-import { convertToJSON } from "@/lib/utils/mongo-utils";
-import { GignologyUser } from "@/domains/user/types/user.types";
-import { GignologyJob } from "@/domains/job/types/job.types";
+import type { Db } from 'mongodb';
+import { ObjectId } from 'mongodb';
+import { convertToJSON } from '@/lib/utils/mongo-utils';
+import { GignologyUser } from '@/domains/user/types/user.types';
+import { GignologyJob } from '@/domains/job/types/job.types';
 
 export async function historyUserDataPipeline(db: Db, email: string) {
   try {
@@ -14,13 +14,13 @@ export async function historyUserDataPipeline(db: Db, email: string) {
       // Lookup applicant data
       {
         $lookup: {
-          from: "applicants",
-          let: { applicantId: "$applicantId" },
+          from: 'applicants',
+          let: { applicantId: '$applicantId' },
           pipeline: [
             {
               $match: {
                 $expr: {
-                  $eq: ["$_id", { $toObjectId: "$$applicantId" }],
+                  $eq: ['$_id', { $toObjectId: '$$applicantId' }],
                 },
               },
             },
@@ -30,13 +30,13 @@ export async function historyUserDataPipeline(db: Db, email: string) {
               },
             },
           ],
-          as: "applicantData",
+          as: 'applicantData',
         },
       },
       // Unwind applicant data
       {
         $unwind: {
-          path: "$applicantData",
+          path: '$applicantData',
           preserveNullAndEmptyArrays: true,
         },
       },
@@ -45,10 +45,10 @@ export async function historyUserDataPipeline(db: Db, email: string) {
         $addFields: {
           filteredApplicantJobs: {
             $filter: {
-              input: "$applicantData.jobs",
-              as: "job",
+              input: '$applicantData.jobs',
+              as: 'job',
               cond: {
-                $eq: [{ $type: "$$job.jobSlug" }, "string"],
+                $eq: [{ $type: '$$job.jobSlug' }, 'string'],
               },
             },
           },
@@ -57,32 +57,32 @@ export async function historyUserDataPipeline(db: Db, email: string) {
       // Lookup job data
       {
         $lookup: {
-          from: "jobs",
+          from: 'jobs',
           let: {
             jobSlugs: {
               $ifNull: [
                 {
                   $map: {
-                    input: "$filteredApplicantJobs",
-                    as: "job",
-                    in: "$$job.jobSlug",
+                    input: '$filteredApplicantJobs',
+                    as: 'job',
+                    in: '$$job.jobSlug',
                   },
                 },
                 [],
               ],
             },
-            applicantJobs: "$filteredApplicantJobs",
+            applicantJobs: '$filteredApplicantJobs',
           },
           pipeline: [
             {
               $match: {
                 $expr: {
                   $and: [
-                    { $in: ["$jobSlug", "$$jobSlugs"] },
+                    { $in: ['$jobSlug', '$$jobSlugs'] },
                     {
-                      $eq: [{ $type: "$shiftJob" }, "string"],
+                      $eq: [{ $type: '$shiftJob' }, 'string'],
                     },
-                    { $eq: ["$shiftJob", "Yes"] },
+                    { $eq: ['$shiftJob', 'Yes'] },
                   ],
                 },
               },
@@ -93,10 +93,10 @@ export async function historyUserDataPipeline(db: Db, email: string) {
                   $arrayElemAt: [
                     {
                       $filter: {
-                        input: "$$applicantJobs",
-                        as: "appJob",
+                        input: '$$applicantJobs',
+                        as: 'appJob',
                         cond: {
-                          $eq: ["$$appJob.jobSlug", "$jobSlug"],
+                          $eq: ['$$appJob.jobSlug', '$jobSlug'],
                         },
                       },
                     },
@@ -117,12 +117,12 @@ export async function historyUserDataPipeline(db: Db, email: string) {
                 shifts: 1,
                 shiftJob: 1,
                 additionalConfig: 1,
-                status: "$applicantJobInfo.status",
-                applicantStatus: "$applicantJobInfo.applicantStatus",
+                status: '$applicantJobInfo.status',
+                applicantStatus: '$applicantJobInfo.applicantStatus',
               },
             },
           ],
-          as: "filteredJobs",
+          as: 'filteredJobs',
         },
       },
       // Final projection
@@ -136,26 +136,23 @@ export async function historyUserDataPipeline(db: Db, email: string) {
           employeeType: 1,
           status: 1,
           applicantId: 1,
-          jobs: "$filteredJobs",
+          jobs: '$filteredJobs',
         },
       },
     ];
 
-    const result = await db.collection("users").aggregate(pipeline).toArray();
+    const result = await db.collection('users').aggregate(pipeline).toArray();
 
     if (result.length === 0) {
-      console.log("User not found");
       return undefined;
     }
 
     const userWithFilteredJobs = result[0];
-    // console.log("User with Filtered Jobs:", userWithFilteredJobs);
     const convertedUser = convertToJSON(userWithFilteredJobs) as GignologyUser;
-    // console.log("Coverted user pipeline user:", convertedUser);
 
     return convertedUser ? convertedUser : undefined;
   } catch (e) {
-    console.error("Error executing user-applicant-job pipeline:", e);
+    console.error('Error executing user-applicant-job pipeline:', e);
     return undefined;
   }
 }
@@ -182,7 +179,7 @@ export async function attachPunchesToJobs(
 
     // Fetch punches for the user within the current month
     const punches = await db
-      .collection("timecards")
+      .collection('timecards')
       .aggregate([
         {
           $match: {
@@ -234,7 +231,7 @@ export async function attachPunchesToJobs(
 
     return updatedJobs;
   } catch (error) {
-    console.error("Error attaching punches to jobs:", error);
+    console.error('Error attaching punches to jobs:', error);
     return jobs; // Return original jobs array if an error occurs
   }
 }

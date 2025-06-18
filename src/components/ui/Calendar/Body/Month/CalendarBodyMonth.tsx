@@ -15,7 +15,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { CalendarEvent as CalendarEventType } from "../../../Calendar/types";
 import CalendarEvent from "../../CalendarEvent";
 
-export default function CalendarBodyMonth() {
+export default function CalendarBodyMonth({
+  hideTotalColumn = false,
+}: {
+  hideTotalColumn?: boolean;
+}) {
   const { date, events, setDate, setMode } = useCalendarContext();
 
   // Get the first day of the month
@@ -72,19 +76,26 @@ export default function CalendarBodyMonth() {
   return (
     <div className="flex flex-col flex-grow overflow-hidden">
       {/* Week days header - now with primary background */}
-      <div className="grid grid-cols-8 bg-appPrimary text-white">
+      <div
+        className={clsxm(
+          hideTotalColumn ? "grid-cols-7" : "grid-cols-7 lg:grid-cols-8",
+          "grid bg-appPrimary text-white"
+        )}
+      >
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
           <div
             key={day}
-            className="py-3 text-center text-sm font-medium border-r border-appPrimary last:border-r-0"
+            className="py-2 lg:py-3 text-center text-xs lg:text-sm font-medium border-r border-appPrimary last:border-r-0"
           >
             {day}
           </div>
         ))}
         {/* Total header */}
-        <div className="py-3 text-center text-sm font-medium bg-appPrimary">
-          Total
-        </div>
+        {!hideTotalColumn && (
+          <div className="py-2 lg:py-3 text-center text-xs lg:text-sm font-medium bg-appPrimary hidden lg:block">
+            Total
+          </div>
+        )}
       </div>
 
       <AnimatePresence mode="wait" initial={false}>
@@ -102,7 +113,10 @@ export default function CalendarBodyMonth() {
           {weeks.map((week, weekIndex) => (
             <div
               key={weekIndex}
-              className="grid grid-cols-8 border-b border-gray-200"
+              className={clsxm(
+                hideTotalColumn ? "grid-cols-7" : "grid-cols-7 lg:grid-cols-8",
+                "grid border-b border-gray-200"
+              )}
             >
               {/* Week days */}
               {week.map((day) => {
@@ -117,7 +131,7 @@ export default function CalendarBodyMonth() {
                   <div
                     key={day.toISOString()}
                     className={clsxm(
-                      "relative flex flex-col border-r border-gray-200 p-2 min-h-[120px] cursor-pointer bg-white",
+                      "relative flex flex-col border-r border-gray-200 p-1 lg:p-2 min-h-[80px] lg:min-h-[120px] cursor-pointer bg-white",
                       !isCurrentMonth && "bg-gray-50"
                     )}
                     onClick={(e) => {
@@ -128,7 +142,7 @@ export default function CalendarBodyMonth() {
                   >
                     <div
                       className={clsxm(
-                        "text-sm font-medium w-fit p-1 flex flex-col items-center justify-center rounded-full aspect-square mb-2",
+                        "text-xs lg:text-sm font-medium w-fit p-0.5 lg:p-1 flex flex-col items-center justify-center rounded-full aspect-square mb-1 lg:mb-2",
                         isToday && "bg-appPrimary text-white",
                         !isCurrentMonth && "text-gray-400"
                       )}
@@ -136,18 +150,18 @@ export default function CalendarBodyMonth() {
                       {format(day, "d")}
                     </div>
                     <AnimatePresence mode="wait">
-                      <div className="flex flex-col gap-1 flex-1">
+                      <div className="flex flex-col gap-0.5 lg:gap-1 flex-1">
                         {dayEvents
-                          .slice(0, 2)
+                          .slice(0, 1)
                           .map((event: CalendarEventType) => (
                             <CalendarEvent
                               key={event.id}
                               event={event}
-                              className="relative h-auto text-xs"
+                              className="relative h-auto text-[10px] lg:text-xs"
                               month
                             />
                           ))}
-                        {dayEvents.length > 2 && (
+                        {dayEvents.length > 1 && (
                           <motion.div
                             key={`more-${day.toISOString()}`}
                             initial={{ opacity: 0 }}
@@ -156,21 +170,21 @@ export default function CalendarBodyMonth() {
                             transition={{
                               duration: 0.2,
                             }}
-                            className="text-xs text-muted-foreground"
+                            className="text-[10px] lg:text-xs text-muted-foreground"
                             onClick={(e) => {
                               e.stopPropagation();
                               setDate(day);
                               setMode("day");
                             }}
                           >
-                            +{dayEvents.length - 2} more
+                            +{dayEvents.length - 1} more
                           </motion.div>
                         )}
                       </div>
                     </AnimatePresence>
                     {/* Total hours display */}
                     {totalHours > 0 && (
-                      <div className="text-right text-xs text-appPrimary mt-1 font-medium">
+                      <div className="text-right text-[10px] lg:text-xs text-appPrimary mt-0.5 lg:mt-1 font-medium">
                         {Math.round(totalHours)} hrs
                       </div>
                     )}
@@ -179,11 +193,18 @@ export default function CalendarBodyMonth() {
               })}
 
               {/* Total column for each week */}
-              <div className="border-r border-gray-200 p-2 min-h-[120px] bg-gray-50 flex flex-col justify-center items-center">
-                <div className="text-sm font-bold text-appPrimary">
-                  {Math.round(calculateWeekHours(week))} hrs
+              {!hideTotalColumn && (
+                <div
+                  className={clsxm(
+                    "border-r border-gray-200 p-1 lg:p-2 min-h-[80px] lg:min-h-[120px] bg-gray-50 items-center",
+                    "hidden lg:flex flex-col justify-center"
+                  )}
+                >
+                  <div className="text-xs lg:text-sm font-bold text-appPrimary">
+                    {Math.round(calculateWeekHours(week))} hrs
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           ))}
         </motion.div>

@@ -1,14 +1,14 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { usePunchViewerStore } from "../stores/punch-viewer-store";
-import { useClockIn, useClockOut, ClockInData } from "./index";
-import { PunchWithJobInfo } from "../types";
-import { GignologyJob, Shift } from "@/domains/job/types/job.types";
-import { GigLocation, Location } from "@/domains/job/types/location.types";
-import { handleLocationServices } from "@/lib/utils";
-import { GignologyUser } from "@/domains/user/types";
-import { Punch } from "../types";
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { usePunchViewerStore } from '../stores/punch-viewer-store';
+import { useClockIn, useClockOut, ClockInData } from './index';
+import { PunchWithJobInfo } from '../types';
+import { GignologyJob, Shift } from '@/domains/job/types/job.types';
+import { GigLocation, Location } from '@/domains/job/types/location.types';
+import { handleLocationServices } from '@/lib/utils';
+import { GignologyUser } from '@/domains/user/types';
+import { Punch } from '../types';
 
 // Import your shift validation utilities
 import {
@@ -18,7 +18,7 @@ import {
   getCalculatedTimeIn,
   combineCurrentDateWithTimeFromDateObject,
   getTotalSecondsFromDate,
-} from "@/domains/punch/utils/shift-job-utils";
+} from '@/domains/punch/utils/shift-job-utils';
 
 interface UseTimerCardProps {
   userData: GignologyUser;
@@ -26,20 +26,24 @@ interface UseTimerCardProps {
 }
 
 interface ValidationMessage {
-  type: "warning" | "error" | "info";
+  type: 'warning' | 'error' | 'info';
   message: string;
 }
 
 export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
   // Local state for UI
-  const [currentTime, setCurrentTime] = useState("00:00:00");
+  const [currentTime, setCurrentTime] = useState('00:00:00');
   const [isClocked, setIsClocked] = useState(false);
-  const [currentDate, setCurrentDate] = useState("");
+  const [currentDate, setCurrentDate] = useState('');
   const [totalHours, setTotalHours] = useState(0);
   const [loading, setLoading] = useState(false);
   const [isLocationLoading, setIsLocationLoading] = useState(false);
   const [location, setLocation] = useState<GigLocation | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [pendingOverrideJob, setPendingOverrideJob] =
+    useState<GignologyJob | null>(null);
+  const [pendingOverrideShift, setPendingOverrideShift] =
+    useState<Shift | null>(null);
 
   // New state for validation
   const [validationMessages, setValidationMessages] = useState<
@@ -61,26 +65,18 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
     removeSelectedShift,
   } = usePunchViewerStore();
 
-  // Mutations - use actual user ID from fetched data
-  const clockInMutation = useClockIn(
-    userData?._id || "",
-    selectedJob?._id || ""
-  );
-  const clockOutMutation = useClockOut(
-    userData?._id || "",
-    selectedJob?._id || ""
-  );
-
   // Get current open punch from the fetched data
   const currentOpenPunch = useMemo(() => {
     if (!openPunches || openPunches.length === 0) {
-      console.log("No open punches data");
       return null;
     }
     const openPunch = openPunches.find((punch) => !punch.timeOut);
-    console.log("Current open punch:", openPunch);
     return openPunch || null;
   }, [openPunches]);
+
+  // Mutations - use actual user ID from fetched data
+  const clockInMutation = useClockIn(userData?._id || ''); // Remove job ID
+  const clockOutMutation = useClockOut(userData?._id || ''); // Remove job ID
 
   // Computed values
   const blockJobSelection = !!currentOpenPunch;
@@ -122,196 +118,206 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         combineCurrentDateWithTimeFromDateObject(end, nowIso, start)
       );
 
-      // keep any shift that hasn’t (yet) passed its end
+      // keep any shift that hasn't (yet) passed its end
       return endToday > now;
     });
   }, [selectedJob, userData.applicantId]);
 
-  console.log("availableShifts: ", availableShifts);
-
   const enoughLocationInfo =
     location &&
-    typeof location.latitude === "number" &&
-    typeof location.longitude === "number" &&
+    typeof location.latitude === 'number' &&
+    typeof location.longitude === 'number' &&
     selectedJob?.additionalConfig?.geofence;
 
   // Utility function to show notifications
   const showNotification = useCallback(
-    (message: string, type: "success" | "error" | "warning" | "info") => {
+    (message: string, type: 'success' | 'error' | 'warning' | 'info') => {
       console.log(`${type.toUpperCase()}: ${message}`);
     },
     []
   );
 
-  // NEW: Comprehensive shift validation
-  const validateClockIn = useCallback(async (): Promise<{
-    isValid: boolean;
-    messages: ValidationMessage[];
-    canProceed: boolean;
-  }> => {
-    if (!selectedJob || !selectedShift) {
-      return {
-        isValid: false,
-        messages: [{ type: "error", message: "Please select a job and shift" }],
-        canProceed: false,
-      };
-    }
+  const validateClockIn = useCallback(
+    async (
+      jobToValidate?: GignologyJob,
+      shiftToValidate?: Shift
+    ): Promise<{
+      isValid: boolean;
+      messages: ValidationMessage[];
+      canProceed: boolean;
+    }> => {
+      // Use provided params or fall back to selected ones
+      const jobToUse = jobToValidate || selectedJob;
+      const shiftToUse = shiftToValidate || selectedShift;
 
-    const messages: ValidationMessage[] = [];
-    const currentTime = new Date().toISOString();
-    const now = new Date();
+      if (!jobToUse || !shiftToUse) {
+        return {
+          isValid: false,
+          messages: [
+            { type: 'error', message: 'Please select a job and shift' },
+          ],
+          canProceed: false,
+        };
+      }
 
-    // Check if user has a shift for today
-    const { start, end } = getUserShiftForToday(
-      selectedJob,
-      userData.applicantId,
-      currentTime,
-      selectedShift
-    );
+      const messages: ValidationMessage[] = [];
+      const currentTime = new Date().toISOString();
+      const now = new Date();
 
-    if (!start) {
-      return {
-        isValid: false,
-        messages: [
-          {
-            type: "error",
-            message: "You are not scheduled for this shift today.",
-          },
-        ],
-        canProceed: false,
-      };
-    }
-
-    const newStartDate = combineCurrentDateWithTimeFromDateObject(
-      start as Date,
-      currentTime
-    );
-
-    const newEndDate = combineCurrentDateWithTimeFromDateObject(
-      end as Date,
-      currentTime,
-      start as Date
-    );
-
-    const shiftStart = new Date(newStartDate);
-    const shiftEnd = new Date(newEndDate);
-
-    // Check if shift has already ended
-    if (now > shiftEnd) {
-      return {
-        isValid: false,
-        messages: [
-          {
-            type: "error",
-            message: "This shift has already ended.",
-          },
-        ],
-        canProceed: false,
-      };
-    }
-
-    // Check if it's too early to clock in
-    if (
-      !handleShiftJobClockInTime(
-        selectedJob,
+      // Check if user has a shift for today
+      const { start, end } = getUserShiftForToday(
+        jobToUse, // Use the provided job
         userData.applicantId,
         currentTime,
-        selectedShift
-      )
-    ) {
-      const minutesUntilClockIn = getMinutesUntilClockIn(
-        selectedJob,
-        userData.applicantId,
+        shiftToUse // Use the provided shift
+      );
+
+      if (!start) {
+        return {
+          isValid: false,
+          messages: [
+            {
+              type: 'error',
+              message: 'You are not scheduled for this shift today.',
+            },
+          ],
+          canProceed: false,
+        };
+      }
+
+      const newStartDate = combineCurrentDateWithTimeFromDateObject(
+        start as Date,
+        currentTime
+      );
+
+      const newEndDate = combineCurrentDateWithTimeFromDateObject(
+        end as Date,
         currentTime,
-        selectedShift
+        start as Date
       );
 
-      return {
-        isValid: false,
-        messages: [
-          {
-            type: "error",
-            message: `Too early to clock in. Please wait ${
-              minutesUntilClockIn || 0
-            } minutes.`,
-          },
-        ],
-        canProceed: false,
-      };
-    }
+      const shiftStart = new Date(newStartDate);
+      const shiftEnd = new Date(newEndDate);
 
-    // Check for early clock-in warning
-    const earlyClockInMinutes =
-      selectedJob.additionalConfig?.earlyClockInMinutes || 0;
-    if (earlyClockInMinutes > 0) {
-      const earliestAllowedTime = new Date(
-        shiftStart.getTime() - earlyClockInMinutes * 60000
-      );
+      // Check if shift has already ended
+      if (now > shiftEnd) {
+        return {
+          isValid: false,
+          messages: [
+            {
+              type: 'error',
+              message: 'This shift has already ended.',
+            },
+          ],
+          canProceed: false,
+        };
+      }
 
-      if (now >= earliestAllowedTime && now < shiftStart) {
+      // Check if it's too early to clock in
+      if (
+        !handleShiftJobClockInTime(
+          jobToUse, // Use the provided job
+          userData.applicantId,
+          currentTime,
+          shiftToUse // Use the provided shift
+        )
+      ) {
+        const minutesUntilClockIn = getMinutesUntilClockIn(
+          jobToUse, // Use the provided job
+          userData.applicantId,
+          currentTime,
+          shiftToUse // Use the provided shift
+        );
+
+        return {
+          isValid: false,
+          messages: [
+            {
+              type: 'error',
+              message: `Too early to clock in. Please wait ${
+                minutesUntilClockIn || 0
+              } minutes.`,
+            },
+          ],
+          canProceed: false,
+        };
+      }
+
+      // Check for early clock-in warning
+      const earlyClockInMinutes =
+        jobToUse.additionalConfig?.earlyClockInMinutes || 0; // Use the provided job
+      if (earlyClockInMinutes > 0) {
+        const earliestAllowedTime = new Date(
+          shiftStart.getTime() - earlyClockInMinutes * 60000
+        );
+
+        if (now >= earliestAllowedTime && now < shiftStart) {
+          messages.push({
+            type: 'warning',
+            message: `⏳ You are clocking in ${Math.ceil(
+              (shiftStart.getTime() - now.getTime()) / 60000
+            )} minutes before your shift starts. Please confirm this is intended.`,
+          });
+        }
+      }
+
+      // Check for auto clock-out warning
+      if (jobToUse.additionalConfig?.autoClockoutShiftEnd) {
+        // Use the provided job
         messages.push({
-          type: "warning",
-          message: `⏳ You are clocking in ${Math.ceil(
-            (shiftStart.getTime() - now.getTime()) / 60000
-          )} minutes before your shift starts. Please confirm this is intended.`,
+          type: 'info',
+          message:
+            '🔄 This job will automatically clock you out at the end of your shift.',
         });
       }
-    }
 
-    // Check for auto clock-out warning
-    if (selectedJob.additionalConfig?.autoClockoutShiftEnd) {
-      messages.push({
-        type: "info",
-        message:
-          "🔄 This job will automatically clock you out at the end of your shift.",
-      });
-    }
+      // Check if time is past shift end
+      const timeIn = getCalculatedTimeIn(
+        jobToUse, // Use the provided job
+        userData.applicantId,
+        currentTime,
+        shiftToUse // Use the provided shift
+      );
 
-    // Check if time is past shift end (shouldn't happen due to earlier check, but good to have)
-    const timeIn = getCalculatedTimeIn(
-      selectedJob,
-      userData.applicantId,
-      currentTime,
-      selectedShift
-    );
+      const timeInDate = new Date(timeIn);
+      const timeInTotalSeconds = getTotalSecondsFromDate(timeInDate);
+      let shiftEndTotalSeconds = getTotalSecondsFromDate(shiftEnd);
 
-    const timeInDate = new Date(timeIn);
-    const timeInTotalSeconds = getTotalSecondsFromDate(timeInDate);
-    let shiftEndTotalSeconds = getTotalSecondsFromDate(shiftEnd);
+      if (shiftEndTotalSeconds < timeInTotalSeconds) {
+        shiftEndTotalSeconds += 24 * 3600; // Add 24 hours for next day
+      }
 
-    if (shiftEndTotalSeconds < timeInTotalSeconds) {
-      shiftEndTotalSeconds += 24 * 3600; // Add 24 hours for next day
-    }
+      if (timeInTotalSeconds > shiftEndTotalSeconds) {
+        return {
+          isValid: false,
+          messages: [
+            {
+              type: 'error',
+              message: 'The shift has already ended.',
+            },
+          ],
+          canProceed: false,
+        };
+      }
 
-    if (timeInTotalSeconds > shiftEndTotalSeconds) {
       return {
-        isValid: false,
-        messages: [
-          {
-            type: "error",
-            message: "The shift has already ended.",
-          },
-        ],
-        canProceed: false,
+        isValid: true,
+        messages,
+        canProceed:
+          messages.length === 0 || messages.every((m) => m.type !== 'error'),
       };
-    }
-
-    return {
-      isValid: true,
-      messages,
-      canProceed:
-        messages.length === 0 || messages.every((m) => m.type !== "error"),
-    };
-  }, [selectedJob, selectedShift, userData.applicantId]);
+    },
+    [selectedJob, selectedShift, userData.applicantId]
+  );
 
   // Update date and time
   const updateDateTime = useCallback(() => {
     const now = new Date();
     setCurrentDate(
-      now.toLocaleDateString("en-US", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
+      now.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
       })
     );
 
@@ -323,17 +329,17 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       const minutes = Math.floor((elapsed % 3600) / 60);
       const seconds = elapsed % 60;
       setCurrentTime(
-        `${hours.toString().padStart(2, "0")}:${minutes
+        `${hours.toString().padStart(2, '0')}:${minutes
           .toString()
-          .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
+          .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
       );
     } else {
-      const timeStr = now.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
+      const timeStr = now.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
         hour12: true,
       });
-      const [time] = timeStr.split(" ");
+      const [time] = timeStr.split(' ');
       setCurrentTime(time);
     }
   }, [isClocked, currentOpenPunch]);
@@ -354,14 +360,14 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       .filter((punch: Punch) => new Date(punch.timeIn) >= today)
       .map((punch: Punch) => ({
         ...punch,
-        shiftSlug: punch.shiftSlug || "",
+        shiftSlug: punch.shiftSlug || '',
         jobInfo: {
           _id: job._id,
           title: job.title,
           jobSlug: job.jobSlug,
-          address: job.address || "",
-          companyCity: job.companyCity || "",
-          companyState: job.companyState || "",
+          address: job.address || '',
+          companyCity: job.companyCity || '',
+          companyState: job.companyState || '',
           zip: job.zip || 0,
           additionalConfig: job.additionalConfig,
         },
@@ -401,8 +407,8 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
     (job: GignologyJob) => {
       if (blockJobSelection) {
         showNotification(
-          "Please clock out of your current punch first",
-          "warning"
+          'Please clock out of your current punch first',
+          'warning'
         );
         return;
       }
@@ -420,176 +426,214 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
     [setSelectedShift]
   );
 
-  // NEW: Separated clock-in logic
-  const performClockIn = useCallback(async () => {
-    console.log("Performing clock in...");
-    setLoading(true);
-    setIsLocationLoading(true);
-    setPendingClockIn(false);
-    setShowValidationModal(false);
+  const performClockIn = useCallback(
+    async (jobToUse?: GignologyJob | null, shiftToUse?: Shift | null) => {
+      // Priority order: direct params → pending override → selected
+      const targetJob = jobToUse || pendingOverrideJob || selectedJob;
+      const targetShift = shiftToUse || pendingOverrideShift || selectedShift;
 
-    try {
-      let clockInCoordinates: Location | null = null;
-
-      if (selectedJob?.additionalConfig?.geofence) {
-        const locationResult = await handleLocationServices();
-        clockInCoordinates = locationResult.locationInfo;
-
-        if (!clockInCoordinates) {
-          showNotification(
-            "Location services failed. Please try again.",
-            "error"
-          );
-          setIsLocationLoading(false);
-          setLoading(false);
-          return;
-        }
+      if (!targetJob || !targetShift) {
+        showNotification('Please select a job and shift', 'error');
+        return;
       }
 
-      setIsLocationLoading(false);
-
-      // Use your shift validation utilities to get proper times
-      const currentTime = new Date().toISOString();
-      const { start, end } = getUserShiftForToday(
-        selectedJob!,
-        userData.applicantId,
-        currentTime,
-        selectedShift!
-      );
-
-      const newStartDate = combineCurrentDateWithTimeFromDateObject(
-        start as Date,
-        currentTime
-      );
-
-      const newEndDate = combineCurrentDateWithTimeFromDateObject(
-        end as Date,
-        currentTime,
-        start as Date
-      );
-
-      const timeIn = getCalculatedTimeIn(
-        selectedJob!,
-        userData.applicantId,
-        currentTime,
-        selectedShift!
-      );
-
-      const clockInData: ClockInData = {
-        clockInCoordinates: clockInCoordinates
-          ? {
-              latitude: clockInCoordinates.latitude || 0,
-              longitude: clockInCoordinates.longitude || 0,
-              accuracy: clockInCoordinates.accuracy || 0,
-              altitude: clockInCoordinates.altitude || 0,
-              altitudeAccuracy: clockInCoordinates.altitudeAccuracy || 0,
-              heading: clockInCoordinates.heading || 0,
-              speed: clockInCoordinates.speed || 0,
-            }
-          : {
-              latitude: 0,
-              longitude: 0,
-              accuracy: 0,
-              altitude: 0,
-              altitudeAccuracy: 0,
-              heading: 0,
-              speed: 0,
-            },
-        timeIn,
-        newStartDate,
-        newEndDate,
-        selectedShift: selectedShift!,
-        applicantId: userData.applicantId,
-      };
-
-      console.log("Clock in data:", clockInData);
-      const result = await clockInMutation.mutateAsync(clockInData);
-      console.log("Clock in result:", result);
-
-      setIsClocked(true);
-      setLocation(clockInCoordinates);
-      showNotification("Successfully clocked in", "success");
-    } catch (error) {
-      console.error("Error clocking in:", error);
-      showNotification("Failed to clock in", "error");
-    } finally {
-      setLoading(false);
-      setIsLocationLoading(false);
-    }
-  }, [
-    selectedJob,
-    selectedShift,
-    userData.applicantId,
-    clockInMutation,
-    showNotification,
-  ]);
-
-  // NEW: Enhanced clock in/out handler with validation
-  const handleClockInOut = useCallback(async () => {
-    console.log("=== Clock In/Out Attempt ===");
-    console.log("currentOpenPunch:", currentOpenPunch);
-    console.log("selectedJob:", selectedJob?.title);
-    console.log("selectedShift:", selectedShift?.shiftName);
-
-    if (currentOpenPunch) {
-      console.log("Attempting to clock out...");
       setLoading(true);
+      setIsLocationLoading(true);
+      setPendingClockIn(false);
+      setShowValidationModal(false);
 
       try {
-        const result = await clockOutMutation.mutateAsync(currentOpenPunch);
-        console.log("Clock out result:", result);
-        setIsClocked(false);
-        setLocation(null);
-        removeSelectedJob();
-        removeSelectedShift();
-        showNotification("Successfully clocked out", "success");
+        let clockInCoordinates: Location | null = null;
+
+        if (targetJob?.additionalConfig?.geofence) {
+          const locationResult = await handleLocationServices();
+          clockInCoordinates = locationResult.locationInfo;
+
+          if (!clockInCoordinates) {
+            showNotification(
+              'Location services failed. Please try again.',
+              'error'
+            );
+            setIsLocationLoading(false);
+            setLoading(false);
+            return;
+          }
+        }
+
+        setIsLocationLoading(false);
+
+        // Use your shift validation utilities to get proper times
+        const currentTime = new Date().toISOString();
+        const { start, end } = getUserShiftForToday(
+          targetJob,
+          userData.applicantId,
+          currentTime,
+          targetShift
+        );
+
+        const newStartDate = combineCurrentDateWithTimeFromDateObject(
+          start as Date,
+          currentTime
+        );
+
+        const newEndDate = combineCurrentDateWithTimeFromDateObject(
+          end as Date,
+          currentTime,
+          start as Date
+        );
+
+        const timeIn = getCalculatedTimeIn(
+          targetJob,
+          userData.applicantId,
+          currentTime,
+          targetShift
+        );
+
+        const clockInData: ClockInData = {
+          jobId: targetJob._id,
+          clockInCoordinates: clockInCoordinates
+            ? {
+                latitude: clockInCoordinates.latitude || 0,
+                longitude: clockInCoordinates.longitude || 0,
+                accuracy: clockInCoordinates.accuracy || 0,
+                altitude: clockInCoordinates.altitude || 0,
+                altitudeAccuracy: clockInCoordinates.altitudeAccuracy || 0,
+                heading: clockInCoordinates.heading || 0,
+                speed: clockInCoordinates.speed || 0,
+              }
+            : {
+                latitude: 0,
+                longitude: 0,
+                accuracy: 0,
+                altitude: 0,
+                altitudeAccuracy: 0,
+                heading: 0,
+                speed: 0,
+              },
+          timeIn,
+          newStartDate,
+          newEndDate,
+          selectedShift: targetShift,
+          applicantId: userData.applicantId,
+        };
+
+        await clockInMutation.mutateAsync(clockInData);
+
+        setIsClocked(true);
+        setLocation(clockInCoordinates);
+
+        // Update store state to the target job/shift
+        if (targetJob._id !== selectedJob?._id) {
+          setSelectedJob(targetJob);
+        }
+        if (targetShift.slug !== selectedShift?.slug) {
+          setSelectedShift(targetShift);
+        }
+
+        // Clear pending override values after successful clock-in
+        setPendingOverrideJob(null);
+        setPendingOverrideShift(null);
+
+        showNotification('Successfully clocked in', 'success');
       } catch (error) {
-        console.error("Error clocking out:", error);
-        showNotification("Failed to clock out", "error");
+        console.error('Error clocking in:', error);
+        showNotification('Failed to clock in', 'error');
       } finally {
         setLoading(false);
+        setIsLocationLoading(false);
       }
-      return;
-    }
+    },
+    [
+      selectedJob,
+      selectedShift,
+      pendingOverrideJob,
+      pendingOverrideShift,
+      userData.applicantId,
+      clockInMutation,
+      showNotification,
+      setSelectedJob,
+      setSelectedShift,
+    ]
+  );
 
-    // Validate clock-in attempt
-    const validation = await validateClockIn();
+  // 3. UPDATE the existing handleClockInOut function to accept optional parameters:
+  const handleClockInOut = useCallback(
+    async (overrideJob?: GignologyJob, overrideShift?: Shift) => {
+      // Use provided job/shift or fall back to selected ones
+      const jobToUse = overrideJob || selectedJob;
+      const shiftToUse = overrideShift || selectedShift;
 
-    if (!validation.isValid) {
-      validation.messages.forEach((msg) => {
-        showNotification(msg.message, msg.type);
-      });
-      return;
-    }
+      if (currentOpenPunch) {
+        setLoading(true);
 
-    // If there are warnings, show modal for confirmation
-    if (validation.messages.length > 0 && !pendingClockIn) {
-      setValidationMessages(validation.messages);
-      setShowValidationModal(true);
-      setPendingClockIn(true);
-      return;
-    }
+        try {
+          await clockOutMutation.mutateAsync(currentOpenPunch);
+          setIsClocked(false);
+          setLocation(null);
 
-    // Proceed with clock-in
-    await performClockIn();
-  }, [
-    currentOpenPunch,
-    selectedJob?.title,
-    selectedShift?.shiftName,
-    validateClockIn,
-    pendingClockIn,
-    performClockIn,
-    clockOutMutation,
-    removeSelectedJob,
-    removeSelectedShift,
-    showNotification,
-  ]);
+          // Clear selections after successful clock out
+          removeSelectedJob();
+          removeSelectedShift();
+
+          showNotification('Successfully clocked out', 'success');
+        } catch (error) {
+          console.error('Error clocking out:', error);
+          showNotification('Failed to clock out', 'error');
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      // For clock-in, validate using the provided or selected job/shift
+      const validation = await validateClockIn(
+        jobToUse || undefined,
+        shiftToUse || undefined
+      );
+
+      if (!validation.isValid) {
+        validation.messages.forEach((msg) => {
+          showNotification(msg.message, msg.type);
+        });
+        return;
+      }
+
+      // If there are warnings, show modal for confirmation
+      if (validation.messages.length > 0 && !pendingClockIn) {
+        setValidationMessages(validation.messages);
+        setShowValidationModal(true);
+        setPendingClockIn(true);
+
+        // Store the override job/shift for when user confirms
+        setPendingOverrideJob(overrideJob || null);
+        setPendingOverrideShift(overrideShift || null);
+        return;
+      }
+
+      // Proceed with clock-in using the provided job/shift
+      await performClockIn(jobToUse || undefined, shiftToUse || undefined);
+    },
+    [
+      currentOpenPunch,
+      selectedJob,
+      selectedShift,
+      validateClockIn,
+      pendingClockIn,
+      performClockIn,
+      clockOutMutation,
+      removeSelectedJob,
+      removeSelectedShift,
+      showNotification,
+    ]
+  );
 
   // NEW: Cancel validation modal
   const cancelClockIn = useCallback(() => {
     setShowValidationModal(false);
     setPendingClockIn(false);
     setValidationMessages([]);
+    setPendingOverrideJob(null);
+    setPendingOverrideShift(null);
   }, []);
 
   // Effects
@@ -620,7 +664,6 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
   useEffect(() => {
     const newIsClocked = !!currentOpenPunch;
     if (newIsClocked !== isClocked) {
-      console.log("Updating clocked status:", newIsClocked);
       setIsClocked(newIsClocked);
     }
   }, [currentOpenPunch, isClocked]);
@@ -628,17 +671,12 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
   // Initialize store from server data
   useEffect(() => {
     if (!isInitialized && openPunches && userData?.jobs) {
-      console.log("Initializing timer card state from server data...");
-
       if (currentOpenPunch) {
-        console.log("Found open punch, setting up state:", currentOpenPunch);
-
         const punchJob = userData.jobs.find(
           (job: GignologyJob) => job._id === currentOpenPunch.jobId
         );
 
         if (punchJob) {
-          console.log("Setting selected job:", punchJob.title);
           setSelectedJob(punchJob);
 
           if (currentOpenPunch.shiftSlug && punchJob.shifts) {
@@ -646,7 +684,6 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
               (shift: Shift) => shift.slug === currentOpenPunch.shiftSlug
             );
             if (punchShift) {
-              console.log("Setting selected shift:", punchShift.shiftName);
               setSelectedShift(punchShift);
             }
           }
@@ -664,8 +701,6 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
             });
           }
         }
-      } else {
-        console.log("No open punch found");
       }
 
       setIsInitialized(true);
@@ -722,9 +757,6 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
     const shiftStart = new Date(shiftStartTime);
     const shiftEnd = new Date(shiftEndTime);
 
-    console.log("shiftStart: ", shiftStart);
-    console.log("shiftEnd: ", shiftEnd);
-
     // Calculate shift duration in minutes
     const shiftDurationMinutes = Math.floor(
       (shiftEnd.getTime() - shiftStart.getTime()) / (1000 * 60)
@@ -746,6 +778,38 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
     };
   }, [selectedJob, selectedShift, userData.applicantId]);
 
+  // Memoize location object to prevent unnecessary rerenders
+  const memoizedLocation = useMemo(() => {
+    if (!location) return null;
+    return {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      accuracy: location.accuracy,
+      altitude: location.altitude,
+      altitudeAccuracy: location.altitudeAccuracy,
+      heading: location.heading,
+      speed: location.speed,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    location?.latitude,
+    location?.longitude,
+    location?.accuracy,
+    location?.altitude,
+    location?.altitudeAccuracy,
+    location?.heading,
+    location?.speed,
+  ]);
+
+  // Memoize selectedJob and selectedShift
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const memoizedSelectedJob = useMemo(() => selectedJob, [selectedJob?._id]);
+  const memoizedSelectedShift = useMemo(
+    () => selectedShift,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedShift?.slug]
+  );
+
   return {
     // Existing state
     currentTime,
@@ -754,10 +818,10 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
     totalHours,
     loading,
     isLocationLoading,
-    location,
+    location: memoizedLocation,
     isInitialized,
-    selectedJob,
-    selectedShift,
+    selectedJob: memoizedSelectedJob,
+    selectedShift: memoizedSelectedShift,
     currentOpenPunch,
     todaysPunches,
     blockJobSelection,
@@ -766,6 +830,8 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
     availableShifts,
     enoughLocationInfo,
     shiftInfo,
+    pendingOverrideJob,
+    pendingOverrideShift,
 
     // NEW: Validation state and handlers
     validationMessages,

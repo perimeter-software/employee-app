@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
-import { withEnhancedAuthAPI } from "@/lib/middleware";
-import { mongoConn } from "@/lib/db";
-import type { AuthenticatedRequest } from "@/domains/user/types";
+import { NextResponse } from 'next/server';
+import { withEnhancedAuthAPI } from '@/lib/middleware';
+import { mongoConn } from '@/lib/db';
+import type { AuthenticatedRequest } from '@/domains/user/types';
 import {
   findOpenPunchByApplicantIdAndJobId,
   createPunchIn,
@@ -10,18 +10,18 @@ import {
   checkForOverlappingPunch,
   checkForPreviousPunchesWithinShift,
   getTotalWorkedHoursForWeek,
-} from "@/domains/punch/utils";
-import { ObjectId as ObjectIdFunction } from "mongodb";
-import { parseClockInCoordinates } from "@/lib/utils";
-import { ClockInCoordinates, Shift } from "@/domains/job";
-import { findJobByjobId, getUserType } from "@/domains/user/utils";
+} from '@/domains/punch/utils';
+import { ObjectId as ObjectIdFunction } from 'mongodb';
+import { parseClockInCoordinates } from '@/lib/utils';
+import { ClockInCoordinates, Shift } from '@/domains/job';
+import { findJobByjobId, getUserType } from '@/domains/user/utils';
 import {
   giveJobAllowedGeoDistance,
   giveJobGeoCoords,
   isJobGeoFenced,
   jobHasShiftForUser,
-} from "@/domains/punch/utils/shift-job-utils";
-import { Punch, PunchNoId } from "@/domains/punch";
+} from '@/domains/punch/utils/shift-job-utils';
+import { Punch, PunchNoId } from '@/domains/punch';
 
 // Utility Functions
 const calculateDistance = (
@@ -56,7 +56,7 @@ function createNewPunch(
   const now = new Date().toISOString();
 
   return {
-    type: "punch",
+    type: 'punch',
     userId,
     applicantId,
     jobId,
@@ -65,7 +65,7 @@ function createNewPunch(
     userNote: userNote || null,
     managerNote: null,
     approvingManager: null,
-    status: "Pending",
+    status: 'Pending',
     modifiedDate: now,
     modifiedBy: userId,
     clockInCoordinates: coordinates,
@@ -90,7 +90,7 @@ async function createPunchHandler(
 
     if (!jobId || !userId) {
       return NextResponse.json(
-        { error: "missing-required-info", message: "Missing required info!" },
+        { error: 'missing-required-info', message: 'Missing required info!' },
         { status: 400 }
       );
     }
@@ -110,22 +110,22 @@ async function createPunchHandler(
 
     const openPunch = (await findOpenPunchByApplicantIdAndJobId(
       db,
-      applicantId || "",
+      applicantId || '',
       jobId
     )) as Punch;
 
     const totalHoursWorked = await getTotalWorkedHoursForWeek(
       db,
       userId,
-      applicantId || "",
+      applicantId || '',
       jobId
     );
 
     if (openPunch) {
       return NextResponse.json(
         {
-          error: "open-punch-exists",
-          message: "Unauthorized: Open punch exists",
+          error: 'open-punch-exists',
+          message: 'Unauthorized: Open punch exists',
           openPunch: JSON.stringify(openPunch),
         },
         { status: 403 }
@@ -136,17 +136,14 @@ async function createPunchHandler(
     const job = await findJobByjobId(db, jobId);
     if (!job) {
       return NextResponse.json(
-        { error: "job-not-found", message: "Job not found" },
+        { error: 'job-not-found', message: 'Job not found' },
         { status: 400 }
       );
     }
 
-    console.log("jobHasShiftForUser job: ", job);
-    console.log("jobHasShiftForUser applicantId: ", applicantId);
-
-    if (!jobHasShiftForUser(job, applicantId || "")) {
+    if (!jobHasShiftForUser(job, applicantId || '')) {
       return NextResponse.json(
-        { error: "no-shifts", message: "No shifts to clock in for!" },
+        { error: 'no-shifts', message: 'No shifts to clock in for!' },
         { status: 404 }
       );
     }
@@ -158,17 +155,17 @@ async function createPunchHandler(
       accuracy: 0,
     } as ClockInCoordinates;
 
-    const type = await getUserType(db, user._id || "");
+    const type = await getUserType(db, user._id || '');
 
     // Admin and Master user role can always clockin regardless if geofenced or not
-    if (isJobGeoFenced(job) && type === "User") {
+    if (isJobGeoFenced(job) && type === 'User') {
       const coordinateResults = parseClockInCoordinates(clockInCoordinates);
 
       if (!coordinateResults) {
         return NextResponse.json(
           {
-            error: "invalid-coordinates",
-            message: "Invalid clockInCoordinates object",
+            error: 'invalid-coordinates',
+            message: 'Invalid clockInCoordinates object',
           },
           { status: 400 }
         );
@@ -180,8 +177,8 @@ async function createPunchHandler(
       if (jobsCoordinates?.lat === 0 || jobsCoordinates?.long === 0) {
         return NextResponse.json(
           {
-            error: "missing-job-coordinates",
-            message: "Missing required job coordinates",
+            error: 'missing-job-coordinates',
+            message: 'Missing required job coordinates',
           },
           { status: 404 }
         );
@@ -201,8 +198,8 @@ async function createPunchHandler(
       ) {
         return NextResponse.json(
           {
-            error: "missing-job-coordinates",
-            message: "Missing required job coordinates",
+            error: 'missing-job-coordinates',
+            message: 'Missing required job coordinates',
           },
           { status: 404 }
         );
@@ -212,9 +209,9 @@ async function createPunchHandler(
       if (currentDistance > allowedDistance) {
         return NextResponse.json(
           {
-            error: "outside-geofence",
+            error: 'outside-geofence',
             message:
-              "Unauthorized: Not within allowable distance of job location",
+              'Unauthorized: Not within allowable distance of job location',
           },
           { status: 400 }
         );
@@ -224,7 +221,7 @@ async function createPunchHandler(
     // Check if breaks are not allowed and there are previous punches for today
     if (!newStartDate || !newEndDate) {
       return NextResponse.json(
-        { error: "no-valid-shift", message: "No valid shift for today!" },
+        { error: 'no-valid-shift', message: 'No valid shift for today!' },
         { status: 400 }
       );
     }
@@ -232,7 +229,7 @@ async function createPunchHandler(
     const hasPreviousPunches = await checkForPreviousPunchesWithinShift(
       db,
       userId,
-      applicantId || "",
+      applicantId || '',
       jobId,
       newStartDate,
       newEndDate
@@ -245,9 +242,9 @@ async function createPunchHandler(
     ) {
       return NextResponse.json(
         {
-          error: "breaks-not-allowed",
+          error: 'breaks-not-allowed',
           message:
-            "You cannot clock in again during this shift because breaks are not allowed.",
+            'You cannot clock in again during this shift because breaks are not allowed.',
         },
         { status: 403 }
       );
@@ -259,7 +256,7 @@ async function createPunchHandler(
     if (!allowOvertime && totalHoursWorked > 40) {
       return NextResponse.json(
         {
-          error: "overtime-not-allowed",
+          error: 'overtime-not-allowed',
           message:
             "You cannot clock in again because you've exceeded 40 hours and overtime is not allowed.",
         },
@@ -269,7 +266,7 @@ async function createPunchHandler(
 
     const newPunch: PunchNoId = createNewPunch(
       userId,
-      applicantId || "",
+      applicantId || '',
       jobId,
       userNote,
       clockInCoordinates,
@@ -280,7 +277,7 @@ async function createPunchHandler(
     const punch = await createPunchIn(db, newPunch);
     if (!punch) {
       return NextResponse.json(
-        { error: "clock-in-failed", message: "Error clocking in" },
+        { error: 'clock-in-failed', message: 'Error clocking in' },
         { status: 500 }
       );
     }
@@ -288,7 +285,7 @@ async function createPunchHandler(
     return NextResponse.json(
       {
         success: true,
-        message: "Clocked in successfully!",
+        message: 'Clocked in successfully!',
         data: {
           punch,
         },
@@ -296,9 +293,9 @@ async function createPunchHandler(
       { status: 201 }
     );
   } catch (error) {
-    console.error("Clock in error:", error);
+    console.error('Clock in error:', error);
     return NextResponse.json(
-      { error: "internal-error", message: "Internal server error" },
+      { error: 'internal-error', message: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -312,7 +309,7 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
 
     if (!punch) {
       return NextResponse.json(
-        { error: "missing-punch", message: "Missing punch" },
+        { error: 'missing-punch', message: 'Missing punch' },
         { status: 400 }
       );
     }
@@ -322,23 +319,23 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
 
     let updatedPunch;
 
-    if (action === "clockOut") {
+    if (action === 'clockOut') {
       updatedPunch = await createPunchOut(db, punch);
       if (!updatedPunch) {
         return NextResponse.json(
-          { error: "clock-out-failed", message: "Error clocking out" },
+          { error: 'clock-out-failed', message: 'Error clocking out' },
           { status: 500 }
         );
       }
-    } else if (action === "update") {
+    } else if (action === 'update') {
       // Get the original punch from database to compare times
-      const originalPunch = await db.collection("timecard").findOne({
+      const originalPunch = await db.collection('timecard').findOne({
         _id: new ObjectIdFunction(punch._id),
       });
 
       if (!originalPunch) {
         return NextResponse.json(
-          { error: "punch-not-found", message: "Original punch not found" },
+          { error: 'punch-not-found', message: 'Original punch not found' },
           { status: 404 }
         );
       }
@@ -348,18 +345,9 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
       const timeOutChanged = originalPunch.timeOut !== punch.timeOut;
 
       if (timeInChanged || timeOutChanged) {
-        console.log("Time changed, checking for overlap:", {
-          timeInChanged,
-          timeOutChanged,
-          originalTimeIn: originalPunch.timeIn,
-          newTimeIn: punch.timeIn,
-          originalTimeOut: originalPunch.timeOut,
-          newTimeOut: punch.timeOut,
-        });
-
         const overlap = await checkForOverlappingPunch(
           db,
-          user.applicantId || "",
+          user.applicantId || '',
           punch.timeIn,
           punch.timeOut ?? null,
           punch._id
@@ -368,14 +356,12 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
         if (overlap) {
           return NextResponse.json(
             {
-              error: "punch-overlap",
-              message: "Making this change would create a punch overlap!",
+              error: 'punch-overlap',
+              message: 'Making this change would create a punch overlap!',
             },
             { status: 400 }
           );
         }
-      } else {
-        console.log("Only notes/metadata changed, skipping overlap check");
       }
 
       const updateData: Punch = {
@@ -388,13 +374,13 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
 
       if (!updatedPunch) {
         return NextResponse.json(
-          { error: "update-failed", message: "Error updating punch" },
+          { error: 'update-failed', message: 'Error updating punch' },
           { status: 500 }
         );
       }
     } else {
       return NextResponse.json(
-        { error: "invalid-action", message: "Invalid action" },
+        { error: 'invalid-action', message: 'Invalid action' },
         { status: 400 }
       );
     }
@@ -403,17 +389,17 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
       {
         success: true,
         message:
-          action === "clockOut"
-            ? "Clocked out successfully!"
-            : "Punch updated successfully!",
+          action === 'clockOut'
+            ? 'Clocked out successfully!'
+            : 'Punch updated successfully!',
         data: updatedPunch,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Punch update error:", error);
+    console.error('Punch update error:', error);
     return NextResponse.json(
-      { error: "internal-error", message: "Internal server error" },
+      { error: 'internal-error', message: 'Internal server error' },
       { status: 500 }
     );
   }

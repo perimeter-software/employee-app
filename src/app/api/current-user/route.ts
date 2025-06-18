@@ -1,20 +1,18 @@
-import { NextResponse } from "next/server";
-import { withEnhancedAuthAPI } from "@/lib/middleware";
-import { mongoConn } from "@/lib/db";
+import { NextResponse } from 'next/server';
+import { withEnhancedAuthAPI } from '@/lib/middleware';
+import { mongoConn } from '@/lib/db';
 import {
   checkUserExistsByEmail,
   checkUserMasterEmail,
-} from "@/domains/user/utils";
-import redisService from "@/lib/cache/redis-client";
-import type { AuthenticatedRequest, EnhancedUser } from "@/domains/user/types";
+} from '@/domains/user/utils';
+import redisService from '@/lib/cache/redis-client';
+import type { AuthenticatedRequest, EnhancedUser } from '@/domains/user/types';
 
 async function getUserDataHandler(request: AuthenticatedRequest) {
   try {
     // User is authenticated AND exists in database AND has tenant access
     const user = request.user;
     const userEmail = user.email!;
-
-    console.log("Enhanced authenticated user:", user.sub, userEmail);
 
     // Connect to databases (we know user exists because of withEnhancedAuth)
     const { db, dbTenant, userDb } = await mongoConn();
@@ -56,16 +54,16 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "User data retrieved successfully",
+      message: 'User data retrieved successfully',
       data: enhancedUser,
     });
   } catch (error) {
-    console.error("User data API error:", error);
+    console.error('User data API error:', error);
     return NextResponse.json(
       {
         success: false,
-        error: "internal-error",
-        message: "Internal server error",
+        error: 'internal-error',
+        message: 'Internal server error',
       },
       { status: 500 }
     );

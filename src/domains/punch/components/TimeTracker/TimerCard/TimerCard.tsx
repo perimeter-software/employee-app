@@ -1,20 +1,21 @@
-"use client";
+'use client';
 
-import React, { useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Skeleton } from "@/components/ui/Skeleton";
-import { CircularTimer } from "./CircularTimer";
-import { ElapsedTime } from "./ElapsedTime";
-import { JobShiftSelector } from "./JobShiftSelector";
-import { ClockControls } from "./ClockControls";
-import { ClockInValidationModal } from "../ClockInValidationModal/ClockInValidationModal";
-import { useTimerCard } from "@/domains/punch/hooks";
+import React, { useEffect } from 'react';
+import { Card, CardContent } from '@/components/ui/Card';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { CircularTimer } from './CircularTimer';
+import { ElapsedTime } from './ElapsedTime';
+import { JobShiftSelector } from './JobShiftSelector';
+import { ClockControls } from './ClockControls';
+import { ClockInValidationModal } from '../ClockInValidationModal';
+import { useTimerCard } from '@/domains/punch/hooks';
 import {
   usePunchViewerStore,
   isPersistedDataValid,
-} from "@/domains/punch/stores/punch-viewer-store";
-import { PunchWithJobInfo } from "@/domains/punch/types";
-import { GignologyUser } from "@/domains/user/types";
+} from '@/domains/punch/stores/punch-viewer-store';
+import { PunchWithJobInfo } from '@/domains/punch/types';
+import { GignologyUser } from '@/domains/user/types';
+import { noop } from '@tanstack/react-query';
 
 interface TimerCardProps {
   userData: GignologyUser;
@@ -27,18 +28,11 @@ export function TimerCard({ userData, openPunches }: TimerCardProps) {
   // Initialize store from server data when component mounts or data changes
   useEffect(() => {
     if (openPunches && userData) {
-      console.log("TimerCard: Initializing store from server data...");
-
       // Only initialize if we don't have valid persisted data or if server data is newer
       const hasValidPersistedData = isPersistedDataValid(lastUpdated);
 
       if (!hasValidPersistedData) {
-        console.log(
-          "TimerCard: No valid persisted data, initializing from server"
-        );
         initializeFromServerData(openPunches, userData);
-      } else {
-        console.log("TimerCard: Using valid persisted data");
       }
     }
   }, [openPunches, userData, initializeFromServerData, lastUpdated]);
@@ -53,6 +47,8 @@ export function TimerCard({ userData, openPunches }: TimerCardProps) {
     location,
     isInitialized,
     shiftInfo,
+    pendingOverrideJob,
+    pendingOverrideShift,
 
     // Store state
     selectedJob,
@@ -98,7 +94,13 @@ export function TimerCard({ userData, openPunches }: TimerCardProps) {
       <ClockInValidationModal
         isOpen={showValidationModal}
         messages={validationMessages}
-        onConfirm={performClockIn}
+        onConfirm={() => {
+          // Use override values if available, otherwise use selected values
+          performClockIn(
+            pendingOverrideJob || selectedJob,
+            pendingOverrideShift || selectedShift
+          );
+        }}
         onCancel={cancelClockIn}
         loading={loading}
       />
@@ -116,13 +118,19 @@ export function TimerCard({ userData, openPunches }: TimerCardProps) {
             blockJobSelection={blockJobSelection}
             onJobSelect={handleJobSelection}
             onShiftSelect={handleShiftSelection}
+            currentOpenPunch={currentOpenPunch || undefined}
+            isClocked={isClocked}
           />
 
           {/* Timer Display - Show elapsed time when clocked in, circular timer when not */}
           {isClocked && currentOpenPunch ? (
             <ElapsedTime
               startTime={currentOpenPunch.timeIn}
-              onClick={handleClockInOut}
+              onClick={() =>
+                selectedJob && selectedShift
+                  ? handleClockInOut(selectedJob, selectedShift)
+                  : noop
+              }
               // Pass shift timing information for accurate progress calculation
               shiftStartTime={shiftInfo.shiftStartTime}
               shiftEndTime={shiftInfo.shiftEndTime}
@@ -132,7 +140,11 @@ export function TimerCard({ userData, openPunches }: TimerCardProps) {
             <CircularTimer
               time={currentTime}
               isActive={isClocked}
-              onClick={handleClockInOut}
+              onClick={() =>
+                selectedJob && selectedShift
+                  ? handleClockInOut(selectedJob, selectedShift)
+                  : noop
+              }
               disabled={
                 loading ||
                 !selectedJob ||
@@ -155,27 +167,6 @@ export function TimerCard({ userData, openPunches }: TimerCardProps) {
             isClocked={isClocked}
             userLocation={location}
           />
-
-          {/* Debug Info - Remove in production */}
-          {process.env.NODE_ENV === "development" && (
-            <div className="mt-4 p-4 bg-gray-100 rounded-lg text-xs">
-              <div>
-                <strong>Debug Info:</strong>
-              </div>
-              <div>Is Clocked: {isClocked ? "Yes" : "No"}</div>
-              <div>Current Open Punch: {currentOpenPunch ? "Yes" : "No"}</div>
-              <div>Selected Job: {selectedJob?.title || "None"}</div>
-              <div>Selected Shift: {selectedShift?.shiftName || "None"}</div>
-              <div>Open Punches Count: {openPunches?.length || 0}</div>
-              <div>Is Initialized: {isInitialized ? "Yes" : "No"}</div>
-              {location && (
-                <div>
-                  Location: {location.latitude?.toFixed(4)},{" "}
-                  {location.longitude?.toFixed(4)}
-                </div>
-              )}
-            </div>
-          )}
         </CardContent>
       </Card>
     </>

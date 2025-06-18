@@ -1,29 +1,30 @@
 // /app/conversations/page.tsx
-"use client";
+'use client';
 
-import { useState, useRef, useEffect } from "react";
-import { Send } from "lucide-react";
-import Layout from "@/components/layout/Layout";
-import { Skeleton } from "@/components/ui/Skeleton";
-import { Input } from "@/components/ui/Input/Input";
-import { Button } from "@/components/ui/Button/Button";
+import { useState, useRef, useEffect } from 'react';
+import { Send } from 'lucide-react';
+import Layout from '@/components/layout/Layout';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { Input } from '@/components/ui/Input/Input';
+import { Button } from '@/components/ui/Button/Button';
 import {
   useConversations,
   useCreateConversation,
-} from "@/domains/conversation/hooks/conversation";
-import { AiConversation, AiMessage } from "@/domains/conversation/types";
+} from '@/domains/conversation/hooks/conversation';
+import { AiConversation, AiMessage } from '@/domains/conversation/types';
+import { withAuth } from '@/domains/shared';
 
 const ChatConversationPage = () => {
   const [messages, setMessages] = useState<AiMessage[]>([]);
-  const [inputValue, setInputValue] = useState("");
+  const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [, setConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const company = "Company";
+  const company = 'Company';
 
   // Using the hook correctly
   const {
@@ -36,13 +37,13 @@ const ChatConversationPage = () => {
   const createConversation = useCreateConversation();
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
@@ -67,13 +68,13 @@ const ChatConversationPage = () => {
 
     setIsLoading(true);
     const newMessage: AiMessage = {
-      role: "user",
+      role: 'user',
       content: inputValue.trim(),
       created: new Date().toISOString(),
     };
 
     setMessages((prev) => [...prev, newMessage]);
-    setInputValue("");
+    setInputValue('');
     setIsTyping(true);
 
     try {
@@ -83,13 +84,12 @@ const ChatConversationPage = () => {
         updated: new Date().toISOString(),
         title:
           inputValue.trim().slice(0, 30) +
-          (inputValue.trim().length > 30 ? "..." : ""),
+          (inputValue.trim().length > 30 ? '...' : ''),
       };
 
       // Use the create conversation hook
-      const createdConversation = await createConversation.mutateAsync(
-        newConversationData
-      );
+      const createdConversation =
+        await createConversation.mutateAsync(newConversationData);
 
       setConversationId(
         createdConversation.id || createdConversation._id || null
@@ -98,9 +98,9 @@ const ChatConversationPage = () => {
       // Simulate response
       setTimeout(() => {
         const responseMessage: AiMessage = {
-          role: "assistant",
+          role: 'assistant',
           content:
-            "This is a simulated response. Implement your chat API here.",
+            'This is a simulated response. Implement your chat API here.',
           created: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, responseMessage]);
@@ -108,14 +108,14 @@ const ChatConversationPage = () => {
         setIsLoading(false);
       }, 1000);
     } catch (error) {
-      console.error("Error creating conversation:", error);
+      console.error('Error creating conversation:', error);
       setIsTyping(false);
       setIsLoading(false);
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
@@ -124,7 +124,7 @@ const ChatConversationPage = () => {
   if (conversationsLoading) {
     return (
       <Layout>
-        <div className="flex flex-col h-full bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
           {/* Header Skeleton */}
           <div className="border-b border-gray-200 p-4">
             <Skeleton className="h-8 w-48 mb-2" />
@@ -160,7 +160,7 @@ const ChatConversationPage = () => {
   if (conversationsError) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
           <div className="text-center">
             <p className="text-red-500">Error loading conversations:</p>
             <p className="text-gray-600">{conversationsError.message}</p>
@@ -203,14 +203,14 @@ const ChatConversationPage = () => {
             <div
               key={index}
               className={`flex ${
-                message.role === "user" ? "justify-end" : "justify-start"
+                message.role === 'user' ? 'justify-end' : 'justify-start'
               }`}
             >
               <div
                 className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                  message.role === "user"
-                    ? "bg-blue-500 text-white"
-                    : "bg-gray-200 text-gray-800"
+                  message.role === 'user'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-200 text-gray-800'
                 }`}
               >
                 <p className="text-sm">{message.content}</p>
@@ -262,4 +262,6 @@ const ChatConversationPage = () => {
   );
 };
 
-export default ChatConversationPage;
+export default withAuth(ChatConversationPage, {
+  requireAuth: true,
+});

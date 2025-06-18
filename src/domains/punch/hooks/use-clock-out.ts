@@ -1,7 +1,7 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { PunchApiService, punchQueryKeys } from "../services";
-import { Punch } from "../types";
-import { toast } from "sonner";
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { PunchApiService, punchQueryKeys } from '../services';
+import { Punch } from '../types';
+import { toast } from 'sonner';
 
 interface ApiErrorWithDetails extends Error {
   errorCode?: string;
@@ -13,18 +13,22 @@ interface ApiErrorWithDetails extends Error {
   };
 }
 
-export const useClockOut = (userId: string, jobId: string) => {
+export const useClockOut = (userId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (punch: Punch) => {
       // Show loading toast
-      const loadingToastId = toast.loading("Clocking out...", {
-        description: "Recording your end time",
+      const loadingToastId = toast.loading('Clocking out...', {
+        description: 'Recording your end time',
       });
 
       try {
-        const result = await PunchApiService.clockOut(userId, jobId, punch);
+        const result = await PunchApiService.clockOut(
+          userId,
+          punch.jobId,
+          punch
+        );
 
         // Dismiss loading toast
         toast.dismiss(loadingToastId);
@@ -36,15 +40,10 @@ export const useClockOut = (userId: string, jobId: string) => {
         throw error;
       }
     },
-    onSuccess: (updatedPunch) => {
-      console.log(
-        "Clock out successful, invalidating queries...",
-        updatedPunch
-      );
-
+    onSuccess: () => {
       // Show success toast
-      toast.success("Successfully clocked out! 🏁", {
-        description: "Your work time has been recorded",
+      toast.success('Successfully clocked out! 🏁', {
+        description: 'Your work time has been recorded',
         duration: 4000,
       });
 
@@ -56,61 +55,55 @@ export const useClockOut = (userId: string, jobId: string) => {
       queryClient.invalidateQueries({ queryKey: punchQueryKeys.open() });
 
       // Invalidate user data queries
-      queryClient.invalidateQueries({ queryKey: ["user"] });
-      queryClient.invalidateQueries({ queryKey: ["userApplicantJob"] });
+      queryClient.invalidateQueries({ queryKey: ['user'] });
+      queryClient.invalidateQueries({ queryKey: ['userApplicantJob'] });
 
       // Force refetch immediately
       queryClient.refetchQueries({
         queryKey: punchQueryKeys.allOpen(userId),
-        type: "active",
-      });
-
-      console.log("Invalidated query keys:", {
-        all: punchQueryKeys.all,
-        allOpen: punchQueryKeys.allOpen(userId),
-        open: punchQueryKeys.open(),
+        type: 'active',
       });
     },
     onError: (error: ApiErrorWithDetails) => {
-      console.error("Clock out failed:", error);
+      console.error('Clock out failed:', error);
 
       // Get the specific error code from your API
       const errorCode = error.errorCode || error.apiResponse?.error;
       const apiMessage = error.apiResponse?.message || error.message;
 
       // Enhanced error handling with specific messages
-      let errorTitle = "Failed to clock out";
-      let errorDescription = apiMessage || "Please try again";
+      let errorTitle = 'Failed to clock out';
+      let errorDescription = apiMessage || 'Please try again';
 
       switch (errorCode) {
-        case "missing-punch":
-          errorTitle = "Missing Time Entry";
-          errorDescription = "No active time entry found to clock out";
+        case 'missing-punch':
+          errorTitle = 'Missing Time Entry';
+          errorDescription = 'No active time entry found to clock out';
           break;
 
-        case "clock-out-failed":
-          errorTitle = "Clock Out Failed";
-          errorDescription = "Unable to record your end time. Please try again";
+        case 'clock-out-failed':
+          errorTitle = 'Clock Out Failed';
+          errorDescription = 'Unable to record your end time. Please try again';
           break;
 
-        case "internal-error":
-          errorTitle = "System Error";
+        case 'internal-error':
+          errorTitle = 'System Error';
           errorDescription =
-            "A system error occurred. Please contact support if this continues";
+            'A system error occurred. Please contact support if this continues';
           break;
 
         default:
           // Handle network/connection errors
-          if (error.message?.includes("Network connection failed")) {
-            errorTitle = "Connection Issue";
-            errorDescription = "Check your internet connection and try again";
-          } else if (error.message?.includes("Request timeout")) {
-            errorTitle = "Request Timeout";
-            errorDescription = "The request took too long. Please try again";
+          if (error.message?.includes('Network connection failed')) {
+            errorTitle = 'Connection Issue';
+            errorDescription = 'Check your internet connection and try again';
+          } else if (error.message?.includes('Request timeout')) {
+            errorTitle = 'Request Timeout';
+            errorDescription = 'The request took too long. Please try again';
           } else {
             // Use the API message if available, otherwise use the error message
             errorDescription =
-              apiMessage || error.message || "An unexpected error occurred";
+              apiMessage || error.message || 'An unexpected error occurred';
           }
           break;
       }
@@ -119,10 +112,8 @@ export const useClockOut = (userId: string, jobId: string) => {
         description: errorDescription,
         duration: 5000,
         action: {
-          label: "Retry",
-          onClick: () => {
-            console.log("Retry button clicked");
-          },
+          label: 'Retry',
+          onClick: () => {},
         },
       });
     },
