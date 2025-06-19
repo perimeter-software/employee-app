@@ -173,12 +173,15 @@ export function ShiftsTable({
     [handleClockInOut]
   );
 
-  // FIXED: Generate shift rows from user data - now shows ALL scheduled shifts
+  // FIXED: Generate shift rows from user data - now shows ALL scheduled shifts AND existing punches
   const shiftRows = useMemo((): ShiftRowData[] => {
     if (!userData?.jobs) return [];
 
     const rows: ShiftRowData[] = [];
     const now = new Date();
+
+    // Track processed shift-date combinations to avoid duplicates
+    const processedShifts = new Set<string>();
 
     // FIXED: Generate dates for the ENTIRE date range, not just punch days
     const currentDate = new Date(startDate);
@@ -202,80 +205,12 @@ export function ShiftsTable({
         }
 
         job.shifts.forEach((shift: Shift) => {
-          // FIXED: Check if user is in shift roster first
-          const isUserInShiftRoster = shift.shiftRoster?.some(
-            (rosterEntry) => rosterEntry._id === userData.applicantId
-          );
+          const shiftKey = `${job._id}-${shift.slug}-${formatDate(currentDate, 'MM/dd/yyyy')}`;
 
-          if (!isUserInShiftRoster) {
+          // Skip if we already processed this shift for this date
+          if (processedShifts.has(shiftKey)) {
             return;
           }
-
-          // FIXED: Get day schedule for this specific day
-          const daySchedule =
-            shift.defaultSchedule?.[
-              dayOfWeek as keyof typeof shift.defaultSchedule
-            ];
-
-          if (!daySchedule?.start || !daySchedule?.end) {
-            return;
-          }
-
-          // FIXED: Check if user is in roster for this specific day
-          const isInDayRoster =
-            !daySchedule.roster?.length ||
-            daySchedule.roster.includes(userData.applicantId);
-
-          if (!isInDayRoster) {
-            return;
-          }
-
-          // FIXED: Check if shift is active during this date
-          const shiftStartDate = new Date(shift.shiftStartDate);
-          const shiftEndDate = new Date(shift.shiftEndDate);
-
-          // Set time to end of day for proper comparison
-          const dayStart = new Date(currentDate);
-          dayStart.setHours(0, 0, 0, 0);
-          const dayEnd = new Date(currentDate);
-          dayEnd.setHours(23, 59, 59, 999);
-
-          const isShiftActiveForDay =
-            shiftStartDate <= dayEnd && shiftEndDate >= dayStart;
-
-          if (!isShiftActiveForDay) {
-            return;
-          }
-
-          // Create date objects for shift times on this specific day
-          const shiftStartTime = new Date(daySchedule.start);
-          const shiftEndTime = new Date(daySchedule.end);
-
-          // Create shift start/end for this specific date
-          const todayShiftStart = new Date(currentDate);
-          todayShiftStart.setHours(
-            shiftStartTime.getHours(),
-            shiftStartTime.getMinutes(),
-            0,
-            0
-          );
-
-          const todayShiftEnd = new Date(currentDate);
-          todayShiftEnd.setHours(
-            shiftEndTime.getHours(),
-            shiftEndTime.getMinutes(),
-            0,
-            0
-          );
-
-          // Handle overnight shifts
-          if (todayShiftEnd <= todayShiftStart) {
-            todayShiftEnd.setDate(todayShiftEnd.getDate() + 1);
-          }
-
-          const isWithinShift =
-            isToday && now >= todayShiftStart && now <= todayShiftEnd;
-          const shiftHasEnded = isToday && now > todayShiftEnd;
 
           // Find punches for this job and date from allPunches
           const todayPunches = (allPunches || [])
@@ -294,6 +229,111 @@ export function ShiftsTable({
                 ? ('completed' as const)
                 : ('active' as const),
             }));
+
+          // FIXED: Check if user is in shift roster
+          const isUserInShiftRoster = shift.shiftRoster?.some(
+            (rosterEntry) => rosterEntry._id === userData.applicantId
+          );
+
+          // FIXED: If user has existing punches for this shift-date, show it regardless of roster
+          const hasExistingPunches = todayPunches.length > 0;
+
+          // Skip if user is not in roster AND has no existing punches
+          if (!isUserInShiftRoster && !hasExistingPunches) {
+            return;
+          }
+
+          // Mark this shift-date as processed
+          processedShifts.add(shiftKey);
+
+          // Get day schedule for this specific day (only if user is in roster)
+          let daySchedule:
+            | Shift['defaultSchedule'][keyof Shift['defaultSchedule']]
+            | undefined = undefined;
+          let isInDayRoster = false;
+
+          if (isUserInShiftRoster) {
+            daySchedule =
+              shift.defaultSchedule?.[
+                dayOfWeek as keyof typeof shift.defaultSchedule
+              ];
+
+            // Check if user is in roster for this specific day
+            isInDayRoster =
+              !daySchedule?.roster?.length ||
+              daySchedule.roster.includes(userData.applicantId);
+          }
+
+          // For existing punches without roster enrollment, we'll estimate shift times
+          let todayShiftStart: Date;
+          let todayShiftEnd: Date;
+
+          if (daySchedule?.start && daySchedule?.end && isInDayRoster) {
+            // Use scheduled shift times
+            const shiftStartTime = new Date(daySchedule.start);
+            const shiftEndTime = new Date(daySchedule.end);
+
+            todayShiftStart = new Date(currentDate);
+            todayShiftStart.setHours(
+              shiftStartTime.getHours(),
+              shiftStartTime.getMinutes(),
+              0,
+              0
+            );
+
+            todayShiftEnd = new Date(currentDate);
+            todayShiftEnd.setHours(
+              shiftEndTime.getHours(),
+              shiftEndTime.getMinutes(),
+              0,
+              0
+            );
+
+            // Handle overnight shifts
+            if (todayShiftEnd <= todayShiftStart) {
+              todayShiftEnd.setDate(todayShiftEnd.getDate() + 1);
+            }
+          } else if (hasExistingPunches) {
+            // FIXED: For existing punches without roster, estimate shift times from punch data
+            const firstPunch = todayPunches[0];
+            const lastPunch = todayPunches[todayPunches.length - 1];
+
+            todayShiftStart = new Date(firstPunch.timeIn);
+
+            if (lastPunch.timeOut) {
+              todayShiftEnd = new Date(lastPunch.timeOut);
+            } else {
+              // For active punches, estimate end time as start + 8 hours (or use current time)
+              todayShiftEnd = new Date(todayShiftStart);
+              todayShiftEnd.setHours(todayShiftStart.getHours() + 8);
+            }
+          } else {
+            // This shouldn't happen given our filtering above, but safety check
+            return;
+          }
+
+          // Check if shift is active during this date (only for roster-based shifts)
+          if (isUserInShiftRoster && daySchedule?.start && daySchedule?.end) {
+            const shiftStartDate = new Date(shift.shiftStartDate);
+            const shiftEndDate = new Date(shift.shiftEndDate);
+
+            const dayStart = new Date(currentDate);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(currentDate);
+            dayEnd.setHours(23, 59, 59, 999);
+
+            const isShiftActiveForDay =
+              shiftStartDate <= dayEnd && shiftEndDate >= dayStart;
+
+            // Skip if shift is not active for this day and no existing punches
+            if (!isShiftActiveForDay && !hasExistingPunches) {
+              return;
+            }
+          }
+
+          const isWithinShift =
+            isToday && now >= todayShiftStart && now <= todayShiftEnd;
+          const shiftHasEnded = isToday && now > todayShiftEnd;
 
           // FIXED: Check for active punch more accurately
           const hasActivePunchForThisShift = todayPunches.some(
@@ -317,11 +357,15 @@ export function ShiftsTable({
             return sum;
           }, 0);
 
-          // FIXED: Enhanced clock-in logic using actual shift utils
+          // FIXED: Enhanced clock-in logic - only allow if user is in roster and shift is active
           const canClockIn =
             isToday &&
             !hasActivePunchForThisShift &&
             !shiftHasEnded &&
+            isUserInShiftRoster &&
+            daySchedule?.start &&
+            daySchedule?.end &&
+            isInDayRoster &&
             handleShiftJobClockInTime(
               job,
               userData.applicantId,
@@ -338,12 +382,17 @@ export function ShiftsTable({
           const isSelectedShift =
             selectedJob?._id === job._id && selectedShift?.slug === shift.slug;
 
-          // FIXED: Always show rows for scheduled shifts, regardless of punch status
-          // Only hide past shifts that have no punches and have ended
+          // FIXED: Show rows for:
+          // 1. Active/future shifts where user is enrolled
+          // 2. Any shifts where user has existing punches (regardless of enrollment)
+          // 3. Past shifts with punches
           const shouldShowRow =
-            !shiftHasEnded ||
-            todayPunches.length > 0 ||
-            hasActivePunchForThisShift;
+            hasExistingPunches || // Always show if there are punches
+            (isUserInShiftRoster &&
+              daySchedule?.start &&
+              daySchedule?.end &&
+              isInDayRoster) || // Show if enrolled and scheduled
+            (!shiftHasEnded && isUserInShiftRoster); // Show future enrolled shifts
 
           if (shouldShowRow) {
             rows.push({
