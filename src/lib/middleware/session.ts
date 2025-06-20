@@ -1,13 +1,13 @@
 // lib/middleware/session.ts
-import { NextRequest, NextResponse } from "next/server";
-import { auth0 } from "@/lib/auth/auth0";
-import { AuthenticatedRequest, RouteHandler } from "./types";
-import { Auth0SessionUser, EnhancedUser } from "@/domains/user";
+import { NextRequest, NextResponse } from 'next/server';
+import { auth0 } from '@/lib/auth/auth0';
+import { AuthenticatedRequest, RouteHandler } from './types';
+import { Auth0SessionUser, EnhancedUser } from '@/domains/user';
 
 export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
   return async function (
     request: NextRequest,
-    context?: Record<string, unknown>
+    context: { params: Promise<Record<string, string | string[] | undefined>> }
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
       // Use auth0.getSession(request) for API routes
@@ -15,7 +15,7 @@ export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
 
       if (!session?.user?.email) {
         return NextResponse.json(
-          { error: "not-authenticated", message: "Authentication required" },
+          { error: 'not-authenticated', message: 'Authentication required' },
           { status: 401 }
         );
       }
@@ -26,9 +26,9 @@ export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
 
       return handler(authenticatedRequest, context);
     } catch (error) {
-      console.error("Auth middleware error:", error);
+      console.error('Auth middleware error:', error);
       return NextResponse.json(
-        { error: "auth-error", message: "Authentication failed" },
+        { error: 'auth-error', message: 'Authentication failed' },
         { status: 500 }
       );
     }
@@ -44,7 +44,7 @@ export function withEnhancedAuthAPI<T = unknown>(
 ) {
   return async function (
     request: NextRequest,
-    context?: Record<string, unknown>
+    context: { params: Promise<Record<string, string | string[] | undefined>> }
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
       // Use auth0.getSession() for API routes
@@ -52,7 +52,7 @@ export function withEnhancedAuthAPI<T = unknown>(
 
       if (!session?.user?.email) {
         return NextResponse.json(
-          { error: "not-authenticated", message: "Authentication required" },
+          { error: 'not-authenticated', message: 'Authentication required' },
           { status: 401 }
         );
       }
@@ -61,7 +61,7 @@ export function withEnhancedAuthAPI<T = unknown>(
       let enhancedUser: Auth0SessionUser | null = null;
 
       // FIRST: Try to get enhanced user data from middleware headers
-      const enhancedUserHeader = request.headers.get("x-enhanced-user");
+      const enhancedUserHeader = request.headers.get('x-enhanced-user');
       if (enhancedUserHeader) {
         try {
           const parsedUser = JSON.parse(enhancedUserHeader) as EnhancedUser;
@@ -90,7 +90,7 @@ export function withEnhancedAuthAPI<T = unknown>(
             availableTenants: parsedUser.availableTenants,
           } as Auth0SessionUser;
         } catch (error) {
-          console.error("❌ Error parsing enhanced user from headers:", error);
+          console.error('❌ Error parsing enhanced user from headers:', error);
         }
       }
 
@@ -100,13 +100,13 @@ export function withEnhancedAuthAPI<T = unknown>(
         (options.requireDatabaseUser || options.requireTenant)
       ) {
         console.log(
-          "⚠️ No enhanced user in headers, fetching from database..."
+          '⚠️ No enhanced user in headers, fetching from database...'
         );
 
         try {
-          const { mongoConn } = await import("@/lib/db");
+          const { mongoConn } = await import('@/lib/db');
           const { checkUserExistsByEmail, checkUserMasterEmail } = await import(
-            "@/domains/user/utils"
+            '@/domains/user/utils'
           );
 
           const { db, dbTenant, userDb } = await mongoConn();
@@ -118,8 +118,8 @@ export function withEnhancedAuthAPI<T = unknown>(
             console.log(`❌ User not found in database: ${userEmail}`);
             return NextResponse.json(
               {
-                error: "user-not-found",
-                message: "User not found in database",
+                error: 'user-not-found',
+                message: 'User not found in database',
               },
               { status: 404 }
             );
@@ -137,7 +137,7 @@ export function withEnhancedAuthAPI<T = unknown>(
             if (!userMasterRecord?.tenant) {
               console.log(`❌ No tenant found for user: ${userEmail}`);
               return NextResponse.json(
-                { error: "no-tenant", message: "No tenant found for user" },
+                { error: 'no-tenant', message: 'No tenant found for user' },
                 { status: 404 }
               );
             }
@@ -170,9 +170,9 @@ export function withEnhancedAuthAPI<T = unknown>(
             tenant: enhancedUser.tenant,
           });
         } catch (dbError) {
-          console.error("Database validation error:", dbError);
+          console.error('Database validation error:', dbError);
           return NextResponse.json(
-            { error: "database-error", message: "Database validation failed" },
+            { error: 'database-error', message: 'Database validation failed' },
             { status: 500 }
           );
         }
@@ -182,8 +182,8 @@ export function withEnhancedAuthAPI<T = unknown>(
       if (options.requireDatabaseUser && !enhancedUser?._id) {
         return NextResponse.json(
           {
-            error: "database-user-required",
-            message: "Database user record required",
+            error: 'database-user-required',
+            message: 'Database user record required',
           },
           { status: 403 }
         );
@@ -192,8 +192,8 @@ export function withEnhancedAuthAPI<T = unknown>(
       if (options.requireTenant && !enhancedUser?.tenant) {
         return NextResponse.json(
           {
-            error: "tenant-required",
-            message: "Tenant access required",
+            error: 'tenant-required',
+            message: 'Tenant access required',
           },
           { status: 403 }
         );
@@ -210,9 +210,9 @@ export function withEnhancedAuthAPI<T = unknown>(
 
       return handler(authenticatedRequest, context);
     } catch (error) {
-      console.error("Enhanced auth middleware error:", error);
+      console.error('Enhanced auth middleware error:', error);
       return NextResponse.json(
-        { error: "auth-error", message: "Authentication failed" },
+        { error: 'auth-error', message: 'Authentication failed' },
         { status: 500 }
       );
     }

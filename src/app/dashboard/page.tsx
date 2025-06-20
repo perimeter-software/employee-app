@@ -45,7 +45,12 @@ import CalendarHeaderActionsMode from '@/components/ui/Calendar/Header/Actions/C
 import { CalendarEvent, Mode } from '@/components/ui/Calendar';
 import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
 import { NextPage } from 'next';
-import { withAuth } from '@/domains/shared';
+import { usePageAuth } from '@/domains/shared/hooks/use-page-auth';
+import {
+  AuthErrorState,
+  AuthLoadingState,
+  UnauthenticatedState,
+} from '@/components/shared/PageProtection';
 import { useCurrentUser } from '@/domains/user';
 import { useUserApplicantJob } from '@/domains/job/hooks';
 import { Table } from '@/components/ui/Table';
@@ -827,6 +832,10 @@ const DashboardPage: NextPage = () => {
   const { data: userData, isLoading: userLoading } = useUserApplicantJob(
     user?.email || ''
   );
+  // Auth check
+  const { shouldShowContent, isLoading: pageAuthLoading, error: pageAuthError } = usePageAuth({
+    requireAuth: true,
+  });
 
   const [dashboardView, setDashboardView] = useState<
     'monthly' | 'weekly' | 'calendar'
@@ -991,6 +1000,23 @@ const DashboardPage: NextPage = () => {
         </Card>
       </div>
     );
+  }
+
+  // Early returns for auth states (after all hooks are called)
+  if (pageAuthLoading || authLoading) {
+    return <AuthLoadingState />;
+  }
+
+  if (pageAuthError || authError) {
+    const errorMessage = pageAuthError?.message || 
+                        (authError && typeof authError === 'object' && 'message' in authError ? 
+                         (authError as { message: string }).message : 
+                         'Authentication error');
+    return <AuthErrorState error={errorMessage} />;
+  }
+
+  if (!shouldShowContent) {
+    return <UnauthenticatedState />;
   }
 
   return (
@@ -1338,6 +1364,4 @@ const DashboardPage: NextPage = () => {
   );
 };
 
-export default withAuth(DashboardPage, {
-  requireAuth: true,
-});
+export default DashboardPage;

@@ -2,7 +2,7 @@
 "use client";
 import { useUser } from "@auth0/nextjs-auth0";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { Button } from "@/components/ui/Button";
 import Image from "next/image";
 
@@ -12,18 +12,14 @@ interface NotificationState {
   show: boolean;
 }
 
-export default function LoginPage() {
-  const { user, isLoading } = useUser();
-  const router = useRouter();
+// Component that handles search params (needs to be wrapped in Suspense)
+function SearchParamsHandler({ 
+  setNotification 
+}: { 
+  setNotification: (state: NotificationState) => void 
+}) {
   const searchParams = useSearchParams();
-  const [notification, setNotification] = useState<NotificationState>({
-    message: "",
-    level: "info",
-    show: false,
-  });
 
-  // FIXED: Split the useEffect hooks to avoid circular dependency
-  // Handle URL parameters for notifications (runs once on mount)
   useEffect(() => {
     const expired = searchParams.get("expired");
     const loggedOut = searchParams.get("loggedout");
@@ -54,7 +50,43 @@ export default function LoginPage() {
         show: true,
       });
     }
-  }, [searchParams]); // FIXED: Only depend on searchParams
+  }, [searchParams, setNotification]);
+
+  return null; // This component doesn't render anything
+}
+
+// Component for login button that uses search params
+function LoginButton() {
+  const searchParams = useSearchParams();
+  
+  const handleLogin = () => {
+    const returnUrl = searchParams.get("returnUrl") || "/time-attendance";
+    // v4 uses /auth/login instead of /api/auth/login
+    window.location.href = `/auth/login?returnTo=${encodeURIComponent(
+      returnUrl
+    )}`;
+  };
+
+  return (
+    <Button 
+      onClick={handleLogin}
+      className="w-full bg-gradient-to-r from-appPrimary to-appPrimary/90 hover:from-appPrimary/90 hover:to-appPrimary text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 text-lg min-h-[60px] border-0 relative overflow-hidden group"
+      type="button"
+    >
+      <span className="relative z-10">Proceed To Sign In</span>
+      <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+    </Button>
+  );
+}
+
+export default function LoginPage() {
+  const { user, isLoading } = useUser();
+  const router = useRouter();
+  const [notification, setNotification] = useState<NotificationState>({
+    message: "",
+    level: "info",
+    show: false,
+  });
 
   // FIXED: Separate useEffect for auto-hiding notification
   useEffect(() => {
@@ -73,14 +105,6 @@ export default function LoginPage() {
     }
   }, [user, isLoading, router]);
 
-  const handleLogin = () => {
-    const returnUrl = searchParams.get("returnUrl") || "/time-attendance";
-    // v4 uses /auth/login instead of /api/auth/login
-    window.location.href = `/auth/login?returnTo=${encodeURIComponent(
-      returnUrl
-    )}`;
-  };
-
   if (isLoading) {
     return (
       <main className="flex items-center justify-center min-h-screen bg-gradient-to-br from-appBackground via-altMutedBackground to-altPrimaryBackground">
@@ -91,6 +115,11 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen relative overflow-hidden bg-gradient-to-br from-appBackground via-altMutedBackground to-altPrimaryBackground">
+      {/* Search params handler wrapped in Suspense */}
+      <Suspense fallback={null}>
+        <SearchParamsHandler setNotification={setNotification} />
+      </Suspense>
+
       {/* Notification Banner */}
       {notification.show && (
         <div
@@ -160,14 +189,18 @@ export default function LoginPage() {
 
               {/* Button Section */}
               <div className="space-y-4">
-                <Button
-                  onClick={handleLogin}
-                  className="w-full bg-gradient-to-r from-appPrimary to-appPrimary/90 hover:from-appPrimary/90 hover:to-appPrimary text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 text-lg min-h-[60px] border-0 relative overflow-hidden group"
-                  type="button"
-                >
-                  <span className="relative z-10">Proceed To Sign In</span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                </Button>
+                {/* Login button wrapped in Suspense */}
+                <Suspense fallback={
+                  <Button
+                    className="w-full bg-gradient-to-r from-appPrimary to-appPrimary/90 hover:from-appPrimary/90 hover:to-appPrimary text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 text-lg min-h-[60px] border-0 relative overflow-hidden group"
+                    type="button"
+                    disabled
+                  >
+                    <span className="relative z-10">Loading...</span>
+                  </Button>
+                }>
+                  <LoginButton />
+                </Suspense>
 
                 {/* Security Badge */}
                 <div className="flex items-center justify-center space-x-2 text-xs text-altText/60 mt-4">
