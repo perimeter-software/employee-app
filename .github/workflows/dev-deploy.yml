@@ -1,4 +1,4 @@
-name: Deploy Next.js to Elastic Beanstalk
+name: Dev | Deploy Employee App to AWS Elastic Beanstalk
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ jobs:
     environment: ${{ github.event.inputs.environment }}
 
     env:
-      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
       EB_APP_NAME: employee-app
       EB_ENV_NAME: employee-app-dev
       S3_BUCKET: psc-beanstalk-apps
