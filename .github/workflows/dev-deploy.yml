@@ -35,6 +35,7 @@ jobs:
 
       - name: Install dependencies and build
         run: |
+          rm -rf .next node_modules
           yarn install --frozen-lockfile
           yarn build
 
