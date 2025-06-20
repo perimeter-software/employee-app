@@ -6,7 +6,7 @@ import { Send } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Input } from '@/components/ui/Input/Input';
-import { Button } from '@/components/ui/Button/Button';
+import { Button } from "@/components/ui/Button/Button";
 import {
   useConversations,
   useCreateConversation,
