@@ -6,15 +6,21 @@ import { Send } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Input } from '@/components/ui/Input/Input';
-import { Button } from '@/components/ui/Button/Button';
+import { Button } from "@/components/ui/Button/Button";
 import {
   useConversations,
   useCreateConversation,
 } from '@/domains/conversation/hooks/conversation';
 import { AiConversation, AiMessage } from '@/domains/conversation/types';
-import { withAuth } from '@/domains/shared';
+import { usePageAuth } from '@/domains/shared/hooks/use-page-auth';
+import {
+  AuthErrorState,
+  AuthLoadingState,
+  UnauthenticatedState,
+} from '@/components/shared/PageProtection';
 
 const ChatConversationPage = () => {
+  // All hooks must be called before any conditional returns
   const [messages, setMessages] = useState<AiMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -35,6 +41,11 @@ const ChatConversationPage = () => {
 
   // Create conversation mutation hook
   const createConversation = useCreateConversation();
+
+  // Auth check
+  const { shouldShowContent, isLoading: authLoading, error: authError } = usePageAuth({
+    requireAuth: true,
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -62,6 +73,19 @@ const ChatConversationPage = () => {
       setConversationId(firstConversation.id || firstConversation._id || null);
     }
   }, [conversationsData]);
+
+  // Early returns for auth states (after all hooks are called)
+  if (authLoading) {
+    return <AuthLoadingState />;
+  }
+
+  if (authError) {
+    return <AuthErrorState error={authError.message} />;
+  }
+
+  if (!shouldShowContent) {
+    return <UnauthenticatedState />;
+  }
 
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
@@ -262,6 +286,4 @@ const ChatConversationPage = () => {
   );
 };
 
-export default withAuth(ChatConversationPage, {
-  requireAuth: true,
-});
+export default ChatConversationPage;

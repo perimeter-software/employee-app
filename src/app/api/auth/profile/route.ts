@@ -6,7 +6,11 @@ import type { AuthenticatedRequest } from "@/domains/user/types";
  * Handle GET requests to /api/auth/profile
  * This returns the user's profile information
  */
-async function getProfileHandler(request: AuthenticatedRequest) {
+async function getProfileHandler(
+  request: AuthenticatedRequest,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _context: { params: Promise<Record<string, string | string[] | undefined>> }
+) {
   try {
     const user = request.user;
 

@@ -16,7 +16,11 @@ import { parseFormDataWithFile } from "@/lib/utils/client-processing-utils";
 const uploadDir = path.resolve("./public/uploads/documents");
 
 // GET - Get all user documents
-async function getDocumentsHandler(request: AuthenticatedRequest) {
+async function getDocumentsHandler(
+  request: AuthenticatedRequest,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _context: { params: Promise<Record<string, string | string[] | undefined>> }
+) {
   try {
     const { db } = await mongoConn();
     const userId = request.user?.id || request.user?.sub;
@@ -49,7 +53,11 @@ async function getDocumentsHandler(request: AuthenticatedRequest) {
 }
 
 // POST - Create document with file upload
-export async function createDocumentHandler(request: AuthenticatedRequest) {
+async function createDocumentHandler(
+  request: AuthenticatedRequest,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _context: { params: Promise<Record<string, string | string[] | undefined>> }
+) {
   try {
     const { db } = await mongoConn();
     const userId = request.user?.id || request.user?.sub;
