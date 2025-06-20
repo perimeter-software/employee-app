@@ -40,8 +40,8 @@ jobs:
 
       - name: Zip for Beanstalk
         run: |
-          zip -r app.zip .next public package.json next.config.js Procfile .ebextensions \
-            -x "node_modules/*" ".git/*"
+          zip -r app.zip .next public package.json Procfile .ebextensions node_modules \
+            -x ".git/*"
 
       - name: Upload ZIP to S3
         run: |
