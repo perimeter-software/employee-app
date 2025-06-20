@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -e
 
-cd /var/app/current
-
 # Debug info
 echo "[BUILD HOOK] PWD=$(pwd)"         >> /var/log/eb-hooks.log
 echo "[BUILD HOOK] Listing files…"     >> /var/log/eb-hooks.log
