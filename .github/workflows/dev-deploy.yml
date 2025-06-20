@@ -33,15 +33,9 @@ jobs:
           role-to-assume: arn:aws:iam::852313829394:role/github-cicd
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Install dependencies and build
-        run: |
-          yarn install --frozen-lockfile
-          yarn build
-
       - name: Zip for Beanstalk
         run: |
-          zip -r app.zip .next public package.json Procfile .ebextensions node_modules \
-            -x ".git/*"
+          zip -r app.zip . -x@.ebignore
 
       - name: Upload ZIP to S3
         run: |
