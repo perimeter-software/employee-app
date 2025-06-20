@@ -1,12 +1,12 @@
 name: Dev | Deploy Employee App to AWS Elastic Beanstalk
 
-on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Which environment?"
-        required: true
-        default: develop
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       environment:
+#         description: "Which environment?"
+#         required: true
+#         default: develop
 
 jobs:
   deploy:

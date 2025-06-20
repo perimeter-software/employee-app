@@ -1,6 +1,6 @@
-import type { NextRequest, NextResponse } from "next/server";
-import { Auth0SessionUser } from "@/domains/user";
-import { ApiResponse } from "../api";
+import type { NextRequest, NextResponse } from 'next/server';
+import { Auth0SessionUser } from '@/domains/user';
+import { ApiResponse } from '../api';
 
 export type MiddlewareFunction = (
   request: NextRequest
@@ -15,7 +15,7 @@ export type RouteConfig = {
 
 export type LogEntry = {
   timestamp: string;
-  level: "info" | "warn" | "error" | "debug";
+  level: 'info' | 'warn' | 'error' | 'debug';
   requestId: string;
   method: string;
   url: string;
@@ -37,7 +37,7 @@ export type AuthenticatedRequest = NextRequest & {
 // Fixed: Make RouteHandler more flexible to allow different response types
 export type RouteHandler<T = unknown> = (
   request: AuthenticatedRequest,
-  context?: Record<string, unknown>
+  context: { params: Promise<Record<string, string | string[] | undefined>> }
 ) => Promise<NextResponse<T> | NextResponse<unknown>>;
 
 export type StrictRouteHandler<T = unknown> = (
