@@ -11,8 +11,8 @@ export function usePTOList(params?: {
   endDate?: Date;
 }) {
   return useQuery({
-    queryKey: ptoQueryKeys.list(params),
-    queryFn: () => PTOService.listPTOs(params),
+    queryKey: [...ptoQueryKeys.list(), params],
+    queryFn: () => PTOService.getPTOs(params),
     staleTime: 5 * 60 * 1000,
   });
 }

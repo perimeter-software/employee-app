@@ -21,7 +21,12 @@ import {
   File,
 } from 'lucide-react';
 import { NextPage } from 'next';
-import { withAuth } from '@/domains/shared';
+import { usePageAuth } from '@/domains/shared/hooks/use-page-auth';
+import {
+  AuthErrorState,
+  AuthLoadingState,
+  UnauthenticatedState,
+} from '@/components/shared/PageProtection';
 import { useCurrentUser } from '@/domains/user';
 import { useState } from 'react';
 import {
@@ -213,6 +218,10 @@ const DocumentUploadModal: React.FC<{
 const DocumentsPage: NextPage = () => {
   const { user, error: authError, isLoading: authLoading } = useUser();
   const { isLoading: userLoading } = useCurrentUser();
+  // Auth check
+  const { shouldShowContent, isLoading: pageAuthLoading, error: pageAuthError } = usePageAuth({
+    requireAuth: true,
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
@@ -424,6 +433,23 @@ const DocumentsPage: NextPage = () => {
     );
   };
 
+  // Early returns for auth states (after all hooks are called)
+  if (pageAuthLoading || authLoading) {
+    return <AuthLoadingState />;
+  }
+
+  if (pageAuthError || authError) {
+    const errorMessage = pageAuthError?.message || 
+                        (authError && typeof authError === 'object' && 'message' in authError ? 
+                         (authError as { message: string }).message : 
+                         'Authentication error');
+    return <AuthErrorState error={errorMessage} />;
+  }
+
+  if (!shouldShowContent) {
+    return <UnauthenticatedState />;
+  }
+
   return (
     <Layout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
@@ -583,6 +609,4 @@ const DocumentsPage: NextPage = () => {
   );
 };
 
-export default withAuth(DocumentsPage, {
-  requireAuth: true,
-});
+export default DocumentsPage;
