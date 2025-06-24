@@ -1,52 +1,52 @@
 // app/page.tsx
-"use client";
-import { useUser } from "@auth0/nextjs-auth0";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
-import { Button } from "@/components/ui/Button";
-import Image from "next/image";
+'use client';
+import { useUser } from '@auth0/nextjs-auth0/client';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { Button } from '@/components/ui/Button';
+import Image from 'next/image';
 
 interface NotificationState {
   message: string;
-  level: "info" | "warning" | "error" | "success";
+  level: 'info' | 'warning' | 'error' | 'success';
   show: boolean;
 }
 
 // Component that handles search params (needs to be wrapped in Suspense)
-function SearchParamsHandler({ 
-  setNotification 
-}: { 
-  setNotification: (state: NotificationState) => void 
+function SearchParamsHandler({
+  setNotification,
+}: {
+  setNotification: (state: NotificationState) => void;
 }) {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    const expired = searchParams.get("expired");
-    const loggedOut = searchParams.get("loggedout");
-    const error = searchParams.get("error");
+    const expired = searchParams.get('expired');
+    const loggedOut = searchParams.get('loggedout');
+    const error = searchParams.get('error');
 
     if (expired) {
       setNotification({
-        message: "Please sign in again.",
-        level: "warning",
+        message: 'Please sign in again.',
+        level: 'warning',
         show: true,
       });
     } else if (loggedOut) {
       setNotification({
-        message: "You have successfully logged out.",
-        level: "info",
+        message: 'You have successfully logged out.',
+        level: 'info',
         show: true,
       });
     } else if (error) {
-      let message = "Error logging in, try again shortly.";
-      if (error === "no-tenant") {
-        message = "No active tenant found for your account.";
-      } else if (error === "user-not-found") {
-        message = "Account not found. Please contact support.";
+      let message = 'Error logging in, try again shortly.';
+      if (error === 'no-tenant') {
+        message = 'No active tenant found for your account.';
+      } else if (error === 'user-not-found') {
+        message = 'Account not found. Please contact support.';
       }
       setNotification({
         message,
-        level: "error",
+        level: 'error',
         show: true,
       });
     }
@@ -58,17 +58,17 @@ function SearchParamsHandler({
 // Component for login button that uses search params
 function LoginButton() {
   const searchParams = useSearchParams();
-  
+
   const handleLogin = () => {
-    const returnUrl = searchParams.get("returnUrl") || "/time-attendance";
-    // v4 uses /auth/login instead of /api/auth/login
-    window.location.href = `/auth/login?returnTo=${encodeURIComponent(
+    const returnUrl = searchParams.get('returnUrl') || '/time-attendance';
+    // Using the correct API route for Auth0 login
+    window.location.href = `/api/auth/login?returnTo=${encodeURIComponent(
       returnUrl
     )}`;
   };
 
   return (
-    <Button 
+    <Button
       onClick={handleLogin}
       className="w-full bg-gradient-to-r from-appPrimary to-appPrimary/90 hover:from-appPrimary/90 hover:to-appPrimary text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 text-lg min-h-[60px] border-0 relative overflow-hidden group"
       type="button"
@@ -83,8 +83,8 @@ export default function LoginPage() {
   const { user, isLoading } = useUser();
   const router = useRouter();
   const [notification, setNotification] = useState<NotificationState>({
-    message: "",
-    level: "info",
+    message: '',
+    level: 'info',
     show: false,
   });
 
@@ -101,7 +101,7 @@ export default function LoginPage() {
   // Redirect if user is already authenticated
   useEffect(() => {
     if (user && !isLoading) {
-      router.push("/time-attendance");
+      router.push('/time-attendance');
     }
   }, [user, isLoading, router]);
 
@@ -124,13 +124,13 @@ export default function LoginPage() {
       {notification.show && (
         <div
           className={`fixed top-0 left-0 right-0 z-50 p-4 border-b shadow-lg backdrop-blur-md ${
-            notification.level === "error"
-              ? "bg-red-50/90 border-errorRed text-altText"
-              : notification.level === "warning"
-              ? "bg-orange-50/90 border-warningOrange text-altText"
-              : notification.level === "success"
-              ? "bg-green-50/90 border-successGreen text-altText"
-              : "bg-altMutedBackground/90 border-appPrimary text-altText"
+            notification.level === 'error'
+              ? 'bg-red-50/90 border-errorRed text-altText'
+              : notification.level === 'warning'
+                ? 'bg-orange-50/90 border-warningOrange text-altText'
+                : notification.level === 'success'
+                  ? 'bg-green-50/90 border-successGreen text-altText'
+                  : 'bg-altMutedBackground/90 border-appPrimary text-altText'
           }`}
         >
           <div className="max-w-md mx-auto text-center font-medium">
@@ -190,15 +190,17 @@ export default function LoginPage() {
               {/* Button Section */}
               <div className="space-y-4">
                 {/* Login button wrapped in Suspense */}
-                <Suspense fallback={
-                  <Button
-                    className="w-full bg-gradient-to-r from-appPrimary to-appPrimary/90 hover:from-appPrimary/90 hover:to-appPrimary text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 text-lg min-h-[60px] border-0 relative overflow-hidden group"
-                    type="button"
-                    disabled
-                  >
-                    <span className="relative z-10">Loading...</span>
-                  </Button>
-                }>
+                <Suspense
+                  fallback={
+                    <Button
+                      className="w-full bg-gradient-to-r from-appPrimary to-appPrimary/90 hover:from-appPrimary/90 hover:to-appPrimary text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 text-lg min-h-[60px] border-0 relative overflow-hidden group"
+                      type="button"
+                      disabled
+                    >
+                      <span className="relative z-10">Loading...</span>
+                    </Button>
+                  }
+                >
                   <LoginButton />
                 </Suspense>
 

@@ -2,8 +2,7 @@
 
 // components/layout/Header.tsx
 
-import { useUser } from '@auth0/nextjs-auth0';
-import { useRouter } from 'next/navigation';
+import { useUser } from '@auth0/nextjs-auth0/client';
 import Image from 'next/image';
 import { Button } from '@/components/ui/Button/Button';
 import {
@@ -23,7 +22,6 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
   const { user } = useUser();
-  const router = useRouter();
   const { data: enhancedUser, isLoading: userLoading } = useCurrentUser();
   const { mutate: switchTenant, isPending: tenantSwitchLoading } =
     useSwitchTenant();
@@ -37,7 +35,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
   } | null;
 
   const handleLogout = () => {
-    router.push('/auth/logout');
+    window.location.href = '/api/auth/logout';
   };
 
   const getTenantInitials = (tenant: TenantInfo) => {

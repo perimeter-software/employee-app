@@ -1,5 +1,5 @@
-import { AlertCircle, RefreshCw, Home } from "lucide-react";
-import { Button } from "@/components/ui/Button/Button";
+import { AlertCircle, RefreshCw, Home } from 'lucide-react';
+import { Button } from '@/components/ui/Button/Button';
 
 // Enhanced Error component
 export const AuthErrorState = ({
@@ -39,7 +39,9 @@ export const AuthErrorState = ({
         {/* Action buttons */}
         <div className="w-full space-y-3">
           <Button
-            onClick={onRetry || (() => (window.location.href = "/auth/login"))}
+            onClick={
+              onRetry || (() => (window.location.href = '/api/auth/login'))
+            }
             className="w-full bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white font-medium py-3 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"
           >
             <RefreshCw className="w-4 h-4 mr-2" />
@@ -48,7 +50,7 @@ export const AuthErrorState = ({
 
           {showHomeButton && (
             <Button
-              onClick={() => (window.location.href = "/")}
+              onClick={() => (window.location.href = '/')}
               variant="outline"
               className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 py-3 px-6 rounded-xl transition-all duration-300"
             >

@@ -1,6 +1,6 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0';
+import { useUser } from '@auth0/nextjs-auth0/client';
 import Layout from '@/components/layout/Layout';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
@@ -833,7 +833,11 @@ const DashboardPage: NextPage = () => {
     user?.email || ''
   );
   // Auth check
-  const { shouldShowContent, isLoading: pageAuthLoading, error: pageAuthError } = usePageAuth({
+  const {
+    shouldShowContent,
+    isLoading: pageAuthLoading,
+    error: pageAuthError,
+  } = usePageAuth({
     requireAuth: true,
   });
 
@@ -993,8 +997,11 @@ const DashboardPage: NextPage = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild fullWidth>
-              <a href="/auth/login">Log In</a>
+            <Button
+              fullWidth
+              onClick={() => (window.location.href = '/api/auth/login')}
+            >
+              Log In
             </Button>
           </CardContent>
         </Card>
@@ -1008,10 +1015,11 @@ const DashboardPage: NextPage = () => {
   }
 
   if (pageAuthError || authError) {
-    const errorMessage = pageAuthError?.message || 
-                        (authError && typeof authError === 'object' && 'message' in authError ? 
-                         (authError as { message: string }).message : 
-                         'Authentication error');
+    const errorMessage =
+      pageAuthError?.message ||
+      (authError && typeof authError === 'object' && 'message' in authError
+        ? (authError as { message: string }).message
+        : 'Authentication error');
     return <AuthErrorState error={errorMessage} />;
   }
 

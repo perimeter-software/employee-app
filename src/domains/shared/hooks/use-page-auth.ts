@@ -1,11 +1,11 @@
 // src/domains/shared/hooks/use-page-auth.ts - Fixed version (no server-side imports)
-import { useUser } from "@auth0/nextjs-auth0";
-import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useUser } from '@auth0/nextjs-auth0/client';
+import { usePathname } from 'next/navigation';
+import { useEffect } from 'react';
 
 // Simple client-side route checking (no server imports)
 function isPublicRoute(pathname: string): boolean {
-  const publicRoutes = ["/", "/about", "/contact", "/api/health"];
+  const publicRoutes = ['/', '/about', '/contact', '/api/health'];
 
   return publicRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
@@ -13,17 +13,17 @@ function isPublicRoute(pathname: string): boolean {
 }
 
 function isAuthRoute(pathname: string): boolean {
-  return pathname.startsWith("/auth");
+  return pathname.startsWith('/auth');
 }
 
 function isStaticAsset(pathname: string): boolean {
   const staticPaths = [
-    "/_next",
-    "/favicon.ico",
-    "/images",
-    "/powered-by-gig-blue.png",
-    "/sitemap.xml",
-    "/robots.txt",
+    '/_next',
+    '/favicon.ico',
+    '/images',
+    '/powered-by-gig-blue.png',
+    '/sitemap.xml',
+    '/robots.txt',
   ];
 
   return staticPaths.some((asset) => pathname.startsWith(asset));
@@ -56,7 +56,7 @@ export function usePageAuth(
     onAuthError?: (error: Error) => void;
   } = {}
 ) {
-  const { requireAuth, redirectTo = "/auth/login", onAuthError } = options;
+  const { requireAuth, redirectTo = '/api/auth/login', onAuthError } = options;
 
   const { user, isLoading, error } = useUser();
   const pathname = usePathname();

@@ -1,10 +1,10 @@
-import { Lock } from "lucide-react";
-import { Button } from "@/components/ui/Button/Button";
-import Image from "next/image";
+import { Lock } from 'lucide-react';
+import { Button } from '@/components/ui/Button/Button';
+import Image from 'next/image';
 
 export const UnauthenticatedState = ({
-  title = "Authentication Required",
-  message = "Please log in to access this content",
+  title = 'Authentication Required',
+  message = 'Please log in to access this content',
   returnUrl,
 }: {
   title?: string;
@@ -51,8 +51,8 @@ export const UnauthenticatedState = ({
           <Button
             onClick={() => {
               const loginUrl = returnUrl
-                ? `/auth/login?returnTo=${encodeURIComponent(returnUrl)}`
-                : "/auth/login";
+                ? `/api/auth/login?returnTo=${encodeURIComponent(returnUrl)}`
+                : '/api/auth/login';
               window.location.href = loginUrl;
             }}
             className="w-full flex items-center justify-center bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-medium py-3 px-6 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"

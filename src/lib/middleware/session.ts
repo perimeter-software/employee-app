@@ -1,6 +1,6 @@
 // lib/middleware/session.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { auth0 } from '@/lib/auth/auth0';
+import { getSession } from '@auth0/nextjs-auth0';
 import { AuthenticatedRequest, RouteHandler } from './types';
 import { Auth0SessionUser, EnhancedUser } from '@/domains/user';
 
@@ -10,8 +10,8 @@ export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
     context: { params: Promise<Record<string, string | string[] | undefined>> }
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
-      // Use auth0.getSession(request) for API routes
-      const session = await auth0.getSession();
+      // Use getSession directly from named exports
+      const session = await getSession();
 
       if (!session?.user?.email) {
         return NextResponse.json(
@@ -27,6 +27,7 @@ export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
       return handler(authenticatedRequest, context);
     } catch (error) {
       console.error('Auth middleware error:', error);
+
       return NextResponse.json(
         { error: 'auth-error', message: 'Authentication failed' },
         { status: 500 }
@@ -47,9 +48,10 @@ export function withEnhancedAuthAPI<T = unknown>(
     context: { params: Promise<Record<string, string | string[] | undefined>> }
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
-      // Use auth0.getSession() for API routes
-      const session = await auth0.getSession();
+      // Use getSession directly from named exports
+      const session = await getSession();
 
+      // If no session, return 401
       if (!session?.user?.email) {
         return NextResponse.json(
           { error: 'not-authenticated', message: 'Authentication required' },
@@ -205,12 +207,29 @@ export function withEnhancedAuthAPI<T = unknown>(
         enhancedUser || (session.user as Auth0SessionUser);
 
       console.log(
-        `✅ API Request authenticated: ${userEmail} → ${request.url}`
+        `✅ Enhanced API Request authenticated: ${userEmail} → ${request.url}`
       );
 
       return handler(authenticatedRequest, context);
     } catch (error) {
       console.error('Enhanced auth middleware error:', error);
+
+      // If it's a JWE error, return 401 with clear message
+      if (
+        error instanceof Error &&
+        (error.message.includes('JWE') ||
+          error.message.includes('jwt') ||
+          error.message.includes('Invalid'))
+      ) {
+        return NextResponse.json(
+          {
+            error: 'invalid-session',
+            message: 'Session expired or invalid. Please log in again.',
+          },
+          { status: 401 }
+        );
+      }
+
       return NextResponse.json(
         { error: 'auth-error', message: 'Authentication failed' },
         { status: 500 }
