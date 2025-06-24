@@ -1,5 +1,7 @@
 // next.config.mjs
 /** @type {import('next').NextConfig} */
+import os from "os";
+
 const nextConfig = {
   images: {
     remotePatterns: [
@@ -48,6 +50,12 @@ const nextConfig = {
       },
     ];
   },
+
+   experimental: {
+    images: {
+      cacheDir: `${os.tmpdir()}/next-image-cache`, // ← fix here
+    }
+  }
 };
 
 export default nextConfig;
