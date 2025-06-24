@@ -4,6 +4,8 @@ import os from "os";
 
 const nextConfig = {
   images: {
+    minimumCacheTTL: 60,
+    cacheDir: `${os.tmpdir()}/next-image-cache`,
     remotePatterns: [
       {
         protocol: "https",
@@ -50,12 +52,7 @@ const nextConfig = {
       },
     ];
   },
-
-   experimental: {
-    images: {
-      cacheDir: `${os.tmpdir()}/next-image-cache`, // ← fix here
-    }
-  }
+  
 };
 
 export default nextConfig;
