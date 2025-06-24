@@ -8,6 +8,9 @@ import {
 import redisService from '@/lib/cache/redis-client';
 import type { AuthenticatedRequest, EnhancedUser } from '@/domains/user/types';
 
+// Force dynamic rendering for authenticated routes
+export const dynamic = 'force-dynamic';
+
 async function getUserDataHandler(request: AuthenticatedRequest) {
   try {
     // User is authenticated AND exists in database AND has tenant access

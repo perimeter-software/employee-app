@@ -7,6 +7,9 @@ import { mongoConn } from "@/lib/db";
 import { NextResponse } from "next/server";
 import type { AuthenticatedRequest } from "@/domains/user/types";
 
+// Force dynamic rendering for authenticated routes
+export const dynamic = 'force-dynamic';
+
 async function switchTenantHandler(request: AuthenticatedRequest) {
   try {
     const user = request.user;

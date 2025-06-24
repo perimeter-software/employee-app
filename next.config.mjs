@@ -1,6 +1,5 @@
 // next.config.mjs
 /** @type {import('next').NextConfig} */
-import os from "os";
 
 const nextConfig = {
   images: {
@@ -8,20 +7,20 @@ const nextConfig = {
     cacheDir: `${os.tmpdir()}/next-image-cache`,
     remotePatterns: [
       {
-        protocol: "https",
-        hostname: "images.stadiumpeople.com",
+        protocol: 'https',
+        hostname: 'images.stadiumpeople.com',
       },
       {
-        protocol: "http",
-        hostname: "localhost",
+        protocol: 'http',
+        hostname: 'localhost',
       },
       {
-        protocol: "https",
-        hostname: "lh3.googleusercontent.com",
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
       },
       {
-        protocol: "https",
-        hostname: "s.gravatar.com",
+        protocol: 'https',
+        hostname: 's.gravatar.com',
       },
     ],
   },
@@ -29,10 +28,10 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: "/(.*)",
+        source: '/(.*)',
         headers: [
           {
-            key: "Content-Security-Policy",
+            key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com",
@@ -46,13 +45,12 @@ const nextConfig = {
               "base-uri 'self'",
               "form-action 'self'",
               "frame-ancestors 'self'",
-            ].join("; "),
+            ].join('; '),
           },
         ],
       },
     ];
   },
-  
 };
 
 export default nextConfig;
