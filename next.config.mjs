@@ -3,8 +3,9 @@
 
 const nextConfig = {
   images: {
+    // Disable image optimization in production to avoid permission issues
+    unoptimized: process.env.NODE_ENV === 'production',
     minimumCacheTTL: 60,
-    cacheDir: `${os.tmpdir()}/next-image-cache`,
     remotePatterns: [
       {
         protocol: 'https',
