@@ -1,22 +1,11 @@
-// lib/auth/session-handler.ts - Auth0 v3 session handling
+// lib/auth/session-handler.ts - Edge Runtime compatible session handling
 import { NextRequest, NextResponse } from 'next/server';
 
 // Simple session check for middleware - just check if cookie exists
+// This is Edge Runtime compatible since it only checks cookies
 export function hasSessionCookie(request: NextRequest): boolean {
   const sessionCookie = request.cookies.get('appSession');
   return !!sessionCookie?.value;
-}
-
-// Server-side session handler for API routes (where we have req/res context)
-export async function getServerSession() {
-  try {
-    const { getSession } = await import('@auth0/nextjs-auth0');
-    const session = await getSession();
-    return session;
-  } catch (error) {
-    console.error('Server session error:', error);
-    return null;
-  }
 }
 
 export function clearAuthCookies(response: NextResponse) {
