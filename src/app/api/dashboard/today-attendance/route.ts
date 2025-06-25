@@ -3,9 +3,6 @@ import { withEnhancedAuthAPI } from '@/lib/middleware';
 import { mongoConn } from '@/lib/db';
 import { getTodayAttendanceData } from '@/domains/dashboard/utils/mongo-dashboard-utils';
 
-// Force dynamic rendering for authenticated routes
-export const dynamic = 'force-dynamic';
-
 async function getTodayAttendanceHandler() {
   try {
     const { db } = await mongoConn();

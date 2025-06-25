@@ -4,6 +4,8 @@ import { mongoConn } from "@/lib/db";
 import type { AuthenticatedRequest } from "@/domains/user/types";
 import { findNotificationsByUserId } from "@/domains/notification";
 
+export const dynamic = 'force-dynamic';
+
 // GET Handler for Fetching User Notifications
 async function getUserNotificationsHandler(request: AuthenticatedRequest) {
   try {
@@ -22,7 +24,6 @@ async function getUserNotificationsHandler(request: AuthenticatedRequest) {
 
     // Connect to database
     const { db } = await mongoConn();
-
     const notifications = await findNotificationsByUserId(db, user._id);
 
     if (
@@ -52,8 +53,10 @@ async function getUserNotificationsHandler(request: AuthenticatedRequest) {
       {
         success: true,
         message: "Notifications retrieved successfully",
-        count: notificationArray.length,
-        data: notificationArray,
+        data: {
+          notifications: notificationArray,
+          count: notificationArray.length,
+        },
       },
       { status: 200 }
     );

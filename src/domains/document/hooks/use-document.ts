@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Document } from '../types';
-import { documentQueryKeys, DocumentService } from '../service';
+import { documentQueryKeys, DocumentService } from '../services';
 
 // 🔍 Get all user documents
 export function useDocuments() {

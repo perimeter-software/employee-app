@@ -1,5 +1,6 @@
-import { useNotificationStore } from "../stores";
 import { useMemo } from "react";
+import { useNotificationStore } from "../stores";
+import type { Notification } from "../types";
 
 export function useNotifications() {
   const { notifications, current, add, remove, next, clear, clearAll } =

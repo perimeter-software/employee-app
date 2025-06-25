@@ -6,10 +6,12 @@
  * before deploying to Elastic Beanstalk
  */
 
-import fs from 'fs';
-import path from 'path';
+const { config } = require('dotenv');
+const fs = require('fs');
+const path = require('path');
 
 // Load environment variables
+config();
 
 console.log('🔍 Pre-deployment Verification Script');
 console.log('=====================================\n');

@@ -11,9 +11,6 @@ import {
   getTodayAttendanceData,
 } from '@/domains/dashboard/utils/mongo-dashboard-utils';
 
-// Force dynamic rendering for authenticated routes
-export const dynamic = 'force-dynamic';
-
 async function getDashboardDataHandler(request: AuthenticatedRequest) {
   try {
     const body = (await request.json()) as DashboardParams;

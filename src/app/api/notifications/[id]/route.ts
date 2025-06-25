@@ -8,10 +8,16 @@ import {
 } from "@/domains/notification";
 import { ObjectId } from "mongodb";
 
+export const dynamic = 'force-dynamic';
+
 // PUT Handler for Updating Notification
-async function updateNotificationHandler(request: AuthenticatedRequest) {
+async function updateNotificationHandler(
+  request: AuthenticatedRequest,
+  context: { params: Promise<Record<string, string | string[] | undefined>> }
+) {
   try {
-    const { notificationId } = request.params as { notificationId: string };
+    const params = await context.params;
+    const notificationId = typeof params.id === 'string' ? params.id : params.id?.[0];
 
     if (!notificationId || !ObjectId.isValid(notificationId)) {
       return NextResponse.json(
@@ -77,9 +83,13 @@ async function updateNotificationHandler(request: AuthenticatedRequest) {
 }
 
 // GET Handler for Fetching Notification
-async function getNotificationHandler(request: AuthenticatedRequest) {
+async function getNotificationHandler(
+  request: AuthenticatedRequest,
+  context: { params: Promise<Record<string, string | string[] | undefined>> }
+) {
   try {
-    const { notificationId } = request.params as { notificationId: string };
+    const params = await context.params;
+    const notificationId = typeof params.id === 'string' ? params.id : params.id?.[0];
 
     if (!notificationId) {
       return NextResponse.json(
@@ -140,6 +150,66 @@ async function getNotificationHandler(request: AuthenticatedRequest) {
   }
 }
 
+// DELETE Handler for Deleting Notification (soft delete)
+async function deleteNotificationHandler(
+  request: AuthenticatedRequest,
+  context: { params: Promise<Record<string, string | string[] | undefined>> }
+) {
+  try {
+    const params = await context.params;
+    const notificationId = typeof params.id === 'string' ? params.id : params.id?.[0];
+
+    if (!notificationId || !ObjectId.isValid(notificationId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "invalid-notification-id",
+          message: "Invalid notification ID",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Connect to database
+    const { db } = await mongoConn();
+
+    // Mark as deleted instead of actually deleting for audit purposes
+    const result = await updateNotification(db, notificationId, { status: 'deleted' });
+
+    if (!result || result.matchedCount === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "notification-not-found",
+          message: "Notification not found",
+        },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Notification deleted successfully!",
+        data: {
+          modifiedCount: result.modifiedCount,
+        },
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Error deleting notification:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: "internal-error",
+        message: "Internal server error",
+      },
+      { status: 500 }
+    );
+  }
+}
+
 // Export with enhanced auth wrapper
 export const PUT = withEnhancedAuthAPI(updateNotificationHandler, {
   requireDatabaseUser: true,
@@ -147,6 +217,11 @@ export const PUT = withEnhancedAuthAPI(updateNotificationHandler, {
 });
 
 export const GET = withEnhancedAuthAPI(getNotificationHandler, {
+  requireDatabaseUser: true,
+  requireTenant: true,
+});
+
+export const DELETE = withEnhancedAuthAPI(deleteNotificationHandler, {
   requireDatabaseUser: true,
   requireTenant: true,
 });

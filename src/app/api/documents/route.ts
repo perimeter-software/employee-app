@@ -13,9 +13,6 @@ import fs from "fs/promises";
 import { Document } from "@/domains/document/types";
 import { parseFormDataWithFile } from "@/lib/utils/client-processing-utils";
 
-// Force dynamic rendering for authenticated routes
-export const dynamic = 'force-dynamic';
-
 const uploadDir = path.resolve("./public/uploads/documents");
 
 // GET - Get all user documents

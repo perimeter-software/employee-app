@@ -2,62 +2,58 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { NotificationApiService, notificationQueryKeys } from '../services';
 import { Notification } from '../types';
 
-export const useUpdateNotification = (id: string) => {
+export const useDeleteNotification = (id: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: Partial<Notification>) =>
-      NotificationApiService.updateNotification(id, data),
+    mutationFn: () => NotificationApiService.deleteNotification(id),
 
-    // Optimistic update
-    onMutate: async (updateData) => {
-      // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+    // Optimistic update for delete
+    onMutate: async () => {
+      // Cancel any outgoing refetches
       await queryClient.cancelQueries({
         queryKey: [...notificationQueryKeys.all],
       });
 
-      // Snapshot the previous value for rollback
+      // Snapshot the previous value
       const previousData = queryClient.getQueryData([
         ...notificationQueryKeys.all,
       ]);
 
-      // Optimistically update the cache
+      // Optimistically remove from cache
       queryClient.setQueryData(
         [...notificationQueryKeys.all],
-        (old: { data: { notifications: Notification[] } }) => {
+        (old: { data: { notifications: Notification[]; count: number } }) => {
           if (!old?.data?.notifications) return old;
 
           return {
             ...old,
             data: {
               ...old.data,
-              notifications: old.data.notifications.map(
-                (notification: Notification) =>
-                  notification._id === id
-                    ? { ...notification, ...updateData }
-                    : notification
+              notifications: old.data.notifications.filter(
+                (notification: Notification) => notification._id !== id
               ),
+              count: Math.max(0, (old.data.count || 0) - 1),
             },
           };
         }
       );
 
-      // Return a context object with the snapshotted value
       return { previousData };
     },
 
-    // If the mutation fails, use the context returned from onMutate to roll back
-    onError: (err, updateData, context) => {
+    // Rollback on error
+    onError: (err, variables, context) => {
       if (context?.previousData) {
         queryClient.setQueryData(
           [...notificationQueryKeys.all],
           context.previousData
         );
       }
-      console.error('Failed to update notification:', err);
+      console.error('Failed to delete notification:', err);
     },
 
-    // Always refetch after error or success to ensure we have the latest data
+    // Always refetch to ensure consistency
     onSettled: () => {
       queryClient.invalidateQueries({
         queryKey: [...notificationQueryKeys.all],

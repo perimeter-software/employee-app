@@ -12,9 +12,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/DropdownMenu';
-import { Bell, ChevronDown, LogOut, Settings, User, Menu } from 'lucide-react';
+import { ChevronDown, LogOut, Settings, User, Menu } from 'lucide-react';
 import { TenantInfo, useSwitchTenant } from '@/domains/tenant';
 import { useCurrentUser } from '@/domains/user';
+import { NotificationBell } from '@/components/shared/NotificationBell';
 
 interface HeaderProps {
   onMobileMenuToggle?: () => void;
@@ -204,10 +205,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
           )}
 
           {/* Notifications */}
-          <Button variant="ghost" size="sm" className="relative">
-            <Bell className="w-5 h-5 text-appPrimary" />
-            <span className="sr-only">Notifications</span>
-          </Button>
+          <NotificationBell />
 
           {/* User Menu */}
           <DropdownMenu>

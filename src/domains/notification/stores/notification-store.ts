@@ -1,5 +1,4 @@
-// domains/shared/stores/notification-store.ts
-import { Notification } from "@/domains/notification";
+import { Notification } from "../types";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";

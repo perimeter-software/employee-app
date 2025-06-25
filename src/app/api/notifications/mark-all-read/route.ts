@@ -4,6 +4,8 @@ import { mongoConn } from "@/lib/db";
 import type { AuthenticatedRequest } from "@/domains/user/types";
 import { markAllUnreadNotificationsAsRead } from "@/domains/notification";
 
+export const dynamic = 'force-dynamic';
+
 // PUT Handler for Marking All Notifications as Read
 async function markAllNotificationsReadHandler(request: AuthenticatedRequest) {
   try {
