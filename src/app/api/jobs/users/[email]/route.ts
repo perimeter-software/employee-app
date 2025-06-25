@@ -4,6 +4,9 @@ import { getUserApplicantJobPipeline } from "@/domains/user/utils/mongo-user-uti
 import { AuthenticatedRequest } from "@/domains/user/types";
 import { withEnhancedAuthAPI } from "@/lib/middleware";
 
+// Force dynamic rendering for authenticated routes
+export const dynamic = 'force-dynamic';
+
 async function getUserApplicantJobPipelineHandler(
   request: AuthenticatedRequest
 ) {

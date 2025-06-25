@@ -3,6 +3,9 @@ import { withEnhancedAuthAPI } from '@/lib/middleware';
 import { mongoConn } from '@/lib/db';
 import { findPrimaryCompany } from '@/domains/company';
 
+// Force dynamic rendering for authenticated routes
+export const dynamic = 'force-dynamic';
+
 async function getPrimaryCompanyHandler() {
   try {
     // Connect to databases

@@ -5,6 +5,9 @@ import type { AuthenticatedRequest } from '@/domains/user/types';
 import { DashboardParams } from '@/domains/dashboard/types';
 import { calculateDashboardStats } from '@/domains/dashboard/utils/mongo-dashboard-utils';
 
+// Force dynamic rendering for authenticated routes
+export const dynamic = 'force-dynamic';
+
 async function getDashboardStatsHandler(request: AuthenticatedRequest) {
   try {
     const body = (await request.json()) as Pick<

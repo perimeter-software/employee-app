@@ -9,6 +9,9 @@ import {
 } from '@/domains/conversation/utils/mongo-conversation-utils';
 import { AiConversation, AiMessage } from '@/domains/conversation';
 
+// Force dynamic rendering for authenticated routes
+export const dynamic = 'force-dynamic';
+
 async function getConversationsHandler(request: AuthenticatedRequest) {
   try {
     const { db } = await mongoConn();
