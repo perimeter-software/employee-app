@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { mongoConn } from '@/lib/db';
+import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { DashboardParams } from '@/domains/dashboard/types';
 import { getAttendanceData } from '@/domains/dashboard/utils/mongo-dashboard-utils';
@@ -28,7 +28,7 @@ async function getAttendanceDataHandler(request: AuthenticatedRequest) {
       );
     }
 
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
     const attendanceData = await getAttendanceData(
       db,
       userId,

@@ -24,14 +24,27 @@ async function switchTenantHandler(request: AuthenticatedRequest) {
       );
     }
 
+    console.log(`🔄 Switching tenant for user ${userEmail} to: ${tenantUrl}`);
+
     // Fetch current tenant data from Redis
     const tenantData = await redisService.getTenantData(userEmail);
 
     if (!tenantData || !tenantData.availableTenants) {
+      console.error(`❌ No tenant data found for user: ${userEmail}`);
       return NextResponse.json(
         { error: 'no-tenant-data', message: 'No tenant data found' },
         { status: 404 }
       );
+    }
+
+    // Check if user is trying to switch to the same tenant
+    if (tenantData.tenant?.url === tenantUrl) {
+      console.log(`ℹ️ User ${userEmail} is already on tenant: ${tenantUrl}`);
+      return NextResponse.json({
+        success: true,
+        message: 'Already on selected tenant',
+        data: tenantData.tenant,
+      });
     }
 
     // Find the selected tenant
@@ -40,6 +53,9 @@ async function switchTenantHandler(request: AuthenticatedRequest) {
     );
 
     if (!selectedTenant) {
+      console.error(
+        `❌ Tenant ${tenantUrl} not found in available tenants for user: ${userEmail}`
+      );
       return NextResponse.json(
         {
           error: 'tenant-not-found',
@@ -52,10 +68,24 @@ async function switchTenantHandler(request: AuthenticatedRequest) {
     // Connect to databases
     const { userDb } = await mongoConn();
 
+    // Clear any existing cached user data for this user before switching
+    console.log(`🧹 Clearing cached data for user: ${userEmail}`);
+    const userCacheKeys = [
+      `user:enhanced:${userEmail}`,
+      `user:jobs:${userEmail}`,
+      `user:punches:${userEmail}`,
+      `user:dashboard:${userEmail}`,
+      `user:notifications:${userEmail}`,
+    ];
+
+    // Clear user-specific cache entries
+    await Promise.allSettled(userCacheKeys.map((key) => redisService.del(key)));
+
     // Update tenantData in Redis with the new selected tenant
     const updatedTenantData = {
       ...tenantData,
       tenant: selectedTenant,
+      lastSwitched: new Date().toISOString(),
     };
 
     await redisService.setTenantData(
@@ -67,13 +97,17 @@ async function switchTenantHandler(request: AuthenticatedRequest) {
     // Update lastLoginDate for the selected tenant in MongoDB
     await updateTenantLastLoginDate(userDb, userEmail, selectedTenant.url);
 
+    console.log(
+      `✅ Successfully switched tenant for user ${userEmail} to: ${tenantUrl}`
+    );
+
     return NextResponse.json({
       success: true,
       message: 'Tenant switched successfully',
       data: selectedTenant,
     });
   } catch (error) {
-    console.error('Tenant switch error:', error);
+    console.error('❌ Tenant switch error:', error);
     return NextResponse.json(
       { error: 'internal-error', message: 'Failed to switch tenant' },
       { status: 500 }

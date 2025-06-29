@@ -13,7 +13,8 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { Textarea } from '@/components/ui/Textarea';
 import { useUpdatePunch, useDeletePunch } from '@/domains/punch/hooks';
-import { GoogleMapsModal } from '../MapModal'; // Import the map modal
+import { useTimecardPayrollStatus } from '@/domains/payroll/hooks';
+import { MapModal } from '../MapModal'; // Import the map modal
 import type { PunchWithJobInfo, Punch } from '@/domains/punch/types';
 import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
 import { toast } from 'sonner';
@@ -88,6 +89,13 @@ export function ShiftDetailsModal({
   );
   const deletePunchMutation = useDeletePunch();
 
+  // Check if the punch is in a processed payroll batch
+  const {
+    data: payrollStatus,
+    isLoading: isPayrollLoading,
+    error: payrollError,
+  } = useTimecardPayrollStatus(shiftEvent?.punchData?._id);
+
   if (!shiftEvent) return null;
 
   // Extract job and shift info from title or data
@@ -97,9 +105,12 @@ export function ShiftDetailsModal({
     shiftEvent.shiftData?.shiftName || shiftEvent.title.split(' - ')[1];
 
   // Check permissions
+  // If payroll check fails, err on the side of caution and allow editing (fail open)
+  const isInProcessedBatch = payrollStatus?.isInProcessedBatch && !payrollError;
   const canEdit =
-    userData.userType !== 'User' ||
-    shiftEvent.jobData?.additionalConfig?.allowManualPunches;
+    (userData.userType !== 'User' ||
+      shiftEvent.jobData?.additionalConfig?.allowManualPunches) &&
+    !isInProcessedBatch;
 
   // Check if coordinates exist for map button
   const hasCoordinates =
@@ -117,7 +128,9 @@ export function ShiftDetailsModal({
     if (
       typeof coords.latitude === 'number' &&
       typeof coords.longitude === 'number' &&
-      typeof coords.accuracy === 'number'
+      typeof coords.accuracy === 'number' &&
+      coords.latitude !== 0 &&
+      coords.longitude !== 0
     ) {
       return {
         latitude: coords.latitude,
@@ -219,7 +232,9 @@ export function ShiftDetailsModal({
   };
 
   const isLoading =
-    updatePunchMutation.isPending || deletePunchMutation.isPending;
+    updatePunchMutation.isPending ||
+    deletePunchMutation.isPending ||
+    isPayrollLoading;
 
   return (
     <>
@@ -247,6 +262,30 @@ export function ShiftDetailsModal({
               </Button>
             )}
           </div>
+
+          {/* Payroll Processing Warning */}
+          {isInProcessedBatch && (
+            <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
+              <div className="flex">
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-amber-800">
+                    Editing Disabled
+                  </h3>
+                  <div className="mt-1 text-sm text-amber-700">
+                    This punch cannot be edited because it has been included in
+                    a processed payroll batch.
+                    {payrollStatus?.batch && (
+                      <span className="block mt-1">
+                        Payroll Period: {payrollStatus.batch.startDate} -{' '}
+                        {payrollStatus.batch.endDate}(
+                        {payrollStatus.batch.status})
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Form Content */}
           <Formik
@@ -370,11 +409,19 @@ export function ShiftDetailsModal({
                     type="button"
                     variant="danger"
                     onClick={handleDelete}
-                    disabled={isLoading || !shiftEvent.punchData?._id}
+                    disabled={
+                      isLoading ||
+                      !shiftEvent.punchData?._id ||
+                      !canEdit ||
+                      isInProcessedBatch
+                    }
                   >
                     Delete
                   </Button>
-                  <Button type="submit" disabled={isLoading}>
+                  <Button
+                    type="submit"
+                    disabled={isLoading || !canEdit || isInProcessedBatch}
+                  >
                     <Save className="h-4 w-4 mr-2" />
                     {isLoading ? 'Saving...' : 'Edit Punch'}
                   </Button>
@@ -386,7 +433,7 @@ export function ShiftDetailsModal({
       </Dialog>
 
       {/* Map Modal */}
-      <GoogleMapsModal
+      <MapModal
         isOpen={showMapModal}
         onClose={() => setShowMapModal(false)}
         userLocation={userLocation}

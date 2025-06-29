@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
-import { withEnhancedAuthAPI } from "@/lib/middleware";
-import { mongoConn } from "@/lib/db";
-import type { AuthenticatedRequest } from "@/domains/user/types";
-import { findNotificationsByUserId } from "@/domains/notification";
+import { NextResponse } from 'next/server';
+import { withEnhancedAuthAPI } from '@/lib/middleware';
+import { getTenantAwareConnection } from '@/lib/db';
+import type { AuthenticatedRequest } from '@/domains/user/types';
+import { findNotificationsByUserId } from '@/domains/notification';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,27 +15,27 @@ async function getUserNotificationsHandler(request: AuthenticatedRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "missing-user-id",
-          message: "User ID not found",
+          error: 'missing-user-id',
+          message: 'User ID not found',
         },
         { status: 400 }
       );
     }
 
     // Connect to database
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
     const notifications = await findNotificationsByUserId(db, user._id);
 
     if (
       !notifications ||
       (Array.isArray(notifications) && notifications.length === 0) ||
-      (typeof notifications === "object" &&
+      (typeof notifications === 'object' &&
         Object.keys(notifications).length === 0)
     ) {
       return NextResponse.json(
         {
           success: true,
-          message: "No notifications found",
+          message: 'No notifications found',
           data: {
             notifications: [],
             count: 0,
@@ -52,7 +52,7 @@ async function getUserNotificationsHandler(request: AuthenticatedRequest) {
     return NextResponse.json(
       {
         success: true,
-        message: "Notifications retrieved successfully",
+        message: 'Notifications retrieved successfully',
         data: {
           notifications: notificationArray,
           count: notificationArray.length,
@@ -61,12 +61,12 @@ async function getUserNotificationsHandler(request: AuthenticatedRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error fetching notifications:", error);
+    console.error('Error fetching notifications:', error);
     return NextResponse.json(
       {
         success: false,
-        error: "internal-error",
-        message: "Internal server error",
+        error: 'internal-error',
+        message: 'Internal server error',
       },
       { status: 500 }
     );

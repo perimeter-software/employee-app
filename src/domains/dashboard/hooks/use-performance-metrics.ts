@@ -6,7 +6,10 @@ import {
 import { DashboardParams } from '../types';
 
 export const usePerformanceMetrics = (
-  params: Pick<DashboardParams, 'userId' | 'startDate' | 'endDate'> | null,
+  params: Pick<
+    DashboardParams,
+    'userId' | 'view' | 'startDate' | 'endDate'
+  > | null,
   options?: {
     enabled?: boolean;
     staleTime?: number;
@@ -15,7 +18,12 @@ export const usePerformanceMetrics = (
 ) => {
   return useQuery({
     queryKey: params
-      ? dashboardQueryKeys.performance(params.userId)
+      ? dashboardQueryKeys.performance(
+          params.userId,
+          params.view,
+          params.startDate,
+          params.endDate
+        )
       : ['dashboard-performance-disabled'],
     queryFn: () => {
       if (!params) throw new Error('No params provided');

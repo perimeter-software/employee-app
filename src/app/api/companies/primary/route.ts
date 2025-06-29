@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { mongoConn } from '@/lib/db';
+import { AuthenticatedRequest, withEnhancedAuthAPI } from '@/lib/middleware';
+import { getTenantAwareConnection } from '@/lib/db';
 import { findPrimaryCompany } from '@/domains/company';
 
-async function getPrimaryCompanyHandler() {
+async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
   try {
     // Connect to databases
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
 
     // Get primary company
     const primaryCompany = await findPrimaryCompany(db);

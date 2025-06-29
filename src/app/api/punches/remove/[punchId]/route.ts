@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { mongoConn } from '@/lib/db';
+import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { deletePunchById } from '@/domains/punch/utils';
 
@@ -26,7 +26,7 @@ async function deletePunchHandler(
     }
 
     // Connect to database
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
 
     const result = await deletePunchById(db, punchId);
 

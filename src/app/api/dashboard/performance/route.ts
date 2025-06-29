@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { mongoConn } from '@/lib/db';
+import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { DashboardParams } from '@/domains/dashboard/types';
 import { getPerformanceMetrics } from '@/domains/dashboard/utils/mongo-dashboard-utils';
@@ -28,7 +28,7 @@ async function getPerformanceMetricsHandler(request: AuthenticatedRequest) {
       );
     }
 
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
     const performanceData = await getPerformanceMetrics(
       db,
       userId,

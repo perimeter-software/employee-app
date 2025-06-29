@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server";
-import { withEnhancedAuthAPI } from "@/lib/middleware";
-import { mongoConn } from "@/lib/db";
-import type { AuthenticatedRequest } from "@/domains/user/types";
+import { NextResponse } from 'next/server';
+import { withEnhancedAuthAPI } from '@/lib/middleware';
+import { getTenantAwareConnection } from '@/lib/db';
+import type { AuthenticatedRequest } from '@/domains/user/types';
 import {
   findNotificationById,
   updateNotification,
-} from "@/domains/notification";
-import { ObjectId } from "mongodb";
+} from '@/domains/notification';
+import { ObjectId } from 'mongodb';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,14 +17,15 @@ async function updateNotificationHandler(
 ) {
   try {
     const params = await context.params;
-    const notificationId = typeof params.id === 'string' ? params.id : params.id?.[0];
+    const notificationId =
+      typeof params.id === 'string' ? params.id : params.id?.[0];
 
     if (!notificationId || !ObjectId.isValid(notificationId)) {
       return NextResponse.json(
         {
           success: false,
-          error: "invalid-notification-id",
-          message: "Invalid notification ID",
+          error: 'invalid-notification-id',
+          message: 'Invalid notification ID',
         },
         { status: 400 }
       );
@@ -36,15 +37,15 @@ async function updateNotificationHandler(
       return NextResponse.json(
         {
           success: false,
-          error: "missing-data",
-          message: "Missing notification data",
+          error: 'missing-data',
+          message: 'Missing notification data',
         },
         { status: 400 }
       );
     }
 
     // Connect to database
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
 
     const result = await updateNotification(db, notificationId, body);
 
@@ -52,8 +53,8 @@ async function updateNotificationHandler(
       return NextResponse.json(
         {
           success: false,
-          error: "notification-not-found",
-          message: "Notification not found",
+          error: 'notification-not-found',
+          message: 'Notification not found',
         },
         { status: 404 }
       );
@@ -62,7 +63,7 @@ async function updateNotificationHandler(
     return NextResponse.json(
       {
         success: true,
-        message: "Notification updated successfully!",
+        message: 'Notification updated successfully!',
         data: {
           modifiedCount: result.modifiedCount,
         },
@@ -70,12 +71,12 @@ async function updateNotificationHandler(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error updating notification:", error);
+    console.error('Error updating notification:', error);
     return NextResponse.json(
       {
         success: false,
-        error: "internal-error",
-        message: "Internal server error",
+        error: 'internal-error',
+        message: 'Internal server error',
       },
       { status: 500 }
     );
@@ -89,14 +90,15 @@ async function getNotificationHandler(
 ) {
   try {
     const params = await context.params;
-    const notificationId = typeof params.id === 'string' ? params.id : params.id?.[0];
+    const notificationId =
+      typeof params.id === 'string' ? params.id : params.id?.[0];
 
     if (!notificationId) {
       return NextResponse.json(
         {
           success: false,
-          error: "missing-notification-id",
-          message: "Missing notification ID",
+          error: 'missing-notification-id',
+          message: 'Missing notification ID',
         },
         { status: 400 }
       );
@@ -106,15 +108,15 @@ async function getNotificationHandler(
       return NextResponse.json(
         {
           success: false,
-          error: "invalid-notification-id",
-          message: "Invalid notification ID",
+          error: 'invalid-notification-id',
+          message: 'Invalid notification ID',
         },
         { status: 400 }
       );
     }
 
     // Connect to database
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
 
     const notification = await findNotificationById(db, notificationId);
 
@@ -122,8 +124,8 @@ async function getNotificationHandler(
       return NextResponse.json(
         {
           success: false,
-          error: "notification-not-found",
-          message: "Notification not found",
+          error: 'notification-not-found',
+          message: 'Notification not found',
         },
         { status: 404 }
       );
@@ -132,18 +134,18 @@ async function getNotificationHandler(
     return NextResponse.json(
       {
         success: true,
-        message: "Notification retrieved successfully",
+        message: 'Notification retrieved successfully',
         data: notification,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error fetching notification:", error);
+    console.error('Error fetching notification:', error);
     return NextResponse.json(
       {
         success: false,
-        error: "internal-error",
-        message: "Internal server error",
+        error: 'internal-error',
+        message: 'Internal server error',
       },
       { status: 500 }
     );
@@ -157,31 +159,34 @@ async function deleteNotificationHandler(
 ) {
   try {
     const params = await context.params;
-    const notificationId = typeof params.id === 'string' ? params.id : params.id?.[0];
+    const notificationId =
+      typeof params.id === 'string' ? params.id : params.id?.[0];
 
     if (!notificationId || !ObjectId.isValid(notificationId)) {
       return NextResponse.json(
         {
           success: false,
-          error: "invalid-notification-id",
-          message: "Invalid notification ID",
+          error: 'invalid-notification-id',
+          message: 'Invalid notification ID',
         },
         { status: 400 }
       );
     }
 
     // Connect to database
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
 
     // Mark as deleted instead of actually deleting for audit purposes
-    const result = await updateNotification(db, notificationId, { status: 'deleted' });
+    const result = await updateNotification(db, notificationId, {
+      status: 'deleted',
+    });
 
     if (!result || result.matchedCount === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: "notification-not-found",
-          message: "Notification not found",
+          error: 'notification-not-found',
+          message: 'Notification not found',
         },
         { status: 404 }
       );
@@ -190,7 +195,7 @@ async function deleteNotificationHandler(
     return NextResponse.json(
       {
         success: true,
-        message: "Notification deleted successfully!",
+        message: 'Notification deleted successfully!',
         data: {
           modifiedCount: result.modifiedCount,
         },
@@ -198,12 +203,12 @@ async function deleteNotificationHandler(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error deleting notification:", error);
+    console.error('Error deleting notification:', error);
     return NextResponse.json(
       {
         success: false,
-        error: "internal-error",
-        message: "Internal server error",
+        error: 'internal-error',
+        message: 'Internal server error',
       },
       { status: 500 }
     );

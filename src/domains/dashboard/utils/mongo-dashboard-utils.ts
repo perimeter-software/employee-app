@@ -32,8 +32,22 @@ export async function calculateDashboardStats(
     const user = await db
       .collection('users')
       .findOne({ _id: new ObjectId(userId) });
+    
     if (!user) {
-      throw new Error('User not found');
+      console.warn(`⚠️ User ${userId} not found in database ${db.databaseName}, returning empty stats`);
+      // Return empty stats instead of throwing error
+      return {
+        totalHours: 0,
+        shiftsCompleted: 0,
+        absences: 0,
+        geofenceViolations: 0,
+        weeklyChange: {
+          hours: 0,
+          shifts: 0,
+          absences: 0,
+          violations: 0,
+        },
+      };
     }
 
     const applicantId = user.applicantId;
@@ -194,7 +208,11 @@ export async function getAttendanceData(
       .collection('users')
       .findOne({ _id: new ObjectId(userId) });
     if (!user) {
-      throw new Error('User not found');
+      console.warn(`⚠️ User ${userId} not found in database ${db.databaseName}, returning empty attendance data`);
+      return {
+        monthlyAttendance: [],
+        weeklyTrends: [],
+      };
     }
 
     const applicantId = user.applicantId;
@@ -321,7 +339,17 @@ export async function getPerformanceMetrics(
       .collection('users')
       .findOne({ _id: new ObjectId(userId) });
     if (!user) {
-      throw new Error('User not found');
+      console.warn(`⚠️ User ${userId} not found in database ${db.databaseName}, returning empty performance metrics`);
+      return {
+        performanceMetrics: {
+          onTimeRate: 0,
+          avgHoursPerDay: 0,
+          violationRate: 0,
+          attendanceRate: 0,
+          overtimeHours: 0,
+        },
+        shiftDetails: [],
+      };
     }
 
     const applicantId = user.applicantId;

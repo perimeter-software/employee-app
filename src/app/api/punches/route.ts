@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { mongoConn } from '@/lib/db';
+import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { findAllPunchesByDateRange } from '@/domains/punch/utils';
 
@@ -22,8 +22,8 @@ async function findPunchesByDateRangeHandler(request: AuthenticatedRequest) {
       );
     }
 
-    // Connect to database
-    const { db } = await mongoConn();
+    // Connect to tenant-specific database
+    const { db } = await getTenantAwareConnection(request);
 
     const punches = await findAllPunchesByDateRange(
       db,

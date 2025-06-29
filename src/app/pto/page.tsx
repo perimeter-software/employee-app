@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import React, { useState, useMemo } from "react";
-import { format, eachDayOfInterval } from "date-fns";
+import React, { useState, useMemo } from 'react';
+import { format, eachDayOfInterval } from 'date-fns';
 import {
   Calendar as CalendarIcon,
   Plus,
@@ -11,37 +11,34 @@ import {
   Check,
   Clock,
   XCircle,
-  Calendar,
-} from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { Input } from "@/components/ui/Input";
-import { Label } from "@/components/ui/Label";
-import { Textarea } from "@/components/ui/Textarea";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/Dialog";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/ToggleGroup";
-import { CalendarEvent, Mode } from "@/components/ui/Calendar";
-import CalendarProvider from "@/components/ui/Calendar/CalendarProvider";
-import CalendarBody from "@/components/ui/Calendar/Body/CalendarBody";
-import CalendarHeaderDate from "@/components/ui/Calendar/Header/Date/CalendarHeaderDate";
-import CalendarHeaderActionsMode from "@/components/ui/Calendar/Header/Actions/CalendarHeaderActionsMode";
-import { useCalendarContext } from "@/components/ui/Calendar/CalendarContext";
+} from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import { Card, CardContent } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/Label';
+import { Textarea } from '@/components/ui/Textarea';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/Dialog';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
+import { CalendarEvent, Mode } from '@/components/ui/Calendar';
+import CalendarProvider from '@/components/ui/Calendar/CalendarProvider';
+import Calendar from '@/components/ui/Calendar/Calendar';
+import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/Select";
-import Layout from "@/components/layout/Layout";
-import { Table } from "@/components/ui/Table";
-import { TableColumn } from "@/components/ui/Table/types";
-import { clsxm } from "@/lib/utils";
+} from '@/components/ui/Select';
+import Layout from '@/components/layout/Layout';
+import { Table } from '@/components/ui/Table';
+import { TableColumn } from '@/components/ui/Table/types';
+import { clsxm } from '@/lib/utils';
 
 // PTO Types
-type PTOType = "vacation" | "sick" | "fmla" | "sabbatical" | "personal";
-type PTOStatus = "approved" | "pending" | "rejected";
+type PTOType = 'vacation' | 'sick' | 'fmla' | 'sabbatical' | 'personal';
+type PTOStatus = 'approved' | 'pending' | 'rejected';
 
 interface PTORequest {
   id: string;
@@ -72,105 +69,105 @@ interface PTOTableData extends Record<string, unknown> {
 // Static PTO data
 const ptoData: PTORequest[] = [
   {
-    id: "1",
-    type: "vacation",
-    startDate: new Date("2025-06-01"),
-    endDate: new Date("2025-06-05"),
+    id: '1',
+    type: 'vacation',
+    startDate: new Date('2025-06-01'),
+    endDate: new Date('2025-06-05'),
     days: 5,
-    reason: "Family vacation to Hawaii",
-    status: "approved",
-    requestedDate: new Date("2025-05-06"),
-    approvedBy: "Jane Doe",
+    reason: 'Family vacation to Hawaii',
+    status: 'approved',
+    requestedDate: new Date('2025-05-06'),
+    approvedBy: 'Jane Doe',
   },
   {
-    id: "2",
-    type: "sick",
-    startDate: new Date("2025-06-02"),
-    endDate: new Date("2025-06-02"),
+    id: '2',
+    type: 'sick',
+    startDate: new Date('2025-06-02'),
+    endDate: new Date('2025-06-02'),
     days: 1,
-    reason: "Fever",
-    status: "pending",
-    requestedDate: new Date("2025-05-06"),
+    reason: 'Fever',
+    status: 'pending',
+    requestedDate: new Date('2025-05-06'),
   },
   {
-    id: "3",
-    type: "fmla",
-    startDate: new Date("2025-06-03"),
-    endDate: new Date("2025-06-03"),
+    id: '3',
+    type: 'fmla',
+    startDate: new Date('2025-06-03'),
+    endDate: new Date('2025-06-03'),
     days: 1,
-    reason: "Short Vacation",
-    status: "rejected",
-    requestedDate: new Date("2025-05-06"),
+    reason: 'Short Vacation',
+    status: 'rejected',
+    requestedDate: new Date('2025-05-06'),
   },
   {
-    id: "4",
-    type: "sabbatical",
-    startDate: new Date("2025-06-04"),
-    endDate: new Date("2025-06-04"),
+    id: '4',
+    type: 'sabbatical',
+    startDate: new Date('2025-06-04'),
+    endDate: new Date('2025-06-04'),
     days: 1,
-    reason: "Family vacation to Hawaii",
-    status: "approved",
-    requestedDate: new Date("2025-05-06"),
-    approvedBy: "Jane Doe",
+    reason: 'Family vacation to Hawaii',
+    status: 'approved',
+    requestedDate: new Date('2025-05-06'),
+    approvedBy: 'Jane Doe',
   },
   {
-    id: "5",
-    type: "vacation",
-    startDate: new Date("2025-06-10"),
-    endDate: new Date("2025-06-10"),
+    id: '5',
+    type: 'vacation',
+    startDate: new Date('2025-06-10'),
+    endDate: new Date('2025-06-10'),
     days: 1,
-    reason: "Sick Leave",
-    status: "approved",
-    requestedDate: new Date("2025-05-06"),
-    approvedBy: "Jane Doe",
+    reason: 'Sick Leave',
+    status: 'approved',
+    requestedDate: new Date('2025-05-06'),
+    approvedBy: 'Jane Doe',
   },
   {
-    id: "6",
-    type: "vacation",
-    startDate: new Date("2025-06-13"),
-    endDate: new Date("2025-06-13"),
+    id: '6',
+    type: 'vacation',
+    startDate: new Date('2025-06-13'),
+    endDate: new Date('2025-06-13'),
     days: 1,
-    reason: "Sabbatical",
-    status: "approved",
-    requestedDate: new Date("2025-05-06"),
-    approvedBy: "Jane Doe",
+    reason: 'Sabbatical',
+    status: 'approved',
+    requestedDate: new Date('2025-05-06'),
+    approvedBy: 'Jane Doe',
   },
 ];
 
 // PTO Type configurations
 const ptoTypeConfig = {
   vacation: {
-    label: "Vacation Leave",
-    color: "bg-blue-100 text-blue-800",
-    calendarColor: "blue",
+    label: 'Vacation Leave',
+    color: 'bg-blue-100 text-blue-800',
+    calendarColor: 'blue',
   },
   sick: {
-    label: "Sick Leave",
-    color: "bg-red-100 text-red-800",
-    calendarColor: "red",
+    label: 'Sick Leave',
+    color: 'bg-red-100 text-red-800',
+    calendarColor: 'red',
   },
   fmla: {
-    label: "FMLA",
-    color: "bg-purple-100 text-purple-800",
-    calendarColor: "purple",
+    label: 'FMLA',
+    color: 'bg-purple-100 text-purple-800',
+    calendarColor: 'purple',
   },
   sabbatical: {
-    label: "Sabbatical",
-    color: "bg-green-100 text-green-800",
-    calendarColor: "green",
+    label: 'Sabbatical',
+    color: 'bg-green-100 text-green-800',
+    calendarColor: 'green',
   },
   personal: {
-    label: "Personal Leave",
-    color: "bg-orange-100 text-orange-800",
-    calendarColor: "orange",
+    label: 'Personal Leave',
+    color: 'bg-orange-100 text-orange-800',
+    calendarColor: 'orange',
   },
 };
 
 // Status configurations
 const statusConfig = {
-  approved: { label: "Approved", color: "text-green-600", icon: Check },
-  pending: { label: "Pending", color: "text-yellow-600", icon: Clock },
-  rejected: { label: "Rejected", color: "text-red-600", icon: XCircle },
+  approved: { label: 'Approved', color: 'text-green-600', icon: Check },
+  pending: { label: 'Pending', color: 'text-yellow-600', icon: Clock },
+  rejected: { label: 'Rejected', color: 'text-red-600', icon: XCircle },
 };
 
 // Enhanced File Dropzone Component
@@ -204,10 +201,10 @@ const FileDropzone = ({
       <div
         className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
           isDragOver
-            ? "border-blue-400 bg-blue-50"
+            ? 'border-blue-400 bg-blue-50'
             : selectedFile
-            ? "border-green-400 bg-green-50"
-            : "border-gray-300 hover:border-gray-400"
+              ? 'border-green-400 bg-green-50'
+              : 'border-gray-300 hover:border-gray-400'
         }`}
         onDrop={handleDrop}
         onDragOver={(e) => {
@@ -235,7 +232,7 @@ const FileDropzone = ({
           <div>
             <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
             <p className="text-sm text-gray-600 mb-2">
-              Drop your file here, or{" "}
+              Drop your file here, or{' '}
               <label className="text-blue-600 hover:text-blue-700 cursor-pointer underline">
                 browse
                 <input
@@ -265,13 +262,13 @@ const PTORequestModal = ({
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (
-    request: Omit<PTORequest, "id" | "status" | "requestedDate">
+    request: Omit<PTORequest, 'id' | 'status' | 'requestedDate'>
   ) => void;
 }) => {
-  const [ptoType, setPtoType] = useState<PTOType>("vacation");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [reason, setReason] = useState("");
+  const [ptoType, setPtoType] = useState<PTOType>('vacation');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [reason, setReason] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const calculateDays = () => {
@@ -296,10 +293,10 @@ const PTORequestModal = ({
     });
 
     // Reset form
-    setPtoType("vacation");
-    setStartDate("");
-    setEndDate("");
-    setReason("");
+    setPtoType('vacation');
+    setStartDate('');
+    setEndDate('');
+    setReason('');
     setSelectedFile(null);
     onClose();
   };
@@ -380,7 +377,7 @@ const PTORequestModal = ({
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
               <p className="text-sm text-gray-700">
                 <strong>Total Days:</strong> {calculateDays()} day
-                {calculateDays() !== 1 ? "s" : ""}
+                {calculateDays() !== 1 ? 's' : ''}
               </p>
             </div>
           )}
@@ -446,14 +443,14 @@ const CalendarEventHandler = ({
 
 // Main PTO Dashboard Component
 export default function PTODashboard() {
-  const [viewType, setViewType] = useState<"monthly" | "weekly" | "calendar">(
-    "monthly"
+  const [viewType, setViewType] = useState<'monthly' | 'weekly' | 'calendar'>(
+    'monthly'
   );
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [, setSelectedPTO] = useState<PTORequest | null>(null);
   const [ptoRequests, setPtoRequests] = useState<PTORequest[]>(ptoData);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [mode, setMode] = useState<Mode>("month");
+  const [mode, setMode] = useState<Mode>('month');
 
   // Calendar events from PTO data
   const calendarEvents = useMemo(() => {
@@ -484,15 +481,15 @@ export default function PTODashboard() {
   // Statistics
   const stats = useMemo(() => {
     const totalUsed = ptoRequests
-      .filter((req) => req.status === "approved")
+      .filter((req) => req.status === 'approved')
       .reduce((sum, req) => sum + req.days, 0);
 
     const totalRemaining = 120 - totalUsed; // Assuming 120 total PTO days
     const pendingRequests = ptoRequests.filter(
-      (req) => req.status === "pending"
+      (req) => req.status === 'pending'
     ).length;
     const upcomingPTO = ptoRequests.filter(
-      (req) => req.status === "approved" && req.startDate > new Date()
+      (req) => req.status === 'approved' && req.startDate > new Date()
     ).length;
 
     return {
@@ -505,12 +502,12 @@ export default function PTODashboard() {
   }, [ptoRequests]);
 
   const handleSubmitRequest = (
-    request: Omit<PTORequest, "id" | "status" | "requestedDate">
+    request: Omit<PTORequest, 'id' | 'status' | 'requestedDate'>
   ) => {
     const newRequest: PTORequest = {
       ...request,
       id: `${Date.now()}`,
-      status: "pending",
+      status: 'pending',
       requestedDate: new Date(),
     };
 
@@ -518,9 +515,9 @@ export default function PTODashboard() {
   };
 
   const filteredRequests = useMemo(() => {
-    if (viewType === "monthly") {
+    if (viewType === 'monthly') {
       return ptoRequests;
-    } else if (viewType === "weekly") {
+    } else if (viewType === 'weekly') {
       const weekStart = new Date();
       weekStart.setDate(weekStart.getDate() - 7);
       const weekEnd = new Date();
@@ -535,13 +532,13 @@ export default function PTODashboard() {
 
   const columns: TableColumn<PTOTableData>[] = [
     {
-      key: "dateRange",
-      header: "Date/s",
+      key: 'dateRange',
+      header: 'Date/s',
       render: (value: unknown) => String(value),
     },
     {
-      key: "type",
-      header: "Type",
+      key: 'type',
+      header: 'Type',
       render: (value: unknown, row: PTOTableData) => (
         <Badge className={ptoTypeConfig[row.type].color}>
           {ptoTypeConfig[row.type].label}
@@ -549,25 +546,25 @@ export default function PTODashboard() {
       ),
     },
     {
-      key: "days",
-      header: "Days",
+      key: 'days',
+      header: 'Days',
       render: (value: unknown) => String(value),
     },
     {
-      key: "reason",
-      header: "Reason",
+      key: 'reason',
+      header: 'Reason',
       render: (value: unknown) => (
         <span className="max-w-xs truncate">{String(value)}</span>
       ),
     },
     {
-      key: "requestedDate",
-      header: "Requested",
+      key: 'requestedDate',
+      header: 'Requested',
       render: (value: unknown) => String(value),
     },
     {
-      key: "status",
-      header: "Status",
+      key: 'status',
+      header: 'Status',
       render: (value: unknown, row: PTOTableData) => {
         const StatusIcon = statusConfig[row.status].icon;
         return (
@@ -585,9 +582,9 @@ export default function PTODashboard() {
       },
     },
     {
-      key: "approvedBy",
-      header: "Approved by",
-      render: (value: unknown) => (value ? String(value) : "-"),
+      key: 'approvedBy',
+      header: 'Approved by',
+      render: (value: unknown) => (value ? String(value) : '-'),
     },
   ];
 
@@ -596,15 +593,15 @@ export default function PTODashboard() {
     id: request.id,
     dateRange:
       request.startDate.getTime() === request.endDate.getTime()
-        ? format(request.startDate, "MM/dd/yyyy")
-        : `${format(request.startDate, "MM/dd/yyyy")} - ${format(
+        ? format(request.startDate, 'MM/dd/yyyy')
+        : `${format(request.startDate, 'MM/dd/yyyy')} - ${format(
             request.endDate,
-            "MM/dd/yyyy"
+            'MM/dd/yyyy'
           )}`,
     type: request.type,
     days: request.days,
     reason: request.reason,
-    requestedDate: format(request.requestedDate, "MM/dd/yyyy"),
+    requestedDate: format(request.requestedDate, 'MM/dd/yyyy'),
     status: request.status,
     approvedBy: request.approvedBy,
     startDate: request.startDate,
@@ -622,31 +619,31 @@ export default function PTODashboard() {
           <div className="flex items-center justify-start w-full sm:w-auto">
             {/* View Toggle */}
             <ToggleGroup
-                className="inline-flex rounded-lg border border-gray-30 p-1 self-start sm:self-auto shadow-sm"
-                type="single"
+              className="inline-flex rounded-lg border border-gray-30 p-1 self-start sm:self-auto shadow-sm"
+              type="single"
               value={viewType}
               onValueChange={(value) =>
                 value && setViewType(value as typeof viewType)
               }
             >
               <ToggleGroupItem
-                  value="monthly"
-                  className={clsxm(
-                    "rounded-md px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all",
-                    viewType === "monthly" ?
-                      "bg-appPrimary text-white shadow-md":
-                      "text-gray-600 hover:text-gray-900 hover:bg-gray-200"
-                  )}
-                >
+                value="monthly"
+                className={clsxm(
+                  'rounded-md px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all',
+                  viewType === 'monthly'
+                    ? 'bg-appPrimary text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+                )}
+              >
                 Monthly
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="weekly"
                 className={clsxm(
-                  "rounded-md px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all",
-                  viewType === "weekly" ?
-                    "bg-appPrimary text-white shadow-md":
-                    "text-gray-600 hover:text-gray-900 hover:bg-gray-200"
+                  'rounded-md px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all',
+                  viewType === 'weekly'
+                    ? 'bg-appPrimary text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
                 )}
               >
                 Weekly
@@ -654,11 +651,12 @@ export default function PTODashboard() {
               <ToggleGroupItem
                 value="calendar"
                 className={clsxm(
-                  "rounded-md px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all",
-                  viewType === "calendar" ?
-                    "bg-appPrimary text-white shadow-md":
-                    "text-gray-600 hover:text-gray-900 hover:bg-gray-200"
-                )}              >
+                  'rounded-md px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-all',
+                  viewType === 'calendar'
+                    ? 'bg-appPrimary text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+                )}
+              >
                 Calendar
               </ToggleGroupItem>
             </ToggleGroup>
@@ -734,44 +732,20 @@ export default function PTODashboard() {
                   </p>
                   <p className="text-xs text-gray-500">days</p>
                 </div>
-                <Calendar className="h-8 w-8 text-purple-500" />
+                <CalendarIcon className="h-8 w-8 text-purple-500" />
               </div>
             </CardContent>
           </Card>
         </div>
 
         {/* Calendar View */}
-        {viewType === "calendar" && (
+        {viewType === 'calendar' && (
           <Card>
             <CardContent className="p-4 sm:p-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 md:gap-0">
                 <h2 className="text-lg sm:text-xl font-semibold">
                   PTO Calendar
                 </h2>
-                <div className="flex items-center gap-2 sm:gap-4 w-full md:w-auto">
-                  <CalendarProvider
-                    events={events}
-                    setEvents={setEvents}
-                    mode={mode}
-                    setMode={setMode}
-                    date={currentDate}
-                    setDate={setCurrentDate}
-                    calendarIconIsToday={false}
-                  >
-                    <CalendarHeaderDate />
-                  </CalendarProvider>
-                  <CalendarProvider
-                    events={events}
-                    setEvents={setEvents}
-                    mode={mode}
-                    setMode={setMode}
-                    date={currentDate}
-                    setDate={setCurrentDate}
-                    calendarIconIsToday={false}
-                  >
-                    <CalendarHeaderActionsMode />
-                  </CalendarProvider>
-                </div>
               </div>
 
               <div className="border rounded-lg overflow-x-auto">
@@ -784,7 +758,8 @@ export default function PTODashboard() {
                   setDate={setCurrentDate}
                   calendarIconIsToday={false}
                 >
-                  <CalendarBody hideTotalColumn={true} />
+                  {/* Complete Calendar Component with sticky headers */}
+                  <Calendar hideTotalColumn={true} />
                   <CalendarEventHandler
                     ptoRequests={ptoRequests}
                     onEventClick={setSelectedPTO}
@@ -809,16 +784,16 @@ export default function PTODashboard() {
           </Card>
         )}
 
-        {viewType !== "calendar" && (
+        {viewType !== 'calendar' && (
           <Card>
             <CardContent className="p-4 sm:p-6">
               <h2 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6">
-                PTO Request History{" "}
-                {viewType === "weekly"
-                  ? "(Weekly)"
-                  : viewType === "monthly"
-                  ? "(Monthly)"
-                  : ""}
+                PTO Request History{' '}
+                {viewType === 'weekly'
+                  ? '(Weekly)'
+                  : viewType === 'monthly'
+                    ? '(Monthly)'
+                    : ''}
               </h2>
 
               <div className="w-full overflow-x-auto">

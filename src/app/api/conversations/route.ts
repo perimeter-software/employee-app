@@ -1,6 +1,6 @@
 // /api/conversations/route.ts
 import { NextResponse } from 'next/server';
-import { mongoConn } from '@/lib/db';
+import { getTenantAwareConnection } from '@/lib/db';
 import { AuthenticatedRequest } from '@/domains/user/types';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
 import {
@@ -11,7 +11,7 @@ import { AiConversation, AiMessage } from '@/domains/conversation';
 
 async function getConversationsHandler(request: AuthenticatedRequest) {
   try {
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
 
     // Get userId from the authenticated request
     const userId = request.user?.id || request.user?.sub;
@@ -61,7 +61,7 @@ async function getConversationsHandler(request: AuthenticatedRequest) {
 // POST - Create new conversation
 async function createConversationHandler(request: AuthenticatedRequest) {
   try {
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
 
     const userId = request.user?.id || request.user?.sub;
 

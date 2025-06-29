@@ -58,7 +58,7 @@ export class PunchApiService {
     jobId: string,
     data: {
       userNote?: string;
-      clockInCoordinates: ClockInCoordinates;
+      clockInCoordinates?: ClockInCoordinates;
       timeIn: string;
       newStartDate: string;
       newEndDate: string;

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { mongoConn } from '@/lib/db';
+import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { DashboardParams, DashboardData } from '@/domains/dashboard/types';
 import {
@@ -32,7 +32,7 @@ async function getDashboardDataHandler(request: AuthenticatedRequest) {
       );
     }
 
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
 
     // Get all dashboard data in parallel
     const [stats, attendanceData, performanceData, insights, todayAttendance] =

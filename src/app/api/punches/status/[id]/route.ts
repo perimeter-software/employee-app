@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
-import { withEnhancedAuthAPI } from "@/lib/middleware";
-import { mongoConn } from "@/lib/db";
-import type { AuthenticatedRequest } from "@/domains/user/types";
-import { getPunchStatus } from "@/domains/punch/utils";
+import { NextResponse } from 'next/server';
+import { withEnhancedAuthAPI } from '@/lib/middleware';
+import { getTenantAwareConnection } from '@/lib/db';
+import type { AuthenticatedRequest } from '@/domains/user/types';
+import { getPunchStatus } from '@/domains/punch/utils';
 
 // GET Handler for Fetching Punch Status
 async function getPunchStatusHandler(request: AuthenticatedRequest) {
@@ -11,19 +11,19 @@ async function getPunchStatusHandler(request: AuthenticatedRequest) {
 
     if (!id) {
       return NextResponse.json(
-        { error: "missing-id", message: "Punch ID is required" },
+        { error: 'missing-id', message: 'Punch ID is required' },
         { status: 400 }
       );
     }
 
     // Connect to database
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
 
     const punch = await getPunchStatus(db, id);
 
     if (!punch) {
       return NextResponse.json(
-        { error: "punch-not-found", message: "Punch not found" },
+        { error: 'punch-not-found', message: 'Punch not found' },
         { status: 404 }
       );
     }
@@ -31,15 +31,15 @@ async function getPunchStatusHandler(request: AuthenticatedRequest) {
     return NextResponse.json(
       {
         success: true,
-        message: "Punch status retrieved successfully",
+        message: 'Punch status retrieved successfully',
         data: punch,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error fetching punch status:", error);
+    console.error('Error fetching punch status:', error);
     return NextResponse.json(
-      { error: "internal-error", message: "Internal server error" },
+      { error: 'internal-error', message: 'Internal server error' },
       { status: 500 }
     );
   }
