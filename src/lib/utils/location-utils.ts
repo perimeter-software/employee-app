@@ -1,6 +1,6 @@
 // import { systemNotification } from "../../stores";
 
-import { ClockInCoordinates, GigLocation, Location } from "@/domains/job";
+import { ClockInCoordinates, GigLocation, Location } from '@/domains/job';
 
 // const ERROR_MESSAGES = {
 //   LOCATION_PERMISSION:
@@ -17,32 +17,32 @@ export const checkLocationPermission = async () => {
   if (navigator.permissions && navigator.permissions.query) {
     try {
       const result = await navigator.permissions.query({
-        name: "geolocation",
+        name: 'geolocation',
       });
       return result.state;
     } catch (error) {
-      console.error("Error checking geolocation permission:", error);
-      return "error";
+      console.error('Error checking geolocation permission:', error);
+      return 'error';
     }
   }
-  return "unknown";
+  return 'unknown';
 };
 
 export const getCurrentPosition = async (): Promise<Location> => {
-  console.log("Checking location permission...");
+  console.log('Checking location permission...');
   const permissionStatus = await checkLocationPermission();
 
-  if (permissionStatus === "denied") {
+  if (permissionStatus === 'denied') {
     throw new Error(
-      "Location permission is denied. Please enable it in your browser settings and refresh the page."
+      'Location permission is denied. Please enable it in your browser settings and refresh the page.'
     );
   }
 
   return new Promise((resolve, reject) => {
-    console.log("Requesting current geolocation...");
+    console.log('Requesting current geolocation...');
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        console.log("Geolocation success:", position);
+        console.log('Geolocation success:', position);
         resolve({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
@@ -54,19 +54,19 @@ export const getCurrentPosition = async (): Promise<Location> => {
         });
       },
       (error) => {
-        console.error("Geolocation error:", error);
+        console.error('Geolocation error:', error);
         switch (error.code) {
           case error.PERMISSION_DENIED:
-            reject(new Error("User denied the request for Geolocation."));
+            reject(new Error('User denied the request for Geolocation.'));
             break;
           case error.POSITION_UNAVAILABLE:
-            reject(new Error("Location information is unavailable."));
+            reject(new Error('Location information is unavailable.'));
             break;
           case error.TIMEOUT:
-            reject(new Error("The request to get user location timed out."));
+            reject(new Error('The request to get user location timed out.'));
             break;
           default:
-            reject(new Error("An unknown error occurred."));
+            reject(new Error('An unknown error occurred.'));
             break;
         }
       },
@@ -82,15 +82,15 @@ export const getCurrentPosition = async (): Promise<Location> => {
 export async function handleLocationServices(): Promise<{
   locationInfo: Location | null;
 }> {
-  console.log("Starting handleLocationServices");
+  console.log('Starting handleLocationServices');
   let locationInfo: Location | null = null;
 
   try {
-    console.log("Attempting to get the current position...");
+    console.log('Attempting to get the current position...');
     locationInfo = await getCurrentPosition();
-    console.log("Location successfully retrieved:", locationInfo);
+    console.log('Location successfully retrieved:', locationInfo);
   } catch (error) {
-    console.error("Error in handleLocationServices:", error);
+    console.error('Error in handleLocationServices:', error);
 
     // Handle different kinds of errors based on the error message or code
     // if (error instanceof Error) {
@@ -110,7 +110,7 @@ export async function handleLocationServices(): Promise<{
     // }
   }
 
-  console.log("Finishing handleLocationServices", { locationInfo });
+  console.log('Finishing handleLocationServices', { locationInfo });
   return { locationInfo };
 }
 
@@ -139,11 +139,11 @@ export const parseClockInCoordinates = (
 ): ClockInCoordinates | null => {
   let coordinates: GigLocation;
 
-  if (typeof clockInCoordinates === "string") {
+  if (typeof clockInCoordinates === 'string') {
     try {
       coordinates = JSON.parse(clockInCoordinates);
     } catch (e) {
-      console.error("Invalid JSON format for clockInCoordinates:", e);
+      console.error('Invalid JSON format for clockInCoordinates:', e);
       return null;
     }
   } else {
@@ -169,12 +169,85 @@ export const parseClockInCoordinates = (
 export const isValidClockInCoordinates = (
   coordinates: GigLocation
 ): coordinates is Required<
-  Pick<GigLocation, "latitude" | "longitude" | "accuracy">
+  Pick<GigLocation, 'latitude' | 'longitude' | 'accuracy'>
 > &
   GigLocation => {
   return (
-    typeof coordinates.latitude === "number" &&
-    typeof coordinates.longitude === "number" &&
-    typeof coordinates.accuracy === "number"
+    typeof coordinates.latitude === 'number' &&
+    typeof coordinates.longitude === 'number' &&
+    typeof coordinates.accuracy === 'number' &&
+    !isNaN(coordinates.latitude) &&
+    !isNaN(coordinates.longitude) &&
+    !isNaN(coordinates.accuracy) &&
+    coordinates.latitude !== 0 &&
+    coordinates.longitude !== 0 &&
+    Math.abs(coordinates.latitude) <= 90 && // Valid latitude range
+    Math.abs(coordinates.longitude) <= 180 // Valid longitude range
   );
+};
+
+// Debug utility to help identify coordinate accuracy issues
+export const debugCoordinates = (
+  userCoords: { latitude: number; longitude: number; accuracy?: number },
+  jobCoords: { latitude: number; longitude: number },
+  locationDescription?: string
+) => {
+  console.group(
+    `🗺️ Coordinate Debug ${locationDescription ? `- ${locationDescription}` : ''}`
+  );
+
+  console.log('User coordinates:', {
+    latitude: userCoords.latitude,
+    longitude: userCoords.longitude,
+    accuracy: userCoords.accuracy ? `±${userCoords.accuracy}m` : 'unknown',
+    mapsLink: `https://maps.google.com/?q=${userCoords.latitude},${userCoords.longitude}`,
+  });
+
+  console.log('Job site coordinates:', {
+    latitude: jobCoords.latitude,
+    longitude: jobCoords.longitude,
+    mapsLink: `https://maps.google.com/?q=${jobCoords.latitude},${jobCoords.longitude}`,
+  });
+
+  const distance = calculateDistance(
+    userCoords.latitude,
+    userCoords.longitude,
+    jobCoords.latitude,
+    jobCoords.longitude
+  );
+
+  console.log(
+    'Distance:',
+    `${distance.toFixed(2)} km (${(distance * 1000).toFixed(0)} meters)`
+  );
+
+  // Check if coordinates look reasonable for Austin area
+  const austinLat = 30.2672;
+  const austinLon = -97.7431;
+  const distanceFromAustin = calculateDistance(
+    userCoords.latitude,
+    userCoords.longitude,
+    austinLat,
+    austinLon
+  );
+
+  if (distanceFromAustin > 100) {
+    console.warn(
+      `⚠️ User coordinates seem far from Austin (${distanceFromAustin.toFixed(0)}km away)`
+    );
+  }
+
+  const jobDistanceFromAustin = calculateDistance(
+    jobCoords.latitude,
+    jobCoords.longitude,
+    austinLat,
+    austinLon
+  );
+  if (jobDistanceFromAustin > 100) {
+    console.warn(
+      `⚠️ Job coordinates seem far from Austin (${jobDistanceFromAustin.toFixed(0)}km away)`
+    );
+  }
+
+  console.groupEnd();
 };

@@ -7,6 +7,7 @@ export async function findPrimaryCompany(db: Db): Promise<Company | null> {
     const projection = {
       _id: 1,
       imageUrl: 1,
+      timeClockSettings: 1,
     };
 
     const companyDoc = await db

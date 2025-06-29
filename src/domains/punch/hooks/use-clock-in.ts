@@ -7,7 +7,7 @@ import { ApiErrorWithDetails } from '@/lib/api';
 
 export interface ClockInData {
   userNote?: string;
-  clockInCoordinates: ClockInCoordinates;
+  clockInCoordinates?: ClockInCoordinates;
   timeIn: string;
   newStartDate: string;
   newEndDate: string;

@@ -1,6 +1,6 @@
-import { useMemo } from "react";
-import { useNotificationStore } from "../stores";
-import type { Notification } from "../types";
+import { useMemo } from 'react';
+import { useNotificationStore } from '../stores';
+import type { Notification } from '../types';
 
 export function useNotifications() {
   const { notifications, current, add, remove, next, clear, clearAll } =
@@ -9,13 +9,13 @@ export function useNotifications() {
   const actions = useMemo(
     () => ({
       success: (message: string, options?: Partial<Notification>) =>
-        add(message, "success", options),
+        add(message, 'success', options),
       error: (message: string, options?: Partial<Notification>) =>
-        add(message, "error", { persistent: true, ...options }),
+        add(message, 'error', { persistent: true, ...options }),
       warning: (message: string, options?: Partial<Notification>) =>
-        add(message, "warning", options),
+        add(message, 'warning', options),
       info: (message: string, options?: Partial<Notification>) =>
-        add(message, "info", options),
+        add(message, 'info', options),
       remove,
       next,
       clear,

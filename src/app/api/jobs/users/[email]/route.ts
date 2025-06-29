@@ -1,19 +1,19 @@
-import { NextResponse } from "next/server";
-import { mongoConn } from "@/lib/db";
-import { getUserApplicantJobPipeline } from "@/domains/user/utils/mongo-user-utils";
-import { AuthenticatedRequest } from "@/domains/user/types";
-import { withEnhancedAuthAPI } from "@/lib/middleware";
+import { NextResponse } from 'next/server';
+import { getTenantAwareConnection } from '@/lib/db';
+import { getUserApplicantJobPipeline } from '@/domains/user/utils/mongo-user-utils';
+import { AuthenticatedRequest } from '@/domains/user/types';
+import { withEnhancedAuthAPI } from '@/lib/middleware';
 
 async function getUserApplicantJobPipelineHandler(
   request: AuthenticatedRequest
 ) {
   try {
-    const { db } = await mongoConn();
-    const email = request.nextUrl.pathname.split("/").pop();
+    const { db } = await getTenantAwareConnection(request);
+    const email = request.nextUrl.pathname.split('/').pop();
 
     if (!email) {
       return NextResponse.json(
-        { success: false, error: "missing-email", message: "Email not found" },
+        { success: false, error: 'missing-email', message: 'Email not found' },
         { status: 400 }
       );
     }
@@ -22,7 +22,7 @@ async function getUserApplicantJobPipelineHandler(
 
     if (!result) {
       return NextResponse.json(
-        { success: false, error: "user-not-found", message: "User not found" },
+        { success: false, error: 'user-not-found', message: 'User not found' },
         { status: 404 }
       );
     }
@@ -31,18 +31,18 @@ async function getUserApplicantJobPipelineHandler(
     return NextResponse.json(
       {
         success: true,
-        message: "User found",
+        message: 'User found',
         data: result, // Changed from 'user' to 'data'
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error in job pipeline endpoint:", error);
+    console.error('Error in job pipeline endpoint:', error);
     return NextResponse.json(
       {
         success: false,
-        error: "internal-server-error",
-        message: "Internal server error",
+        error: 'internal-server-error',
+        message: 'Internal server error',
       },
       { status: 500 }
     );

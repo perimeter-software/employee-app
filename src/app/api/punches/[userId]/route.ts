@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { mongoConn } from '@/lib/db';
+import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import {
   deletePunchById,
@@ -32,8 +32,8 @@ async function getPunchesHandler(
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type');
 
-    // Connect to database
-    const { db } = await mongoConn();
+    // Connect to tenant-specific database
+    const { db } = await getTenantAwareConnection(request);
 
     let punches;
 
@@ -119,8 +119,8 @@ async function deletePunchHandler(
       );
     }
 
-    // Connect to database
-    const { db } = await mongoConn();
+    // Connect to tenant-specific database
+    const { db } = await getTenantAwareConnection(request);
 
     const result = await deletePunchById(db, userId);
 

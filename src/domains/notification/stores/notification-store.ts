@@ -1,7 +1,7 @@
-import { Notification } from "../types";
-import { create } from "zustand";
-import { subscribeWithSelector } from "zustand/middleware";
-import { immer } from "zustand/middleware/immer";
+import { Notification } from '../types';
+import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
+import { immer } from 'zustand/middleware/immer';
 
 export interface NotificationState {
   notifications: Notification[];
@@ -10,7 +10,7 @@ export interface NotificationState {
   // Actions
   add: (
     message: string,
-    type?: Notification["type"],
+    type?: Notification['type'],
     options?: Partial<Notification>
   ) => void;
   remove: (id: string) => void;
@@ -25,7 +25,7 @@ export const useNotificationStore = create<NotificationState>()(
       notifications: [],
       current: null,
 
-      add: (message, type = "info", options = {}) =>
+      add: (message, type = 'info', options = {}) =>
         set((state) => {
           const id = `notification-${Date.now()}-${Math.random()
             .toString(36)
@@ -33,22 +33,22 @@ export const useNotificationStore = create<NotificationState>()(
 
           const notification: Notification = {
             _id: id,
-            fromUserId: "system",
-            fromFirstName: "System",
-            fromLastName: "Notification",
+            fromUserId: 'system',
+            fromFirstName: 'System',
+            fromLastName: 'Notification',
             recipient: {
-              applicantId: "system",
-              userId: "system",
-              firstName: "System",
-              lastName: "User",
+              applicantId: 'system',
+              userId: 'system',
+              firstName: 'System',
+              lastName: 'User',
             },
             sendTime: new Date(),
-            msgType: "system",
+            msgType: 'system',
             subject: message,
-            msgTemplate: "system",
+            msgTemplate: 'system',
             body: message,
-            profileImg: "",
-            status: "active",
+            profileImg: '',
+            status: 'active',
             type,
             duration: 5000,
             persistent: false,
@@ -109,16 +109,16 @@ export const useNotificationStore = create<NotificationState>()(
 // Utility functions for common notification patterns
 export const notify = {
   success: (message: string, options?: Partial<Notification>) =>
-    useNotificationStore.getState().add(message, "success", options),
+    useNotificationStore.getState().add(message, 'success', options),
 
   error: (message: string, options?: Partial<Notification>) =>
     useNotificationStore
       .getState()
-      .add(message, "error", { persistent: true, ...options }),
+      .add(message, 'error', { persistent: true, ...options }),
 
   warning: (message: string, options?: Partial<Notification>) =>
-    useNotificationStore.getState().add(message, "warning", options),
+    useNotificationStore.getState().add(message, 'warning', options),
 
   info: (message: string, options?: Partial<Notification>) =>
-    useNotificationStore.getState().add(message, "info", options),
+    useNotificationStore.getState().add(message, 'info', options),
 };

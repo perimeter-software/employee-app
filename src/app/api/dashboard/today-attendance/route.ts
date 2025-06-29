@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { mongoConn } from '@/lib/db';
+import { AuthenticatedRequest, withEnhancedAuthAPI } from '@/lib/middleware';
+import { getTenantAwareConnection } from '@/lib/db';
 import { getTodayAttendanceData } from '@/domains/dashboard/utils/mongo-dashboard-utils';
 
-async function getTodayAttendanceHandler() {
+async function getTodayAttendanceHandler(request: AuthenticatedRequest) {
   try {
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
     const todayAttendance = await getTodayAttendanceData(db);
 
     return NextResponse.json({

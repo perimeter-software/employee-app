@@ -49,7 +49,7 @@ function createNewPunch(
   applicantId: string,
   jobId: string,
   userNote: string | null,
-  coordinates: ClockInCoordinates,
+  coordinates: ClockInCoordinates | null,
   timeIn: string,
   selectedShift: Shift
 ): PunchNoId {
@@ -148,12 +148,8 @@ async function createPunchHandler(
       );
     }
 
-    // Initiate usersCurrentCoordinates
-    let usersCurrentCoordinates = {
-      latitude: 0,
-      longitude: 0,
-      accuracy: 0,
-    } as ClockInCoordinates;
+    // Initiate usersCurrentCoordinates - will remain null if coordinates are invalid or not provided
+    let usersCurrentCoordinates: ClockInCoordinates | null = null;
 
     const type = await getUserType(db, user._id || '');
 
@@ -165,7 +161,7 @@ async function createPunchHandler(
         return NextResponse.json(
           {
             error: 'invalid-coordinates',
-            message: 'Invalid clockInCoordinates object',
+            message: 'Invalid or missing clockInCoordinates for geofenced job',
           },
           { status: 400 }
         );
@@ -215,6 +211,15 @@ async function createPunchHandler(
           },
           { status: 400 }
         );
+      }
+    } else {
+      // For non-geofenced jobs or admin/master users, try to parse coordinates if provided but don't require them
+      if (clockInCoordinates) {
+        const coordinateResults = parseClockInCoordinates(clockInCoordinates);
+        if (coordinateResults) {
+          usersCurrentCoordinates = { ...coordinateResults };
+        }
+        // If coordinates are invalid, we'll just continue without them (usersCurrentCoordinates remains null)
       }
     }
 
@@ -269,7 +274,7 @@ async function createPunchHandler(
       applicantId || '',
       jobId,
       userNote,
-      clockInCoordinates,
+      usersCurrentCoordinates, // This can now be null
       timeIn,
       selectedShift
     );

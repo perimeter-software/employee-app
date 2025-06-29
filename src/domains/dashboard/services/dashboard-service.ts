@@ -5,14 +5,57 @@ export const dashboardQueryKeys = {
   all: ['dashboard'] as const,
   data: (params: DashboardParams) =>
     [...dashboardQueryKeys.all, 'data', params] as const,
-  stats: (userId: string, view: string) =>
-    [...dashboardQueryKeys.all, 'stats', userId, view] as const,
-  attendance: (userId: string) =>
-    [...dashboardQueryKeys.all, 'attendance', userId] as const,
-  performance: (userId: string) =>
-    [...dashboardQueryKeys.all, 'performance', userId] as const,
-  insights: (userId: string, view: string) =>
-    [...dashboardQueryKeys.all, 'insights', userId, view] as const,
+  stats: (userId: string, view: string, startDate: string, endDate: string) =>
+    [
+      ...dashboardQueryKeys.all,
+      'stats',
+      userId,
+      view,
+      startDate,
+      endDate,
+    ] as const,
+  attendance: (
+    userId: string,
+    view: string,
+    startDate: string,
+    endDate: string
+  ) =>
+    [
+      ...dashboardQueryKeys.all,
+      'attendance',
+      userId,
+      view,
+      startDate,
+      endDate,
+    ] as const,
+  performance: (
+    userId: string,
+    view: string,
+    startDate: string,
+    endDate: string
+  ) =>
+    [
+      ...dashboardQueryKeys.all,
+      'performance',
+      userId,
+      view,
+      startDate,
+      endDate,
+    ] as const,
+  insights: (
+    userId: string,
+    view: string,
+    startDate: string,
+    endDate: string
+  ) =>
+    [
+      ...dashboardQueryKeys.all,
+      'insights',
+      userId,
+      view,
+      startDate,
+      endDate,
+    ] as const,
 } as const;
 
 export class DashboardApiService {

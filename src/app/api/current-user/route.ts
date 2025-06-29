@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { mongoConn } from '@/lib/db';
+import { getTenantAwareConnection } from '@/lib/db';
 import {
   checkUserExistsByEmail,
   checkUserMasterEmail,
@@ -18,7 +18,7 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
     const userEmail = user.email!;
 
     // Connect to databases (we know user exists because of withEnhancedAuth)
-    const { db, dbTenant, userDb } = await mongoConn();
+    const { db, dbTenant, userDb } = await getTenantAwareConnection(request);
 
     // Get user and tenant info (we know they exist)
     const userExists = await checkUserExistsByEmail(db, userEmail);
