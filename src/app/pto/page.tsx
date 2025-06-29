@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { format, eachDayOfInterval } from 'date-fns';
 import {
   Calendar as CalendarIcon,
@@ -35,6 +36,8 @@ import Layout from '@/components/layout/Layout';
 import { Table } from '@/components/ui/Table';
 import { TableColumn } from '@/components/ui/Table/types';
 import { clsxm } from '@/lib/utils';
+import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 // PTO Types
 type PTOType = 'vacation' | 'sick' | 'fmla' | 'sabbatical' | 'personal';
@@ -443,6 +446,14 @@ const CalendarEventHandler = ({
 
 // Main PTO Dashboard Component
 export default function PTODashboard() {
+  const router = useRouter();
+  const {
+    data: primaryCompany,
+    isLoading: companyLoading,
+    error: companyError,
+  } = usePrimaryCompany();
+
+  // All state hooks must be at the top level
   const [viewType, setViewType] = useState<'monthly' | 'weekly' | 'calendar'>(
     'monthly'
   );
@@ -451,6 +462,18 @@ export default function PTODashboard() {
   const [ptoRequests, setPtoRequests] = useState<PTORequest[]>(ptoData);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [mode, setMode] = useState<Mode>('month');
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+
+  // Check if PTO is enabled for this company
+  const showPaidTimeOff =
+    primaryCompany?.timeClockSettings?.showPaidTimeOff ?? true;
+
+  // Redirect to dashboard if PTO is disabled
+  useEffect(() => {
+    if (!companyLoading && !companyError && !showPaidTimeOff) {
+      router.push('/dashboard');
+    }
+  }, [companyLoading, companyError, showPaidTimeOff, router]);
 
   // Calendar events from PTO data
   const calendarEvents = useMemo(() => {
@@ -471,8 +494,6 @@ export default function PTODashboard() {
       })
       .flat();
   }, [ptoRequests]);
-
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
 
   React.useEffect(() => {
     setEvents(calendarEvents);
@@ -501,19 +522,6 @@ export default function PTODashboard() {
     };
   }, [ptoRequests]);
 
-  const handleSubmitRequest = (
-    request: Omit<PTORequest, 'id' | 'status' | 'requestedDate'>
-  ) => {
-    const newRequest: PTORequest = {
-      ...request,
-      id: `${Date.now()}`,
-      status: 'pending',
-      requestedDate: new Date(),
-    };
-
-    setPtoRequests((prev) => [...prev, newRequest]);
-  };
-
   const filteredRequests = useMemo(() => {
     if (viewType === 'monthly') {
       return ptoRequests;
@@ -529,6 +537,43 @@ export default function PTODashboard() {
     }
     return ptoRequests;
   }, [ptoRequests, viewType]);
+
+  const handleSubmitRequest = (
+    request: Omit<PTORequest, 'id' | 'status' | 'requestedDate'>
+  ) => {
+    const newRequest: PTORequest = {
+      ...request,
+      id: `${Date.now()}`,
+      status: 'pending',
+      requestedDate: new Date(),
+    };
+
+    setPtoRequests((prev) => [...prev, newRequest]);
+  };
+
+  // Show loading state while checking company settings
+  if (companyLoading) {
+    return (
+      <Layout>
+        <div className="p-6">
+          <div className="space-y-6">
+            <Skeleton className="h-8 w-48" />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {[...Array(4)].map((_, i) => (
+                <Skeleton key={i} className="h-24 w-full" />
+              ))}
+            </div>
+            <Skeleton className="h-96 w-full" />
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  // If company error or PTO is disabled, return null (router.push will handle redirect)
+  if (companyError || !showPaidTimeOff) {
+    return null;
+  }
 
   const columns: TableColumn<PTOTableData>[] = [
     {

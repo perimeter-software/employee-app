@@ -103,3 +103,36 @@ export function useDeleteDocument() {
     },
   });
 }
+
+// 📁 Upload a document
+export function useUploadDocument() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (formData: FormData) => DocumentService.uploadDocument(formData),
+    onSuccess: (newDoc: Document) => {
+      queryClient.setQueryData(
+        documentQueryKeys.list(),
+        (oldData: { documents: Document[]; count: number } | undefined) => {
+          if (!oldData) {
+            return { documents: [newDoc], count: 1 };
+          }
+          return {
+            documents: [newDoc, ...oldData.documents],
+            count: oldData.count + 1,
+          };
+        }
+      );
+
+      if (newDoc.id || newDoc._id) {
+        queryClient.setQueryData(
+          documentQueryKeys.detail((newDoc.id || newDoc._id)!),
+          newDoc
+        );
+      }
+    },
+    onError: (error) => {
+      console.error('❌ Failed to upload document:', error);
+    },
+  });
+}
