@@ -4,7 +4,6 @@ import { UserProvider } from '@/components/shared/UserProvider';
 import { ReactQueryProvider } from '@/components/shared/ReactQueryProvider';
 import { AuthErrorBoundary } from '@/components/shared/AuthErrorBoundary';
 import { Toaster } from 'sonner';
-import { GoogleMapProvider } from '@/components/shared/GoogleMapProvider/GoogleMapProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -24,28 +23,26 @@ export default function RootLayout({
         <AuthErrorBoundary>
           <ReactQueryProvider>
             <UserProvider>
-              <GoogleMapProvider>
-                {children}
+              {children}
 
-                <Toaster
-                  position="top-right"
-                  toastOptions={{
-                    style: {
-                      background: 'white',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '12px',
-                      padding: '16px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                    },
-                    className: 'sonner-toast',
-                  }}
-                  richColors
-                  closeButton
-                  expand={true}
-                  duration={4000}
-                />
-              </GoogleMapProvider>
+              <Toaster
+                position="top-right"
+                toastOptions={{
+                  style: {
+                    background: 'white',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                  },
+                  className: 'sonner-toast',
+                }}
+                richColors
+                closeButton
+                expand={true}
+                duration={4000}
+              />
             </UserProvider>
           </ReactQueryProvider>
         </AuthErrorBoundary>
