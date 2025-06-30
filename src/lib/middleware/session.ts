@@ -106,42 +106,73 @@ export function withEnhancedAuthAPI<T = unknown>(
         );
 
         try {
-          const { mongoConn } = await import('@/lib/db');
+          const { getTenantAwareConnection } = await import('@/lib/db');
           const { checkUserExistsByEmail, checkUserMasterEmail } = await import(
             '@/domains/user/utils'
           );
+          const redisService = await import('@/lib/cache/redis-client');
 
-          const { db, dbTenant, userDb } = await mongoConn();
-
-          // Get user data from database
-          const userExists = await checkUserExistsByEmail(db, userEmail);
-
-          if (!userExists) {
-            console.log(`❌ User not found in database: ${userEmail}`);
-            return NextResponse.json(
-              {
-                error: 'user-not-found',
-                message: 'User not found in database',
-              },
-              { status: 404 }
-            );
-          }
-
-          // Get tenant data if required
+          // FIRST: Check if we have tenant-specific user identity cached
+          const cachedTenantData =
+            await redisService.default.getTenantData(userEmail);
+          let userExists = null;
           let userMasterRecord = null;
-          if (options.requireTenant) {
-            userMasterRecord = await checkUserMasterEmail(
-              userDb,
-              dbTenant,
-              userEmail
+
+          if (
+            cachedTenantData?.tenant?.dbName &&
+            cachedTenantData?.userIdentity
+          ) {
+            console.log(
+              `📦 Using cached user identity for tenant: ${cachedTenantData.tenant.dbName}`,
+              {
+                _id: cachedTenantData.userIdentity._id,
+                applicantId: cachedTenantData.userIdentity.applicantId,
+              }
             );
 
-            if (!userMasterRecord?.tenant) {
-              console.log(`❌ No tenant found for user: ${userEmail}`);
+            // Use cached user identity for the current tenant
+            userExists = cachedTenantData.userIdentity;
+            userMasterRecord = {
+              tenant: cachedTenantData.tenant,
+              availableTenantObjects: cachedTenantData.availableTenants || [],
+            };
+          } else {
+            // FALLBACK: Look up in database using tenant-aware connection
+            // Create a temporary authenticated request for getTenantAwareConnection
+            const tempRequest = request as AuthenticatedRequest;
+            tempRequest.user = session.user as Auth0SessionUser;
+            
+            const { db, dbTenant, userDb } = await getTenantAwareConnection(tempRequest);
+
+            // Get user data from tenant-specific database
+            userExists = await checkUserExistsByEmail(db, userEmail);
+
+            if (!userExists) {
+              console.log(`❌ User not found in database: ${userEmail}`);
               return NextResponse.json(
-                { error: 'no-tenant', message: 'No tenant found for user' },
+                {
+                  error: 'user-not-found',
+                  message: 'User not found in database',
+                },
                 { status: 404 }
               );
+            }
+
+            // Get tenant data if required
+            if (options.requireTenant) {
+              userMasterRecord = await checkUserMasterEmail(
+                userDb,
+                dbTenant,
+                userEmail
+              );
+
+              if (!userMasterRecord?.tenant) {
+                console.log(`❌ No tenant found for user: ${userEmail}`);
+                return NextResponse.json(
+                  { error: 'no-tenant', message: 'No tenant found for user' },
+                  { status: 404 }
+                );
+              }
             }
           }
 

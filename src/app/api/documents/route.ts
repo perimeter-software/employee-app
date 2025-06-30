@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getTenantAwareConnection, mongoConn } from '@/lib/db';
+import { getTenantAwareConnection } from '@/lib/db';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
 import { AuthenticatedRequest } from '@/domains/user/types';
 import {
@@ -59,7 +59,7 @@ async function createDocumentHandler(
   _context: { params: Promise<Record<string, string | string[] | undefined>> }
 ) {
   try {
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
     const userId = request.user?.id || request.user?.sub;
 
     if (!userId) {

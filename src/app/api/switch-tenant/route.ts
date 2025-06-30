@@ -3,7 +3,7 @@ import { TenantInfo } from '@/domains/tenant';
 import { updateTenantLastLoginDate } from '@/domains/user/utils';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
 import redisService from '@/lib/cache/redis-client';
-import { mongoConn } from '@/lib/db';
+import { getTenantAwareConnection } from '@/lib/db';
 import { NextResponse } from 'next/server';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 
@@ -66,7 +66,7 @@ async function switchTenantHandler(request: AuthenticatedRequest) {
     }
 
     // Connect to databases
-    const { userDb } = await mongoConn();
+    const { userDb } = await getTenantAwareConnection(request);
 
     // Clear any existing cached user data for this user before switching
     console.log(`🧹 Clearing cached data for user: ${userEmail}`);
@@ -81,11 +81,49 @@ async function switchTenantHandler(request: AuthenticatedRequest) {
     // Clear user-specific cache entries
     await Promise.allSettled(userCacheKeys.map((key) => redisService.del(key)));
 
-    // Update tenantData in Redis with the new selected tenant
+    // IMPORTANT: Look up user identity in the NEW tenant's database
+    console.log(`🔍 Looking up user identity in new tenant: ${selectedTenant.dbName}`);
+    const { mongoConn } = await import('@/lib/db');
+    const { checkUserExistsByEmail } = await import('@/domains/user/utils');
+    
+    // Connect to the NEW tenant's database
+    const { db: newTenantDb } = await mongoConn(selectedTenant.dbName);
+    
+    // Look up user in the new tenant's database
+    const userInNewTenant = await checkUserExistsByEmail(newTenantDb, userEmail);
+    
+    if (!userInNewTenant) {
+      console.error(`❌ User ${userEmail} not found in new tenant database: ${selectedTenant.dbName}`);
+      return NextResponse.json(
+        {
+          error: 'user-not-found-in-tenant',
+          message: 'User not found in selected tenant database',
+        },
+        { status: 404 }
+      );
+    }
+
+    console.log(`✅ Found user in new tenant:`, {
+      _id: userInNewTenant._id,
+      applicantId: userInNewTenant.applicantId,
+      tenant: selectedTenant.dbName
+    });
+
+    // Update tenantData in Redis with the new selected tenant AND user identity
     const updatedTenantData = {
       ...tenantData,
       tenant: selectedTenant,
       lastSwitched: new Date().toISOString(),
+      // Store the user identity for the new tenant
+      userIdentity: {
+        _id: userInNewTenant._id,
+        applicantId: userInNewTenant.applicantId,
+        firstName: userInNewTenant.firstName,
+        lastName: userInNewTenant.lastName,
+        userType: userInNewTenant.userType,
+        employeeType: userInNewTenant.employeeType,
+        status: userInNewTenant.status,
+      }
     };
 
     await redisService.setTenantData(

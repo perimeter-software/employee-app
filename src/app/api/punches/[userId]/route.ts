@@ -37,6 +37,13 @@ async function getPunchesHandler(
 
     let punches;
 
+    console.log(
+      '🔍 Fetching punches for user:',
+      user._id,
+      'with type:',
+      user.applicantId
+    );
+
     if (type === 'allOpen') {
       punches = await findAllOpenPunchesWithJobInfo(
         db,

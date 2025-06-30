@@ -1,9 +1,14 @@
-import type { Applicant } from "@/domains/user/types/applicant.types";
+import type { Applicant } from '@/domains/user/types/applicant.types';
+
+export type RosterEntry = {
+  employeeId: string;
+  date: string;
+};
 
 export type ScheduleEntry = {
   start: string;
   end: string;
-  roster: string[];
+  roster: RosterEntry[];
 };
 
 export type RosterApplicant = Applicant & {

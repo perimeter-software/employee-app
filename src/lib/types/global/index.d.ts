@@ -10,7 +10,11 @@ declare global {
           CIRCLE: number;
         };
         event: {
-          addListener: (instance: GoogleMapObject, eventName: string, handler: () => void) => void;
+          addListener: (
+            instance: GoogleMapObject,
+            eventName: string,
+            handler: () => void
+          ) => void;
         };
       };
     };

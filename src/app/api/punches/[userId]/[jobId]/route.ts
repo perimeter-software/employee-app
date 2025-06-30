@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { mongoConn } from '@/lib/db';
+import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import {
   findOpenPunchByApplicantIdAndJobId,
@@ -106,7 +106,7 @@ async function createPunchHandler(
     } = await request.json();
 
     // Connect to database
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
 
     const openPunch = (await findOpenPunchByApplicantIdAndJobId(
       db,
@@ -320,7 +320,7 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
     }
 
     // Connect to database
-    const { db } = await mongoConn();
+    const { db } = await getTenantAwareConnection(request);
 
     let updatedPunch;
 

@@ -13,12 +13,11 @@ import { useFindPunches } from '@/domains/punch/hooks';
 import type { PunchWithJobInfo } from '@/domains/punch/types';
 import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
 import type { GignologyUser } from '@/domains/user/types';
-
-// Import your shift utilities
 import {
-  handleShiftJobClockInTime,
   jobHasShiftForUser,
+  handleShiftJobClockInTime,
   isJobGeoFenced,
+  isUserInRoster,
 } from '@/domains/punch/utils/shift-job-utils';
 
 interface ShiftRowData extends Record<string, unknown> {
@@ -261,7 +260,11 @@ export function ShiftsTable({
             // Check if user is in roster for this specific day
             isInDayRoster =
               !daySchedule?.roster?.length ||
-              daySchedule.roster.includes(userData.applicantId);
+              isUserInRoster(
+                daySchedule.roster,
+                userData.applicantId,
+                currentDate.toISOString()
+              );
           }
 
           // For existing punches without roster enrollment, we'll estimate shift times
