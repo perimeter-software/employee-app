@@ -93,7 +93,6 @@ jobs:
               Namespace=aws:elasticbeanstalk:application:environment,OptionName=MONGODB_CONNECTION_STRING,Value=${{ secrets.MONGODB_CONNECTION_STRING }} \
               Namespace=aws:elasticbeanstalk:application:environment,OptionName=REDIS_HOST,Value=${{ vars.REDIS_HOST }} \
               Namespace=aws:elasticbeanstalk:application:environment,OptionName=REDIS_PORT,Value=${{ vars.REDIS_PORT }} \
-              Namespace=aws:elasticbeanstalk:application:environment,OptionName=REDIS_URL,Value=${{ vars.REDIS_URL }} \
               Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,Value=${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }} \
               Namespace=aws:elasticbeanstalk:application:environment,OptionName=GOOGLE_MAPS_API_KEY_TWO,Value=${{ secrets.GOOGLE_MAPS_API_KEY_TWO }} \
               Namespace=aws:elasticbeanstalk:application:environment,OptionName=OPENAI_API_KEY,Value=${{ secrets.OPENAI_API_KEY }} \
@@ -102,4 +101,4 @@ jobs:
               Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_CLIENT_SECRET,Value=${{ secrets.SECRET_AUTH0_CLIENT_SECRET }} \
               Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_DOMAIN,Value=${{ vars.SECRET_AUTH0_DOMAIN }} \
               Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_AUDIENCE,Value=${{ vars.SECRET_AUTH0_AUDIENCE }} \
-              Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_SERVER_SECRET,Value=${{ secrets.SECRET_AUTH0_SERVER_SECRET }} 
+              Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_SERVER_SECRET,Value=${{ secrets.SECRET_AUTH0_SERVER_SECRET }}
