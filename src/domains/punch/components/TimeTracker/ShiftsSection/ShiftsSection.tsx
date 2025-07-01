@@ -8,9 +8,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import { CalendarEvent, Mode } from '@/components/ui/Calendar';
 import CalendarProvider from '@/components/ui/Calendar/CalendarProvider';
-import CalendarBody from '@/components/ui/Calendar/Body/CalendarBody';
-import CalendarHeaderDate from '@/components/ui/Calendar/Header/Date/CalendarHeaderDate';
-import CalendarHeaderActionsMode from '@/components/ui/Calendar/Header/Actions/CalendarHeaderActionsMode';
+import Calendar from '@/components/ui/Calendar/Calendar';
 import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
 import { ShiftsTable } from './ShiftsTable';
 import { ShiftDetailsModal } from '../ShiftDetailsModal';
@@ -350,7 +348,7 @@ export function ShiftsSection({
             {/* Controls Row - Full width on mobile, left-aligned on desktop */}
             <div className="mt-4 flex justify-center">
               {/* Date Navigation for Table View */}
-              {viewType === 'table' ? (
+              {viewType === 'table' && (
                 <div className="flex items-center justify-center sm:justify-start gap-2">
                   <Button
                     variant="outline"
@@ -372,66 +370,38 @@ export function ShiftsSection({
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
-              ) : (
-                /* Calendar Controls for Calendar View - Responsive */
-                <div className="flex flex-col space-y-3 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-4">
-                  <CalendarProvider
-                    events={events}
-                    setEvents={setEvents}
-                    mode={mode}
-                    setMode={setMode}
-                    date={calendarDate}
-                    setDate={setCalendarDate}
-                    calendarIconIsToday={false}
-                  >
-                    <div className="flex justify-center sm:justify-start">
-                      <CalendarHeaderDate />
-                    </div>
-                  </CalendarProvider>
-                  <CalendarProvider
-                    events={events}
-                    setEvents={setEvents}
-                    mode={mode}
-                    setMode={setMode}
-                    date={calendarDate}
-                    setDate={setCalendarDate}
-                    calendarIconIsToday={false}
-                  >
-                    <div className="flex justify-center sm:justify-start">
-                      <CalendarHeaderActionsMode />
-                    </div>
-                  </CalendarProvider>
-                </div>
               )}
             </div>
           </div>
 
           {/* Content - Mobile Responsive */}
           {viewType === 'calendar' ? (
-            <div className="border rounded-lg bg-white shadow-sm overflow-hidden">
-              <CalendarProvider
-                events={events}
-                setEvents={setEvents}
-                mode={mode}
-                setMode={setMode}
-                date={calendarDate}
-                setDate={setCalendarDate}
-                calendarIconIsToday={false}
-              >
-                <div className="min-h-[400px] sm:min-h-[500px] lg:min-h-[600px]">
-                  <CalendarBody />
+            <CalendarProvider
+              events={events}
+              setEvents={setEvents}
+              mode={mode}
+              setMode={setMode}
+              date={calendarDate}
+              setDate={setCalendarDate}
+              calendarIconIsToday={false}
+            >
+              <div className="space-y-4">
+                {/* Complete Calendar Component with sticky headers */}
+                <div className="border rounded-lg bg-white shadow-sm min-h-[500px]">
+                  <Calendar />
                 </div>
-                {/* Custom event handler - listen to calendar context */}
-                <CalendarEventHandler
-                  shiftEvents={shiftEvents}
-                  onShiftClick={(shiftEvent) => {
-                    setSelectedShift(shiftEvent);
-                    setShowShiftModal(true);
-                  }}
-                />
-              </CalendarProvider>
-            </div>
+              </div>
+
+              <CalendarEventHandler
+                shiftEvents={shiftEvents}
+                onShiftClick={(shiftEvent) => {
+                  setSelectedShift(shiftEvent);
+                  setShowShiftModal(true);
+                }}
+              />
+            </CalendarProvider>
           ) : (
+            /* Table view remains the same */
             <div className="overflow-x-auto -mx-3 sm:-mx-4 lg:-mx-6">
               <div className="min-w-full px-3 sm:px-4 lg:px-6">
                 <ShiftsTable

@@ -62,7 +62,7 @@ function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(1)}km`;
 }
 
-export const GoogleMapsModal = React.memo(function GoogleMapsModal({
+export const MapModal = React.memo(function GoogleMapsModal({
   isOpen,
   onClose,
   userLocation,
@@ -90,6 +90,16 @@ export const GoogleMapsModal = React.memo(function GoogleMapsModal({
 
   const isWithinGeofence = distance ? distance <= geoFenceRadius : false;
 
+  // 🔄 Clean up map when modal closes
+  const cleanupMap = useCallback(() => {
+    if (mapInstance.current) {
+      mapInstance.current = null;
+    }
+    setIsMapLoaded(false);
+    setMapError(null);
+    console.log('🧹 Map cleaned up');
+  }, []);
+
   // Load Google Maps API and initialize map
   const initializeMap = useCallback(async () => {
     if (!mapRef.current || !GOOGLE_MAPS_API_KEY) return;
@@ -97,34 +107,36 @@ export const GoogleMapsModal = React.memo(function GoogleMapsModal({
     try {
       // Load Google Maps if not already loaded
       if (!window.google) {
+        console.log('📦 Loading Google Maps API...');
         await new Promise<void>((resolve, reject) => {
           const script = document.createElement('script');
           script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=maps`;
           script.async = true;
           script.defer = true;
-          script.onload = () => resolve();
+          script.onload = () => {
+            console.log('✅ Google Maps API loaded successfully');
+            resolve();
+          };
           script.onerror = () =>
             reject(new Error('Failed to load Google Maps'));
           document.head.appendChild(script);
         });
       }
 
-      // Calculate center and zoom
-      let center = { lat: 39.8283, lng: -98.5795 };
+      // 🎯 ALWAYS CENTER ON USER LOCATION FIRST
+      let center = { lat: 39.8283, lng: -98.5795 }; // Default fallback
       let zoom = 4;
 
-      if (jobLocation && userLocation) {
-        center = {
-          lat: (jobLocation.latitude + userLocation.latitude) / 2,
-          lng: (jobLocation.longitude + userLocation.longitude) / 2,
-        };
-        zoom = distance && distance > 1000 ? 12 : 15;
-      } else if (jobLocation) {
-        center = { lat: jobLocation.latitude, lng: jobLocation.longitude };
-        zoom = 15;
-      } else if (userLocation) {
+      if (userLocation) {
+        // 🎯 PRIMARY: Always center on user location
         center = { lat: userLocation.latitude, lng: userLocation.longitude };
-        zoom = 15;
+        zoom = 16; // Close zoom on user
+        console.log('🎯 Map centered on USER location:', center);
+      } else if (jobLocation) {
+        // 🏢 FALLBACK: Only if no user location
+        center = { lat: jobLocation.latitude, lng: jobLocation.longitude };
+        zoom = 16;
+        console.log('🏢 Map centered on JOB location (fallback):', center);
       }
 
       // Create map
@@ -135,25 +147,96 @@ export const GoogleMapsModal = React.memo(function GoogleMapsModal({
         streetViewControl: false,
         fullscreenControl: true,
         mapTypeControl: true,
+        gestureHandling: 'auto',
       });
 
-      // Add job location marker
-      if (jobLocation) {
-        new google.maps.Marker({
-          position: { lat: jobLocation.latitude, lng: jobLocation.longitude },
+      console.log('🗺️ Map created successfully');
+
+      // 🟢 Add USER location marker FIRST (PRIMARY - larger and prominent)
+      if (userLocation) {
+        const userMarker = new google.maps.Marker({
+          position: { lat: userLocation.latitude, lng: userLocation.longitude },
           map,
-          title: 'Job Location',
+          title: 'Your Current Location',
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
-            scale: 10,
+            scale: 15, // Larger than job marker
+            fillColor: '#10B981',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 4,
+          },
+          zIndex: 1000, // Higher z-index to appear on top
+        });
+
+        // Add info window for user location
+        const userInfoWindow = new google.maps.InfoWindow({
+          content: `
+            <div style="padding: 12px; text-align: center;">
+              <h3 style="margin: 0 0 8px 0; color: #10B981;">📍 Your Location</h3>
+              <p style="margin: 0; font-size: 12px;">
+                ${userLocation.latitude.toFixed(6)}, ${userLocation.longitude.toFixed(6)}
+              </p>
+              ${userLocation.accuracy ? `<p style="margin: 4px 0 0 0; font-size: 11px; color: #666;">Accuracy: ±${Math.round(userLocation.accuracy)}m</p>` : ''}
+            </div>
+          `,
+        });
+
+        userMarker.addListener('click', () => {
+          userInfoWindow.open(map, userMarker);
+        });
+
+        // Add accuracy circle around user location
+        if (userLocation.accuracy && userLocation.accuracy > 0) {
+          new google.maps.Circle({
+            strokeColor: '#10B981',
+            strokeOpacity: 0.5,
+            strokeWeight: 1,
+            fillColor: '#10B981',
+            fillOpacity: 0.1,
+            map,
+            center: { lat: userLocation.latitude, lng: userLocation.longitude },
+            radius: userLocation.accuracy,
+            zIndex: 1,
+          });
+        }
+      }
+
+      // 🔵 Add JOB location marker SECOND (SECONDARY - smaller)
+      if (jobLocation) {
+        const jobMarker = new google.maps.Marker({
+          position: { lat: jobLocation.latitude, lng: jobLocation.longitude },
+          map,
+          title: `Job Site: ${jobLocation.name || 'Job Location'}`,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 12, // Smaller than user marker
             fillColor: '#2563EB',
             fillOpacity: 1,
             strokeColor: '#ffffff',
-            strokeWeight: 2,
+            strokeWeight: 3,
           },
+          zIndex: 999, // Lower z-index than user marker
         });
 
-        // Add geofence circle
+        // Add info window for job location
+        const jobInfoWindow = new google.maps.InfoWindow({
+          content: `
+            <div style="padding: 12px; text-align: center;">
+              <h3 style="margin: 0 0 8px 0; color: #2563EB;">🏢 ${jobLocation.name || 'Job Site'}</h3>
+              ${jobLocation.address ? `<p style="margin: 0 0 4px 0; font-size: 12px;">${jobLocation.address}</p>` : ''}
+              <p style="margin: 0; font-size: 11px; color: #666;">
+                ${jobLocation.latitude.toFixed(6)}, ${jobLocation.longitude.toFixed(6)}
+              </p>
+            </div>
+          `,
+        });
+
+        jobMarker.addListener('click', () => {
+          jobInfoWindow.open(map, jobMarker);
+        });
+
+        // Add geofence circle around job location
         if (geoFenceRadius > 0) {
           new google.maps.Circle({
             strokeColor: isWithinGeofence ? '#10B981' : '#EF4444',
@@ -164,49 +247,54 @@ export const GoogleMapsModal = React.memo(function GoogleMapsModal({
             map,
             center: { lat: jobLocation.latitude, lng: jobLocation.longitude },
             radius: geoFenceRadius,
+            zIndex: 0, // Lowest z-index
           });
         }
       }
 
-      // Add user location marker
-      if (userLocation) {
-        new google.maps.Marker({
-          position: { lat: userLocation.latitude, lng: userLocation.longitude },
-          map,
-          title: 'Your Location',
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 10,
-            fillColor: '#10B981',
-            fillOpacity: 1,
-            strokeColor: '#ffffff',
-            strokeWeight: 2,
-          },
-        });
-      }
-
       mapInstance.current = map;
       setIsMapLoaded(true);
+      console.log('✅ Map initialization complete');
     } catch (error) {
-      console.error('Map initialization error:', error);
+      console.error('❌ Map initialization error:', error);
       setMapError('Failed to load map');
     }
   }, [
     GOOGLE_MAPS_API_KEY,
-    jobLocation,
     userLocation,
+    jobLocation,
     geoFenceRadius,
-    distance,
     isWithinGeofence,
   ]);
 
-  // Initialize map when modal opens
+  // 🔄 Handle modal open/close
   useEffect(() => {
-    if (isOpen && !isMapLoaded && !mapError) {
-      const timer = setTimeout(initializeMap, 100);
-      return () => clearTimeout(timer);
+    if (isOpen) {
+      // Reset state when opening
+      if (!isMapLoaded && !mapError) {
+        console.log('🚀 Modal opened, initializing map...');
+        const timer = setTimeout(initializeMap, 100);
+        return () => clearTimeout(timer);
+      }
+    } else {
+      // Clean up when closing
+      console.log('🚪 Modal closed, cleaning up...');
+      cleanupMap();
     }
-  }, [isOpen, isMapLoaded, mapError, initializeMap]);
+  }, [isOpen, isMapLoaded, mapError, initializeMap, cleanupMap]);
+
+  // 🎯 Add "Center on Me" button functionality
+  const centerOnUser = useCallback(() => {
+    if (!mapInstance.current || !userLocation) return;
+
+    const userPosition = {
+      lat: userLocation.latitude,
+      lng: userLocation.longitude,
+    };
+    mapInstance.current.setCenter(userPosition);
+    mapInstance.current.setZoom(17); // Zoom in close
+    console.log('🎯 Centered on user location');
+  }, [userLocation]);
 
   const handleGetDirections = () => {
     if (!jobLocation) return;
@@ -278,18 +366,35 @@ export const GoogleMapsModal = React.memo(function GoogleMapsModal({
             </div>
           )}
 
+          {/* 🎯 Center on Me Button */}
+          {userLocation && isMapLoaded && (
+            <div className="flex justify-center">
+              <Button
+                onClick={centerOnUser}
+                size="sm"
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                <MapPin className="h-4 w-4 mr-2" />
+                Center on My Location
+              </Button>
+            </div>
+          )}
+
           {/* Map */}
           <div className="relative h-96 w-full rounded-lg border overflow-hidden">
             {!isMapLoaded && !mapError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
                 <div className="text-center">
                   <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-2" />
                   <p className="text-gray-600">Loading map...</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Centering on your location...
+                  </p>
                 </div>
               </div>
             )}
             {mapError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
                 <div className="text-center">
                   <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
                   <p className="text-red-600">{mapError}</p>
@@ -299,6 +404,7 @@ export const GoogleMapsModal = React.memo(function GoogleMapsModal({
                     onClick={() => {
                       setMapError(null);
                       setIsMapLoaded(false);
+                      console.log('🔄 Retrying map initialization...');
                     }}
                     className="mt-2"
                   >
@@ -313,16 +419,16 @@ export const GoogleMapsModal = React.memo(function GoogleMapsModal({
           {/* Actions */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4 text-sm">
-              {jobLocation && (
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
-                  <span>Job Site</span>
-                </div>
-              )}
               {userLocation && (
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-green-600 rounded-full"></div>
-                  <span>Your Location</span>
+                  <div className="w-4 h-4 bg-green-600 rounded-full border-2 border-white shadow"></div>
+                  <span className="font-medium">Your Location</span>
+                </div>
+              )}
+              {jobLocation && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-blue-600 rounded-full border-2 border-white shadow"></div>
+                  <span>Job Site</span>
                 </div>
               )}
             </div>
@@ -349,6 +455,37 @@ export const GoogleMapsModal = React.memo(function GoogleMapsModal({
                 : `⚠️ You are ${formatDistance(distance)} from the job site, outside the ${formatDistance(geoFenceRadius)} required area`}
             </div>
           )}
+
+          {/* Debug Info */}
+          <details className="text-xs">
+            <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
+              🔧 Debug Information
+            </summary>
+            <div className="mt-2 p-3 bg-gray-50 rounded border space-y-1">
+              <div>
+                <strong>Map Loaded:</strong> {isMapLoaded ? 'Yes' : 'No'}
+              </div>
+              <div>
+                <strong>Map Error:</strong> {mapError || 'None'}
+              </div>
+              <div>
+                <strong>User Location:</strong>{' '}
+                {userLocation
+                  ? `${userLocation.latitude.toFixed(6)}, ${userLocation.longitude.toFixed(6)}`
+                  : 'None'}
+              </div>
+              <div>
+                <strong>Job Location:</strong>{' '}
+                {jobLocation
+                  ? `${jobLocation.latitude.toFixed(6)}, ${jobLocation.longitude.toFixed(6)}`
+                  : 'None'}
+              </div>
+              <div>
+                <strong>Distance:</strong>{' '}
+                {distance ? `${distance.toFixed(2)}m` : 'N/A'}
+              </div>
+            </div>
+          </details>
         </div>
       </DialogContent>
     </Dialog>

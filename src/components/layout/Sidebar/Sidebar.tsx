@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
 // components/layout/Sidebar.tsx
 
-import React from "react";
-import { usePathname } from "next/navigation";
-import Link from "next/link";
-import Image from "next/image";
+import React, { useMemo } from 'react';
+import { usePathname } from 'next/navigation';
+import Link from 'next/link';
+import Image from 'next/image';
 import {
   Clock,
   FileText,
@@ -13,9 +13,10 @@ import {
   CalendarClock,
   MessageCircleQuestion,
   X,
-} from "lucide-react";
-import { clsxm } from "@/lib/utils";
-import { Button } from "@/components/ui/Button/Button";
+} from 'lucide-react';
+import { clsxm } from '@/lib/utils';
+import { Button } from '@/components/ui/Button/Button';
+import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 
 interface NavigationItem {
   name: string;
@@ -31,42 +32,58 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
   const pathname = usePathname();
+  const { data: primaryCompany } = usePrimaryCompany();
 
-  const navigation: NavigationItem[] = [
-    {
-      name: "Time & Attendance",
-      href: "/time-attendance",
-      icon: Clock,
-      current:
-        pathname === "/time-attendance" ||
-        pathname.startsWith("/time-attendance"),
-    },
-    {
-      name: "Dashboard",
-      href: "/dashboard",
-      icon: LayoutGrid,
-      current: pathname === "/dashboard",
-    },
-    {
-      name: "Paid Time Off",
-      href: "/pto",
-      icon: CalendarClock,
-      current: pathname === "/pto" || pathname.startsWith("/pto"),
-    },
-    {
-      name: "Ask a Question",
-      href: "/conversation",
-      icon: MessageCircleQuestion,
-      current:
-        pathname === "/conversation" || pathname.startsWith("/conversation"),
-    },
-    {
-      name: "Documents",
-      href: "/documents",
-      icon: FileText,
-      current: pathname === "/documents" || pathname.startsWith("/documents"),
-    },
-  ];
+  const navigation: NavigationItem[] = useMemo(() => {
+    const baseNavigation = [
+      {
+        name: 'Time & Attendance',
+        href: '/time-attendance',
+        icon: Clock,
+        current:
+          pathname === '/time-attendance' ||
+          pathname.startsWith('/time-attendance'),
+      },
+      {
+        name: 'Dashboard',
+        href: '/dashboard',
+        icon: LayoutGrid,
+        current: pathname === '/dashboard',
+      },
+    ];
+
+    // Conditionally add PTO link based on company settings
+    const showPaidTimeOff =
+      primaryCompany?.timeClockSettings?.showPaidTimeOff ?? true; // Default to true if not set
+
+    if (showPaidTimeOff) {
+      baseNavigation.push({
+        name: 'Paid Time Off',
+        href: '/pto',
+        icon: CalendarClock,
+        current: pathname === '/pto' || pathname.startsWith('/pto'),
+      });
+    }
+
+    // Add remaining navigation items
+    baseNavigation.push(
+      {
+        name: 'Ask a Question',
+        href: '/conversation',
+        icon: MessageCircleQuestion,
+        current:
+          pathname === '/conversation' || pathname.startsWith('/conversation'),
+      },
+      {
+        name: 'Documents',
+        href: '/documents',
+        icon: FileText,
+        current: pathname === '/documents' || pathname.startsWith('/documents'),
+      }
+    );
+
+    return baseNavigation;
+  }, [pathname, primaryCompany]);
 
   const handleLinkClick = () => {
     // Close mobile menu when a link is clicked
@@ -88,11 +105,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       {/* Sidebar */}
       <div
         className={clsxm(
-          "fixed inset-y-0 left-0 z-50 w-64 bg-zinc-50 shadow-xl transition-transform duration-300 ease-in-out",
+          'fixed inset-y-0 left-0 z-50 w-64 bg-zinc-50 shadow-xl transition-transform duration-300 ease-in-out',
           // Desktop: always visible
-          "lg:translate-x-0",
+          'lg:translate-x-0',
           // Mobile: slide in/out based on isOpen
-          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
         {/* Logo Section */}
@@ -130,18 +147,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
                   href={item.href}
                   onClick={handleLinkClick}
                   className={clsxm(
-                    "group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                    'group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors',
                     item.current
-                      ? "bg-appPrimary text-white"
-                      : "text-zinc-700 hover:bg-gray-50 hover:text-zinc-900"
+                      ? 'bg-appPrimary text-white'
+                      : 'text-zinc-700 hover:bg-gray-50 hover:text-zinc-900'
                   )}
                 >
                   <item.icon
                     className={clsxm(
-                      "mr-3 h-5 w-5 flex-shrink-0",
+                      'mr-3 h-5 w-5 flex-shrink-0',
                       item.current
-                        ? "text-white"
-                        : "text-zinc-400 group-hover:text-zinc-500"
+                        ? 'text-white'
+                        : 'text-zinc-400 group-hover:text-zinc-500'
                     )}
                   />
                   {item.name}

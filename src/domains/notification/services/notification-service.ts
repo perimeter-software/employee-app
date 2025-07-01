@@ -11,10 +11,11 @@ export const notificationQueryKeys = {
 
 export class NotificationApiService {
   static readonly ENDPOINTS = {
-    GET_NOTIFICATION: (id: string) => `/api/notifications/${id}`,
-    UPDATE_NOTIFICATION: (id: string) => `/api/notifications/${id}`,
-    MARK_ALL_AS_READ: () => `/api/notifications/mark-all-read`,
-    GET_USER_NOTIFICATIONS: () => `/api/notifications`,
+    GET_NOTIFICATION: (id: string) => `/notifications/${id}`,
+    UPDATE_NOTIFICATION: (id: string) => `/notifications/${id}`,
+    DELETE_NOTIFICATION: (id: string) => `/notifications/${id}`,
+    MARK_ALL_AS_READ: () => `/notifications/mark-all-read`,
+    GET_USER_NOTIFICATIONS: () => `/notifications`,
   } as const;
 
   /**
@@ -64,6 +65,33 @@ export class NotificationApiService {
       return response.data;
     } catch (error) {
       console.error('❌ updateNotification API error:', error);
+
+      // The ApiClient already extracts and throws meaningful errors
+      // Just re-throw the error - it already has the proper message and error code
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a notification (soft delete)
+   */
+  static async deleteNotification(
+    id: string
+  ): Promise<{ modifiedCount: number }> {
+    try {
+      const response = await baseInstance.delete<{ modifiedCount: number }>(
+        NotificationApiService.ENDPOINTS.DELETE_NOTIFICATION(id)
+      );
+
+      // Explicit success check for extra safety and clarity
+      if (!response.success || !response.data) {
+        console.error('❌ Failed to delete notification:', response);
+        throw new Error('Failed to delete notification');
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('❌ deleteNotification API error:', error);
 
       // The ApiClient already extracts and throws meaningful errors
       // Just re-throw the error - it already has the proper message and error code

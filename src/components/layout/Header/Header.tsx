@@ -2,8 +2,7 @@
 
 // components/layout/Header.tsx
 
-import { useUser } from '@auth0/nextjs-auth0';
-import { useRouter } from 'next/navigation';
+import { useUser } from '@auth0/nextjs-auth0/client';
 import Image from 'next/image';
 import { Button } from '@/components/ui/Button/Button';
 import {
@@ -13,9 +12,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/DropdownMenu';
-import { Bell, ChevronDown, LogOut, Settings, User, Menu } from 'lucide-react';
+import { ChevronDown, LogOut, Settings, User, Menu } from 'lucide-react';
 import { TenantInfo, useSwitchTenant } from '@/domains/tenant';
 import { useCurrentUser } from '@/domains/user';
+import { NotificationBell } from '@/components/shared/NotificationBell';
 
 interface HeaderProps {
   onMobileMenuToggle?: () => void;
@@ -23,7 +23,6 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
   const { user } = useUser();
-  const router = useRouter();
   const { data: enhancedUser, isLoading: userLoading } = useCurrentUser();
   const { mutate: switchTenant, isPending: tenantSwitchLoading } =
     useSwitchTenant();
@@ -37,7 +36,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
   } | null;
 
   const handleLogout = () => {
-    router.push('/auth/logout');
+    window.location.href = '/api/auth/logout';
   };
 
   const getTenantInitials = (tenant: TenantInfo) => {
@@ -56,6 +55,10 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
   };
 
   const handleTenantSwitch = async (tenantUrl: string) => {
+    // Show immediate feedback that the switch is starting
+    console.log('🔄 Initiating tenant switch to:', tenantUrl);
+    console.log('📊 Available tenants:', enhancedUser?.availableTenants);
+    console.log('📊 Current tenant:', enhancedUser?.tenant);
     switchTenant(tenantUrl);
   };
 
@@ -147,7 +150,10 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                         </div>
                       )}
                       <span className="text-sm truncate max-w-[80px] sm:max-w-[120px]">
-                        {enhancedUser?.tenant?.clientName || 'Default Tenant'}
+                        {tenantSwitchLoading
+                          ? 'Switching...'
+                          : enhancedUser?.tenant?.clientName ||
+                            'Default Tenant'}
                       </span>
                     </div>
                     <ChevronDown className="w-4 h-4" />
@@ -158,7 +164,11 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                   className="w-72 max-h-80 overflow-y-auto"
                 >
                   <div className="px-3 py-2 border-b">
-                    <p className="text-sm font-medium">Switch Tenant</p>
+                    <p className="text-sm font-medium">
+                      {tenantSwitchLoading
+                        ? 'Switching Tenant...'
+                        : 'Switch Tenant'}
+                    </p>
                     <p className="text-xs text-gray-500">
                       Currently:{' '}
                       {enhancedUser?.tenant?.clientName || 'Default Tenant'}
@@ -169,8 +179,9 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                       (tenant: TenantInfo) => (
                         <DropdownMenuItem
                           key={tenant.url}
-                          className="flex items-center gap-3 cursor-pointer px-3 py-2 hover:bg-gray-50"
+                          className="flex items-center gap-3 cursor-pointer px-3 py-2 hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none"
                           onClick={() => handleTenantSwitch(tenant.url)}
+                          disabled={tenantSwitchLoading}
                         >
                           {tenant.tenantLogo ? (
                             <Image
@@ -206,10 +217,7 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
           )}
 
           {/* Notifications */}
-          <Button variant="ghost" size="sm" className="relative">
-            <Bell className="w-5 h-5 text-appPrimary" />
-            <span className="sr-only">Notifications</span>
-          </Button>
+          <NotificationBell />
 
           {/* User Menu */}
           <DropdownMenu>
@@ -280,8 +288,9 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                     .map((tenant: TenantInfo) => (
                       <DropdownMenuItem
                         key={tenant.url}
-                        className="flex items-center gap-2"
+                        className="flex items-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
                         onClick={() => handleTenantSwitch(tenant.url)}
+                        disabled={tenantSwitchLoading}
                       >
                         {tenant.tenantLogo ? (
                           <Image

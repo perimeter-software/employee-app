@@ -1,0 +1,104 @@
+name: Reusable Deploy to Elastic Beanstalk
+permissions:
+  id-token: write
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      eb_env_name:
+        required: true
+        type: string
+      eb_app_name:
+        required: true
+        type: string
+      s3_key_prefix:
+        required: true
+        type: string
+    secrets:
+      AUTH0_SECRET:
+        required: true
+      AUTH0_CLIENT_SECRET:
+        required: true
+      MONGODB_CONNECTION_STRING:
+        required: true
+      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:
+        required: true
+      GOOGLE_MAPS_API_KEY_TWO:
+        required: true
+      OPENAI_API_KEY:
+        required: true
+      ANTHROPIC_API_KEY:
+        required: true
+      SECRET_AUTH0_CLIENT_SECRET:
+        required: true
+      SECRET_AUTH0_SERVER_SECRET:
+        required: true
+
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EB_APP_NAME: ${{ inputs.eb_app_name }}
+      EB_ENV_NAME: ${{ inputs.eb_env_name }}
+      S3_BUCKET: psc-beanstalk-apps
+      S3_KEY_PREFIX: ${{ inputs.s3_key_prefix }}
+      VERSION_LABEL: ${{ github.ref_type == 'tag' && github.ref_name || format('v-{0}', github.run_id) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::852313829394:role/github-cicd
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Zip app for Beanstalk
+        run: |
+          zip -r app.zip . -x@.ebignore
+
+      - name: Upload ZIP to S3
+        run: |
+          aws s3 cp app.zip s3://$S3_BUCKET/$S3_KEY_PREFIX/app-${{ github.run_id }}.zip
+
+      - name: Create EB App Version
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name $EB_APP_NAME \
+            --version-label $VERSION_LABEL \
+            --source-bundle S3Bucket=$S3_BUCKET,S3Key=$S3_KEY_PREFIX/app-${{ github.run_id }}.zip
+
+      - name: Deploy to Elastic Beanstalk
+        run: |
+          aws elasticbeanstalk update-environment \
+            --environment-name $EB_ENV_NAME \
+            --version-label $VERSION_LABEL \
+            --option-settings \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AUTH0_SECRET,Value=${{ secrets.AUTH0_SECRET }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AUTH0_BASE_URL,Value=${{ vars.AUTH0_BASE_URL }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AUTH0_ISSUER_BASE_URL,Value=${{ vars.AUTH0_ISSUER_BASE_URL }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AUTH0_CLIENT_ID,Value=${{ vars.AUTH0_CLIENT_ID }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AUTH0_CLIENT_SECRET,Value=${{ secrets.AUTH0_CLIENT_SECRET }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AUTH0_AUDIENCE,Value=${{ vars.AUTH0_AUDIENCE }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_API_URL,Value=${{ vars.NEXT_PUBLIC_API_URL }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=MONGODB_CONNECTION_STRING,Value=${{ secrets.MONGODB_CONNECTION_STRING }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=REDIS_HOST,Value=${{ vars.REDIS_HOST }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=REDIS_PORT,Value=${{ vars.REDIS_PORT }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,Value=${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=GOOGLE_MAPS_API_KEY_TWO,Value=${{ secrets.GOOGLE_MAPS_API_KEY_TWO }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=OPENAI_API_KEY,Value=${{ secrets.OPENAI_API_KEY }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=ANTHROPIC_API_KEY,Value=${{ secrets.ANTHROPIC_API_KEY }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_CLIENT_ID,Value=${{ vars.SECRET_AUTH0_CLIENT_ID }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_CLIENT_SECRET,Value=${{ secrets.SECRET_AUTH0_CLIENT_SECRET }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_DOMAIN,Value=${{ vars.SECRET_AUTH0_DOMAIN }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_AUDIENCE,Value=${{ vars.SECRET_AUTH0_AUDIENCE }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_SERVER_SECRET,Value=${{ secrets.SECRET_AUTH0_SERVER_SECRET }}"

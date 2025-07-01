@@ -1,20 +1,20 @@
 // lib/server/mongoUtils.ts
-import { convertToJSON } from "@/lib/utils/mongo-utils";
-import { GignologyJob } from "@/domains/job";
+import { convertToJSON } from '@/lib/utils/mongo-utils';
+import { GignologyJob } from '@/domains/job';
 import {
   TenantInfo,
   TenantDocument,
   TenantObjectsIndexed,
-} from "@/domains/tenant";
-import { EnhancedUser, GignologyUser } from "../types/user.types";
-import { ObjectId as ObjectIdFunction, Db } from "mongodb";
+} from '@/domains/tenant';
+import { EnhancedUser, GignologyUser } from '../types/user.types';
+import { ObjectId as ObjectIdFunction, Db } from 'mongodb';
 
 export async function checkUserExistsByEmail(
   db: Db,
   email: string
 ): Promise<EnhancedUser | undefined> {
   try {
-    const userExists = await db.collection("users").findOne(
+    const userExists = await db.collection('users').findOne(
       { emailAddress: email },
       {
         projection: {
@@ -45,7 +45,7 @@ export async function checkUserExistsByEmail(
         }
       : undefined;
   } catch (e) {
-    console.error("Error checking email existence in database:", e);
+    console.error('Error checking email existence in database:', e);
     return undefined;
   }
 }
@@ -60,13 +60,13 @@ export async function getUserApplicantJobPipeline(db: Db, email: string) {
       // Lookup applicant data
       {
         $lookup: {
-          from: "applicants",
-          let: { applicantId: "$applicantId" },
+          from: 'applicants',
+          let: { applicantId: '$applicantId' },
           pipeline: [
             {
               $match: {
                 $expr: {
-                  $eq: ["$_id", { $toObjectId: "$$applicantId" }],
+                  $eq: ['$_id', { $toObjectId: '$$applicantId' }],
                 },
               },
             },
@@ -80,13 +80,13 @@ export async function getUserApplicantJobPipeline(db: Db, email: string) {
               },
             },
           ],
-          as: "applicantData",
+          as: 'applicantData',
         },
       },
       // Unwind applicant data
       {
         $unwind: {
-          path: "$applicantData",
+          path: '$applicantData',
           preserveNullAndEmptyArrays: true,
         },
       },
@@ -95,12 +95,12 @@ export async function getUserApplicantJobPipeline(db: Db, email: string) {
         $addFields: {
           filteredApplicantJobs: {
             $filter: {
-              input: { $ifNull: ["$applicantData.jobs", []] },
-              as: "job",
+              input: { $ifNull: ['$applicantData.jobs', []] },
+              as: 'job',
               cond: {
                 $and: [
-                  { $ne: ["$$job", null] },
-                  { $eq: [{ $type: "$$job.jobSlug" }, "string"] },
+                  { $ne: ['$$job', null] },
+                  { $eq: [{ $type: '$$job.jobSlug' }, 'string'] },
                 ],
               },
             },
@@ -110,29 +110,29 @@ export async function getUserApplicantJobPipeline(db: Db, email: string) {
       // Lookup job data with modified shiftJob condition
       {
         $lookup: {
-          from: "jobs",
+          from: 'jobs',
           let: {
             jobSlugs: {
               $map: {
-                input: "$filteredApplicantJobs",
-                as: "job",
-                in: "$$job.jobSlug",
+                input: '$filteredApplicantJobs',
+                as: 'job',
+                in: '$$job.jobSlug',
               },
             },
-            applicantJobs: "$filteredApplicantJobs",
+            applicantJobs: '$filteredApplicantJobs',
           },
           pipeline: [
             {
               $match: {
                 $expr: {
                   $and: [
-                    { $in: ["$jobSlug", "$$jobSlugs"] },
+                    { $in: ['$jobSlug', '$$jobSlugs'] },
                     // More flexible condition for shiftJob - convert to string if needed
                     {
                       $or: [
-                        { $eq: ["$shiftJob", "Yes"] },
-                        { $eq: [{ $toString: "$shiftJob" }, "Yes"] },
-                        { $eq: ["$shiftJob", true] },
+                        { $eq: ['$shiftJob', 'Yes'] },
+                        { $eq: [{ $toString: '$shiftJob' }, 'Yes'] },
+                        { $eq: ['$shiftJob', true] },
                       ],
                     },
                   ],
@@ -145,10 +145,10 @@ export async function getUserApplicantJobPipeline(db: Db, email: string) {
                   $arrayElemAt: [
                     {
                       $filter: {
-                        input: "$$applicantJobs",
-                        as: "appJob",
+                        input: '$$applicantJobs',
+                        as: 'appJob',
                         cond: {
-                          $eq: ["$$appJob.jobSlug", "$jobSlug"],
+                          $eq: ['$$appJob.jobSlug', '$jobSlug'],
                         },
                       },
                     },
@@ -183,14 +183,14 @@ export async function getUserApplicantJobPipeline(db: Db, email: string) {
                 startDate: 1,
                 endDate: 1,
                 // Applicant-specific job info
-                status: "$applicantJobInfo.status",
-                applicantStatus: "$applicantJobInfo.applicantStatus",
-                dateModified: "$applicantJobInfo.dateModified",
-                applyDate: "$applicantJobInfo.applyDate",
+                status: '$applicantJobInfo.status',
+                applicantStatus: '$applicantJobInfo.applicantStatus',
+                dateModified: '$applicantJobInfo.dateModified',
+                applyDate: '$applicantJobInfo.applyDate',
               },
             },
           ],
-          as: "filteredJobs",
+          as: 'filteredJobs',
         },
       },
       // Final projection
@@ -204,12 +204,12 @@ export async function getUserApplicantJobPipeline(db: Db, email: string) {
           employeeType: 1,
           status: 1,
           applicantId: 1,
-          jobs: "$filteredJobs",
+          jobs: '$filteredJobs',
           applicantInfo: {
-            firstName: "$applicantData.firstName",
-            lastName: "$applicantData.lastName",
-            email: "$applicantData.email",
-            status: "$applicantData.status",
+            firstName: '$applicantData.firstName',
+            lastName: '$applicantData.lastName',
+            email: '$applicantData.email',
+            status: '$applicantData.status',
           },
         },
       },
@@ -218,7 +218,7 @@ export async function getUserApplicantJobPipeline(db: Db, email: string) {
     // Add debug logging
     console.log(`Running pipeline for email: ${email}`);
 
-    const result = await db.collection("users").aggregate(pipeline).toArray();
+    const result = await db.collection('users').aggregate(pipeline).toArray();
 
     if (result.length === 0) {
       console.log(`No user found for email: ${email}`);
@@ -234,9 +234,9 @@ export async function getUserApplicantJobPipeline(db: Db, email: string) {
 
     // Add more detailed logging if needed
     if (!userWithFilteredJobs.jobs || userWithFilteredJobs.jobs.length === 0) {
-      console.log("User applicant ID:", userWithFilteredJobs.applicantId);
+      console.log('User applicant ID:', userWithFilteredJobs.applicantId);
       console.log(
-        "Filtered applicant jobs:",
+        'Filtered applicant jobs:',
         userWithFilteredJobs.filteredApplicantJobs
           ? userWithFilteredJobs.filteredApplicantJobs.length
           : 0
@@ -276,7 +276,9 @@ export async function findJobByjobId(db: Db, jobId: string) {
   let job: GignologyJob | undefined = undefined;
 
   try {
-    const jobDoc = await db.collection("jobs").findOne(
+    console.log('Finding job with jobId:', jobId);
+
+    const jobDoc = await db.collection('jobs').findOne(
       { _id: new ObjectIdFunction(jobId) },
       {
         projection: {
@@ -294,19 +296,19 @@ export async function findJobByjobId(db: Db, jobId: string) {
       }
     );
     if (jobDoc) {
-      console.log("before conversion: ", jobDoc);
+      console.log('before conversion: ', jobDoc);
       const conversionResult = convertToJSON(jobDoc);
       job = conversionResult as GignologyJob;
-      console.log("converted jobdoc: ", conversionResult);
+      console.log('converted jobdoc: ', conversionResult);
       if (!conversionResult) {
-        console.log("MongoDB conversion error");
+        console.log('MongoDB conversion error');
       }
     }
     if (!job) {
-      console.log("Job not found");
+      console.log('Job not found');
     }
   } catch (e) {
-    console.log("Error finding job", e);
+    console.log('Error finding job', e);
   }
   return job;
 }
@@ -316,7 +318,7 @@ export async function getUserType(
   userId: string
 ): Promise<string | undefined> {
   try {
-    const user = await db.collection("users").findOne(
+    const user = await db.collection('users').findOne(
       { _id: new ObjectIdFunction(userId) },
       {
         projection: {
@@ -328,7 +330,7 @@ export async function getUserType(
 
     return user?.userType ? user.userType : undefined;
   } catch (e) {
-    console.error("Error checking email existence in database:", e);
+    console.error('Error checking email existence in database:', e);
     return undefined;
   }
 }
@@ -348,15 +350,15 @@ export async function checkUserMasterEmail(
     if (!email) {
       return {
         success: false,
-        message: "Missing email!",
+        message: 'Missing email!',
       };
     }
 
-    const Users = userDb.collection("users");
-    const Tenants = dbTenant.collection<TenantDocument>("tenants");
+    const Users = userDb.collection('users');
+    const Tenants = dbTenant.collection<TenantDocument>('tenants');
 
     const result = await Users.findOne({ emailAddress: email.toLowerCase() });
-    console.log("result", result);
+    console.log('result', result);
 
     if (!result) {
       return {
@@ -369,23 +371,23 @@ export async function checkUserMasterEmail(
     if (!result.tenants || !Array.isArray(result.tenants)) {
       return {
         success: false,
-        message: "Invalid user data structure",
+        message: 'Invalid user data structure',
       };
     }
 
     if (result.tenants.length === 0) {
       return {
         success: false,
-        message: "Tenants not found",
+        message: 'Tenants not found',
       };
     }
 
     if (result.tenants.length === 1) {
-      if (result.tenants[0].status !== "Active") {
-        console.log("email exists for employee app", email);
+      if (result.tenants[0].status !== 'Active') {
+        console.log('email exists for employee app', email);
         return {
           success: false,
-          message: "No active tenant found",
+          message: 'No active tenant found',
         };
       }
 
@@ -403,15 +405,15 @@ export async function checkUserMasterEmail(
       return {
         success: true,
         tenant: {
-          _id: result.tenants[0]?._id ? result.tenants[0]._id.toString() : "",
+          _id: result.tenants[0]?._id ? result.tenants[0]._id.toString() : '',
           url: result.tenants[0].url,
           status: result.tenants[0].status,
-          clientName: tenantObject?.clientName || "",
-          type: tenantObject?.type || "Venue",
+          clientName: tenantObject?.clientName || '',
+          type: tenantObject?.type || 'Venue',
           lastLoginDate: result.tenants[0].lastLoginDate,
           tenantLogo: tenantObject?.tenantLogo,
         },
-        message: "Email exists!",
+        message: 'Email exists!',
       };
     }
 
@@ -419,11 +421,11 @@ export async function checkUserMasterEmail(
       // Find the most recent active tenant
       const mostRecentActiveTenant = result.tenants.reduce<TenantInfo | null>(
         (latest, current) => {
-          if (current.status !== "Active") {
+          if (current.status !== 'Active') {
             return latest;
           }
 
-          if (!latest || latest.status !== "Active") {
+          if (!latest || latest.status !== 'Active') {
             return current;
           }
 
@@ -439,7 +441,7 @@ export async function checkUserMasterEmail(
       );
 
       const activeTenants = result.tenants.filter(
-        (item: TenantInfo) => item.status === "Active"
+        (item: TenantInfo) => item.status === 'Active'
       );
 
       const tenantObjectsIndexed: TenantObjectsIndexed = {};
@@ -488,37 +490,37 @@ export async function checkUserMasterEmail(
         await Users.updateOne(
           {
             emailAddress: email.toLowerCase(),
-            "tenants.url": mostRecentActiveTenant.url,
+            'tenants.url': mostRecentActiveTenant.url,
           },
-          { $set: { "tenants.$.lastLoginDate": new Date().toISOString() } }
+          { $set: { 'tenants.$.lastLoginDate': new Date().toISOString() } }
         );
       }
 
       const availableTenantObjects = activeTenants
         .filter(
           (item: TenantInfo) =>
-            item.status === "Active" &&
+            item.status === 'Active' &&
             tenantObjectsIndexed[item.url]?.clientName
         )
         .map((item: TenantInfo) => ({
-          _id: item._id ? item._id.toString() : "",
+          _id: item._id ? item._id.toString() : '',
           url: item.url,
           status: item.status,
-          clientName: tenantObjectsIndexed[item.url]?.clientName || "",
-          type: tenantObjectsIndexed[item.url]?.type || "Venue",
+          clientName: tenantObjectsIndexed[item.url]?.clientName || '',
+          type: tenantObjectsIndexed[item.url]?.type || 'Venue',
           lastLoginDate: item.lastLoginDate,
           tenantLogo: tenantObjectsIndexed[item.url]?.tenantLogo,
-          dbName: tenantObjectsIndexed[item.url]?.dbName || "",
+          dbName: tenantObjectsIndexed[item.url]?.dbName || '',
         }));
 
       const availableTenants = result.tenants
         .filter(
           (item: TenantInfo) =>
-            item.status === "Active" && item.url !== mostRecentActiveTenant?.url
+            item.status === 'Active' && item.url !== mostRecentActiveTenant?.url
         )
         .map(
           (item: TenantInfo) =>
-            `${item.url.includes("localhost") ? "http" : "https"}://${item.url}`
+            `${item.url.includes('localhost') ? 'http' : 'https'}://${item.url}`
         );
 
       if (mostRecentActiveTenant) {
@@ -527,16 +529,16 @@ export async function checkUserMasterEmail(
           tenant: {
             _id: mostRecentActiveTenant._id
               ? mostRecentActiveTenant._id.toString()
-              : "",
+              : '',
             url: mostRecentActiveTenant.url,
             status: mostRecentActiveTenant.status,
             dbName:
-              tenantObjectsIndexed[mostRecentActiveTenant.url]?.dbName || "",
+              tenantObjectsIndexed[mostRecentActiveTenant.url]?.dbName || '',
             clientName:
               tenantObjectsIndexed[mostRecentActiveTenant.url]?.clientName ||
-              "",
+              '',
             type:
-              tenantObjectsIndexed[mostRecentActiveTenant.url]?.type || "Venue",
+              tenantObjectsIndexed[mostRecentActiveTenant.url]?.type || 'Venue',
             lastLoginDate: mostRecentActiveTenant.lastLoginDate,
             tenantLogo:
               tenantObjectsIndexed[mostRecentActiveTenant.url]?.tenantLogo,
@@ -544,12 +546,12 @@ export async function checkUserMasterEmail(
           availableTenants,
           availableTenantObjects,
           message:
-            "Email exists with multiple tenants. Returning most recently logged in active tenant.",
+            'Email exists with multiple tenants. Returning most recently logged in active tenant.',
         };
       } else {
         return {
           success: false,
-          message: "No active tenants found for this email.",
+          message: 'No active tenants found for this email.',
         };
       }
     }
@@ -557,12 +559,12 @@ export async function checkUserMasterEmail(
     // This should never be reached, but included for completeness
     return {
       success: false,
-      message: "Invalid state",
+      message: 'Invalid state',
     };
   } catch (err: unknown) {
-    console.error("Error in checkUserMasterEmail:", err);
+    console.error('Error in checkUserMasterEmail:', err);
     const errorMessage =
-      err instanceof Error ? err.message : "Internal server error";
+      err instanceof Error ? err.message : 'Internal server error';
     return {
       success: false,
       message: errorMessage,
@@ -579,9 +581,9 @@ export async function updateTenantLastLoginDate(
   tenantUrl: string
 ) {
   await userDb
-    .collection("users")
+    .collection('users')
     .updateOne(
-      { emailAddress: email.toLowerCase(), "tenants.url": tenantUrl },
-      { $set: { "tenants.$.lastLoginDate": new Date().toISOString() } }
+      { emailAddress: email.toLowerCase(), 'tenants.url': tenantUrl },
+      { $set: { 'tenants.$.lastLoginDate': new Date().toISOString() } }
     );
 }

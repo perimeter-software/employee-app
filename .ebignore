@@ -1,0 +1,19 @@
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Tests / docs / local tools
+__tests__/
+docs/
+scripts/
+
+# Lockfiles (keep only yarn.lock)
+yarn.json
+npm-shrinkwrap.json
+
+# Local artifacts
+*.log

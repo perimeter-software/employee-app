@@ -1,6 +1,6 @@
 // lib/middleware/session.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { auth0 } from '@/lib/auth/auth0';
+import { getSession } from '@auth0/nextjs-auth0';
 import { AuthenticatedRequest, RouteHandler } from './types';
 import { Auth0SessionUser, EnhancedUser } from '@/domains/user';
 
@@ -10,8 +10,8 @@ export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
     context: { params: Promise<Record<string, string | string[] | undefined>> }
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
-      // Use auth0.getSession(request) for API routes
-      const session = await auth0.getSession();
+      // Use getSession directly from named exports
+      const session = await getSession();
 
       if (!session?.user?.email) {
         return NextResponse.json(
@@ -27,6 +27,7 @@ export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
       return handler(authenticatedRequest, context);
     } catch (error) {
       console.error('Auth middleware error:', error);
+
       return NextResponse.json(
         { error: 'auth-error', message: 'Authentication failed' },
         { status: 500 }
@@ -47,9 +48,10 @@ export function withEnhancedAuthAPI<T = unknown>(
     context: { params: Promise<Record<string, string | string[] | undefined>> }
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
-      // Use auth0.getSession() for API routes
-      const session = await auth0.getSession();
+      // Use getSession directly from named exports
+      const session = await getSession();
 
+      // If no session, return 401
       if (!session?.user?.email) {
         return NextResponse.json(
           { error: 'not-authenticated', message: 'Authentication required' },
@@ -104,42 +106,73 @@ export function withEnhancedAuthAPI<T = unknown>(
         );
 
         try {
-          const { mongoConn } = await import('@/lib/db');
+          const { getTenantAwareConnection } = await import('@/lib/db');
           const { checkUserExistsByEmail, checkUserMasterEmail } = await import(
             '@/domains/user/utils'
           );
+          const redisService = await import('@/lib/cache/redis-client');
 
-          const { db, dbTenant, userDb } = await mongoConn();
-
-          // Get user data from database
-          const userExists = await checkUserExistsByEmail(db, userEmail);
-
-          if (!userExists) {
-            console.log(`❌ User not found in database: ${userEmail}`);
-            return NextResponse.json(
-              {
-                error: 'user-not-found',
-                message: 'User not found in database',
-              },
-              { status: 404 }
-            );
-          }
-
-          // Get tenant data if required
+          // FIRST: Check if we have tenant-specific user identity cached
+          const cachedTenantData =
+            await redisService.default.getTenantData(userEmail);
+          let userExists = null;
           let userMasterRecord = null;
-          if (options.requireTenant) {
-            userMasterRecord = await checkUserMasterEmail(
-              userDb,
-              dbTenant,
-              userEmail
+
+          if (
+            cachedTenantData?.tenant?.dbName &&
+            cachedTenantData?.userIdentity
+          ) {
+            console.log(
+              `📦 Using cached user identity for tenant: ${cachedTenantData.tenant.dbName}`,
+              {
+                _id: cachedTenantData.userIdentity._id,
+                applicantId: cachedTenantData.userIdentity.applicantId,
+              }
             );
 
-            if (!userMasterRecord?.tenant) {
-              console.log(`❌ No tenant found for user: ${userEmail}`);
+            // Use cached user identity for the current tenant
+            userExists = cachedTenantData.userIdentity;
+            userMasterRecord = {
+              tenant: cachedTenantData.tenant,
+              availableTenantObjects: cachedTenantData.availableTenants || [],
+            };
+          } else {
+            // FALLBACK: Look up in database using tenant-aware connection
+            // Create a temporary authenticated request for getTenantAwareConnection
+            const tempRequest = request as AuthenticatedRequest;
+            tempRequest.user = session.user as Auth0SessionUser;
+            
+            const { db, dbTenant, userDb } = await getTenantAwareConnection(tempRequest);
+
+            // Get user data from tenant-specific database
+            userExists = await checkUserExistsByEmail(db, userEmail);
+
+            if (!userExists) {
+              console.log(`❌ User not found in database: ${userEmail}`);
               return NextResponse.json(
-                { error: 'no-tenant', message: 'No tenant found for user' },
+                {
+                  error: 'user-not-found',
+                  message: 'User not found in database',
+                },
                 { status: 404 }
               );
+            }
+
+            // Get tenant data if required
+            if (options.requireTenant) {
+              userMasterRecord = await checkUserMasterEmail(
+                userDb,
+                dbTenant,
+                userEmail
+              );
+
+              if (!userMasterRecord?.tenant) {
+                console.log(`❌ No tenant found for user: ${userEmail}`);
+                return NextResponse.json(
+                  { error: 'no-tenant', message: 'No tenant found for user' },
+                  { status: 404 }
+                );
+              }
             }
           }
 
@@ -205,12 +238,29 @@ export function withEnhancedAuthAPI<T = unknown>(
         enhancedUser || (session.user as Auth0SessionUser);
 
       console.log(
-        `✅ API Request authenticated: ${userEmail} → ${request.url}`
+        `✅ Enhanced API Request authenticated: ${userEmail} → ${request.url}`
       );
 
       return handler(authenticatedRequest, context);
     } catch (error) {
       console.error('Enhanced auth middleware error:', error);
+
+      // If it's a JWE error, return 401 with clear message
+      if (
+        error instanceof Error &&
+        (error.message.includes('JWE') ||
+          error.message.includes('jwt') ||
+          error.message.includes('Invalid'))
+      ) {
+        return NextResponse.json(
+          {
+            error: 'invalid-session',
+            message: 'Session expired or invalid. Please log in again.',
+          },
+          { status: 401 }
+        );
+      }
+
       return NextResponse.json(
         { error: 'auth-error', message: 'Authentication failed' },
         { status: 500 }

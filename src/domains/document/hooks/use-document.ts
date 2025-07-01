@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Document } from '../types';
-import { documentQueryKeys, DocumentService } from '../service';
+import { documentQueryKeys, DocumentService } from '../services';
 
 // 🔍 Get all user documents
 export function useDocuments() {
@@ -100,6 +100,39 @@ export function useDeleteDocument() {
     },
     onError: (error) => {
       console.error('❌ Failed to delete document:', error);
+    },
+  });
+}
+
+// 📁 Upload a document
+export function useUploadDocument() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (formData: FormData) => DocumentService.uploadDocument(formData),
+    onSuccess: (newDoc: Document) => {
+      queryClient.setQueryData(
+        documentQueryKeys.list(),
+        (oldData: { documents: Document[]; count: number } | undefined) => {
+          if (!oldData) {
+            return { documents: [newDoc], count: 1 };
+          }
+          return {
+            documents: [newDoc, ...oldData.documents],
+            count: oldData.count + 1,
+          };
+        }
+      );
+
+      if (newDoc.id || newDoc._id) {
+        queryClient.setQueryData(
+          documentQueryKeys.detail((newDoc.id || newDoc._id)!),
+          newDoc
+        );
+      }
+    },
+    onError: (error) => {
+      console.error('❌ Failed to upload document:', error);
     },
   });
 }

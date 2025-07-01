@@ -1,32 +1,8 @@
-import type { NextRequest, NextResponse } from "next/server";
-import { NextResponse as Response } from "next/server";
-import { auth0 } from "@/lib/auth";
-import { isProtectedRoute, createReturnUrl, createRedirectUrl } from "./utils";
-import type { EnhancedUser } from "@/domains/user/types";
-
-// Cache duration for user data (1 hour)
-// const USER_CACHE_TTL = 60 * 60; // No longer needed
-
-async function getEnhancedUserData(
-  email: string
-): Promise<EnhancedUser | null> {
-  try {
-    // Fetch user data from API
-    const response = await fetch(
-      `${
-        process.env.NEXT_PUBLIC_API_URL
-      }/api/auth/user?email=${encodeURIComponent(email)}`
-    );
-    if (!response.ok) {
-      console.log(`❌ User not found in database: ${email}`);
-      return null;
-    }
-    return await response.json();
-  } catch (error) {
-    console.error(`❌ Error fetching enhanced user data for ${email}:`, error);
-    return null;
-  }
-}
+// lib/middleware/auth.ts - Auth0 v3 middleware
+import type { NextRequest, NextResponse } from 'next/server';
+import { NextResponse as Response } from 'next/server';
+import { isProtectedRoute, createReturnUrl, createRedirectUrl } from './utils';
+import { hasSessionCookie } from '../auth/session-handler';
 
 export async function authMiddleware(
   request: NextRequest
@@ -37,42 +13,33 @@ export async function authMiddleware(
   }
 
   try {
-    const session = await auth0.getSession(request);
-
-    if (!session?.user) {
+    // Simple session cookie check for middleware
+    // Full session validation will happen in API route handlers
+    if (!hasSessionCookie(request)) {
       console.log(`Unauthenticated access to: ${request.nextUrl.pathname}`);
 
       const returnUrl = createReturnUrl(request);
-      const redirectUrl = createRedirectUrl(request, "/auth/login", returnUrl);
+      const redirectUrl = createRedirectUrl(
+        request,
+        '/api/auth/login',
+        returnUrl
+      );
 
       return Response.redirect(redirectUrl);
     }
 
-    // Get enhanced user data (no caching)
-    const enhancedUser = await getEnhancedUserData(session.user.email!);
+    console.log(`✅ Session cookie found for: ${request.nextUrl.pathname}`);
 
-    if (!enhancedUser) {
-      console.log(`❌ User not found in database: ${session.user.email}`);
+    // Continue with session cookie present
+    const nextResponse = Response.next();
+    nextResponse.headers.set('x-has-session', 'true');
 
-      // Redirect to registration or error page
-      const redirectUrl = createRedirectUrl(request, "/auth/register");
-      return Response.redirect(redirectUrl);
-    }
-
-    console.log(
-      `✅ Enhanced authenticated access: ${enhancedUser.email} (ID: ${enhancedUser._id}, Applicant: ${enhancedUser.applicantId}) → ${request.nextUrl.pathname}`
-    );
-
-    // Add enhanced user data to request headers for API routes to access
-    const response = Response.next();
-    response.headers.set("x-enhanced-user", JSON.stringify(enhancedUser));
-
-    return response;
+    return nextResponse;
   } catch (error) {
-    console.error("Auth middleware error:", error);
+    console.error('Auth middleware error:', error);
 
     // Redirect to login on auth errors
-    const redirectUrl = createRedirectUrl(request, "/auth/login");
+    const redirectUrl = createRedirectUrl(request, '/api/auth/login');
     return Response.redirect(redirectUrl);
   }
 }

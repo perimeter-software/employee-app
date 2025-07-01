@@ -18,7 +18,12 @@ export const useAttendanceData = (
 ) => {
   return useQuery({
     queryKey: params
-      ? dashboardQueryKeys.attendance(params.userId)
+      ? dashboardQueryKeys.attendance(
+          params.userId,
+          params.view,
+          params.startDate,
+          params.endDate
+        )
       : ['dashboard-attendance-disabled'],
     queryFn: () => {
       if (!params) throw new Error('No params provided');

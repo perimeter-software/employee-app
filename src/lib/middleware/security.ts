@@ -16,16 +16,17 @@ export async function securityMiddleware(): Promise<NextResponse | null> {
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com",
-      "script-src-elem 'self' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com",
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com https://*.google.com https://*.googleusercontent.com",
-      "connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com",
-      "frame-src 'self'",
+      "img-src 'self' data: https: blob:",
+      "font-src 'self' https://fonts.gstatic.com",
+      "connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com https://*.auth0.com",
+      'frame-src https://*.auth0.com',
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
-      "frame-ancestors 'self'",
+      "frame-ancestors 'none'",
+      'upgrade-insecure-requests',
     ].join('; ')
   );
 
