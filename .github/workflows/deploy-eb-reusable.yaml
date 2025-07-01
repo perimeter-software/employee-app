@@ -1,30 +1,34 @@
-name: Dev | Deploy Employee App to AWS Elastic Beanstalk
+name: Reusable Deploy to Elastic Beanstalk
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       environment:
-        description: "Which environment?"
         required: true
-        default: develop
+        type: string
+      eb_env_name:
+        required: true
+        type: string
+      s3_key_prefix:
+        required: true
+        type: string
+
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    environment: ${{ github.event.inputs.environment }}
+    environment: ${{ inputs.environment }}
 
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
-      EB_APP_NAME: employee-app
-      EB_ENV_NAME: employee-app-dev
+      EB_APP_NAME: ${{ inputs.eb_app_name }}
+      EB_ENV_NAME: ${{ inputs.eb_env_name }}
       S3_BUCKET: psc-beanstalk-apps
-      S3_KEY_PREFIX: employee-app/dev
+      S3_KEY_PREFIX: ${{ inputs.s3_key_prefix }}
+      VERSION_LABEL: ${{ github.ref_type == 'tag' && github.ref_name || format('v-{0}', github.run_id) }}
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Configure AWS credentials
@@ -33,7 +37,7 @@ jobs:
           role-to-assume: arn:aws:iam::852313829394:role/github-cicd
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Zip for Beanstalk
+      - name: Zip app for Beanstalk
         run: |
           zip -r app.zip . -x@.ebignore
 
@@ -45,14 +49,14 @@ jobs:
         run: |
           aws elasticbeanstalk create-application-version \
             --application-name $EB_APP_NAME \
-            --version-label v-${{ github.run_id }} \
+            --version-label $VERSION_LABEL \
             --source-bundle S3Bucket=$S3_BUCKET,S3Key=$S3_KEY_PREFIX/app-${{ github.run_id }}.zip
 
-      - name: Deploy to EB with all env vars and secrets
+      - name: Deploy to Elastic Beanstalk
         run: |
           aws elasticbeanstalk update-environment \
             --environment-name $EB_ENV_NAME \
-            --version-label v-${{ github.run_id }} \
+            --version-label $VERSION_LABEL \
             --option-settings \
               Namespace=aws:elasticbeanstalk:application:environment,OptionName=AUTH0_SECRET,Value=${{ secrets.AUTH0_SECRET }} \
               Namespace=aws:elasticbeanstalk:application:environment,OptionName=AUTH0_BASE_URL,Value=${{ vars.AUTH0_BASE_URL }} \
