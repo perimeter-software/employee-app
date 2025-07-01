@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { MapPin } from 'lucide-react';
-import { GoogleMapsModal } from '../MapModal'; // Import your new modal
+import { MapModal } from '../MapModal'; // Import your new modal
 import { GignologyJob } from '@/domains/job/types/job.types';
 import { GigLocation } from '@/domains/job/types/location.types';
 
@@ -115,14 +115,18 @@ export function ClockControls({
       </div>
 
       {/* Map Modal */}
-      <GoogleMapsModal
+      <MapModal
         isOpen={showMapModal}
         onClose={() => setShowMapModal(false)}
         userLocation={
-          userLocation
+          userLocation &&
+          userLocation.latitude &&
+          userLocation.longitude &&
+          userLocation.latitude !== 0 &&
+          userLocation.longitude !== 0
             ? {
-                latitude: userLocation.latitude || 0,
-                longitude: userLocation.longitude || 0,
+                latitude: userLocation.latitude,
+                longitude: userLocation.longitude,
                 accuracy: userLocation.accuracy || 0,
               }
             : null

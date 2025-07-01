@@ -89,6 +89,7 @@ export function TimerCard({ userData, openPunches }: TimerCardProps) {
     );
   }
 
+
   return (
     <>
       <ClockInValidationModal

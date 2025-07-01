@@ -1,4 +1,4 @@
-import type { RequestConfig } from "./types";
+import type { RequestConfig } from './types';
 
 export class InterceptorManager {
   // Keep this class as-is - it's used by your client
@@ -85,12 +85,12 @@ export class InterceptorManager {
 export function createAuthErrorInterceptor(onAuthError?: () => void) {
   return (response: Response): Response => {
     if (response.status === 401) {
-      console.log("Authentication expired, redirecting to login...");
+      console.log('Authentication expired, redirecting to login...');
 
       if (onAuthError) {
         onAuthError();
-      } else if (typeof window !== "undefined") {
-        window.location.href = "/auth/login";
+      } else if (typeof window !== 'undefined') {
+        window.location.href = '/api/auth/login';
       }
     }
     return response;

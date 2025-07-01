@@ -18,7 +18,12 @@ export const useDashboardStats = (
 ) => {
   return useQuery({
     queryKey: params
-      ? dashboardQueryKeys.stats(params.userId, params.view)
+      ? dashboardQueryKeys.stats(
+          params.userId,
+          params.view,
+          params.startDate,
+          params.endDate
+        )
       : ['dashboard-stats-disabled'],
     queryFn: () => {
       if (!params) throw new Error('No params provided');

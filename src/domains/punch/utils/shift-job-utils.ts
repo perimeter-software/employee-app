@@ -1,8 +1,37 @@
-import type { GignologyJob, Shift } from "@/domains/job"; // ✅ Consistent naming
-import { parseISO, isAfter, format } from "date-fns";
-import { format as formatTz } from "date-fns-tz";
-import { getUserTimeZone } from "@/lib/utils"; // ✅ Updated import path
-import { Punch, PunchDetail } from "@/domains/punch"; // ✅ Add missing imports
+import type { GignologyJob, Shift } from '@/domains/job'; // ✅ Consistent naming
+import { parseISO, isAfter, format } from 'date-fns';
+import { format as formatTz } from 'date-fns-tz';
+import { getUserTimeZone } from '@/lib/utils'; // ✅ Updated import path
+import { Punch, PunchDetail } from '@/domains/punch'; // ✅ Add missing imports
+import type { RosterEntry } from '@/domains/job/types/schedule.types';
+
+// Utility function to check if user is in roster (supports both old string[] and new RosterEntry[] formats)
+export const isUserInRoster = (
+  roster: string[] | RosterEntry[] | undefined,
+  applicantId: string,
+  targetDate?: string
+): boolean => {
+  if (!roster || !roster.length) return false;
+
+  // Handle old format (array of strings)
+  if (typeof roster[0] === 'string') {
+    return (roster as string[]).includes(applicantId);
+  }
+
+  // Handle new format (array of objects with employeeId and date)
+  const rosterEntries = roster as RosterEntry[];
+
+  if (!targetDate) {
+    // If no target date provided, check if user is in roster for any date
+    return rosterEntries.some((entry) => entry.employeeId === applicantId);
+  }
+
+  // Check if user is in roster for specific date
+  const targetDateStr = new Date(targetDate).toISOString().split('T')[0]; // Get YYYY-MM-DD format
+  return rosterEntries.some(
+    (entry) => entry.employeeId === applicantId && entry.date === targetDateStr
+  );
+};
 
 // New shiftJob utils used to interact with shiftJobs
 export const jobHasShiftForUser = (
@@ -87,13 +116,13 @@ export const getShiftsForCalendarDay = (
 } => {
   const day = new Date(specificDate);
   const daysOfWeek = [
-    "sunday",
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
+    'sunday',
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
   ] as const;
   const currentDay = daysOfWeek[day.getDay()];
 
@@ -132,21 +161,24 @@ export const getShiftsForCalendarDay = (
           (rosterEntry) => rosterEntry._id === applicantId
         );
 
-        const isInDayRoster =
-          todaySchedule?.roster?.some((id) => id === applicantId) ?? false;
+        const isInDayRoster = isUserInRoster(
+          todaySchedule?.roster,
+          applicantId,
+          specificDate
+        );
 
         const shiftDetails = {
           title: `${job.title} - ${shift.shiftName}`,
           start: todaySchedule?.start
-            ? format(new Date(todaySchedule.start), "p")
-            : "N/A",
+            ? format(new Date(todaySchedule.start), 'p')
+            : 'N/A',
           end: todaySchedule?.end
-            ? format(new Date(todaySchedule.end), "p")
-            : "N/A",
+            ? format(new Date(todaySchedule.end), 'p')
+            : 'N/A',
           jobId: job._id,
         };
 
-        if (shiftDetails.start !== "N/A" && shiftDetails.end !== "N/A") {
+        if (shiftDetails.start !== 'N/A' && shiftDetails.end !== 'N/A') {
           if (isInShiftRoster && isInDayRoster) {
             // Assigned shifts
             assignedShifts.push(shiftDetails);
@@ -172,13 +204,13 @@ export const getDetailedUserShiftsForToday = (
   const targetDate = specificDate || new Date(currentTime);
 
   const daysOfWeek = [
-    "sunday",
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
+    'sunday',
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
   ] as const;
   const currentDay = daysOfWeek[targetDate.getDay()];
 
@@ -199,7 +231,11 @@ export const getDetailedUserShiftsForToday = (
   const isInShiftRoster = shift.shiftRoster?.some(
     (rosterEntry) => rosterEntry._id === applicantId
   );
-  const isInDayRoster = todaySchedule?.roster?.includes(applicantId);
+  const isInDayRoster = isUserInRoster(
+    todaySchedule?.roster,
+    applicantId,
+    targetDate.toISOString()
+  );
 
   if (
     isInShiftRoster &&
@@ -261,13 +297,13 @@ export const getUserShiftsForToday = (
   const now = new Date(currentTime);
 
   const daysOfWeek = [
-    "sunday",
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
+    'sunday',
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
   ] as const;
 
   const currentDay = daysOfWeek[now.getDay()]; // Use the correct time zone to get the day
@@ -292,25 +328,25 @@ export const getUserShiftForToday = (
 
   for (const shift of usersShifts) {
     const todaySchedule = shift.defaultSchedule?.[currentDay];
-    console.log("todaySchedule: ", todaySchedule);
+    console.log('todaySchedule: ', todaySchedule);
     const shiftStartDate = new Date(shift.shiftStartDate);
     const shiftEndDate = new Date(shift.shiftEndDate);
     shiftEndDate.setHours(23, 59, 59, 999);
 
     const isWithinShiftDates = now >= shiftStartDate && now <= shiftEndDate;
 
-    const isUserInRoster = shift.shiftRoster?.some(
+    const isUserInShiftRoster = shift.shiftRoster?.some(
       (rosterEntry) => rosterEntry._id === applicantId
     );
 
     // Check if the applicant is in today's roster (if specified)
     const isUserInTodayRoster =
       !todaySchedule?.roster?.length || // no roster array or empty ⇒ allow
-      todaySchedule.roster.includes(applicantId);
+      isUserInRoster(todaySchedule.roster, applicantId, currentTime);
 
     if (
       isWithinShiftDates &&
-      isUserInRoster &&
+      isUserInShiftRoster &&
       isUserInTodayRoster &&
       todaySchedule?.start &&
       todaySchedule?.end
@@ -355,7 +391,7 @@ export const handleShiftJobClockInTime = (
   return usersShifts.some((shift) => {
     const todaySchedule = shift.defaultSchedule[currentDay];
 
-    if (!todaySchedule || !todaySchedule.start || todaySchedule.start === "") {
+    if (!todaySchedule || !todaySchedule.start || todaySchedule.start === '') {
       return false; // No valid shift start time
     }
 
@@ -399,7 +435,7 @@ export const getMinutesUntilClockIn = (
 
   for (const shift of usersShifts) {
     const todaySchedule = shift.defaultSchedule[currentDay];
-    if (!todaySchedule || !todaySchedule.start || todaySchedule.start === "") {
+    if (!todaySchedule || !todaySchedule.start || todaySchedule.start === '') {
       continue;
     }
 
@@ -451,13 +487,13 @@ export function isToday(date: Date, shift?: Shift): boolean {
 
   // Get the day of week for the date we're checking
   const daysOfWeek = [
-    "sunday",
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
+    'sunday',
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
   ] as const;
   const dayName = daysOfWeek[date.getDay()];
 
@@ -507,7 +543,7 @@ export function isShiftWithinRange(
     return false;
   }
 
-  const currentDay = formatTz(currentDate, "eee", {
+  const currentDay = formatTz(currentDate, 'eee', {
     timeZone: getUserTimeZone(),
   });
 
@@ -528,13 +564,13 @@ export function isShiftWithinRange(
 
   // Map short day names to full day names
   const dayMapping = {
-    Sun: "sunday",
-    Mon: "monday",
-    Tue: "tuesday",
-    Wed: "wednesday",
-    Thu: "thursday",
-    Fri: "friday",
-    Sat: "saturday",
+    Sun: 'sunday',
+    Mon: 'monday',
+    Tue: 'tuesday',
+    Wed: 'wednesday',
+    Thu: 'thursday',
+    Fri: 'friday',
+    Sat: 'saturday',
   };
 
   const mappedDay = dayMapping[punchDay as keyof typeof dayMapping];
@@ -547,17 +583,17 @@ export function isShiftWithinRange(
   }
 
   // Check if user is in the overall shift roster
-  const isUserInRoster = shift.shiftRoster?.some(
+  const isUserInShiftRoster = shift.shiftRoster?.some(
     (rosterEntry) => rosterEntry._id === applicantId
   );
 
-  if (!isUserInRoster) {
+  if (!isUserInShiftRoster) {
     return false;
   }
 
   // Check if user is in the roster for this specific day
   const isInTodayRoster = todaySchedule.roster
-    ? todaySchedule.roster.includes(applicantId)
+    ? isUserInRoster(todaySchedule.roster, applicantId, shiftDate.toISOString())
     : true; // If no roster specified for today, consider it valid
 
   if (!isInTodayRoster) {
@@ -709,13 +745,13 @@ export const hasForgottenToClockOut = (
 
   const timeIn = parseISO(punch.timeIn);
   const punchDay = [
-    "sunday",
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
+    'sunday',
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
   ][timeIn.getDay()];
 
   const currentTime = new Date(current);
@@ -761,13 +797,13 @@ export function combineCurrentDateWithTimeFromDateObject(
 ): string {
   const currentDate = new Date(currentTime);
 
-  console.log("=== combineCurrentDateWithTimeFromDateObject DEBUG ===");
-  console.log("Input timeObj:", timeObj);
-  console.log("Input currentTime:", currentTime);
-  console.log("timeObj ISO:", timeObj.toISOString());
-  console.log("timeObj toString:", timeObj.toString());
-  console.log("timeObj getHours():", timeObj.getHours());
-  console.log("timeObj getUTCHours():", timeObj.getUTCHours());
+  console.log('=== combineCurrentDateWithTimeFromDateObject DEBUG ===');
+  console.log('Input timeObj:', timeObj);
+  console.log('Input currentTime:', currentTime);
+  console.log('timeObj ISO:', timeObj.toISOString());
+  console.log('timeObj toString:', timeObj.toString());
+  console.log('timeObj getHours():', timeObj.getHours());
+  console.log('timeObj getUTCHours():', timeObj.getUTCHours());
 
   // Create a new date with today's date but the time from timeObj
   const result = new Date(currentDate);
@@ -780,8 +816,8 @@ export function combineCurrentDateWithTimeFromDateObject(
     timeObj.getMilliseconds()
   );
 
-  console.log("Result after setting local time:", result);
-  console.log("Result ISO:", result.toISOString());
+  console.log('Result after setting local time:', result);
+  console.log('Result ISO:', result.toISOString());
 
   // Handle overnight shifts if compareDateObj is provided
   if (compareDateObj) {
@@ -793,17 +829,17 @@ export function combineCurrentDateWithTimeFromDateObject(
       compareDateObj.getMilliseconds()
     );
 
-    console.log("Compare result:", compareResult);
+    console.log('Compare result:', compareResult);
 
     // If end time is before start time, it's an overnight shift
     if (result <= compareResult) {
       result.setDate(result.getDate() + 1);
-      console.log("Adjusted for overnight shift:", result);
+      console.log('Adjusted for overnight shift:', result);
     }
   }
 
-  console.log("Final result:", result.toISOString());
-  console.log("======================================================");
+  console.log('Final result:', result.toISOString());
+  console.log('======================================================');
 
   return result.toISOString();
 }

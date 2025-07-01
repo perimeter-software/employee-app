@@ -65,6 +65,44 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
     removeSelectedShift,
   } = usePunchViewerStore();
 
+  // Validation effect: Clear stale job/shift selections when user data changes
+  useEffect(() => {
+    // If we have a selected job but it's not in the current user's jobs, clear it
+    if (selectedJob && userData?.jobs) {
+      const jobExists = userData.jobs.some(
+        (job) => job._id === selectedJob._id
+      );
+      if (!jobExists) {
+        console.log(
+          '🧹 Clearing stale selected job from useTimerCard:',
+          selectedJob.title
+        );
+        removeSelectedJob();
+        removeSelectedShift(); // Also clear shift since job is invalid
+      }
+    }
+
+    // If we have a selected shift but it's not in the selected job's shifts, clear it
+    if (selectedShift && selectedJob?.shifts) {
+      const shiftExists = selectedJob.shifts.some(
+        (shift) => shift.slug === selectedShift.slug
+      );
+      if (!shiftExists) {
+        console.log(
+          '🧹 Clearing stale selected shift from useTimerCard:',
+          selectedShift.slug
+        );
+        removeSelectedShift();
+      }
+    }
+  }, [
+    userData?.jobs,
+    selectedJob,
+    selectedShift,
+    removeSelectedJob,
+    removeSelectedShift,
+  ]);
+
   // Get current open punch from the fetched data
   const currentOpenPunch = useMemo(() => {
     if (!openPunches || openPunches.length === 0) {
@@ -491,25 +529,26 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
 
         const clockInData: ClockInData = {
           jobId: targetJob._id,
-          clockInCoordinates: clockInCoordinates
-            ? {
-                latitude: clockInCoordinates.latitude || 0,
-                longitude: clockInCoordinates.longitude || 0,
-                accuracy: clockInCoordinates.accuracy || 0,
-                altitude: clockInCoordinates.altitude || 0,
-                altitudeAccuracy: clockInCoordinates.altitudeAccuracy || 0,
-                heading: clockInCoordinates.heading || 0,
-                speed: clockInCoordinates.speed || 0,
-              }
-            : {
-                latitude: 0,
-                longitude: 0,
-                accuracy: 0,
-                altitude: 0,
-                altitudeAccuracy: 0,
-                heading: 0,
-                speed: 0,
-              },
+          clockInCoordinates:
+            clockInCoordinates &&
+            clockInCoordinates.latitude !== null &&
+            clockInCoordinates.longitude !== null &&
+            clockInCoordinates.latitude !== 0 &&
+            clockInCoordinates.longitude !== 0 &&
+            typeof clockInCoordinates.latitude === 'number' &&
+            typeof clockInCoordinates.longitude === 'number' &&
+            !isNaN(clockInCoordinates.latitude) &&
+            !isNaN(clockInCoordinates.longitude)
+              ? {
+                  latitude: clockInCoordinates.latitude,
+                  longitude: clockInCoordinates.longitude,
+                  accuracy: clockInCoordinates.accuracy || 0,
+                  altitude: clockInCoordinates.altitude || null,
+                  altitudeAccuracy: clockInCoordinates.altitudeAccuracy || null,
+                  heading: clockInCoordinates.heading || null,
+                  speed: clockInCoordinates.speed || null,
+                }
+              : undefined, // Don't include coordinates property if invalid
           timeIn,
           newStartDate,
           newEndDate,

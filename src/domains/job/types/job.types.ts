@@ -1,7 +1,7 @@
-import { Applicant } from "@/domains/user/types/applicant.types";
-import { DefaultSchedule, RosterApplicant } from "./schedule.types";
-import { JobLocation } from "./location.types";
-import { LeaveRequest, Punch, PunchWJobInfoDayHours } from "@/domains/punch";
+import { Applicant } from '@/domains/user/types/applicant.types';
+import { DefaultSchedule, RosterApplicant } from './schedule.types';
+import { JobLocation } from './location.types';
+import { LeaveRequest, Punch, PunchWJobInfoDayHours } from '@/domains/punch';
 
 export type Shift = {
   defaultSchedule: DefaultSchedule;
@@ -35,15 +35,7 @@ export type JobShiftSettings = {
     negativeHoursLimit: number;
     autoClockoutShiftEnd: boolean;
   };
-  defaultSchedule: {
-    monday: { start: string; end: string; roster: [] };
-    tuesday: { start: string; end: string; roster: [] };
-    wednesday: { start: string; end: string; roster: [] };
-    thursday: { start: string; end: string; roster: [] };
-    friday: { start: string; end: string; roster: [] };
-    saturday: { start: string; end: string; roster: [] };
-    sunday: { start: string; end: string; roster: [] };
-  };
+  defaultSchedule: DefaultSchedule;
   jobShiftRoster: RosterApplicant[];
 };
 

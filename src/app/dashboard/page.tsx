@@ -1,8 +1,9 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0';
+import { useUser } from '@auth0/nextjs-auth0/client';
 import Layout from '@/components/layout/Layout';
 import React, { useState, useMemo, useEffect } from 'react';
+import { format, startOfWeek, endOfWeek } from 'date-fns';
 import {
   Card,
   CardContent,
@@ -13,7 +14,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import {
   Users,
-  Calendar,
+  CalendarIcon,
   Activity,
   Clock,
   TrendingUp,
@@ -39,9 +40,7 @@ import {
 } from 'recharts';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import CalendarProvider from '@/components/ui/Calendar/CalendarProvider';
-import CalendarBody from '@/components/ui/Calendar/Body/CalendarBody';
-import CalendarHeaderDate from '@/components/ui/Calendar/Header/Date/CalendarHeaderDate';
-import CalendarHeaderActionsMode from '@/components/ui/Calendar/Header/Actions/CalendarHeaderActionsMode';
+import Calendar from '@/components/ui/Calendar/Calendar';
 import { CalendarEvent, Mode } from '@/components/ui/Calendar';
 import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
 import { NextPage } from 'next';
@@ -62,12 +61,10 @@ import { useDashboardStats } from '@/domains/dashboard/hooks/use-dashboard-stats
 import { useAttendanceData } from '@/domains/dashboard/hooks/use-attendance-data';
 import { usePerformanceMetrics } from '@/domains/dashboard/hooks/use-performance-metrics';
 import { useInsights } from '@/domains/dashboard/hooks/use-insights';
-import { useTodayAttendance } from '@/domains/dashboard/hooks/use-today-attendance';
 import { formatDashboardParams } from '@/domains/dashboard/utils/dashboard-utils';
 import {
   DashboardStats,
   PerformanceMetrics,
-  TodayAttendanceData,
   InsightData,
   ShiftTableData as ShiftTableDataType,
 } from '@/domains/dashboard/types';
@@ -715,7 +712,7 @@ const InsightsRecommendations = ({
       case 'goal':
         return <Target className="w-4 h-4 text-green-600" />;
       case 'schedule':
-        return <Calendar className="w-4 h-4 text-yellow-600" />;
+        return <CalendarIcon className="w-4 h-4 text-yellow-600" />;
       default:
         return <BarChart3 className="w-4 h-4 text-appPrimary" />;
     }
@@ -748,83 +745,6 @@ const InsightsRecommendations = ({
   );
 };
 
-// Today's Attendance Component
-const TodayAttendance = ({
-  attendanceData,
-  isLoading,
-}: {
-  attendanceData?: TodayAttendanceData[];
-  isLoading?: boolean;
-}) => {
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Today&apos;s Attendance</CardTitle>
-          <CardDescription>Live employee check-in status</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between py-2 border-b last:border-b-0 animate-pulse"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
-                  <div>
-                    <div className="h-4 bg-gray-300 rounded w-20 mb-1"></div>
-                    <div className="h-3 bg-gray-200 rounded w-16"></div>
-                  </div>
-                </div>
-                <div className="h-4 bg-gray-300 rounded w-12"></div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const displayData = attendanceData || [];
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Today&apos;s Attendance</CardTitle>
-        <CardDescription>Live employee check-in status</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {displayData.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">
-              No attendance data available
-            </p>
-          ) : (
-            displayData.map((person, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between py-2 border-b last:border-b-0"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                    <span className="text-xs font-medium">{person.avatar}</span>
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm">{person.name}</p>
-                    <p className="text-xs text-gray-500">{person.time}</p>
-                  </div>
-                </div>
-                <span className="text-sm font-semibold">{person.hours}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
-
 // Main Dashboard Component
 const DashboardPage: NextPage = () => {
   const { user, error: authError, isLoading: authLoading } = useUser();
@@ -833,7 +753,11 @@ const DashboardPage: NextPage = () => {
     user?.email || ''
   );
   // Auth check
-  const { shouldShowContent, isLoading: pageAuthLoading, error: pageAuthError } = usePageAuth({
+  const {
+    shouldShowContent,
+    isLoading: pageAuthLoading,
+    error: pageAuthError,
+  } = usePageAuth({
     requireAuth: true,
   });
 
@@ -923,7 +847,21 @@ const DashboardPage: NextPage = () => {
   // Prepare dashboard parameters
   const dashboardParams = useMemo(() => {
     if (!currentUser?._id) return null;
-    return formatDashboardParams(currentUser._id, dashboardView, currentDate);
+    const params = formatDashboardParams(
+      currentUser._id,
+      dashboardView,
+      currentDate
+    );
+
+    // Debug log to verify parameters are changing
+    console.log('Dashboard params updated:', {
+      view: dashboardView,
+      currentDate: format(currentDate, 'yyyy-MM-dd'),
+      startDate: params.startDate,
+      endDate: params.endDate,
+    });
+
+    return params;
   }, [currentUser?._id, dashboardView, currentDate]);
 
   // Fetch dashboard data using our hooks
@@ -942,9 +880,6 @@ const DashboardPage: NextPage = () => {
     dashboardParams,
     { enabled: !!dashboardParams }
   );
-
-  const { data: todayAttendance, isLoading: todayAttendanceLoading } =
-    useTodayAttendance();
 
   // Show loading state
   if (authLoading || currentUserLoading || userLoading) {
@@ -993,8 +928,11 @@ const DashboardPage: NextPage = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild fullWidth>
-              <a href="/auth/login">Log In</a>
+            <Button
+              fullWidth
+              onClick={() => (window.location.href = '/api/auth/login')}
+            >
+              Log In
             </Button>
           </CardContent>
         </Card>
@@ -1008,10 +946,11 @@ const DashboardPage: NextPage = () => {
   }
 
   if (pageAuthError || authError) {
-    const errorMessage = pageAuthError?.message || 
-                        (authError && typeof authError === 'object' && 'message' in authError ? 
-                         (authError as { message: string }).message : 
-                         'Authentication error');
+    const errorMessage =
+      pageAuthError?.message ||
+      (authError && typeof authError === 'object' && 'message' in authError
+        ? (authError as { message: string }).message
+        : 'Authentication error');
     return <AuthErrorState error={errorMessage} />;
   }
 
@@ -1026,19 +965,62 @@ const DashboardPage: NextPage = () => {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <div className="flex items-center gap-4">
-            {dashboardView === 'calendar' && (
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm">
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <span className="text-sm font-medium">
-                  June 01 - June 07, 2025
-                </span>
-                <Button variant="outline" size="sm">
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
+            {/* Date Navigation for all views */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const newDate = new Date(currentDate);
+                  if (dashboardView === 'monthly') {
+                    newDate.setMonth(newDate.getMonth() - 1);
+                  } else {
+                    newDate.setDate(newDate.getDate() - 7);
+                  }
+                  setCurrentDate(newDate);
+                }}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-sm font-medium min-w-[180px] text-center">
+                {dashboardView === 'monthly'
+                  ? format(currentDate, 'MMMM yyyy')
+                  : dashboardView === 'weekly'
+                    ? (() => {
+                        const weekStart = startOfWeek(currentDate, {
+                          weekStartsOn: 0,
+                        });
+                        const weekEnd = endOfWeek(currentDate, {
+                          weekStartsOn: 0,
+                        });
+                        return `${format(weekStart, 'MMM dd')} - ${format(weekEnd, 'MMM dd, yyyy')}`;
+                      })()
+                    : (() => {
+                        const weekStart = startOfWeek(currentDate, {
+                          weekStartsOn: 0,
+                        });
+                        const weekEnd = endOfWeek(currentDate, {
+                          weekStartsOn: 0,
+                        });
+                        return `${format(weekStart, 'MMM dd')} - ${format(weekEnd, 'MMM dd, yyyy')}`;
+                      })()}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const newDate = new Date(currentDate);
+                  if (dashboardView === 'monthly') {
+                    newDate.setMonth(newDate.getMonth() + 1);
+                  } else {
+                    newDate.setDate(newDate.getDate() + 7);
+                  }
+                  setCurrentDate(newDate);
+                }}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
             <ToggleGroup
               className="inline-flex rounded-lg border border-gray-30 p-1 self-start sm:self-auto shadow-sm"
               type="single"
@@ -1100,15 +1082,67 @@ const DashboardPage: NextPage = () => {
               <Card className="w-full lg:col-span-2">
                 <CardHeader>
                   <CardTitle className="text-lg">
-                    2025 Attendance Trends
+                    {format(currentDate, 'yyyy')} Attendance Trends
                   </CardTitle>
                   <CardDescription>
-                    Year-to-date employee attendance (Jan - Jun)
+                    {(() => {
+                      const year = currentDate.getFullYear();
+                      const currentMonth = currentDate.getMonth();
+                      const startMonth = format(new Date(year, 0, 1), 'MMM');
+                      const endMonth = format(
+                        new Date(year, currentMonth, 1),
+                        'MMM'
+                      );
+                      return `Year-to-date employee attendance (${startMonth} - ${endMonth})`;
+                    })()}
                   </CardDescription>
                   <div className="flex gap-4 text-xs">
-                    <span className="text-green-600">Peak: June (23 days)</span>
-                    <span className="text-red-600">Low: March (15 days)</span>
-                    <span className="text-blue-600">YTD Attendance: 88%</span>
+                    {(() => {
+                      const monthlyData =
+                        attendanceData?.monthlyAttendance || [];
+                      if (monthlyData.length === 0) {
+                        return (
+                          <>
+                            <span className="text-gray-500">
+                              No data available
+                            </span>
+                          </>
+                        );
+                      }
+
+                      // Find peak and low months
+                      const peakMonth = monthlyData.reduce((prev, current) =>
+                        prev.days > current.days ? prev : current
+                      );
+                      const lowMonth = monthlyData.reduce((prev, current) =>
+                        prev.days < current.days ? prev : current
+                      );
+
+                      // Calculate YTD attendance percentage
+                      const totalDays = monthlyData.reduce(
+                        (sum, month) => sum + month.days,
+                        0
+                      );
+                      const expectedDays = monthlyData.length * 22; // Assuming ~22 working days per month
+                      const ytdPercentage =
+                        expectedDays > 0
+                          ? Math.round((totalDays / expectedDays) * 100)
+                          : 0;
+
+                      return (
+                        <>
+                          <span className="text-green-600">
+                            Peak: {peakMonth.month} ({peakMonth.days} days)
+                          </span>
+                          <span className="text-red-600">
+                            Low: {lowMonth.month} ({lowMonth.days} days)
+                          </span>
+                          <span className="text-blue-600">
+                            YTD Attendance: {ytdPercentage}%
+                          </span>
+                        </>
+                      );
+                    })()}
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -1134,10 +1168,10 @@ const DashboardPage: NextPage = () => {
                 </CardContent>
               </Card>
 
-              {/* Today's Attendance */}
-              <TodayAttendance
-                attendanceData={todayAttendance}
-                isLoading={todayAttendanceLoading}
+              {/* Performance Summary */}
+              <PerformanceSummary
+                performanceData={performanceData?.performanceMetrics}
+                isLoading={performanceLoading}
               />
             </div>
 
@@ -1168,7 +1202,15 @@ const DashboardPage: NextPage = () => {
                     <div>
                       <CardTitle className="text-lg">Daily Trends</CardTitle>
                       <CardDescription>
-                        Week of June 1 - June 7, 2025
+                        {(() => {
+                          const weekStart = startOfWeek(currentDate, {
+                            weekStartsOn: 0,
+                          });
+                          const weekEnd = endOfWeek(currentDate, {
+                            weekStartsOn: 0,
+                          });
+                          return `Week of ${format(weekStart, 'MMM dd')} - ${format(weekEnd, 'MMM dd, yyyy')}`;
+                        })()}
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1250,38 +1292,91 @@ const DashboardPage: NextPage = () => {
               <Card className="w-full lg:col-span-2">
                 <CardHeader>
                   <CardTitle className="text-lg">
-                    2025 Attendance Trends
+                    {format(currentDate, 'yyyy')} Attendance Trends
                   </CardTitle>
                   <CardDescription>
-                    Year-to-date employee attendance (Jan - Jun)
+                    {(() => {
+                      const monthName = format(currentDate, 'MMM');
+                      return `Year-to-date employee attendance (Jan - ${monthName})`;
+                    })()}
                   </CardDescription>
                   <div className="flex gap-4 text-xs">
-                    <span className="text-green-600">Peak: June (23 days)</span>
-                    <span className="text-red-600">Low: March (15 days)</span>
-                    <span className="text-blue-600">YTD Attendance: 88%</span>
+                    {(() => {
+                      const monthlyData =
+                        attendanceData?.monthlyAttendance || [];
+                      if (monthlyData.length === 0) {
+                        return (
+                          <>
+                            <span className="text-gray-500">
+                              No data available
+                            </span>
+                          </>
+                        );
+                      }
+
+                      const maxData = monthlyData.reduce(
+                        (max, curr) => (curr.days > max.days ? curr : max),
+                        monthlyData[0]
+                      );
+                      const minData = monthlyData.reduce(
+                        (min, curr) => (curr.days < min.days ? curr : min),
+                        monthlyData[0]
+                      );
+
+                      const totalDays = monthlyData.reduce(
+                        (sum, curr) => sum + curr.days,
+                        0
+                      );
+                      const attendanceRate =
+                        totalDays > 0
+                          ? Math.round(
+                              (totalDays / (monthlyData.length * 22)) * 100
+                            )
+                          : 0;
+
+                      return (
+                        <>
+                          <span className="text-green-600">
+                            Peak: {maxData.month} ({maxData.days} days)
+                          </span>
+                          <span className="text-red-600">
+                            Low: {minData.month} ({minData.days} days)
+                          </span>
+                          <span className="text-blue-600">
+                            YTD Attendance: {attendanceRate}%
+                          </span>
+                        </>
+                      );
+                    })()}
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={attendanceData?.monthlyAttendance || []}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis />
-                      <Tooltip />
-                      <Bar
-                        dataKey="days"
-                        fill="#40C8FD"
-                        radius={[4, 4, 0, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  {attendanceLoading ? (
+                    <div className="flex items-center justify-center h-[300px] animate-pulse">
+                      <div className="text-gray-500">Loading chart data...</div>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={attendanceData?.monthlyAttendance || []}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar
+                          dataKey="days"
+                          fill="#40C8FD"
+                          radius={[4, 4, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </CardContent>
               </Card>
 
-              {/* Today's Attendance */}
-              <TodayAttendance
-                attendanceData={todayAttendance}
-                isLoading={todayAttendanceLoading}
+              {/* Performance Summary */}
+              <PerformanceSummary
+                performanceData={performanceData?.performanceMetrics}
+                isLoading={performanceLoading}
               />
             </div>
 
@@ -1300,13 +1395,8 @@ const DashboardPage: NextPage = () => {
                     setDate={setCurrentDate}
                     calendarIconIsToday={false}
                   >
-                    <div className="p-4 border-b bg-white">
-                      <div className="flex items-center justify-between">
-                        <CalendarHeaderDate />
-                        <CalendarHeaderActionsMode />
-                      </div>
-                    </div>
-                    <CalendarBody hideTotalColumn={true} />
+                    {/* Complete Calendar Component with sticky headers */}
+                    <Calendar hideTotalColumn={true} />
 
                     {/* Custom event handler - listen to calendar context */}
                     <DashboardCalendarEventHandler

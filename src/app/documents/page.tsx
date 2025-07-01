@@ -1,6 +1,6 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0';
+import { useUser } from '@auth0/nextjs-auth0/client';
 import Layout from '@/components/layout/Layout';
 import {
   Card,
@@ -45,16 +45,7 @@ import {
   SelectValue,
 } from '@/components/ui/Select';
 import { FileDropzone } from '@/components/ui/FileDropzone/FileDropzone';
-
-interface Document {
-  id: string;
-  name: string;
-  createdDate: string;
-  createdTime: string;
-  size: string;
-  type: string;
-  fileIcon: string;
-}
+import { useDocuments, useUploadDocument, Document as ApiDocument } from '@/domains/document';
 
 interface DocumentUploadData {
   file: File;
@@ -219,78 +210,74 @@ const DocumentsPage: NextPage = () => {
   const { user, error: authError, isLoading: authLoading } = useUser();
   const { isLoading: userLoading } = useCurrentUser();
   // Auth check
-  const { shouldShowContent, isLoading: pageAuthLoading, error: pageAuthError } = usePageAuth({
+  const {
+    shouldShowContent,
+    isLoading: pageAuthLoading,
+    error: pageAuthError,
+  } = usePageAuth({
     requireAuth: true,
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
-  // Mock documents data - replace with actual API calls
-  const documents: Document[] = [
-    {
-      id: '1',
-      name: 'mongb',
-      createdDate: '04/16/2025',
-      createdTime: '5:01 PM',
-      size: '27KB',
-      type: 'PDF Document',
-      fileIcon: 'pdf',
-    },
-    {
-      id: '2',
-      name: 'mongodb_company_info',
-      createdDate: '04/16/2025',
-      createdTime: '4:34 PM',
-      size: '57KB',
-      type: 'PDF Document',
-      fileIcon: 'pdf',
-    },
-    {
-      id: '3',
-      name: 'mongodb_company_info',
-      createdDate: '04/16/2025',
-      createdTime: '4:33 PM',
-      size: '57KB',
-      type: 'PDF Document',
-      fileIcon: 'pdf',
-    },
-    {
-      id: '4',
-      name: 'mend',
-      createdDate: '04/15/2025',
-      createdTime: '3:45 PM',
-      size: '77KB',
-      type: 'PDF Document',
-      fileIcon: 'pdf',
-    },
-    {
-      id: '5',
-      name: 'lab7-cloud-computing',
-      createdDate: '04/14/2025',
-      createdTime: '4:40 PM',
-      size: '5MB',
-      type: 'PDF Document',
-      fileIcon: 'pdf',
-    },
-    {
-      id: '6',
-      name: 'final_practice_up_de-1',
-      createdDate: '04/14/2025',
-      createdTime: '4:29 PM',
-      size: '120KB',
-      type: 'DOCX Document',
-      fileIcon: 'docx',
-    },
-    {
-      id: '7',
-      name: 'final-project-proposal-te...',
-      createdDate: '04/14/2025',
-      createdTime: '4:29 PM',
-      size: '14KB',
-      type: 'DOCX Document',
-      fileIcon: 'docx',
-    },
-  ];
+  // Fetch documents from API
+  const { data: documentsData, isLoading: documentsLoading, error: documentsError } = useDocuments();
+  const uploadDocument = useUploadDocument();
+
+  // Helper function to format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  // Helper function to get file extension from filename
+  const getFileExtension = (filename: string): string => {
+    return filename.split('.').pop()?.toLowerCase() || '';
+  };
+
+  // Helper function to format date
+  const formatDate = (date: Date): { date: string; time: string } => {
+    const d = new Date(date);
+    return {
+      date: d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
+      time: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+    };
+  };
+
+  // Transform API documents to display format
+  const documents = documentsData?.documents?.map((doc: ApiDocument) => {
+    const { date, time } = formatDate(doc.createdAt);
+    const extension = getFileExtension(doc.fileName);
+    
+    return {
+      id: doc.id || doc._id || '',
+      name: doc.name,
+      createdDate: date,
+      createdTime: time,
+      size: formatFileSize(doc.fileSize),
+      type: `${extension.toUpperCase()} Document`,
+      fileIcon: extension,
+    };
+  }) || [];
+
+  // Handle document upload
+  const handleDocumentUpload = async (data: DocumentUploadData) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', data.file);
+      formData.append('name', data.documentName);
+      formData.append('description', data.description);
+      
+      await uploadDocument.mutateAsync(formData);
+      setIsUploadModalOpen(false);
+    } catch (error) {
+      console.error('Failed to upload document:', error);
+      // You might want to show a toast notification here
+    }
+  };
 
   const fileTypeButtons = [
     {
@@ -403,8 +390,11 @@ const DocumentsPage: NextPage = () => {
             <CardDescription>Please log in to access documents</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild fullWidth>
-              <a href="/auth/login">Log In</a>
+            <Button
+              fullWidth
+              onClick={() => (window.location.href = '/api/auth/login')}
+            >
+              Log In
             </Button>
           </CardContent>
         </Card>
@@ -439,15 +429,48 @@ const DocumentsPage: NextPage = () => {
   }
 
   if (pageAuthError || authError) {
-    const errorMessage = pageAuthError?.message || 
-                        (authError && typeof authError === 'object' && 'message' in authError ? 
-                         (authError as { message: string }).message : 
-                         'Authentication error');
+    const errorMessage =
+      pageAuthError?.message ||
+      (authError && typeof authError === 'object' && 'message' in authError
+        ? (authError as { message: string }).message
+        : 'Authentication error');
     return <AuthErrorState error={errorMessage} />;
   }
 
   if (!shouldShowContent) {
     return <UnauthenticatedState />;
+  }
+
+  // Handle loading state for documents
+  if (documentsLoading) {
+    return (
+      <Layout>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
+          </div>
+          <div className="flex justify-center items-center py-12">
+            <div className="text-gray-500">Loading documents...</div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Handle error state for documents
+  if (documentsError) {
+    return (
+      <Layout>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
+          </div>
+          <div className="flex justify-center items-center py-12">
+            <div className="text-red-500">Error loading documents: {documentsError.message}</div>
+          </div>
+        </div>
+      </Layout>
+    );
   }
 
   return (
@@ -602,7 +625,7 @@ const DocumentsPage: NextPage = () => {
         <DocumentUploadModal
           isOpen={isUploadModalOpen}
           onClose={() => setIsUploadModalOpen(false)}
-          onSubmit={() => {}}
+          onSubmit={handleDocumentUpload}
         />
       </div>
     </Layout>

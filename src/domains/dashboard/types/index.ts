@@ -71,8 +71,8 @@ export interface DashboardData {
 
 export interface DashboardParams {
   view: 'monthly' | 'weekly' | 'calendar';
-  startDate?: string;
-  endDate?: string;
+  startDate: string;
+  endDate: string;
   userId: string;
 }
 

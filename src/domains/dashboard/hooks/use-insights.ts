@@ -6,7 +6,10 @@ import {
 import { DashboardParams } from '../types';
 
 export const useInsights = (
-  params: Pick<DashboardParams, 'userId' | 'view'> | null,
+  params: Pick<
+    DashboardParams,
+    'userId' | 'view' | 'startDate' | 'endDate'
+  > | null,
   options?: {
     enabled?: boolean;
     staleTime?: number;
@@ -15,7 +18,12 @@ export const useInsights = (
 ) => {
   return useQuery({
     queryKey: params
-      ? dashboardQueryKeys.insights(params.userId, params.view)
+      ? dashboardQueryKeys.insights(
+          params.userId,
+          params.view,
+          params.startDate,
+          params.endDate
+        )
       : ['dashboard-insights-disabled'],
     queryFn: () => {
       if (!params) throw new Error('No params provided');
