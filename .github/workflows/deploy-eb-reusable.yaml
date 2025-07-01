@@ -9,6 +9,9 @@ on:
       eb_env_name:
         required: true
         type: string
+      eb_app_name:
+        required: true
+        type: string
       s3_key_prefix:
         required: true
         type: string
