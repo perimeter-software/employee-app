@@ -1,4 +1,7 @@
 name: Reusable Deploy to Elastic Beanstalk
+permissions:
+  id-token: write
+  contents: read
 
 on:
   workflow_call:
