@@ -18,6 +18,25 @@ on:
       s3_key_prefix:
         required: true
         type: string
+    secrets:
+      AUTH0_SECRET:
+        required: true
+      AUTH0_CLIENT_SECRET:
+        required: true
+      MONGODB_CONNECTION_STRING:
+        required: true
+      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:
+        required: true
+      GOOGLE_MAPS_API_KEY_TWO:
+        required: true
+      OPENAI_API_KEY:
+        required: true
+      ANTHROPIC_API_KEY:
+        required: true
+      SECRET_AUTH0_CLIENT_SECRET:
+        required: true
+      SECRET_AUTH0_SERVER_SECRET:
+        required: true
 
 
 jobs:
