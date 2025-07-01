@@ -7,20 +7,10 @@ on:
 
 jobs:
   deploy:
-    environment: production
     uses: ./.github/workflows/deploy-eb-reusable.yaml
     with:
       environment: production
       eb_env_name: employee-app-production
       eb_app_name: employee-app-production
       s3_key_prefix: employee-app/prod
-    secrets:
-      AUTH0_SECRET: ${{ secrets.AUTH0_SECRET }}
-      AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
-      MONGODB_CONNECTION_STRING: ${{ secrets.MONGODB_CONNECTION_STRING }}
-      NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
-      GOOGLE_MAPS_API_KEY_TWO: ${{ secrets.GOOGLE_MAPS_API_KEY_TWO }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      SECRET_AUTH0_CLIENT_SECRET: ${{ secrets.SECRET_AUTH0_CLIENT_SECRET }}
-      SECRET_AUTH0_SERVER_SECRET: ${{ secrets.SECRET_AUTH0_SERVER_SECRET }}
+    secrets: inherit
