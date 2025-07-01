@@ -8,6 +8,7 @@ on:
 jobs:
   deploy:
     uses: ./.github/workflows/deploy-eb-reusable.yaml
+    environment: production
     with:
       environment: production
       eb_env_name: employee-app-production
