@@ -28,7 +28,7 @@ export async function calculateDashboardStats(
   view: 'monthly' | 'weekly' | 'calendar',
   startDate?: string,
   endDate?: string,
-  weekStartsOn: 0 | 1 = 0
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0
 ): Promise<DashboardStats> {
   try {
     const user = await db
@@ -207,7 +207,7 @@ export async function getAttendanceData(
   view: 'monthly' | 'weekly' | 'calendar',
   startDate?: string,
   endDate?: string,
-  weekStartsOn: 0 | 1 = 0
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0
 ): Promise<{
   monthlyAttendance: MonthlyAttendanceData[];
   weeklyTrends: WeeklyTrendsData[];
@@ -342,7 +342,7 @@ export async function getPerformanceMetrics(
   userId: string,
   startDate?: string,
   endDate?: string,
-  weekStartsOn: 0 | 1 = 0
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0
 ): Promise<{
   performanceMetrics: PerformanceMetrics;
   shiftDetails: ShiftTableData[];
@@ -782,7 +782,7 @@ function getDateRange(
   view: 'monthly' | 'weekly' | 'calendar',
   startDate?: string,
   endDate?: string,
-  weekStartsOn: 0 | 1 = 0
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0
 ): { start: Date; end: Date } {
   if (startDate && endDate) {
     return {

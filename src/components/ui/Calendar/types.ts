@@ -7,7 +7,7 @@ export type CalendarProps = {
   setDate: (date: Date) => void;
   calendarIconIsToday?: boolean;
   hideTotalColumn?: boolean;
-  weekStartsOn?: 0 | 1; // 0 = Sunday, 1 = Monday
+  weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday, 1 = Monday, 2 = Tuesday, etc.
 };
 
 export type CalendarContextType = CalendarProps & {

@@ -20,7 +20,7 @@ export default function CalendarProvider({
   date: Date;
   setDate: (date: Date) => void;
   calendarIconIsToday: boolean;
-  weekStartsOn?: 0 | 1;
+  weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   children: React.ReactNode;
 }) {
   const [newEventDialogOpen, setNewEventDialogOpen] = useState(false);

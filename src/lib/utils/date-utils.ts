@@ -223,7 +223,9 @@ function getClientWeek(clientWeekStart: string): string[] {
  * @param workWeek - Company work week setting (e.g., "Mon-Sun", "Sun-Sat")
  * @returns weekStartsOn value (0 = Sunday, 1 = Monday)
  */
-export function getWeekStartsOnFromWorkWeek(workWeek?: string): 0 | 1 {
+export function getWeekStartsOnFromWorkWeek(
+  workWeek?: string
+): 0 | 1 | 2 | 3 | 4 | 5 | 6 {
   if (!workWeek) {
     return 0; // Default to Sunday
   }
@@ -231,13 +233,39 @@ export function getWeekStartsOnFromWorkWeek(workWeek?: string): 0 | 1 {
   // Parse the work week string to get the start day
   const startDay = workWeek.split('-')[0]?.trim().toLowerCase();
 
+  // Debug logging to see what's being parsed
+  console.log('Parsing work week:', workWeek, 'Start day:', startDay);
+
   switch (startDay) {
+    case 'sun':
+    case 'sunday':
+      return 0; // Sunday
     case 'mon':
     case 'monday':
       return 1; // Monday
-    case 'sun':
-    case 'sunday':
+    case 'tue':
+    case 'tues':
+    case 'tuesday':
+      return 2; // Tuesday
+    case 'wed':
+    case 'wednesday':
+      return 3; // Wednesday
+    case 'thu':
+    case 'thurs':
+    case 'thursday':
+      return 4; // Thursday
+    case 'fri':
+    case 'friday':
+      return 5; // Friday
+    case 'sat':
+    case 'saturday':
+      return 6; // Saturday
     default:
+      console.log(
+        'No match found for start day:',
+        startDay,
+        'Defaulting to Sunday (0)'
+      );
       return 0; // Sunday (default)
   }
 }
@@ -254,10 +282,12 @@ export function getDayNameFromWeekStartsOn(weekStartsOn: number): string {
 
 /**
  * Generate day names array based on weekStartsOn value
- * @param weekStartsOn - Week start day value (0 = Sunday, 1 = Monday)
+ * @param weekStartsOn - Week start day value (0 = Sunday, 1 = Monday, 2 = Tuesday, etc.)
  * @returns Array of day names starting from the specified day
  */
-export function getDayNamesFromWeekStartsOn(weekStartsOn: 0 | 1): string[] {
+export function getDayNamesFromWeekStartsOn(
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6
+): string[] {
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   return [...dayNames.slice(weekStartsOn), ...dayNames.slice(0, weekStartsOn)];
 }
