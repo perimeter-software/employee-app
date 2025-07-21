@@ -12,15 +12,16 @@ import { DashboardParams } from '../types';
  */
 export function generateDateRange(
   view: 'monthly' | 'weekly' | 'calendar',
-  baseDate: Date = new Date()
+  baseDate: Date = new Date(),
+  weekStartsOn: 0 | 1 = 0 // Default to Sunday, but can be overridden
 ): { startDate: string; endDate: string } {
   let startDate: Date;
   let endDate: Date;
 
   switch (view) {
     case 'weekly':
-      startDate = startOfWeek(baseDate, { weekStartsOn: 0 }); // Sunday
-      endDate = endOfWeek(baseDate, { weekStartsOn: 0 });
+      startDate = startOfWeek(baseDate, { weekStartsOn });
+      endDate = endOfWeek(baseDate, { weekStartsOn });
       break;
     case 'monthly':
       startDate = startOfMonth(baseDate);
@@ -28,12 +29,12 @@ export function generateDateRange(
       break;
     case 'calendar':
       // For calendar view, use current week
-      startDate = startOfWeek(baseDate, { weekStartsOn: 0 });
-      endDate = endOfWeek(baseDate, { weekStartsOn: 0 });
+      startDate = startOfWeek(baseDate, { weekStartsOn });
+      endDate = endOfWeek(baseDate, { weekStartsOn });
       break;
     default:
-      startDate = startOfWeek(baseDate, { weekStartsOn: 0 });
-      endDate = endOfWeek(baseDate, { weekStartsOn: 0 });
+      startDate = startOfWeek(baseDate, { weekStartsOn });
+      endDate = endOfWeek(baseDate, { weekStartsOn });
   }
 
   return {
@@ -48,9 +49,14 @@ export function generateDateRange(
 export function formatDashboardParams(
   userId: string,
   view: 'monthly' | 'weekly' | 'calendar',
-  customDate?: Date
+  customDate?: Date,
+  weekStartsOn: 0 | 1 = 0
 ): DashboardParams {
-  const { startDate, endDate } = generateDateRange(view, customDate);
+  const { startDate, endDate } = generateDateRange(
+    view,
+    customDate,
+    weekStartsOn
+  );
 
   return {
     userId,

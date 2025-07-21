@@ -17,6 +17,7 @@ import {
   TodayAttendanceData,
   InsightData,
 } from '../types';
+import { getDayNamesFromWeekStartsOn } from '@/lib/utils/date-utils';
 
 /**
  * Calculate dashboard statistics
@@ -26,15 +27,18 @@ export async function calculateDashboardStats(
   userId: string,
   view: 'monthly' | 'weekly' | 'calendar',
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  weekStartsOn: 0 | 1 = 0
 ): Promise<DashboardStats> {
   try {
     const user = await db
       .collection('users')
       .findOne({ _id: new ObjectId(userId) });
-    
+
     if (!user) {
-      console.warn(`⚠️ User ${userId} not found in database ${db.databaseName}, returning empty stats`);
+      console.warn(
+        `⚠️ User ${userId} not found in database ${db.databaseName}, returning empty stats`
+      );
       // Return empty stats instead of throwing error
       return {
         totalHours: 0,
@@ -51,7 +55,7 @@ export async function calculateDashboardStats(
     }
 
     const applicantId = user.applicantId;
-    const dateRange = getDateRange(view, startDate, endDate);
+    const dateRange = getDateRange(view, startDate, endDate, weekStartsOn);
 
     // Get punches in date range
     const punches = await db
@@ -77,13 +81,13 @@ export async function calculateDashboardStats(
     }, 0);
 
     const shiftsCompleted = punches.filter((punch) => punch.timeOut).length;
-    
+
     // Calculate geofence violations using proper distance calculation
     let geofenceViolations = 0;
     for (const punch of punches) {
       const punchData = {
         clockInCoordinates: punch.clockInCoordinates,
-        jobId: punch.jobId
+        jobId: punch.jobId,
       };
       const isOutside = await isPunchOutsideGeofence(db, punchData);
       if (isOutside) {
@@ -93,12 +97,14 @@ export async function calculateDashboardStats(
 
     // Calculate absences (scheduled shifts without punches)
     // Get jobs based on punch history since applicants field might not exist
-    const userJobIds = [...new Set(punches.map(punch => punch.jobId).filter(Boolean))];
-    
+    const userJobIds = [
+      ...new Set(punches.map((punch) => punch.jobId).filter(Boolean)),
+    ];
+
     const jobs = await db
       .collection('jobs')
       .find({
-        _id: { $in: userJobIds.map(id => new ObjectId(id)) }
+        _id: { $in: userJobIds.map((id) => new ObjectId(id)) },
       })
       .toArray();
 
@@ -118,11 +124,11 @@ export async function calculateDashboardStats(
     if (scheduledShifts === 0) {
       // Use unique punch days as a baseline
       const uniquePunchDays = new Set(
-        punches.map(punch => new Date(punch.timeIn).toDateString())
+        punches.map((punch) => new Date(punch.timeIn).toDateString())
       );
       scheduledShifts = uniquePunchDays.size;
     }
-    
+
     const absences = Math.max(0, scheduledShifts - shiftsCompleted);
 
     // Calculate weekly changes (compare with previous period)
@@ -155,13 +161,15 @@ export async function calculateDashboardStats(
         return sum;
       }, 0);
 
-      const prevShiftsCompleted = previousPunches.filter((punch) => punch.timeOut).length;
-      
+      const prevShiftsCompleted = previousPunches.filter(
+        (punch) => punch.timeOut
+      ).length;
+
       let prevGeofenceViolations = 0;
       for (const punch of previousPunches) {
         const punchData = {
           clockInCoordinates: punch.clockInCoordinates,
-          jobId: punch.jobId
+          jobId: punch.jobId,
         };
         const isOutside = await isPunchOutsideGeofence(db, punchData);
         if (isOutside) {
@@ -198,7 +206,8 @@ export async function getAttendanceData(
   userId: string,
   view: 'monthly' | 'weekly' | 'calendar',
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  weekStartsOn: 0 | 1 = 0
 ): Promise<{
   monthlyAttendance: MonthlyAttendanceData[];
   weeklyTrends: WeeklyTrendsData[];
@@ -208,7 +217,9 @@ export async function getAttendanceData(
       .collection('users')
       .findOne({ _id: new ObjectId(userId) });
     if (!user) {
-      console.warn(`⚠️ User ${userId} not found in database ${db.databaseName}, returning empty attendance data`);
+      console.warn(
+        `⚠️ User ${userId} not found in database ${db.databaseName}, returning empty attendance data`
+      );
       return {
         monthlyAttendance: [],
         weeklyTrends: [],
@@ -272,10 +283,11 @@ export async function getAttendanceData(
     }
 
     // Weekly trends data
-    const dateRange = getDateRange(view, startDate, endDate);
+    const dateRange = getDateRange(view, startDate, endDate, weekStartsOn);
     const weeklyTrends: WeeklyTrendsData[] = [];
 
-    const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    // Generate day names based on weekStartsOn
+    const adjustedDaysOfWeek = getDayNamesFromWeekStartsOn(weekStartsOn);
 
     for (let i = 0; i < 7; i++) {
       const dayStart = new Date(dateRange.start);
@@ -307,7 +319,7 @@ export async function getAttendanceData(
       }, 0);
 
       weeklyTrends.push({
-        day: daysOfWeek[i],
+        day: adjustedDaysOfWeek[i],
         hours: Math.round(dailyHours * 100) / 100,
       });
     }
@@ -329,7 +341,8 @@ export async function getPerformanceMetrics(
   db: Db,
   userId: string,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  weekStartsOn: 0 | 1 = 0
 ): Promise<{
   performanceMetrics: PerformanceMetrics;
   shiftDetails: ShiftTableData[];
@@ -339,7 +352,9 @@ export async function getPerformanceMetrics(
       .collection('users')
       .findOne({ _id: new ObjectId(userId) });
     if (!user) {
-      console.warn(`⚠️ User ${userId} not found in database ${db.databaseName}, returning empty performance metrics`);
+      console.warn(
+        `⚠️ User ${userId} not found in database ${db.databaseName}, returning empty performance metrics`
+      );
       return {
         performanceMetrics: {
           onTimeRate: 0,
@@ -353,7 +368,7 @@ export async function getPerformanceMetrics(
     }
 
     const applicantId = user.applicantId;
-    const dateRange = getDateRange('weekly', startDate, endDate);
+    const dateRange = getDateRange('weekly', startDate, endDate, weekStartsOn);
 
     // Get punches with job info
     const punches = await db
@@ -370,8 +385,8 @@ export async function getPerformanceMetrics(
         },
         {
           $addFields: {
-            jobObjectId: { $toObjectId: '$jobId' }
-          }
+            jobObjectId: { $toObjectId: '$jobId' },
+          },
         },
         {
           $lookup: {
@@ -412,7 +427,7 @@ export async function getPerformanceMetrics(
     for (const punch of punches) {
       const punchData = {
         clockInCoordinates: punch.clockInCoordinates,
-        jobId: punch.jobId
+        jobId: punch.jobId,
       };
       const isOutside = await isPunchOutsideGeofence(db, punchData);
       if (isOutside) {
@@ -430,8 +445,9 @@ export async function getPerformanceMetrics(
       if (job?.additionalConfig?.allowOvertime) {
         const start = new Date(punch.timeIn);
         const end = new Date(punch.timeOut);
-        const hoursWorked = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-        
+        const hoursWorked =
+          (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+
         // Standard work day is 8 hours, anything above is overtime
         const standardHours = 8;
         if (hoursWorked > standardHours) {
@@ -443,46 +459,53 @@ export async function getPerformanceMetrics(
     // Calculate on-time rate
     let onTimePunches = 0;
     let scheduledPunches = 0;
-    
+
     for (const punch of punches) {
       const job = punch.jobInfo;
       if (job?.shifts && job.shifts.length > 0) {
         const punchDate = new Date(punch.timeIn);
-        
+
         // Find matching shift for this punch
-        const matchingShift = job.shifts.find((shift: { startDate: string; endDate: string }) => {
-          const shiftStart = new Date(shift.startDate);
-          const shiftDate = shiftStart.toDateString();
-          return punchDate.toDateString() === shiftDate;
-        });
-        
+        const matchingShift = job.shifts.find(
+          (shift: { startDate: string; endDate: string }) => {
+            const shiftStart = new Date(shift.startDate);
+            const shiftDate = shiftStart.toDateString();
+            return punchDate.toDateString() === shiftDate;
+          }
+        );
+
         if (matchingShift) {
           scheduledPunches++;
           const scheduledStart = new Date(matchingShift.startDate);
           const actualStart = new Date(punch.timeIn);
-          
+
           // Consider on-time if within 15 minutes of scheduled start
-          const timeDifference = Math.abs(actualStart.getTime() - scheduledStart.getTime());
+          const timeDifference = Math.abs(
+            actualStart.getTime() - scheduledStart.getTime()
+          );
           const fifteenMinutes = 15 * 60 * 1000;
-          
+
           if (timeDifference <= fifteenMinutes) {
             onTimePunches++;
           }
         }
       }
     }
-    
-    const onTimeRate = scheduledPunches > 0 ? (onTimePunches / scheduledPunches) * 100 : 0;
+
+    const onTimeRate =
+      scheduledPunches > 0 ? (onTimePunches / scheduledPunches) * 100 : 0;
 
     // Calculate attendance rate
     // Get all jobs the user is assigned to in the date range
     // Since the job structure might not have applicants field, we'll get jobs based on punch history
-    const userJobIds = [...new Set(punches.map(punch => punch.jobId).filter(Boolean))];
-    
+    const userJobIds = [
+      ...new Set(punches.map((punch) => punch.jobId).filter(Boolean)),
+    ];
+
     const userJobs = await db
       .collection('jobs')
       .find({
-        _id: { $in: userJobIds.map(id => new ObjectId(id)) }
+        _id: { $in: userJobIds.map((id) => new ObjectId(id)) },
       })
       .toArray();
 
@@ -495,14 +518,16 @@ export async function getPerformanceMetrics(
           const shiftStart = new Date(shift.startDate);
           if (shiftStart >= dateRange.start && shiftStart <= dateRange.end) {
             totalScheduledShifts++;
-            
+
             // Check if user punched in for this shift
             const shiftDate = shiftStart.toDateString();
             const hasPunch = punches.some((punch) => {
               const punchDate = new Date(punch.timeIn).toDateString();
-              return punchDate === shiftDate && punch.jobId === job._id.toString();
+              return (
+                punchDate === shiftDate && punch.jobId === job._id.toString()
+              );
             });
-            
+
             if (hasPunch) {
               attendedShifts++;
             }
@@ -515,13 +540,16 @@ export async function getPerformanceMetrics(
     if (totalScheduledShifts === 0) {
       // Use unique punch days as scheduled shifts (fallback method)
       const uniquePunchDays = new Set(
-        punches.map(punch => new Date(punch.timeIn).toDateString())
+        punches.map((punch) => new Date(punch.timeIn).toDateString())
       );
       totalScheduledShifts = uniquePunchDays.size;
       attendedShifts = completedPunches.length > 0 ? uniquePunchDays.size : 0;
     }
 
-    const attendanceRate = totalScheduledShifts > 0 ? (attendedShifts / totalScheduledShifts) * 100 : 0;
+    const attendanceRate =
+      totalScheduledShifts > 0
+        ? (attendedShifts / totalScheduledShifts) * 100
+        : 0;
 
     const performanceMetrics: PerformanceMetrics = {
       onTimeRate: Math.round(onTimeRate * 100) / 100,
@@ -533,7 +561,7 @@ export async function getPerformanceMetrics(
 
     // Generate shift details
     const shiftDetails: ShiftTableData[] = [];
-    
+
     for (const punch of completedPunches) {
       const timeIn = new Date(punch.timeIn);
       const timeOut = punch.timeOut ? new Date(punch.timeOut) : null;
@@ -543,7 +571,7 @@ export async function getPerformanceMetrics(
 
       const punchData = {
         clockInCoordinates: punch.clockInCoordinates,
-        jobId: punch.jobId
+        jobId: punch.jobId,
       };
       const isOutsideGeofence = await isPunchOutsideGeofence(db, punchData);
 
@@ -753,7 +781,8 @@ export async function getTodayAttendanceData(
 function getDateRange(
   view: 'monthly' | 'weekly' | 'calendar',
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  weekStartsOn: 0 | 1 = 0
 ): { start: Date; end: Date } {
   if (startDate && endDate) {
     return {
@@ -774,8 +803,8 @@ function getDateRange(
     case 'calendar':
     default:
       return {
-        start: startOfWeek(now, { weekStartsOn: 0 }),
-        end: endOfWeek(now, { weekStartsOn: 0 }),
+        start: startOfWeek(now, { weekStartsOn }),
+        end: endOfWeek(now, { weekStartsOn }),
       };
   }
 }
@@ -808,13 +837,13 @@ function calculateDistanceInFeet(
  */
 async function isPunchOutsideGeofence(
   db: Db,
-  punch: { 
-    clockInCoordinates?: { 
-      latitude: number; 
-      longitude: number; 
-      accuracy: number; 
-    }; 
-    jobId?: string; 
+  punch: {
+    clockInCoordinates?: {
+      latitude: number;
+      longitude: number;
+      accuracy: number;
+    };
+    jobId?: string;
   },
   geofenceRadiusFeet: number = 100
 ): Promise<boolean> {

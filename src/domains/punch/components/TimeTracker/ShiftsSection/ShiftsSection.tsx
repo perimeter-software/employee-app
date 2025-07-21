@@ -16,6 +16,8 @@ import type { GignologyUser } from '@/domains/user/types';
 import type { PunchWithJobInfo } from '@/domains/punch/types';
 import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
 import { clsxm } from '@/lib/utils';
+import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
+import { startOfWeek, endOfWeek } from 'date-fns';
 
 interface ShiftsSectionProps {
   userData: GignologyUser;
@@ -164,15 +166,25 @@ export function ShiftsSection({
   onDateNavigation,
   currentViewType: parentViewType,
 }: ShiftsSectionProps) {
+  // Get company work week settings
+  const { weekStartsOn, isLoading: companyLoading } = useCompanyWorkWeek();
+
   // Use parent's view type if provided, otherwise use local state
   const [localViewType, setLocalViewType] = useState<'table' | 'calendar'>(
     'table'
   );
   const viewType = parentViewType || localViewType;
 
-  const [currentDate, setCurrentDate] = useState(new Date());
+  // Initialize currentDate to start of current week based on company work week settings
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return startOfWeek(now, { weekStartsOn: weekStartsOn || 0 });
+  });
   const [mode, setMode] = useState<Mode>('month');
-  const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+  const [calendarDate, setCalendarDate] = useState<Date>(() => {
+    const now = new Date();
+    return startOfWeek(now, { weekStartsOn: weekStartsOn || 0 });
+  });
 
   // Shift Details Modal State
   const [selectedShift, setSelectedShift] = useState<ShiftCalendarEvent | null>(
@@ -182,6 +194,16 @@ export function ShiftsSection({
 
   // Query client for data refresh
   const queryClient = useQueryClient();
+
+  // Update dates when company work week settings change
+  useEffect(() => {
+    if (!companyLoading && weekStartsOn !== undefined) {
+      const now = new Date();
+      const newStartDate = startOfWeek(now, { weekStartsOn });
+      setCurrentDate(newStartDate);
+      setCalendarDate(newStartDate);
+    }
+  }, [weekStartsOn, companyLoading]);
 
   // Handle view type change
   const handleViewTypeChange = (newViewType: 'table' | 'calendar') => {
@@ -217,31 +239,29 @@ export function ShiftsSection({
       };
     }
 
-    // Fallback: Use weekly range based on currentDate (shouldn't be needed now)
+    // Fallback: Use weekly range based on currentDate with company work week settings
     const baseDate = new Date(currentDate);
-    const startOfWeek = new Date(baseDate);
-    const day = startOfWeek.getDay();
-    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
-    startOfWeek.setDate(diff);
-    startOfWeek.setHours(0, 0, 0, 0);
+    const weekStart = startOfWeek(baseDate, {
+      weekStartsOn: weekStartsOn || 0,
+    });
+    weekStart.setHours(0, 0, 0, 0);
 
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
-    endOfWeek.setHours(23, 59, 59, 999);
+    const weekEnd = endOfWeek(baseDate, { weekStartsOn: weekStartsOn || 0 });
+    weekEnd.setHours(23, 59, 59, 999);
 
     return {
-      startDate: startOfWeek,
-      endDate: endOfWeek,
-      displayRange: `${startOfWeek.toLocaleDateString('en-US', {
+      startDate: weekStart,
+      endDate: weekEnd,
+      displayRange: `${weekStart.toLocaleDateString('en-US', {
         month: 'long',
         day: 'numeric',
-      })} - ${endOfWeek.toLocaleDateString('en-US', {
+      })} - ${weekEnd.toLocaleDateString('en-US', {
         month: 'long',
         day: 'numeric',
         year: 'numeric',
       })}`,
     };
-  }, [propDateRange, currentDate]);
+  }, [propDateRange, currentDate, weekStartsOn]);
 
   // Generate calendar events from shift data using the SAME date range
   const shiftEvents = useMemo(() => {
@@ -291,6 +311,7 @@ export function ShiftsSection({
         newDate.setMonth(newDate.getMonth() + direction);
       }
       setCurrentDate(newDate);
+      setCalendarDate(newDate);
     }
   };
 
@@ -376,30 +397,37 @@ export function ShiftsSection({
 
           {/* Content - Mobile Responsive */}
           {viewType === 'calendar' ? (
-            <CalendarProvider
-              events={events}
-              setEvents={setEvents}
-              mode={mode}
-              setMode={setMode}
-              date={calendarDate}
-              setDate={setCalendarDate}
-              calendarIconIsToday={false}
-            >
-              <div className="space-y-4">
-                {/* Complete Calendar Component with sticky headers */}
-                <div className="border rounded-lg bg-white shadow-sm min-h-[500px]">
-                  <Calendar />
-                </div>
+            companyLoading ? (
+              <div className="flex items-center justify-center min-h-[500px]">
+                <div className="text-gray-500">Loading calendar...</div>
               </div>
+            ) : (
+              <CalendarProvider
+                events={events}
+                setEvents={setEvents}
+                mode={mode}
+                setMode={setMode}
+                date={calendarDate}
+                setDate={setCalendarDate}
+                calendarIconIsToday={false}
+                weekStartsOn={weekStartsOn || 0}
+              >
+                <div className="space-y-4">
+                  {/* Complete Calendar Component with sticky headers */}
+                  <div className="border rounded-lg bg-white shadow-sm min-h-[500px]">
+                    <Calendar />
+                  </div>
+                </div>
 
-              <CalendarEventHandler
-                shiftEvents={shiftEvents}
-                onShiftClick={(shiftEvent) => {
-                  setSelectedShift(shiftEvent);
-                  setShowShiftModal(true);
-                }}
-              />
-            </CalendarProvider>
+                <CalendarEventHandler
+                  shiftEvents={shiftEvents}
+                  onShiftClick={(shiftEvent) => {
+                    setSelectedShift(shiftEvent);
+                    setShowShiftModal(true);
+                  }}
+                />
+              </CalendarProvider>
+            )
           ) : (
             /* Table view remains the same */
             <div className="overflow-x-auto -mx-3 sm:-mx-4 lg:-mx-6">

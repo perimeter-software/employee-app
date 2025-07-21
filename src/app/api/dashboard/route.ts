@@ -17,7 +17,13 @@ async function getDashboardDataHandler(request: AuthenticatedRequest) {
 
     const user = request.user;
 
-    const { view, startDate, endDate, userId: requestUserId } = body;
+    const {
+      view,
+      startDate,
+      endDate,
+      userId: requestUserId,
+      weekStartsOn = 0,
+    } = body;
 
     const userId = user._id || requestUserId;
 
@@ -37,9 +43,16 @@ async function getDashboardDataHandler(request: AuthenticatedRequest) {
     // Get all dashboard data in parallel
     const [stats, attendanceData, performanceData, insights, todayAttendance] =
       await Promise.all([
-        calculateDashboardStats(db, userId, view, startDate, endDate),
-        getAttendanceData(db, userId, view, startDate, endDate),
-        getPerformanceMetrics(db, userId, startDate, endDate),
+        calculateDashboardStats(
+          db,
+          userId,
+          view,
+          startDate,
+          endDate,
+          weekStartsOn
+        ),
+        getAttendanceData(db, userId, view, startDate, endDate, weekStartsOn),
+        getPerformanceMetrics(db, userId, startDate, endDate, weekStartsOn),
         generateInsights(db, userId, view),
         getTodayAttendanceData(db),
       ]);

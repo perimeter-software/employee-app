@@ -14,6 +14,7 @@ import { clsxm } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { CalendarEvent as CalendarEventType } from '../../../Calendar/types';
 import CalendarEvent from '../../CalendarEvent';
+import { getDayNamesFromWeekStartsOn } from '@/lib/utils/date-utils';
 
 export default function CalendarBodyMonth({
   hideTotalColumn = false,
@@ -22,11 +23,14 @@ export default function CalendarBodyMonth({
 }) {
   const { date, events, setDate, setMode } = useCalendarContext();
 
+  // Get weekStartsOn from context, default to Sunday
+  const { weekStartsOn = 0 } = useCalendarContext();
+
   // Same calculations as before...
   const monthStart = startOfMonth(date);
   const monthEnd = endOfMonth(date);
-  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 0 });
-  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
+  const calendarStart = startOfWeek(monthStart, { weekStartsOn });
+  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn });
   const calendarDays = eachDayOfInterval({
     start: calendarStart,
     end: calendarEnd,
@@ -72,7 +76,7 @@ export default function CalendarBodyMonth({
           'grid bg-appPrimary text-white sticky top-[135px] z-40 shadow-md border-b border-cyan-400'
         )}
       >
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+        {getDayNamesFromWeekStartsOn(weekStartsOn).map((day) => (
           <div
             key={day}
             className="py-2 lg:py-3 text-center text-xs lg:text-sm font-medium border-r border-cyan-400 last:border-r-0"

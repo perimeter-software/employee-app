@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { format, eachDayOfInterval } from 'date-fns';
+import { format, eachDayOfInterval, startOfWeek } from 'date-fns';
 import {
   Calendar as CalendarIcon,
   Plus,
@@ -38,6 +38,7 @@ import { TableColumn } from '@/components/ui/Table/types';
 import { clsxm } from '@/lib/utils';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
 
 // PTO Types
 type PTOType = 'vacation' | 'sick' | 'fmla' | 'sabbatical' | 'personal';
@@ -460,7 +461,15 @@ export default function PTODashboard() {
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [, setSelectedPTO] = useState<PTORequest | null>(null);
   const [ptoRequests, setPtoRequests] = useState<PTORequest[]>(ptoData);
-  const [currentDate, setCurrentDate] = useState(new Date());
+
+  // Get company work week settings for PTO
+  const { weekStartsOn, isLoading: workWeekLoading } = useCompanyWorkWeek();
+
+  // Initialize currentDate to start of current week based on company work week settings
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return startOfWeek(now, { weekStartsOn: weekStartsOn || 0 });
+  });
   const [mode, setMode] = useState<Mode>('month');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
 
@@ -474,6 +483,15 @@ export default function PTODashboard() {
       router.push('/dashboard');
     }
   }, [companyLoading, companyError, showPaidTimeOff, router]);
+
+  // Update currentDate when company work week settings change
+  useEffect(() => {
+    if (!workWeekLoading && weekStartsOn !== undefined) {
+      const now = new Date();
+      const newStartDate = startOfWeek(now, { weekStartsOn });
+      setCurrentDate(newStartDate);
+    }
+  }, [weekStartsOn, workWeekLoading]);
 
   // Calendar events from PTO data
   const calendarEvents = useMemo(() => {
@@ -793,24 +811,31 @@ export default function PTODashboard() {
                 </h2>
               </div>
 
-              <div className="border rounded-lg overflow-x-auto">
-                <CalendarProvider
-                  events={events}
-                  setEvents={setEvents}
-                  mode={mode}
-                  setMode={setMode}
-                  date={currentDate}
-                  setDate={setCurrentDate}
-                  calendarIconIsToday={false}
-                >
-                  {/* Complete Calendar Component with sticky headers */}
-                  <Calendar hideTotalColumn={true} />
-                  <CalendarEventHandler
-                    ptoRequests={ptoRequests}
-                    onEventClick={setSelectedPTO}
-                  />
-                </CalendarProvider>
-              </div>
+              {workWeekLoading ? (
+                <div className="flex items-center justify-center min-h-[500px]">
+                  <div className="text-gray-500">Loading calendar...</div>
+                </div>
+              ) : (
+                <div className="border rounded-lg overflow-x-auto">
+                  <CalendarProvider
+                    events={events}
+                    setEvents={setEvents}
+                    mode={mode}
+                    setMode={setMode}
+                    date={currentDate}
+                    setDate={setCurrentDate}
+                    calendarIconIsToday={false}
+                    weekStartsOn={weekStartsOn || 0}
+                  >
+                    {/* Complete Calendar Component with sticky headers */}
+                    <Calendar hideTotalColumn={true} />
+                    <CalendarEventHandler
+                      ptoRequests={ptoRequests}
+                      onEventClick={setSelectedPTO}
+                    />
+                  </CalendarProvider>
+                </div>
+              )}
 
               {/* Legend */}
               <div className="flex flex-wrap gap-2 sm:gap-4 mt-4">
