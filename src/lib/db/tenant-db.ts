@@ -22,17 +22,42 @@ export async function getCurrentTenantDbName(
     }
 
     // Use the dbName from the tenant data if available
-    // Remove the incorrect URL parsing logic that was causing "jobs" to be used
-    const dbName = tenantData.tenant.dbName || 'stadiumpeople';
+    if (tenantData.tenant.dbName) {
+      console.log(
+        `🎯 Using database "${tenantData.tenant.dbName}" from tenant data for tenant: ${tenantData.tenant.url} (user: ${userEmail})`
+      );
+      console.log(`📊 Tenant data:`, {
+        url: tenantData.tenant.url,
+        dbName: tenantData.tenant.dbName,
+        clientName: tenantData.tenant.clientName,
+        type: tenantData.tenant.type,
+      });
+      return tenantData.tenant.dbName;
+    }
+
+    // Fallback logic for when dbName is not available
+    const tenantUrl = tenantData.tenant.url;
+    let dbName = 'stadiumpeople'; // Default fallback
+
+    if (tenantUrl) {
+      // Special case: if the domain is jobs.stadiumpeople.com, use stadiumpeople
+      if (tenantUrl === 'jobs.stadiumpeople.com') {
+        dbName = 'stadiumpeople';
+      } else {
+        // Otherwise use the first part of the URL
+        dbName = tenantUrl.split('.')[0] || 'stadiumpeople';
+      }
+    }
 
     console.log(
-      `🎯 Using database "${dbName}" for tenant: ${tenantData.tenant.url} (user: ${userEmail})`
+      `🎯 Using database "${dbName}" (fallback logic) for tenant: ${tenantUrl} (user: ${userEmail})`
     );
     console.log(`📊 Tenant data:`, {
       url: tenantData.tenant.url,
       dbName: tenantData.tenant.dbName,
       clientName: tenantData.tenant.clientName,
       type: tenantData.tenant.type,
+      fallbackUsed: true,
     });
     return dbName;
   } catch (error) {
