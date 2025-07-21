@@ -8,7 +8,7 @@ import { DashboardParams } from '../types';
 export const useAttendanceData = (
   params: Pick<
     DashboardParams,
-    'userId' | 'view' | 'startDate' | 'endDate'
+    'userId' | 'view' | 'startDate' | 'endDate' | 'weekStartsOn'
   > | null,
   options?: {
     enabled?: boolean;

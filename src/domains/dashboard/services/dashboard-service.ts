@@ -96,7 +96,10 @@ export class DashboardApiService {
    * Get dashboard statistics
    */
   static async getDashboardStats(
-    params: Pick<DashboardParams, 'userId' | 'view' | 'startDate' | 'endDate'>
+    params: Pick<
+      DashboardParams,
+      'userId' | 'view' | 'startDate' | 'endDate' | 'weekStartsOn'
+    >
   ): Promise<DashboardData['stats']> {
     try {
       const response = await baseInstance.post<DashboardData['stats']>(
@@ -120,7 +123,10 @@ export class DashboardApiService {
    * Get attendance data for charts
    */
   static async getAttendanceData(
-    params: Pick<DashboardParams, 'userId' | 'view' | 'startDate' | 'endDate'>
+    params: Pick<
+      DashboardParams,
+      'userId' | 'view' | 'startDate' | 'endDate' | 'weekStartsOn'
+    >
   ): Promise<{
     monthlyAttendance: DashboardData['monthlyAttendance'];
     weeklyTrends: DashboardData['weeklyTrends'];
@@ -147,7 +153,10 @@ export class DashboardApiService {
    * Get performance metrics
    */
   static async getPerformanceMetrics(
-    params: Pick<DashboardParams, 'userId' | 'startDate' | 'endDate'>
+    params: Pick<
+      DashboardParams,
+      'userId' | 'startDate' | 'endDate' | 'weekStartsOn'
+    >
   ): Promise<{
     performanceMetrics: DashboardData['performanceMetrics'];
     shiftDetails: DashboardData['shiftDetails'];

@@ -7,6 +7,7 @@ export type CalendarProps = {
   setDate: (date: Date) => void;
   calendarIconIsToday?: boolean;
   hideTotalColumn?: boolean;
+  weekStartsOn?: 0 | 1; // 0 = Sunday, 1 = Monday
 };
 
 export type CalendarContextType = CalendarProps & {
@@ -25,5 +26,5 @@ export type CalendarEvent = {
   end: Date;
 };
 
-export const calendarModes = ["day", "week", "month"] as const;
+export const calendarModes = ['day', 'week', 'month'] as const;
 export type Mode = (typeof calendarModes)[number];
