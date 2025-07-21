@@ -412,6 +412,7 @@ export async function checkUserMasterEmail(
           type: tenantObject?.type || 'Venue',
           lastLoginDate: result.tenants[0].lastLoginDate,
           tenantLogo: tenantObject?.tenantLogo,
+          dbName: tenantObject?.dbName,
         },
         message: 'Email exists!',
       };
