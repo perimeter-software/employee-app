@@ -13,7 +13,7 @@ import { DashboardParams } from '../types';
 export function generateDateRange(
   view: 'monthly' | 'weekly' | 'calendar',
   baseDate: Date = new Date(),
-  weekStartsOn: 0 | 1 = 0 // Default to Sunday, but can be overridden
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0 // Default to Sunday, but can be overridden
 ): { startDate: string; endDate: string } {
   let startDate: Date;
   let endDate: Date;
@@ -50,7 +50,7 @@ export function formatDashboardParams(
   userId: string,
   view: 'monthly' | 'weekly' | 'calendar',
   customDate?: Date,
-  weekStartsOn: 0 | 1 = 0
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0
 ): DashboardParams {
   const { startDate, endDate } = generateDateRange(
     view,
