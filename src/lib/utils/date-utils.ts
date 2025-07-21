@@ -11,19 +11,19 @@ import {
   eachDayOfInterval,
   startOfMonth,
   endOfMonth,
-} from "date-fns";
-import { toZonedTime } from "date-fns-tz";
+} from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 
-export const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export const WEEK_START_DAY = "Sun";
+export const WEEK_START_DAY = 'Sun';
 
 export function getUserTimeZone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
   } catch (error) {
-    console.error("Error getting user time zone:", error);
-    return "UTC";
+    console.error('Error getting user time zone:', error);
+    return 'UTC';
   }
 }
 
@@ -49,21 +49,21 @@ export function toUserTimezone(date: Date): Date {
 
 export function formatDate(
   date: Date,
-  formatString: string = "yyyy-MM-dd"
+  formatString: string = 'yyyy-MM-dd'
 ): string {
   const userTimeZone = getUserTimeZone();
   try {
     if (!isValidDate(date)) {
-      throw new Error("Invalid date object passed to formatDate");
+      throw new Error('Invalid date object passed to formatDate');
     }
     return format(toZonedTime(date, userTimeZone), formatString);
   } catch (error) {
-    console.error("Error in formatDate:", error);
-    return "Invalid date";
+    console.error('Error in formatDate:', error);
+    return 'Invalid date';
   }
 }
 
-export function formatTime(date: Date, formatString: string = "HH:mm"): string {
+export function formatTime(date: Date, formatString: string = 'HH:mm'): string {
   return formatDate(date, formatString);
 }
 
@@ -142,23 +142,23 @@ export function validatePunchTimes(
 
   // Validate clock-in
   if (!timeIn || !dateIn) {
-    errors.push("Clock-in date and time are required.");
+    errors.push('Clock-in date and time are required.');
   } else {
     const clockInDate = toZonedTime(
       parseISO(`${dateIn}T${timeIn}`),
       userTimeZone
     );
     if (!isValid(clockInDate)) {
-      errors.push("Invalid clock-in date or time.");
+      errors.push('Invalid clock-in date or time.');
     } else if (isAfter(clockInDate, now)) {
-      errors.push("Clock-in time cannot be in the future.");
+      errors.push('Clock-in time cannot be in the future.');
     }
   }
 
   // Validate clock-out if provided or required
   if (!isMissingClockOut && (timeOut || dateOut)) {
     if (!timeOut || !dateOut) {
-      errors.push("Both clock-out date and time must be provided.");
+      errors.push('Both clock-out date and time must be provided.');
     } else {
       const clockOutDate = toZonedTime(
         parseISO(`${dateOut}T${timeOut}`),
@@ -170,10 +170,10 @@ export function validatePunchTimes(
       );
 
       if (!isValid(clockOutDate)) {
-        errors.push("Invalid clock-out date or time.");
+        errors.push('Invalid clock-out date or time.');
       } else {
         if (isBefore(clockOutDate, clockInDate)) {
-          errors.push("Clock-out time must be after clock-in time.");
+          errors.push('Clock-out time must be after clock-in time.');
         }
       }
     }
@@ -186,7 +186,7 @@ export function validatePunchTimes(
 }
 
 export function giveUserFriendlyTime(timestamp: Date | string) {
-  if (typeof timestamp === "string") {
+  if (typeof timestamp === 'string') {
     timestamp = new Date(timestamp);
   }
 
@@ -194,18 +194,18 @@ export function giveUserFriendlyTime(timestamp: Date | string) {
   const diff = now.getTime() - timestamp.getTime();
 
   if (diff < 60 * 1000) {
-    return "Just now";
+    return 'Just now';
   } else if (diff < 60 * 60 * 1000) {
     return `${Math.floor(diff / (60 * 1000))}m ago`;
   } else if (diff < 24 * 60 * 60 * 1000) {
     return `${Math.floor(diff / (60 * 60 * 1000))}h ago`;
   } else if (diff > 24 * 60 * 60 * 1000 && diff < 48 * 60 * 60 * 1000) {
-    return "Yesterday at " + formatTime(timestamp, "h:mm a");
+    return 'Yesterday at ' + formatTime(timestamp, 'h:mm a');
   } else {
     return (
-      formatDate(timestamp, "EEEE, MMMM d") +
-      " at " +
-      formatTime(timestamp, "h:mm a zzz")
+      formatDate(timestamp, 'EEEE, MMMM d') +
+      ' at ' +
+      formatTime(timestamp, 'h:mm a zzz')
     );
   }
 }
@@ -213,14 +213,58 @@ export function giveUserFriendlyTime(timestamp: Date | string) {
 function getClientWeek(clientWeekStart: string): string[] {
   const startIndex = days.indexOf(clientWeekStart);
   if (startIndex === -1) {
-    throw new Error("Invalid client week start day");
+    throw new Error('Invalid client week start day');
   }
   return [...days.slice(startIndex), ...days.slice(0, startIndex)];
 }
 
+/**
+ * Parse company work week setting and return weekStartsOn value for date-fns
+ * @param workWeek - Company work week setting (e.g., "Mon-Sun", "Sun-Sat")
+ * @returns weekStartsOn value (0 = Sunday, 1 = Monday)
+ */
+export function getWeekStartsOnFromWorkWeek(workWeek?: string): 0 | 1 {
+  if (!workWeek) {
+    return 0; // Default to Sunday
+  }
+
+  // Parse the work week string to get the start day
+  const startDay = workWeek.split('-')[0]?.trim().toLowerCase();
+
+  switch (startDay) {
+    case 'mon':
+    case 'monday':
+      return 1; // Monday
+    case 'sun':
+    case 'sunday':
+    default:
+      return 0; // Sunday (default)
+  }
+}
+
+/**
+ * Get the day name from weekStartsOn value
+ * @param weekStartsOn - Week start day value (0-6)
+ * @returns Day name (e.g., "Sun", "Mon")
+ */
+export function getDayNameFromWeekStartsOn(weekStartsOn: number): string {
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return dayNames[weekStartsOn] || 'Sun';
+}
+
+/**
+ * Generate day names array based on weekStartsOn value
+ * @param weekStartsOn - Week start day value (0 = Sunday, 1 = Monday)
+ * @returns Array of day names starting from the specified day
+ */
+export function getDayNamesFromWeekStartsOn(weekStartsOn: 0 | 1): string[] {
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return [...dayNames.slice(weekStartsOn), ...dayNames.slice(0, weekStartsOn)];
+}
+
 // TODO check this when timeoff is getting implemented (is it needed?)
 export function giveDayOfWeek(day: number): string {
-  return days[day % 7] || "Sunday";
+  return days[day % 7] || 'Sunday';
 }
 
 // TODO check this when timeoff is getting implemented (is it needed?)
@@ -236,17 +280,17 @@ export function datesMatch(dateOne: string, dateTwo: string): boolean {
 
 // TODO check this when timeoff is getting implemented (is it needed?)
 export function giveShortDateString(date: string): string {
-  return formatDate(parseISO(date), "MM/dd/yy");
+  return formatDate(parseISO(date), 'MM/dd/yy');
 }
 
 export function dateToTimeString(dateString: string | null): string {
-  if (!dateString) return "";
+  if (!dateString) return '';
   return formatTime(parseUTCDate(dateString));
 }
 
 export function formatTimeForInput(dateString: string | null): string {
-  if (!dateString) return "";
-  return formatTime(parseUTCDate(dateString), "HH:mm");
+  if (!dateString) return '';
+  return formatTime(parseUTCDate(dateString), 'HH:mm');
 }
 
 // TODO keep this in the back of the mind (we may need to be explicitly convert before saving)
@@ -254,11 +298,11 @@ export function formatDateTimeForServer(
   timeString: string,
   baseDateString: string | null
 ): string {
-  if (!timeString || !baseDateString) return "";
+  if (!timeString || !baseDateString) return '';
 
   const userTimeZone = getUserTimeZone();
   const baseDate = parseISO(baseDateString);
-  const [hours, minutes] = timeString.split(":").map(Number);
+  const [hours, minutes] = timeString.split(':').map(Number);
 
   let zonedDate = toZonedTime(baseDate, userTimeZone);
   zonedDate.setHours(hours, minutes, 0, 0);

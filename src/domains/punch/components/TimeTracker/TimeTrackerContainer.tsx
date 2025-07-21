@@ -6,7 +6,9 @@ import { useAllOpenPunches, useFindPunches } from '@/domains/punch/hooks';
 import { ErrorState, LoadingState } from './States';
 import { TimerCard } from './TimerCard';
 import { ShiftsSection } from './ShiftsSection';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
+import { startOfWeek, endOfWeek } from 'date-fns';
 
 export const TimeTrackerContainer = () => {
   const { user: auth0User, isLoading: auth0Loading } = useUser();
@@ -16,37 +18,47 @@ export const TimeTrackerContainer = () => {
     error: userError,
   } = useUserApplicantJob(auth0User?.email || '');
 
+  // Get company work week settings
+  const { weekStartsOn, isLoading: companyLoading } = useCompanyWorkWeek();
+
   // Track the current view type to adjust date range
   const [currentViewType, setCurrentViewType] = useState<'table' | 'calendar'>(
     'table'
   );
 
   // Track the base date for navigation (for table view week navigation)
-  const [baseDate, setBaseDate] = useState(new Date());
+  // Initialize to start of current week based on company work week settings
+  const [baseDate, setBaseDate] = useState(() => {
+    const now = new Date();
+    return startOfWeek(now, { weekStartsOn: weekStartsOn || 0 });
+  });
 
   // Still need open punches for the timer card
   const { data: openPunches } = useAllOpenPunches(userData?._id || '');
 
+  // Update baseDate when company work week settings change
+  useEffect(() => {
+    if (!companyLoading && weekStartsOn !== undefined) {
+      const now = new Date();
+      const newStartDate = startOfWeek(now, { weekStartsOn });
+      setBaseDate(newStartDate);
+    }
+  }, [weekStartsOn, companyLoading]);
+
   const dateRange = useMemo(() => {
     if (currentViewType === 'table') {
-      // Table view: Current week (Sunday to Saturday) based on baseDate
-      const startOfWeek = new Date(baseDate);
+      // Table view: Current week based on company work week settings
+      const weekStart = startOfWeek(baseDate, {
+        weekStartsOn: weekStartsOn || 0,
+      });
+      weekStart.setHours(0, 0, 0, 0);
 
-      // Get the day of the week (0 = Sunday, 1 = Monday, etc.)
-      const day = startOfWeek.getDay();
-
-      // Calculate days to subtract to get to Sunday
-      // This ensures we always get the Sunday of the current week
-      startOfWeek.setDate(baseDate.getDate() - day);
-      startOfWeek.setHours(0, 0, 0, 0);
-
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6); // Saturday
-      endOfWeek.setHours(23, 59, 59, 999);
+      const weekEnd = endOfWeek(baseDate, { weekStartsOn: weekStartsOn || 0 });
+      weekEnd.setHours(23, 59, 59, 999);
 
       return {
-        startDate: startOfWeek.toISOString(),
-        endDate: endOfWeek.toISOString(),
+        startDate: weekStart.toISOString(),
+        endDate: weekEnd.toISOString(),
       };
     } else {
       // Calendar view: 2 month range around current date for better calendar display

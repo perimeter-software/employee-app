@@ -1,6 +1,6 @@
-import { CalendarContext } from "./CalendarContext";
-import { CalendarEvent, Mode } from "./types";
-import { useState } from "react";
+import { CalendarContext } from './CalendarContext';
+import { CalendarEvent, Mode } from './types';
+import { useState } from 'react';
 
 export default function CalendarProvider({
   events,
@@ -10,6 +10,7 @@ export default function CalendarProvider({
   date,
   setDate,
   calendarIconIsToday = true,
+  weekStartsOn = 0,
   children,
 }: {
   events: CalendarEvent[];
@@ -19,6 +20,7 @@ export default function CalendarProvider({
   date: Date;
   setDate: (date: Date) => void;
   calendarIconIsToday: boolean;
+  weekStartsOn?: 0 | 1;
   children: React.ReactNode;
 }) {
   const [newEventDialogOpen, setNewEventDialogOpen] = useState(false);
@@ -37,6 +39,7 @@ export default function CalendarProvider({
         date,
         setDate,
         calendarIconIsToday,
+        weekStartsOn,
         newEventDialogOpen,
         setNewEventDialogOpen,
         manageEventDialogOpen,

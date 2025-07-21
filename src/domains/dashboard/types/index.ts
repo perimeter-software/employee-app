@@ -74,6 +74,7 @@ export interface DashboardParams {
   startDate: string;
   endDate: string;
   userId: string;
+  weekStartsOn?: 0 | 1;
 }
 
 export interface DashboardResponse {

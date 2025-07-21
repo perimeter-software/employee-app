@@ -52,6 +52,7 @@ import {
 } from '@/components/shared/PageProtection';
 import { useCurrentUser } from '@/domains/user';
 import { useUserApplicantJob } from '@/domains/job/hooks';
+import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
 import { Table } from '@/components/ui/Table';
 import { TableColumn } from '@/components/ui/Table/types';
 import { clsxm } from '@/lib/utils';
@@ -752,6 +753,10 @@ const DashboardPage: NextPage = () => {
   const { data: userData, isLoading: userLoading } = useUserApplicantJob(
     user?.email || ''
   );
+
+  // Get company work week settings
+  const { weekStartsOn, isLoading: companyLoading } = useCompanyWorkWeek();
+
   // Auth check
   const {
     shouldShowContent,
@@ -764,7 +769,13 @@ const DashboardPage: NextPage = () => {
   const [dashboardView, setDashboardView] = useState<
     'monthly' | 'weekly' | 'calendar'
   >('weekly');
-  const [currentDate, setCurrentDate] = useState(new Date(2025, 5, 16)); // June 16, 2025
+
+  // Initialize currentDate to start of current week based on company work week settings
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return startOfWeek(now, { weekStartsOn: weekStartsOn || 0 });
+  });
+
   const [mode, setMode] = useState<Mode>('month');
 
   // Shift Details Modal State for dashboard
@@ -844,13 +855,23 @@ const DashboardPage: NextPage = () => {
     setSelectedShift(null);
   };
 
+  // Update currentDate when company work week settings change
+  useEffect(() => {
+    if (!companyLoading && weekStartsOn !== undefined) {
+      const now = new Date();
+      const newStartDate = startOfWeek(now, { weekStartsOn });
+      setCurrentDate(newStartDate);
+    }
+  }, [weekStartsOn, companyLoading]);
+
   // Prepare dashboard parameters
   const dashboardParams = useMemo(() => {
     if (!currentUser?._id) return null;
     const params = formatDashboardParams(
       currentUser._id,
       dashboardView,
-      currentDate
+      currentDate,
+      weekStartsOn || 0
     );
 
     // Debug log to verify parameters are changing
@@ -859,10 +880,11 @@ const DashboardPage: NextPage = () => {
       currentDate: format(currentDate, 'yyyy-MM-dd'),
       startDate: params.startDate,
       endDate: params.endDate,
+      weekStartsOn,
     });
 
     return params;
-  }, [currentUser?._id, dashboardView, currentDate]);
+  }, [currentUser?._id, dashboardView, currentDate, weekStartsOn]);
 
   // Fetch dashboard data using our hooks
   const { data: statsData, isLoading: statsLoading } = useDashboardStats(
@@ -988,19 +1010,19 @@ const DashboardPage: NextPage = () => {
                   : dashboardView === 'weekly'
                     ? (() => {
                         const weekStart = startOfWeek(currentDate, {
-                          weekStartsOn: 0,
+                          weekStartsOn: weekStartsOn || 0,
                         });
                         const weekEnd = endOfWeek(currentDate, {
-                          weekStartsOn: 0,
+                          weekStartsOn: weekStartsOn || 0,
                         });
                         return `${format(weekStart, 'MMM dd')} - ${format(weekEnd, 'MMM dd, yyyy')}`;
                       })()
                     : (() => {
                         const weekStart = startOfWeek(currentDate, {
-                          weekStartsOn: 0,
+                          weekStartsOn: weekStartsOn || 0,
                         });
                         const weekEnd = endOfWeek(currentDate, {
-                          weekStartsOn: 0,
+                          weekStartsOn: weekStartsOn || 0,
                         });
                         return `${format(weekStart, 'MMM dd')} - ${format(weekEnd, 'MMM dd, yyyy')}`;
                       })()}
@@ -1204,10 +1226,10 @@ const DashboardPage: NextPage = () => {
                       <CardDescription>
                         {(() => {
                           const weekStart = startOfWeek(currentDate, {
-                            weekStartsOn: 0,
+                            weekStartsOn: weekStartsOn || 0,
                           });
                           const weekEnd = endOfWeek(currentDate, {
-                            weekStartsOn: 0,
+                            weekStartsOn: weekStartsOn || 0,
                           });
                           return `Week of ${format(weekStart, 'MMM dd')} - ${format(weekEnd, 'MMM dd, yyyy')}`;
                         })()}
@@ -1385,26 +1407,33 @@ const DashboardPage: NextPage = () => {
                 <CardTitle className="text-lg">Weekly Shift Details</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="border rounded-lg overflow-hidden">
-                  <CalendarProvider
-                    events={events}
-                    setEvents={setEvents}
-                    mode={mode}
-                    setMode={setMode}
-                    date={currentDate}
-                    setDate={setCurrentDate}
-                    calendarIconIsToday={false}
-                  >
-                    {/* Complete Calendar Component with sticky headers */}
-                    <Calendar hideTotalColumn={true} />
+                {companyLoading ? (
+                  <div className="flex items-center justify-center min-h-[500px]">
+                    <div className="text-gray-500">Loading calendar...</div>
+                  </div>
+                ) : (
+                  <div className="border rounded-lg overflow-hidden">
+                    <CalendarProvider
+                      events={events}
+                      setEvents={setEvents}
+                      mode={mode}
+                      setMode={setMode}
+                      date={currentDate}
+                      setDate={setCurrentDate}
+                      calendarIconIsToday={false}
+                      weekStartsOn={weekStartsOn || 0}
+                    >
+                      {/* Complete Calendar Component with sticky headers */}
+                      <Calendar hideTotalColumn={true} />
 
-                    {/* Custom event handler - listen to calendar context */}
-                    <DashboardCalendarEventHandler
-                      shiftEvents={shiftEvents}
-                      onShiftClick={handleShiftClick}
-                    />
-                  </CalendarProvider>
-                </div>
+                      {/* Custom event handler - listen to calendar context */}
+                      <DashboardCalendarEventHandler
+                        shiftEvents={shiftEvents}
+                        onShiftClick={handleShiftClick}
+                      />
+                    </CalendarProvider>
+                  </div>
+                )}
 
                 {/* Calendar Legend */}
                 <div className="flex items-center gap-4 mt-4 text-xs">

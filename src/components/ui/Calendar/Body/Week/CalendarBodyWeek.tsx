@@ -3,16 +3,17 @@ import { useCalendarContext } from '../../../Calendar';
 import { startOfWeek, addDays, format } from 'date-fns';
 import CalendarBodyDayContent from '../Day/CalendarBodyDayContent';
 import { useCalendarAutoScroll } from '../../hooks';
+import { getDayNamesFromWeekStartsOn } from '@/lib/utils/date-utils';
 
 // Time hours array
 const hours = Array.from({ length: 24 }, (_, i) => i);
 
 export default function CalendarBodyWeek() {
-  const { date, events } = useCalendarContext();
+  const { date, events, weekStartsOn = 0 } = useCalendarContext();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Start week on Sunday (weekStartsOn: 0)
-  const weekStart = startOfWeek(date, { weekStartsOn: 0 });
+  // Start week based on company work week settings
+  const weekStart = startOfWeek(date, { weekStartsOn });
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   // Use the auto-scroll hook for week view
@@ -33,7 +34,8 @@ export default function CalendarBodyWeek() {
         {/* Day headers */}
         <div className="flex flex-1 overflow-x-auto">
           {weekDays.map((day, index) => {
-            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            // Generate day names based on weekStartsOn
+            const adjustedDayNames = getDayNamesFromWeekStartsOn(weekStartsOn);
 
             return (
               <div
@@ -43,9 +45,11 @@ export default function CalendarBodyWeek() {
                 <div className="text-xs lg:text-sm font-medium">
                   {/* Show abbreviated day names on very small screens */}
                   <span className="sm:hidden">
-                    {dayNames[index].slice(0, 2)}
+                    {adjustedDayNames[index].slice(0, 2)}
                   </span>
-                  <span className="hidden sm:inline">{dayNames[index]}</span>
+                  <span className="hidden sm:inline">
+                    {adjustedDayNames[index]}
+                  </span>
                 </div>
                 <div className="text-xs lg:text-sm">{format(day, 'dd')}</div>
               </div>

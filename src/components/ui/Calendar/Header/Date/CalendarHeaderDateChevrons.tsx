@@ -1,6 +1,6 @@
-import { Button } from "@/components/ui/Button";
-import { useCalendarContext } from "../../../Calendar";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from '@/components/ui/Button';
+import { useCalendarContext } from '../../../Calendar';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   format,
   addDays,
@@ -11,20 +11,20 @@ import {
   subWeeks,
   startOfWeek,
   endOfWeek,
-} from "date-fns";
+} from 'date-fns';
 
 export default function CalendarHeaderDateChevrons() {
   const { mode, date, setDate } = useCalendarContext();
 
   function handleDateBackward() {
     switch (mode) {
-      case "month":
+      case 'month':
         setDate(subMonths(date, 1));
         break;
-      case "week":
+      case 'week':
         setDate(subWeeks(date, 1));
         break;
-      case "day":
+      case 'day':
         setDate(subDays(date, 1));
         break;
     }
@@ -32,34 +32,37 @@ export default function CalendarHeaderDateChevrons() {
 
   function handleDateForward() {
     switch (mode) {
-      case "month":
+      case 'month':
         setDate(addMonths(date, 1));
         break;
-      case "week":
+      case 'week':
         setDate(addWeeks(date, 1));
         break;
-      case "day":
+      case 'day':
         setDate(addDays(date, 1));
         break;
     }
   }
 
+  // Get weekStartsOn from context, default to Sunday
+  const { weekStartsOn = 0 } = useCalendarContext();
+
   // Generate the appropriate date display based on mode
   const getDateDisplay = () => {
     switch (mode) {
-      case "month":
-        return format(date, "MMMM yyyy"); // "June 2025"
-      case "week":
-        const weekStart = startOfWeek(date, { weekStartsOn: 0 }); // Sunday
-        const weekEnd = endOfWeek(date, { weekStartsOn: 0 }); // Saturday
-        return `${format(weekStart, "MMMM dd")} - ${format(
+      case 'month':
+        return format(date, 'MMMM yyyy'); // "June 2025"
+      case 'week':
+        const weekStart = startOfWeek(date, { weekStartsOn });
+        const weekEnd = endOfWeek(date, { weekStartsOn });
+        return `${format(weekStart, 'MMMM dd')} - ${format(
           weekEnd,
-          "MMMM dd, yyyy"
+          'MMMM dd, yyyy'
         )}`; // "June 01 - June 07, 2025"
-      case "day":
-        return format(date, "MMMM d, yyyy"); // "April 2, 2025"
+      case 'day':
+        return format(date, 'MMMM d, yyyy'); // "April 2, 2025"
       default:
-        return format(date, "MMMM d, yyyy");
+        return format(date, 'MMMM d, yyyy');
     }
   };
 
