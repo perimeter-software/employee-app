@@ -395,10 +395,21 @@ export const handleShiftJobClockInTime = (
       return false; // No valid shift start time
     }
 
-    // Get the shift start time (in UTC) and convert it to the correct timezone
+    // Get the shift start and end times
     const shiftStartTime = new Date(todaySchedule.start);
+    const shiftEndTime = new Date(todaySchedule.end);
+
+    // Create shift start and end times for today
     const currentShiftStartTime = new Date(
       combineCurrentDateWithTimeFromDateObject(shiftStartTime, currentTime)
+    );
+
+    const currentShiftEndTime = new Date(
+      combineCurrentDateWithTimeFromDateObject(
+        shiftEndTime,
+        currentTime,
+        shiftStartTime
+      )
     );
 
     // Calculate the earliest clock-in time (allowing for the early clock-in window)
@@ -406,8 +417,11 @@ export const handleShiftJobClockInTime = (
       currentShiftStartTime.getTime() - earlyClockInWindow * 60000
     );
 
-    // Allow clock-in if it's within the early window or any time after the start time
-    return now >= earliestClockInTime;
+    // For overnight shifts, check if current time is within the shift window
+    // Allow clock-in if:
+    // 1. It's after the earliest allowed time AND
+    // 2. It's before the shift end time (for overnight shifts, this means before the next day's end time)
+    return now >= earliestClockInTime && now <= currentShiftEndTime;
   });
 };
 
