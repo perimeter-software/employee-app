@@ -281,6 +281,30 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         };
       }
 
+      // Check if clocking in is too late (more than 2 hours after shift start, but only if past shift end)
+      const twoHoursAfterStart = new Date(
+        shiftStart.getTime() + 2 * 60 * 60 * 1000
+      );
+      // Allow clocking in if:
+      // 1. It's within 2 hours of shift start, OR
+      // 2. It's before shift end time (for overnight shifts)
+      // The current logic is wrong - it should allow clocking in if within 2 hours OR if shift hasn't ended
+      // Fix: Allow clocking in if within 2 hours of start OR if shift hasn't ended
+      // Block only if more than 2 hours late AND past shift end
+      if (now > twoHoursAfterStart && now > shiftEnd) {
+        return {
+          isValid: false,
+          messages: [
+            {
+              type: 'error',
+              message:
+                'Cannot clock in more than 2 hours after shift start time and past shift end time.',
+            },
+          ],
+          canProceed: false,
+        };
+      }
+
       // Check for early clock-in warning
       const earlyClockInMinutes =
         jobToUse.additionalConfig?.earlyClockInMinutes || 0; // Use the provided job
