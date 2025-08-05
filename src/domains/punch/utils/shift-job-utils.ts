@@ -307,6 +307,16 @@ export const getUserShiftsForToday = (
   ] as const;
 
   const currentDay = daysOfWeek[now.getDay()]; // Use the correct time zone to get the day
+  console.log('=== getUserShiftsForToday DEBUG ===');
+  console.log('Current time:', currentTime);
+  console.log('Now object:', now);
+  console.log('Day of week (0-6):', now.getDay());
+  console.log('Current day name:', currentDay);
+  console.log('Users shifts found:', usersShifts.length);
+  console.log(
+    'Shift names:',
+    usersShifts.map((s) => s.shiftName)
+  );
 
   return { usersShifts, currentDay };
 };
@@ -324,40 +334,96 @@ export const getUserShiftForToday = (
     shift // Pass the specific shift
   );
 
+  console.log('=== getUserShiftForToday DEBUG ===');
+  console.log('Current day:', currentDay);
+  console.log('Users shifts count:', usersShifts.length);
+  console.log('Current time:', currentTime);
+
   const now = new Date(currentTime);
 
   for (const shift of usersShifts) {
-    const todaySchedule = shift.defaultSchedule?.[currentDay];
-    console.log('todaySchedule: ', todaySchedule);
-    const shiftStartDate = new Date(shift.shiftStartDate);
-    const shiftEndDate = new Date(shift.shiftEndDate);
-    shiftEndDate.setHours(23, 59, 59, 999);
+    // For overnight shifts, we need to check both the current day and the previous day
+    // because the shift might be configured for the start day but span into the next day
+    const daysToCheck = [currentDay];
 
-    const isWithinShiftDates = now >= shiftStartDate && now <= shiftEndDate;
+    // If it's early morning (before 6 AM), also check the previous day's schedule
+    // This handles overnight shifts that start the previous day
+    if (now.getHours() < 6) {
+      const daysOfWeek = [
+        'sunday',
+        'monday',
+        'tuesday',
+        'wednesday',
+        'thursday',
+        'friday',
+        'saturday',
+      ] as const;
+      const previousDayIndex = (now.getDay() + 6) % 7; // Get previous day
+      const previousDay = daysOfWeek[previousDayIndex];
+      daysToCheck.unshift(previousDay); // Check previous day first
+    }
 
-    const isUserInShiftRoster = shift.shiftRoster?.some(
-      (rosterEntry) => rosterEntry._id === applicantId
-    );
+    console.log('Days to check:', daysToCheck);
 
-    // Check if the applicant is in today's roster (if specified)
-    const isUserInTodayRoster =
-      !todaySchedule?.roster?.length || // no roster array or empty ⇒ allow
-      isUserInRoster(todaySchedule.roster, applicantId, currentTime);
+    for (const dayToCheck of daysToCheck) {
+      const todaySchedule = shift.defaultSchedule?.[dayToCheck];
+      console.log(`Checking ${dayToCheck} schedule:`, todaySchedule);
+      console.log('Shift name:', shift.shiftName);
+      console.log(
+        'Shift roster:',
+        shift.shiftRoster?.map((r) => r._id)
+      );
+      console.log('Applicant ID:', applicantId);
 
-    if (
-      isWithinShiftDates &&
-      isUserInShiftRoster &&
-      isUserInTodayRoster &&
-      todaySchedule?.start &&
-      todaySchedule?.end
-    ) {
-      return {
-        start: new Date(todaySchedule.start),
-        end: new Date(todaySchedule.end),
-      };
+      const shiftStartDate = new Date(shift.shiftStartDate);
+      const shiftEndDate = new Date(shift.shiftEndDate);
+      shiftEndDate.setHours(23, 59, 59, 999);
+
+      const isWithinShiftDates = now >= shiftStartDate && now <= shiftEndDate;
+      console.log('Is within shift dates:', isWithinShiftDates);
+      console.log('Now:', now);
+      console.log('Shift start date:', shiftStartDate);
+      console.log('Shift end date:', shiftEndDate);
+
+      const isUserInShiftRoster = shift.shiftRoster?.some(
+        (rosterEntry) => rosterEntry._id === applicantId
+      );
+      console.log('Is user in shift roster:', isUserInShiftRoster);
+
+      // Check if the applicant is in today's roster (if specified)
+      // Use local date, not UTC date for roster lookup
+      const currentDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const isUserInTodayRoster =
+        !todaySchedule?.roster?.length || // no roster array or empty ⇒ allow
+        isUserInRoster(todaySchedule.roster, applicantId, currentDateStr);
+      console.log('Is user in today roster:', isUserInTodayRoster);
+      console.log('Today schedule roster:', todaySchedule?.roster);
+
+      const hasStartAndEnd = todaySchedule?.start && todaySchedule?.end;
+      console.log('Has start and end:', hasStartAndEnd);
+
+      if (
+        isWithinShiftDates &&
+        isUserInShiftRoster &&
+        isUserInTodayRoster &&
+        hasStartAndEnd
+      ) {
+        console.log('✅ Found matching shift!');
+        return {
+          start: new Date(todaySchedule.start),
+          end: new Date(todaySchedule.end),
+        };
+      } else {
+        console.log(`❌ Shift validation failed for ${dayToCheck}:`);
+        console.log('  - isWithinShiftDates:', isWithinShiftDates);
+        console.log('  - isUserInShiftRoster:', isUserInShiftRoster);
+        console.log('  - isUserInTodayRoster:', isUserInTodayRoster);
+        console.log('  - hasStartAndEnd:', hasStartAndEnd);
+      }
     }
   }
 
+  console.log('❌ No matching shift found');
   // Default return if no matching shift is found
   return {
     start: null,
@@ -395,22 +461,35 @@ export const handleShiftJobClockInTime = (
       return false; // No valid shift start time
     }
 
-    // Get the shift start and end times
+    // Extract only the time part from the schedule (ignore the date part)
     const shiftStartTime = new Date(todaySchedule.start);
     const shiftEndTime = new Date(todaySchedule.end);
 
-    // Create shift start and end times for today
-    const currentShiftStartTime = new Date(
-      combineCurrentDateWithTimeFromDateObject(shiftStartTime, currentTime)
+    // Get current date and combine with shift times
+    const currentDate = new Date(currentTime);
+
+    // Create shift start time for today using only the time part
+    const currentShiftStartTime = new Date(currentDate);
+    currentShiftStartTime.setHours(
+      shiftStartTime.getHours(),
+      shiftStartTime.getMinutes(),
+      shiftStartTime.getSeconds(),
+      shiftStartTime.getMilliseconds()
     );
 
-    const currentShiftEndTime = new Date(
-      combineCurrentDateWithTimeFromDateObject(
-        shiftEndTime,
-        currentTime,
-        shiftStartTime
-      )
+    // Create shift end time for today using only the time part
+    const currentShiftEndTime = new Date(currentDate);
+    currentShiftEndTime.setHours(
+      shiftEndTime.getHours(),
+      shiftEndTime.getMinutes(),
+      shiftEndTime.getSeconds(),
+      shiftEndTime.getMilliseconds()
     );
+
+    // Handle overnight shifts: if end time is before start time, add 1 day to end time
+    if (currentShiftEndTime <= currentShiftStartTime) {
+      currentShiftEndTime.setDate(currentShiftEndTime.getDate() + 1);
+    }
 
     // Calculate the earliest clock-in time (allowing for the early clock-in window)
     const earliestClockInTime = new Date(
@@ -453,12 +532,19 @@ export const getMinutesUntilClockIn = (
       continue;
     }
 
-    // Parse the shift start time (assumes time is stored without date info)
+    // Extract only the time part from the schedule (ignore the date part)
     const shiftStartTime = new Date(todaySchedule.start);
 
     // Get current date and combine with shift start time
-    const combinedShiftStartTime = new Date(
-      combineCurrentDateWithTimeFromDateObject(shiftStartTime, currentTime)
+    const currentDate = new Date(currentTime);
+
+    // Create shift start time for today using only the time part
+    const combinedShiftStartTime = new Date(currentDate);
+    combinedShiftStartTime.setHours(
+      shiftStartTime.getHours(),
+      shiftStartTime.getMinutes(),
+      shiftStartTime.getSeconds(),
+      shiftStartTime.getMilliseconds()
     );
 
     const earliestAllowedTime = new Date(
@@ -679,7 +765,28 @@ export function isPastClockOutTime(
   );
 
   if (end) {
-    return currentDate > end; // Check if current time is past the shift's end time
+    // Extract only the time part from the schedule (ignore the date part)
+    const shiftEndTime = end as Date;
+    const currentDateCopy = new Date(currentDate);
+
+    // Create shift end time for today using only the time part
+    const currentShiftEndTime = new Date(currentDateCopy);
+    currentShiftEndTime.setHours(
+      shiftEndTime.getHours(),
+      shiftEndTime.getMinutes(),
+      shiftEndTime.getSeconds(),
+      shiftEndTime.getMilliseconds()
+    );
+
+    // Handle overnight shifts: if end time is before start time, add 1 day to end time
+    // For this function, we need to check if the shift end time is actually the next day
+    // We'll assume it's overnight if the end time is earlier in the day than a typical work day
+    if (currentShiftEndTime.getHours() < 12) {
+      // If end time is before noon, likely overnight
+      currentShiftEndTime.setDate(currentShiftEndTime.getDate() + 1);
+    }
+
+    return currentDate > currentShiftEndTime; // Check if current time is past the shift's end time
   }
   return false;
 }
@@ -698,7 +805,20 @@ export function isFutureShift(
   );
 
   if (start) {
-    return currentDate < start; // Check if current time is before the shift's start time
+    // Extract only the time part from the schedule (ignore the date part)
+    const shiftStartTime = start as Date;
+    const currentDateCopy = new Date(currentDate);
+
+    // Create shift start time for today using only the time part
+    const currentShiftStartTime = new Date(currentDateCopy);
+    currentShiftStartTime.setHours(
+      shiftStartTime.getHours(),
+      shiftStartTime.getMinutes(),
+      shiftStartTime.getSeconds(),
+      shiftStartTime.getMilliseconds()
+    );
+
+    return currentDate < currentShiftStartTime; // Check if current time is before the shift's start time
   }
   return false;
 }
@@ -710,10 +830,20 @@ export const getCalculatedTimeIn = (
   shift?: Shift
 ): string => {
   const { start } = getUserShiftForToday(job, applicantId, currentTime, shift);
-  const newStartDate = combineCurrentDateWithTimeFromDateObject(
-    start as Date,
-    currentTime
+
+  // Extract only the time part from the schedule (ignore the date part)
+  const shiftStartTime = start as Date;
+  const currentDate = new Date(currentTime);
+
+  // Create shift start time for today using only the time part
+  const newStartDate = new Date(currentDate);
+  newStartDate.setHours(
+    shiftStartTime.getHours(),
+    shiftStartTime.getMinutes(),
+    shiftStartTime.getSeconds(),
+    shiftStartTime.getMilliseconds()
   );
+
   const earlyClockInMinutes = job.additionalConfig?.earlyClockInMinutes ?? 0;
   const autoAdjustEarlyClockIn =
     job.additionalConfig?.autoAdjustEarlyClockIn ?? false;
@@ -781,9 +911,21 @@ export const hasForgottenToClockOut = (
       shift.defaultSchedule[punchDay as keyof typeof shift.defaultSchedule];
     if (!schedule || !schedule.end) continue;
 
-    const shiftEndTime = parseISO(schedule.end);
+    // Extract only the time part from the schedule (ignore the date part)
+    const shiftEndTime = new Date(schedule.end);
+    const currentDate = new Date(current);
+
+    // Create shift end time for today using only the time part
+    const currentShiftEndTime = new Date(currentDate);
+    currentShiftEndTime.setHours(
+      shiftEndTime.getHours(),
+      shiftEndTime.getMinutes(),
+      shiftEndTime.getSeconds(),
+      shiftEndTime.getMilliseconds()
+    );
+
     // If the current time is before the shift end time, it's not forgotten
-    if (isAfter(shiftEndTime, currentTime)) {
+    if (isAfter(currentShiftEndTime, currentTime)) {
       return false;
     }
   }
@@ -811,14 +953,6 @@ export function combineCurrentDateWithTimeFromDateObject(
 ): string {
   const currentDate = new Date(currentTime);
 
-  console.log('=== combineCurrentDateWithTimeFromDateObject DEBUG ===');
-  console.log('Input timeObj:', timeObj);
-  console.log('Input currentTime:', currentTime);
-  console.log('timeObj ISO:', timeObj.toISOString());
-  console.log('timeObj toString:', timeObj.toString());
-  console.log('timeObj getHours():', timeObj.getHours());
-  console.log('timeObj getUTCHours():', timeObj.getUTCHours());
-
   // Create a new date with today's date but the time from timeObj
   const result = new Date(currentDate);
 
@@ -830,9 +964,6 @@ export function combineCurrentDateWithTimeFromDateObject(
     timeObj.getMilliseconds()
   );
 
-  console.log('Result after setting local time:', result);
-  console.log('Result ISO:', result.toISOString());
-
   // Handle overnight shifts if compareDateObj is provided
   if (compareDateObj) {
     const compareResult = new Date(currentDate);
@@ -843,17 +974,11 @@ export function combineCurrentDateWithTimeFromDateObject(
       compareDateObj.getMilliseconds()
     );
 
-    console.log('Compare result:', compareResult);
-
     // If end time is before start time, it's an overnight shift
     if (result <= compareResult) {
       result.setDate(result.getDate() + 1);
-      console.log('Adjusted for overnight shift:', result);
     }
   }
-
-  console.log('Final result:', result.toISOString());
-  console.log('======================================================');
 
   return result.toISOString();
 }

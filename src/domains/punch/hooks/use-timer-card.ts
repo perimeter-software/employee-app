@@ -16,8 +16,8 @@ import {
   handleShiftJobClockInTime,
   getMinutesUntilClockIn,
   getCalculatedTimeIn,
-  combineCurrentDateWithTimeFromDateObject,
   getTotalSecondsFromDate,
+  combineCurrentDateWithTimeFromDateObject,
 } from '@/domains/punch/utils/shift-job-utils';
 
 interface UseTimerCardProps {
@@ -152,9 +152,32 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       //   combineCurrentDateWithTimeFromDateObject(start, nowIso)
       // );
 
-      const endToday = new Date(
-        combineCurrentDateWithTimeFromDateObject(end, nowIso, start)
+      // Extract only the time part from the schedule (ignore the date part)
+      const shiftEndTime = end as Date;
+      const currentDate = new Date(nowIso);
+
+      // Create shift end time for today using only the time part
+      const endToday = new Date(currentDate);
+      endToday.setHours(
+        shiftEndTime.getHours(),
+        shiftEndTime.getMinutes(),
+        shiftEndTime.getSeconds(),
+        shiftEndTime.getMilliseconds()
       );
+
+      // Handle overnight shifts: if end time is before start time, add 1 day to end time
+      const shiftStartTime = start as Date;
+      const startToday = new Date(currentDate);
+      startToday.setHours(
+        shiftStartTime.getHours(),
+        shiftStartTime.getMinutes(),
+        shiftStartTime.getSeconds(),
+        shiftStartTime.getMilliseconds()
+      );
+
+      if (endToday <= startToday) {
+        endToday.setDate(endToday.getDate() + 1);
+      }
 
       // keep any shift that hasn't (yet) passed its end
       return endToday > now;
@@ -223,15 +246,16 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         };
       }
 
-      const newStartDate = combineCurrentDateWithTimeFromDateObject(
-        start as Date,
-        currentTime
+      // Use the proper function to combine current date with shift times
+      const newStartDate = new Date(
+        combineCurrentDateWithTimeFromDateObject(start as Date, currentTime)
       );
-
-      const newEndDate = combineCurrentDateWithTimeFromDateObject(
-        end as Date,
-        currentTime,
-        start as Date
+      const newEndDate = new Date(
+        combineCurrentDateWithTimeFromDateObject(
+          end as Date,
+          currentTime,
+          start as Date
+        )
       );
 
       const shiftStart = new Date(newStartDate);
@@ -533,15 +557,16 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
           targetShift
         );
 
-        const newStartDate = combineCurrentDateWithTimeFromDateObject(
-          start as Date,
-          currentTime
+        // Use the proper function to combine current date with shift times
+        const newStartDate = new Date(
+          combineCurrentDateWithTimeFromDateObject(start as Date, currentTime)
         );
-
-        const newEndDate = combineCurrentDateWithTimeFromDateObject(
-          end as Date,
-          currentTime,
-          start as Date
+        const newEndDate = new Date(
+          combineCurrentDateWithTimeFromDateObject(
+            end as Date,
+            currentTime,
+            start as Date
+          )
         );
 
         const timeIn = getCalculatedTimeIn(
@@ -550,6 +575,10 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
           currentTime,
           targetShift
         );
+
+        // Convert dates to ISO strings
+        const startDateISO = newStartDate.toISOString();
+        const endDateISO = newEndDate.toISOString();
 
         const clockInData: ClockInData = {
           jobId: targetJob._id,
@@ -574,8 +603,8 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
                 }
               : undefined, // Don't include coordinates property if invalid
           timeIn,
-          newStartDate,
-          newEndDate,
+          newStartDate: startDateISO,
+          newEndDate: endDateISO,
           selectedShift: targetShift,
           applicantId: userData.applicantId,
         };
@@ -806,15 +835,16 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       };
     }
 
-    // Get actual shift times for today using your utility functions
-    const shiftStartTime = combineCurrentDateWithTimeFromDateObject(
-      start as Date,
-      currentTime
+    // Use the proper function to combine current date with shift times
+    const shiftStartTime = new Date(
+      combineCurrentDateWithTimeFromDateObject(start as Date, currentTime)
     );
-    const shiftEndTime = combineCurrentDateWithTimeFromDateObject(
-      end as Date,
-      currentTime,
-      start as Date
+    const shiftEndTime = new Date(
+      combineCurrentDateWithTimeFromDateObject(
+        end as Date,
+        currentTime,
+        start as Date
+      )
     );
 
     const shiftStart = new Date(shiftStartTime);
@@ -835,8 +865,8 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
 
     return {
       timeUntilShift,
-      shiftStartTime,
-      shiftEndTime,
+      shiftStartTime: shiftStartTime.toISOString(),
+      shiftEndTime: shiftEndTime.toISOString(),
       shiftDurationMinutes,
     };
   }, [selectedJob, selectedShift, userData.applicantId]);
