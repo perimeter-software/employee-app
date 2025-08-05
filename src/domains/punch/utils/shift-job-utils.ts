@@ -326,6 +326,7 @@ export const getUserShiftForToday = (
 
   const now = new Date(currentTime);
 
+  // Check current day first
   for (const shift of usersShifts) {
     const todaySchedule = shift.defaultSchedule?.[currentDay];
     console.log('todaySchedule: ', todaySchedule);
@@ -355,6 +356,60 @@ export const getUserShiftForToday = (
         start: new Date(todaySchedule.start),
         end: new Date(todaySchedule.end),
       };
+    }
+  }
+
+  // FIXED: Check for overnight shifts from previous day
+  const daysOfWeek = [
+    'sunday',
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+  ] as const;
+
+  // Get previous day
+  const previousDay = new Date(now);
+  previousDay.setDate(previousDay.getDate() - 1);
+  const previousDayName = daysOfWeek[previousDay.getDay()];
+
+  for (const shift of usersShifts) {
+    const previousDaySchedule = shift.defaultSchedule?.[previousDayName];
+    const shiftStartDate = new Date(shift.shiftStartDate);
+    const shiftEndDate = new Date(shift.shiftEndDate);
+    shiftEndDate.setHours(23, 59, 59, 999);
+
+    const isWithinShiftDates = now >= shiftStartDate && now <= shiftEndDate;
+
+    const isUserInShiftRoster = shift.shiftRoster?.some(
+      (rosterEntry) => rosterEntry._id === applicantId
+    );
+
+    // Check if the applicant is in previous day's roster (for overnight shifts)
+    const isUserInPreviousDayRoster =
+      !previousDaySchedule?.roster?.length || // no roster array or empty ⇒ allow
+      isUserInRoster(previousDaySchedule.roster, applicantId, previousDay.toISOString());
+
+    if (
+      isWithinShiftDates &&
+      isUserInShiftRoster &&
+      isUserInPreviousDayRoster &&
+      previousDaySchedule?.start &&
+      previousDaySchedule?.end
+    ) {
+      const startTime = new Date(previousDaySchedule.start);
+      const endTime = new Date(previousDaySchedule.end);
+
+      // Check if this is an overnight shift (end time is before start time)
+      if (endTime.getHours() < startTime.getHours()) {
+        // This is an overnight shift, so it continues into today
+        return {
+          start: new Date(previousDaySchedule.start),
+          end: new Date(previousDaySchedule.end),
+        };
+      }
     }
   }
 
@@ -388,28 +443,18 @@ export const handleShiftJobClockInTime = (
   // Get the current time in the specified time zone
   const now = new Date(currentTime);
 
-  return usersShifts.some((shift) => {
+  // First check current day's schedule
+  const currentDayResult = usersShifts.some((shift) => {
     const todaySchedule = shift.defaultSchedule[currentDay];
 
     if (!todaySchedule || !todaySchedule.start || todaySchedule.start === '') {
       return false; // No valid shift start time
     }
 
-    // Get the shift start and end times
+    // Get the shift start time (in UTC) and convert it to the correct timezone
     const shiftStartTime = new Date(todaySchedule.start);
-    const shiftEndTime = new Date(todaySchedule.end);
-
-    // Create shift start and end times for today
     const currentShiftStartTime = new Date(
       combineCurrentDateWithTimeFromDateObject(shiftStartTime, currentTime)
-    );
-
-    const currentShiftEndTime = new Date(
-      combineCurrentDateWithTimeFromDateObject(
-        shiftEndTime,
-        currentTime,
-        shiftStartTime
-      )
     );
 
     // Calculate the earliest clock-in time (allowing for the early clock-in window)
@@ -417,11 +462,53 @@ export const handleShiftJobClockInTime = (
       currentShiftStartTime.getTime() - earlyClockInWindow * 60000
     );
 
-    // For overnight shifts, check if current time is within the shift window
-    // Allow clock-in if:
-    // 1. It's after the earliest allowed time AND
-    // 2. It's before the shift end time (for overnight shifts, this means before the next day's end time)
-    return now >= earliestClockInTime && now <= currentShiftEndTime;
+    // Allow clock-in if it's within the early window or any time after the start time
+    return now >= earliestClockInTime;
+  });
+
+  if (currentDayResult) {
+    return true;
+  }
+
+  // FIXED: Also check for overnight shifts from previous day
+  const daysOfWeek = [
+    'sunday',
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+  ] as const;
+
+  // Get previous day
+  const previousDay = new Date(now);
+  previousDay.setDate(previousDay.getDate() - 1);
+  const previousDayName = daysOfWeek[previousDay.getDay()];
+
+  return usersShifts.some((shift) => {
+    const previousDaySchedule = shift.defaultSchedule[previousDayName];
+
+    if (!previousDaySchedule || !previousDaySchedule.start || previousDaySchedule.start === '') {
+      return false; // No valid shift start time
+    }
+
+    const startTime = new Date(previousDaySchedule.start);
+    const endTime = new Date(previousDaySchedule.end);
+
+    // Check if this is an overnight shift (end time is before start time)
+    if (endTime.getHours() < startTime.getHours()) {
+      // This is an overnight shift - check if we're within the allowable clock-in window
+      const shiftEndTime = new Date(previousDaySchedule.end);
+      const currentShiftEndTime = new Date(
+        combineCurrentDateWithTimeFromDateObject(shiftEndTime, currentTime)
+      );
+
+      // For overnight shifts, allow clock-in until the end time on the current day
+      return now <= currentShiftEndTime;
+    }
+
+    return false;
   });
 };
 
@@ -822,7 +909,8 @@ export function combineCurrentDateWithTimeFromDateObject(
   // Create a new date with today's date but the time from timeObj
   const result = new Date(currentDate);
 
-  // Method 1: Use local time (what the user sees)
+  // FIXED: Use local time consistently (what the user sees in their timezone)
+  // This ensures we only care about the time part and ignore the date part from the DB
   result.setHours(
     timeObj.getHours(),
     timeObj.getMinutes(),
@@ -833,7 +921,7 @@ export function combineCurrentDateWithTimeFromDateObject(
   console.log('Result after setting local time:', result);
   console.log('Result ISO:', result.toISOString());
 
-  // Handle overnight shifts if compareDateObj is provided
+  // FIXED: Enhanced overnight shift detection
   if (compareDateObj) {
     const compareResult = new Date(currentDate);
     compareResult.setHours(
@@ -845,7 +933,8 @@ export function combineCurrentDateWithTimeFromDateObject(
 
     console.log('Compare result:', compareResult);
 
-    // If end time is before start time, it's an overnight shift
+    // If end time is before or equal to start time, it's an overnight shift
+    // Move the end time to the next day
     if (result <= compareResult) {
       result.setDate(result.getDate() + 1);
       console.log('Adjusted for overnight shift:', result);
