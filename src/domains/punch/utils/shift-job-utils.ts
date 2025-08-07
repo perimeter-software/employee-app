@@ -921,7 +921,7 @@ export function combineCurrentDateWithTimeFromDateObject(
   console.log('Result after setting local time:', result);
   console.log('Result ISO:', result.toISOString());
 
-  // FIXED: Enhanced overnight shift detection
+  // FIXED: Enhanced overnight shift detection - ONLY care about TIME, not dates
   if (compareDateObj) {
     const compareResult = new Date(currentDate);
     compareResult.setHours(
@@ -933,11 +933,11 @@ export function combineCurrentDateWithTimeFromDateObject(
 
     console.log('Compare result:', compareResult);
 
-    // If end time is before or equal to start time, it's an overnight shift
-    // Move the end time to the next day
+    // ONLY compare the time parts (hours/minutes) - ignore any date inconsistencies in DB
+    // If end time <= start time, it's an overnight shift spanning to next day
     if (result <= compareResult) {
       result.setDate(result.getDate() + 1);
-      console.log('Adjusted for overnight shift:', result);
+      console.log('Adjusted for overnight shift (time-based detection only):', result);
     }
   }
 

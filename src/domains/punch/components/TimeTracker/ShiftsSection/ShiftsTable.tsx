@@ -245,15 +245,13 @@ export function ShiftsTable({
           // Mark this shift-date as processed
           processedShifts.add(shiftKey);
 
-          // FIXED: Enhanced day schedule detection for overnight shifts
+          // Get day schedule for this specific day (only if user is in roster)
           let daySchedule:
             | Shift['defaultSchedule'][keyof Shift['defaultSchedule']]
             | undefined = undefined;
           let isInDayRoster = false;
-          let isOvernightShift = false;
 
           if (isUserInShiftRoster) {
-            // First, check the current day's schedule
             daySchedule =
               shift.defaultSchedule?.[
                 dayOfWeek as keyof typeof shift.defaultSchedule
@@ -267,46 +265,6 @@ export function ShiftsTable({
                 userData.applicantId,
                 currentDate.toISOString()
               );
-
-            // FIXED: For overnight shifts, also check the previous day's schedule
-            if (!daySchedule?.start || !isInDayRoster) {
-              const previousDay = new Date(currentDate);
-              previousDay.setDate(previousDay.getDate() - 1);
-              const previousDayOfWeek = [
-                'sunday',
-                'monday',
-                'tuesday',
-                'wednesday',
-                'thursday',
-                'friday',
-                'saturday',
-              ][previousDay.getDay()];
-
-              const previousDaySchedule =
-                shift.defaultSchedule?.[
-                  previousDayOfWeek as keyof typeof shift.defaultSchedule
-                ];
-
-              if (previousDaySchedule?.start && previousDaySchedule?.end) {
-                const prevStartTime = new Date(previousDaySchedule.start);
-                const prevEndTime = new Date(previousDaySchedule.end);
-
-                // Check if this is an overnight shift (end time is before start time)
-                if (prevEndTime.getHours() < prevStartTime.getHours()) {
-                  isOvernightShift = true;
-                  daySchedule = previousDaySchedule;
-
-                  // Check if user is in roster for the previous day (which covers today's overnight shift)
-                  isInDayRoster =
-                    !daySchedule?.roster?.length ||
-                    isUserInRoster(
-                      daySchedule.roster,
-                      userData.applicantId,
-                      previousDay.toISOString()
-                    );
-                }
-              }
-            }
           }
 
           // For existing punches without roster enrollment, we'll estimate shift times
@@ -318,48 +276,25 @@ export function ShiftsTable({
             const shiftStartTime = new Date(daySchedule.start);
             const shiftEndTime = new Date(daySchedule.end);
 
-            if (isOvernightShift) {
-              // FIXED: For overnight shifts, start time is on previous day, end time is on current day
-              const previousDay = new Date(currentDate);
-              previousDay.setDate(previousDay.getDate() - 1);
+            todayShiftStart = new Date(currentDate);
+            todayShiftStart.setHours(
+              shiftStartTime.getHours(),
+              shiftStartTime.getMinutes(),
+              0,
+              0
+            );
 
-              todayShiftStart = new Date(previousDay);
-              todayShiftStart.setHours(
-                shiftStartTime.getHours(),
-                shiftStartTime.getMinutes(),
-                0,
-                0
-              );
+            todayShiftEnd = new Date(currentDate);
+            todayShiftEnd.setHours(
+              shiftEndTime.getHours(),
+              shiftEndTime.getMinutes(),
+              0,
+              0
+            );
 
-              todayShiftEnd = new Date(currentDate);
-              todayShiftEnd.setHours(
-                shiftEndTime.getHours(),
-                shiftEndTime.getMinutes(),
-                0,
-                0
-              );
-            } else {
-              // Regular shift on the same day
-              todayShiftStart = new Date(currentDate);
-              todayShiftStart.setHours(
-                shiftStartTime.getHours(),
-                shiftStartTime.getMinutes(),
-                0,
-                0
-              );
-
-              todayShiftEnd = new Date(currentDate);
-              todayShiftEnd.setHours(
-                shiftEndTime.getHours(),
-                shiftEndTime.getMinutes(),
-                0,
-                0
-              );
-
-              // Handle overnight shifts on the same day
-              if (todayShiftEnd <= todayShiftStart) {
-                todayShiftEnd.setDate(todayShiftEnd.getDate() + 1);
-              }
+            // Handle overnight shifts
+            if (todayShiftEnd <= todayShiftStart) {
+              todayShiftEnd.setDate(todayShiftEnd.getDate() + 1);
             }
           } else if (hasExistingPunches) {
             // FIXED: For existing punches without roster, estimate shift times from punch data
@@ -454,15 +389,13 @@ export function ShiftsTable({
           // 1. Active/future shifts where user is enrolled
           // 2. Any shifts where user has existing punches (regardless of enrollment)
           // 3. Past shifts with punches
-          // 4. Overnight shifts from previous day that are still active
           const shouldShowRow =
             hasExistingPunches || // Always show if there are punches
             (isUserInShiftRoster &&
               daySchedule?.start &&
               daySchedule?.end &&
               isInDayRoster) || // Show if enrolled and scheduled
-            (!shiftHasEnded && isUserInShiftRoster) || // Show future enrolled shifts
-            (isOvernightShift && isInDayRoster); // Show overnight shifts from previous day
+            (!shiftHasEnded && isUserInShiftRoster); // Show future enrolled shifts
 
           if (shouldShowRow) {
             rows.push({
@@ -499,8 +432,8 @@ export function ShiftsTable({
     }
 
     return rows.sort((a, b) => {
-      // Sort by date (newest first)
-      const dateSort = b.dateObj.getTime() - a.dateObj.getTime();
+      // Sort by date (oldest first - ascending order)
+      const dateSort = a.dateObj.getTime() - b.dateObj.getTime();
       if (dateSort !== 0) return dateSort;
 
       // For same date, prioritize active punches first

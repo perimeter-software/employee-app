@@ -9,7 +9,6 @@ import { GigLocation, Location } from '@/domains/job/types/location.types';
 import { handleLocationServices } from '@/lib/utils';
 import { GignologyUser } from '@/domains/user/types';
 import { Punch } from '../types';
-import { toast } from 'sonner';
 
 // Import your shift validation utilities
 import {
@@ -193,22 +192,7 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
   // Utility function to show notifications
   const showNotification = useCallback(
     (message: string, type: 'success' | 'error' | 'warning' | 'info') => {
-      switch (type) {
-        case 'success':
-          toast.success(message);
-          break;
-        case 'error':
-          toast.error(message);
-          break;
-        case 'warning':
-          toast.warning(message);
-          break;
-        case 'info':
-          toast.info(message);
-          break;
-        default:
-          toast(message);
-      }
+      console.log(`${type.toUpperCase()}: ${message}`);
     },
     []
   );
@@ -261,62 +245,21 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         };
       }
 
-      // FIXED: Properly handle overnight shifts for validation
-      // Use the times returned by getUserShiftForToday directly
-      const startTime = new Date(start as Date);
-      const endTime = new Date(end as Date);
-
-      let shiftStart: Date;
-      let shiftEnd: Date;
-
-      // Check if this is an overnight shift (end time is before start time)
-      if (endTime.getHours() < startTime.getHours()) {
-        // This is an overnight shift
-        // For Tuesday (today), the shift would have started Monday night
-        const previousDay = new Date(now);
-        previousDay.setDate(previousDay.getDate() - 1);
-
-        // Shift start time is on previous day
-        shiftStart = new Date(previousDay);
-        shiftStart.setHours(
-          startTime.getHours(),
-          startTime.getMinutes(),
-          startTime.getSeconds(),
-          startTime.getMilliseconds()
-        );
-
-        // Shift end time is on current day
-        shiftEnd = new Date(now);
-        shiftEnd.setHours(
-          endTime.getHours(),
-          endTime.getMinutes(),
-          endTime.getSeconds(),
-          endTime.getMilliseconds()
-        );
-      } else {
-        // Regular shift on the same day
-        shiftStart = new Date(startTime);
-        shiftEnd = new Date(endTime);
-
-        // For same-day shifts, set the date part to today
-        shiftStart.setFullYear(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate()
-        );
-        shiftEnd.setFullYear(now.getFullYear(), now.getMonth(), now.getDate());
-
-        // Handle overnight shifts on the same day
-        if (shiftEnd <= shiftStart) {
-          shiftEnd.setDate(shiftEnd.getDate() + 1);
-        }
-      }
-
-      // Use the calculated shift end time
-      const adjustedShiftEnd = shiftEnd;
+      // FIXED: Use the combineCurrentDateWithTimeFromDateObject function for consistent handling
+      // This function already handles overnight shifts properly by comparing time parts only
+      const shiftStart = new Date(
+        combineCurrentDateWithTimeFromDateObject(start as Date, currentTime)
+      );
+      const shiftEnd = new Date(
+        combineCurrentDateWithTimeFromDateObject(
+          end as Date,
+          currentTime,
+          start as Date  // Pass start as reference for overnight detection
+        )
+      );
 
       // Check if shift has already ended
-      if (now > adjustedShiftEnd) {
+      if (now > shiftEnd) {
         return {
           isValid: false,
           messages: [
@@ -363,20 +306,13 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       const twoHoursAfterStart = new Date(
         shiftStart.getTime() + 2 * 60 * 60 * 1000
       );
-
-      // FIXED: Show warning for late clock-in (over 2 hours but within shift end time)
-      if (now > twoHoursAfterStart && now <= adjustedShiftEnd) {
-        const hoursLate = Math.ceil(
-          (now.getTime() - shiftStart.getTime()) / (1000 * 60 * 60)
-        );
-        messages.push({
-          type: 'warning',
-          message: `⚠️ You are clocking in ${hoursLate} hours after your shift started. Please confirm this is intended.`,
-        });
-      }
-
+      // Allow clocking in if:
+      // 1. It's within 2 hours of shift start, OR
+      // 2. It's before shift end time (for overnight shifts)
+      // The current logic is wrong - it should allow clocking in if within 2 hours OR if shift hasn't ended
+      // Fix: Allow clocking in if within 2 hours of start OR if shift hasn't ended
       // Block only if more than 2 hours late AND past shift end
-      if (now > twoHoursAfterStart && now > adjustedShiftEnd) {
+      if (now > twoHoursAfterStart && now > shiftEnd) {
         return {
           isValid: false,
           messages: [
@@ -524,14 +460,17 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
   const handleJobSelection = useCallback(
     (job: GignologyJob) => {
       if (blockJobSelection) {
-        // toast.warning('Please clock out of your current punch first');
+        showNotification(
+          'Please clock out of your current punch first',
+          'warning'
+        );
         return;
       }
 
       setSelectedJob(job);
       removeSelectedShift();
     },
-    [blockJobSelection, setSelectedJob, removeSelectedShift]
+    [blockJobSelection, setSelectedJob, removeSelectedShift, showNotification]
   );
 
   const handleShiftSelection = useCallback(
@@ -548,7 +487,7 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       const targetShift = shiftToUse || pendingOverrideShift || selectedShift;
 
       if (!targetJob || !targetShift) {
-        toast.error('Please select a job and shift');
+        showNotification('Please select a job and shift', 'error');
         return;
       }
 
@@ -565,7 +504,10 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
           clockInCoordinates = locationResult.locationInfo;
 
           if (!clockInCoordinates) {
-            toast.error('Location services failed. Please try again.');
+            showNotification(
+              'Location services failed. Please try again.',
+              'error'
+            );
             setIsLocationLoading(false);
             setLoading(false);
             return;
@@ -651,9 +593,11 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         // Clear pending override values after successful clock-in
         setPendingOverrideJob(null);
         setPendingOverrideShift(null);
+
+        showNotification('Successfully clocked in', 'success');
       } catch (error) {
         console.error('Error clocking in:', error);
-        toast.error('Failed to clock in. Please try again.');
+        showNotification('Failed to clock in', 'error');
       } finally {
         setLoading(false);
         setIsLocationLoading(false);
@@ -666,6 +610,7 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       pendingOverrideShift,
       userData.applicantId,
       clockInMutation,
+      showNotification,
       setSelectedJob,
       setSelectedShift,
     ]
@@ -690,10 +635,10 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
           removeSelectedJob();
           removeSelectedShift();
 
-          // toast.success('Successfully clocked out');
+          showNotification('Successfully clocked out', 'success');
         } catch (error) {
           console.error('Error clocking out:', error);
-          toast.error('Failed to clock out. Please try again.');
+          showNotification('Failed to clock out', 'error');
         } finally {
           setLoading(false);
         }
@@ -708,19 +653,7 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
 
       if (!validation.isValid) {
         validation.messages.forEach((msg) => {
-          switch (msg.type) {
-            case 'error':
-              toast.error(msg.message);
-              break;
-            case 'warning':
-              toast.warning(msg.message);
-              break;
-            case 'info':
-              toast.info(msg.message);
-              break;
-            default:
-              toast(msg.message);
-          }
+          showNotification(msg.message, msg.type);
         });
         return;
       }
@@ -750,6 +683,7 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       clockOutMutation,
       removeSelectedJob,
       removeSelectedShift,
+      showNotification,
     ]
   );
 
@@ -869,75 +803,38 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       };
     }
 
-    // FIXED: For overnight shifts, we need to properly calculate the shift times
-    const startTime = new Date(start as Date);
-    const endTime = new Date(end as Date);
+    // Use the proper function to combine current date with shift times
+    const shiftStartTime = new Date(
+      combineCurrentDateWithTimeFromDateObject(start as Date, currentTime)
+    );
+    const shiftEndTime = new Date(
+      combineCurrentDateWithTimeFromDateObject(
+        end as Date,
+        currentTime,
+        start as Date
+      )
+    );
 
-    let shiftStart: Date;
-    let shiftEnd: Date;
-
-    // Check if this is an overnight shift (end time is before start time)
-    if (endTime.getHours() < startTime.getHours()) {
-      // This is an overnight shift
-      // For Tuesday (today), the shift would have started Monday night
-      const previousDay = new Date(now);
-      previousDay.setDate(previousDay.getDate() - 1);
-
-      // Shift start time is on previous day
-      shiftStart = new Date(previousDay);
-      shiftStart.setHours(
-        startTime.getHours(),
-        startTime.getMinutes(),
-        startTime.getSeconds(),
-        startTime.getMilliseconds()
-      );
-
-      // Shift end time is on current day
-      shiftEnd = new Date(now);
-      shiftEnd.setHours(
-        endTime.getHours(),
-        endTime.getMinutes(),
-        endTime.getSeconds(),
-        endTime.getMilliseconds()
-      );
-    } else {
-      // Regular shift on the same day
-      // Use the proper function to combine current date with shift times
-      const shiftStartTime = new Date(
-        combineCurrentDateWithTimeFromDateObject(start as Date, currentTime)
-      );
-      const shiftEndTime = new Date(
-        combineCurrentDateWithTimeFromDateObject(
-          end as Date,
-          currentTime,
-          start as Date
-        )
-      );
-
-      shiftStart = new Date(shiftStartTime);
-      shiftEnd = new Date(shiftEndTime);
-    }
+    const shiftStart = new Date(shiftStartTime);
+    const shiftEnd = new Date(shiftEndTime);
 
     // Calculate shift duration in minutes
     const shiftDurationMinutes = Math.floor(
       (shiftEnd.getTime() - shiftStart.getTime()) / (1000 * 60)
     );
 
-    // FIXED: Calculate minutes until shift starts (only if not started yet)
+    // Calculate minutes until shift starts (only if not started yet)
     let timeUntilShift: number | undefined;
     if (now < shiftStart) {
       timeUntilShift = Math.floor(
         (shiftStart.getTime() - now.getTime()) / (1000 * 60)
       );
-    } else if (now >= shiftStart && now <= shiftEnd) {
-      // Currently within shift time - no need to show "starts in"
-      timeUntilShift = undefined;
     }
 
     return {
       timeUntilShift,
-      shiftStartTime: shiftStart.toISOString(),
-      shiftEndTime: shiftEnd.toISOString(),
+      shiftStartTime: shiftStartTime.toISOString(),
+      shiftEndTime: shiftEndTime.toISOString(),
       shiftDurationMinutes,
     };
   }, [selectedJob, selectedShift, userData.applicantId]);

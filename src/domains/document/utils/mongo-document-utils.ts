@@ -5,42 +5,76 @@ import {
   type UpdateResult,
   type InsertOneResult,
 } from 'mongodb';
-import { Document } from '../types';
+import { Document, MongoAttachment } from '../types';
+
+// Helper function to convert MongoAttachment to Document
+function attachmentToDocument(
+  attachment: MongoAttachment,
+  applicantId: string
+): Document {
+  return {
+    _id: attachment._id?.toString() || new ObjectId().toString(),
+    applicantId: applicantId,
+    uploadedAt: attachment.uploadDate || attachment.uploadedAt || new Date(),
+    name: attachment.title || attachment.filename || '',
+    originalName: attachment.filename || attachment.title || '',
+    fileType: attachment.docType || '',
+    type: attachment.type,
+    fileName: attachment.filename || attachment.title || '',
+    createdAt: attachment.uploadDate || new Date(),
+    updatedAt: attachment.uploadDate || new Date(),
+    ...attachment, // Include any additional properties from attachment
+  };
+}
 
 export async function getAllDocuments(
   db: Db,
-  userId: string
+  applicantId: string
 ): Promise<Document[]> {
   let documents: Document[] = [];
 
-  try {
-    const documentDocs = await db
-      .collection('applicants')
-      .aggregate([
-        {
-          $match: {
-            uploadedBy: userId,
-            status: { $ne: 'deleted' },
-            isActive: true,
-          },
-        },
-        {
-          $sort: { uploadedAt: -1 },
-        },
-      ])
-      .toArray();
+  console.log('🔍 getAllDocuments called with applicantId:', applicantId);
 
-    documents = documentDocs.reduce((acc: Document[], documentDoc) => {
-      const conversionResult = convertToJSON(documentDoc);
-      if (conversionResult) {
-        acc.push(conversionResult as Document);
-      }
-      return acc;
-    }, []);
-  } catch (e) {
-    console.error('Error finding documents:', e);
+  // Validate ObjectId format
+  if (!ObjectId.isValid(applicantId)) {
+    console.error('❌ Invalid applicantId format:', applicantId);
+    return documents;
   }
 
+  try {
+    const applicantDoc = await db.collection('applicants').findOne({
+      _id: new ObjectId(applicantId),
+    });
+
+    console.log('🔍 Query result:', applicantDoc ? 'Found' : 'Not found');
+    console.log('🔍 Applicant result:', applicantDoc);
+
+    if (
+      applicantDoc &&
+      applicantDoc.attachments &&
+      Array.isArray(applicantDoc.attachments)
+    ) {
+      console.log('Raw attachments from DB:', applicantDoc.attachments);
+      console.log('Attachments count:', applicantDoc.attachments.length);
+
+      documents = (applicantDoc.attachments as MongoAttachment[])
+        .filter(
+          (attachment: MongoAttachment) => attachment && !attachment.deleted
+        )
+        .map((attachment: MongoAttachment) =>
+          attachmentToDocument(attachment, applicantId)
+        )
+        .sort((a: Document, b: Document) => {
+          const dateA = new Date(a.uploadedAt || 0);
+          const dateB = new Date(b.uploadedAt || 0);
+          return dateB.getTime() - dateA.getTime();
+        });
+    }
+  } catch (e) {
+    console.error('❌ Error finding documents:', e);
+  }
+
+  console.log('🔍 Returning documents:', documents.length, 'documents');
   return documents;
 }
 
@@ -51,7 +85,7 @@ export async function findDocumentById(
   try {
     const documentDoc = await db.collection('applicants').findOne({
       _id: new ObjectId(documentId),
-      status: { $ne: 'deleted' },
+      status: { $ne: 'Deleted' },
       isActive: true,
     });
 
@@ -115,7 +149,7 @@ export async function updateDocument(
     const result: UpdateResult<Document> = await Documents.updateOne(
       {
         _id: new ObjectId(id),
-        status: { $ne: 'deleted' },
+        status: { $ne: 'Deleted' },
         isActive: true,
       },
       { $set: body },
@@ -131,8 +165,7 @@ export async function updateDocument(
 
 export async function deleteDocument(
   db: Db,
-  documentId: string,
-  userId: string
+  documentId: string
 ): Promise<UpdateResult<Document>> {
   const Documents = db.collection('applicants');
 
@@ -141,12 +174,11 @@ export async function deleteDocument(
     const result: UpdateResult<Document> = await Documents.updateOne(
       {
         _id: new ObjectId(documentId),
-        uploadedBy: userId, // Ensure user owns the document
-        status: { $ne: 'deleted' },
+        status: { $ne: 'Deleted' },
       },
       {
         $set: {
-          status: 'deleted',
+          status: 'Deleted',
           isActive: false,
           updatedAt: new Date(),
         },
@@ -163,7 +195,6 @@ export async function deleteDocument(
 
 export async function searchDocuments(
   db: Db,
-  userId: string,
   query: string
 ): Promise<Document[]> {
   let documents: Document[] = [];
@@ -174,9 +205,7 @@ export async function searchDocuments(
       .aggregate([
         {
           $match: {
-            uploadedBy: userId,
-            status: { $ne: 'deleted' },
-            isActive: true,
+            status: { $ne: 'Deleted' },
             $or: [
               { name: { $regex: query, $options: 'i' } },
               { description: { $regex: query, $options: 'i' } },
@@ -208,7 +237,6 @@ export async function searchDocuments(
 
 export async function findDocumentsByCompany(
   db: Db,
-  userId: string,
   company: string
 ): Promise<Document[]> {
   let documents: Document[] = [];
@@ -219,10 +247,8 @@ export async function findDocumentsByCompany(
       .aggregate([
         {
           $match: {
-            uploadedBy: userId,
             company: company,
-            status: { $ne: 'deleted' },
-            isActive: true,
+            status: { $ne: 'Deleted' },
           },
         },
         {
@@ -247,7 +273,6 @@ export async function findDocumentsByCompany(
 
 export async function findDocumentsByType(
   db: Db,
-  userId: string,
   fileType: string
 ): Promise<Document[]> {
   let documents: Document[] = [];
@@ -258,10 +283,8 @@ export async function findDocumentsByType(
       .aggregate([
         {
           $match: {
-            uploadedBy: userId,
             fileExtension: fileType.toLowerCase(),
-            status: { $ne: 'deleted' },
-            isActive: true,
+            status: { $ne: 'Deleted' },
           },
         },
         {
@@ -286,15 +309,10 @@ export async function findDocumentsByType(
 
 export async function bulkDeleteDocuments(
   db: Db,
-  documentIds: string[],
-  userId: string
+  documentIds: string[]
 ): Promise<UpdateResult<Document[]>> {
   if (!documentIds || documentIds.length === 0) {
     throw new Error('Invalid document IDs');
-  }
-
-  if (!userId) {
-    throw new Error('Invalid user ID');
   }
 
   const Documents = db.collection('applicants');
@@ -305,12 +323,11 @@ export async function bulkDeleteDocuments(
     const result: UpdateResult<Document[]> = await Documents.updateMany(
       {
         _id: { $in: objectIds },
-        uploadedBy: userId, // Ensure user owns the documents
-        status: { $ne: 'deleted' },
+        status: { $ne: 'Deleted' },
       },
       {
         $set: {
-          status: 'deleted',
+          status: 'Deleted',
           isActive: false,
           updatedAt: new Date(),
         },
