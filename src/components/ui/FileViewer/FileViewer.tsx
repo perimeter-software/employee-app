@@ -50,20 +50,20 @@ const FileViewer: React.FC<FileViewerProps> = ({
   // Generate direct URL for the file
   const getDirectUrl = useCallback(() => {
     if (!imageServer || !currentApplicant?._id) return null;
-    
+
     const filename = file.fileName || file.originalName || file.name;
     const fileType = file.type || 'document';
-    
+
     // Use company uploadPath if available, fallback to 'sp'
     const uploadPath = company?.uploadPath || 'sp';
-    
+
     return `${imageServer}/${uploadPath}/applicants/${currentApplicant._id}/${fileType}/${filename}`;
   }, [imageServer, currentApplicant, file, company]);
 
   // Get base URL for icon images
   const getBaseImageUrl = useCallback(() => {
     if (!imageServer) return '';
-    
+
     // Extract domain from imageServer and create base URL for static assets
     try {
       const url = new URL(imageServer);
@@ -77,7 +77,7 @@ const FileViewer: React.FC<FileViewerProps> = ({
   const determineFilePreviewSrc = useCallback((): string | null => {
     const filename = file.fileName || file.originalName || file.name;
     const extension = getFileExtension(filename);
-    
+
     if (IMAGE_EXTENSIONS.includes(extension)) {
       // For images, use direct URL
       return getDirectUrl();
@@ -85,7 +85,7 @@ const FileViewer: React.FC<FileViewerProps> = ({
 
     // For non-image files, show appropriate icon
     const baseUrl = getBaseImageUrl();
-    
+
     switch (extension) {
       case 'pdf':
         return `${baseUrl}/static/pdf-icon.png`;
@@ -103,7 +103,7 @@ const FileViewer: React.FC<FileViewerProps> = ({
   // Handle file opening
   const handleFileOpen = () => {
     const directUrl = getDirectUrl();
-    
+
     if (!directUrl) {
       console.error('Could not generate file URL');
       return;
@@ -132,11 +132,11 @@ const FileViewer: React.FC<FileViewerProps> = ({
   const getFileIcon = useCallback(() => {
     const filename = file.fileName || file.originalName || file.name;
     const extension = getFileExtension(filename);
-    
+
     if (IMAGE_EXTENSIONS.includes(extension)) {
       return <File className="h-4 w-4" />;
     }
-    
+
     switch (extension) {
       case 'pdf':
         return <FileText className="h-4 w-4 text-red-600" />;
@@ -155,12 +155,15 @@ const FileViewer: React.FC<FileViewerProps> = ({
     <div className="flex items-center space-x-3">
       {/* File preview/icon */}
       <div className="flex-shrink-0">
-        {filePreviewSrc && IMAGE_EXTENSIONS.includes(getFileExtension(file.fileName || file.originalName || file.name)) ? (
+        {filePreviewSrc &&
+        IMAGE_EXTENSIONS.includes(
+          getFileExtension(file.fileName || file.originalName || file.name)
+        ) ? (
           <Image
             src={filePreviewSrc}
             alt={`${file.type || 'File'} preview`}
-            width={size/4 * 16} // Convert rem to pixels (assuming 1rem = 16px)
-            height={size/4 * 16}
+            width={(size / 4) * 16} // Convert rem to pixels (assuming 1rem = 16px)
+            height={(size / 4) * 16}
             className="object-cover rounded cursor-pointer border border-gray-200"
             onClick={handleFileOpen}
             onError={() => setUsePresigned(false)}
@@ -188,23 +191,24 @@ const FileViewer: React.FC<FileViewerProps> = ({
             View
           </Button>
         </div>
-        
+
         {(file.uploadedAt || file.createdAt) && (
           <div className="text-xs text-gray-500 mt-1">
-            {new Date(file.uploadedAt || file.createdAt!).toLocaleDateString('en-US', {
-              weekday: 'short',
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit',
-            })}
+            {new Date(file.uploadedAt || file.createdAt!).toLocaleDateString(
+              'en-US',
+              {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              }
+            )}
           </div>
         )}
-        
+
         {file.fileName && (
-          <div className="text-xs text-gray-500 truncate">
-            {file.fileName}
-          </div>
+          <div className="text-xs text-gray-500 truncate">{file.fileName}</div>
         )}
       </div>
     </div>
