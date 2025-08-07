@@ -1,0 +1,226 @@
+/* Compatibility styles for older Android devices */
+
+/* Old device detection */
+.old-device {
+  /* Disable expensive CSS features that might cause issues */
+  * {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Simplify animations for better performance */
+  .animate-spin {
+    animation-duration: 2s !important; /* Slower animation */
+  }
+
+  /* Reduce blur effects */
+  .blur-3xl,
+  .blur-lg {
+    filter: none !important;
+  }
+
+  /* Simplify shadows */
+  .shadow-2xl {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1) !important;
+  }
+
+  /* Fallbacks for modern CSS features */
+  .backdrop-blur-xl {
+    background-color: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Simplify gradients */
+  .bg-gradient-to-br {
+    background: #f5f5f5 !important;
+  }
+}
+
+/* Fallbacks for CSS features not supported in older browsers */
+
+/* Flexbox fallbacks */
+@supports not (display: flex) {
+  .flex {
+    display: block !important;
+  }
+
+  .flex-col {
+    display: block !important;
+  }
+
+  .items-center {
+    text-align: center !important;
+  }
+}
+
+/* Grid fallbacks */
+@supports not (display: grid) {
+  .grid {
+    display: block !important;
+  }
+
+  .grid-cols-1,
+  .grid-cols-2,
+  .grid-cols-3 {
+    display: block !important;
+  }
+
+  .grid-cols-2 > * {
+    display: inline-block !important;
+    width: 48% !important;
+    margin: 1% !important;
+  }
+}
+
+/* Backdrop-filter fallbacks */
+@supports not (backdrop-filter: blur(1px)) {
+  .backdrop-blur-xl,
+  .backdrop-blur-lg,
+  .backdrop-blur-sm {
+    background-color: rgba(255, 255, 255, 0.95) !important;
+  }
+}
+
+/* Position sticky fallbacks */
+@supports not (position: sticky) {
+  .sticky {
+    position: fixed !important;
+  }
+}
+
+/* CSS custom properties fallbacks for older browsers */
+@supports not (color: var(--primary)) {
+  .bg-blue-600 {
+    background-color: #1976d2 !important;
+  }
+
+  .text-blue-600 {
+    color: #1976d2 !important;
+  }
+
+  .bg-red-600 {
+    background-color: #d32f2f !important;
+  }
+
+  .text-red-600 {
+    color: #d32f2f !important;
+  }
+}
+
+/* Improve performance on older devices */
+.old-device * {
+  /* Reduce transforms that might cause performance issues */
+  will-change: auto !important;
+
+  /* Disable 3D transforms that might not be supported */
+  transform-style: flat !important;
+
+  /* Reduce opacity transitions */
+  transition-property: color, background-color, border-color !important;
+  transition-duration: 0.2s !important;
+}
+
+/* Simplify complex layouts for older devices */
+.old-device .space-y-1 > * + * {
+  margin-top: 0.25rem;
+}
+
+.old-device .space-y-2 > * + * {
+  margin-top: 0.5rem;
+}
+
+.old-device .space-y-3 > * + * {
+  margin-top: 0.75rem;
+}
+
+.old-device .space-y-4 > * + * {
+  margin-top: 1rem;
+}
+
+/* Loading states for older devices */
+.old-device .skeleton {
+  background: #e2e8f0;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Error state improvements for older devices */
+.old-device .error-fallback {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  max-width: 500px;
+  margin: 20px auto;
+}
+
+/* Button improvements for older devices */
+.old-device button {
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+  touch-action: manipulation;
+}
+
+/* Input improvements for older devices */
+.old-device input,
+.old-device textarea,
+.old-device select {
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 4px;
+}
+
+/* Table improvements for older devices */
+.old-device table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.old-device table td,
+.old-device table th {
+  border: 1px solid #e2e8f0;
+  padding: 8px;
+  text-align: left;
+}
+
+/* Modal/Dialog improvements for older devices */
+.old-device [role='dialog'] {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  background: white !important;
+  border: 1px solid #ccc !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1) !important;
+  z-index: 1000 !important;
+}
+
+/* Toast notification improvements for older devices */
+.old-device .sonner-toast {
+  position: fixed !important;
+  top: 20px !important;
+  right: 20px !important;
+  background: white !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 8px !important;
+  padding: 16px !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Hide complex animations on very old devices */
+@media (max-width: 480px) {
+  .old-device .animate-spin,
+  .old-device .animate-pulse,
+  .old-device .animate-bounce {
+    animation: none !important;
+  }
+}

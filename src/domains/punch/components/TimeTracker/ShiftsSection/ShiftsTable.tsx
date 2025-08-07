@@ -499,8 +499,8 @@ export function ShiftsTable({
     }
 
     return rows.sort((a, b) => {
-      // Sort by date (newest first)
-      const dateSort = b.dateObj.getTime() - a.dateObj.getTime();
+      // Sort by date (oldest first - ascending order)
+      const dateSort = a.dateObj.getTime() - b.dateObj.getTime();
       if (dateSort !== 0) return dateSort;
 
       // For same date, prioritize active punches first

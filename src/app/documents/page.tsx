@@ -10,16 +10,7 @@ import {
   CardTitle,
 } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button/Button';
-import {
-  FileText,
-  Search,
-  Plus,
-  Info,
-  Eye,
-  Trash2,
-  ChevronDown,
-  File,
-} from 'lucide-react';
+import { FileText, Search, Plus, ChevronDown, File } from 'lucide-react';
 import { NextPage } from 'next';
 import { usePageAuth } from '@/domains/shared/hooks/use-page-auth';
 import {
@@ -45,7 +36,13 @@ import {
   SelectValue,
 } from '@/components/ui/Select';
 import { FileDropzone } from '@/components/ui/FileDropzone/FileDropzone';
-import { useDocuments, useUploadDocument, Document as ApiDocument } from '@/domains/document';
+import { FileViewer } from '@/components/ui/FileViewer';
+import {
+  useDocuments,
+  useUploadDocument,
+  Document as ApiDocument,
+} from '@/domains/document';
+import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 
 interface DocumentUploadData {
   file: File;
@@ -208,7 +205,27 @@ const DocumentUploadModal: React.FC<{
 
 const DocumentsPage: NextPage = () => {
   const { user, error: authError, isLoading: authLoading } = useUser();
-  const { isLoading: userLoading } = useCurrentUser();
+  const { isLoading: userLoading, data: currentUserData } = useCurrentUser();
+
+  // Fetch primary company data for uploadPath
+  const { data: primaryCompany } = usePrimaryCompany();
+
+  // Setup image server URL based on environment
+  const getImageServerUrl = (): string => {
+    if (typeof window === 'undefined') return '';
+
+    const hostname = window.location.hostname;
+    if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) {
+      return 'https://images.dev.stadiumpeople.com';
+    } else if (hostname.includes('stage')) {
+      return 'https://images.stage.stadiumpeople.com';
+    } else {
+      return 'https://images.stadiumpeople.com';
+    }
+  };
+
+  const imageServerUrl = getImageServerUrl();
+
   // Auth check
   const {
     shouldShowContent,
@@ -221,17 +238,12 @@ const DocumentsPage: NextPage = () => {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
   // Fetch documents from API
-  const { data: documentsData, isLoading: documentsLoading, error: documentsError } = useDocuments();
+  const {
+    data: documentsData,
+    isLoading: documentsLoading,
+    error: documentsError,
+  } = useDocuments();
   const uploadDocument = useUploadDocument();
-
-  // Helper function to format file size
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
 
   // Helper function to get file extension from filename
   const getFileExtension = (filename: string): string => {
@@ -242,26 +254,35 @@ const DocumentsPage: NextPage = () => {
   const formatDate = (date: Date): { date: string; time: string } => {
     const d = new Date(date);
     return {
-      date: d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
-      time: d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+      date: d.toLocaleDateString('en-US', {
+        month: '2-digit',
+        day: '2-digit',
+        year: 'numeric',
+      }),
+      time: d.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }),
     };
   };
 
   // Transform API documents to display format
-  const documents = documentsData?.documents?.map((doc: ApiDocument) => {
-    const { date, time } = formatDate(doc.createdAt);
-    const extension = getFileExtension(doc.fileName);
-    
-    return {
-      id: doc.id || doc._id || '',
-      name: doc.name,
-      createdDate: date,
-      createdTime: time,
-      size: formatFileSize(doc.fileSize),
-      type: `${extension.toUpperCase()} Document`,
-      fileIcon: extension,
-    };
-  }) || [];
+  const documents =
+    documentsData?.documents?.map((doc: ApiDocument) => {
+      const { date, time } = formatDate((doc.createdAt as Date) || new Date());
+      const extension = getFileExtension(doc.fileName || '');
+
+      return {
+        id: doc.id || doc._id || '',
+        name: doc.name,
+        createdDate: date,
+        createdTime: time,
+        type: `${extension.toUpperCase()} Document`,
+        fileIcon: extension,
+        originalDoc: doc, // Keep reference to original document data
+      };
+    }) || [];
 
   // Handle document upload
   const handleDocumentUpload = async (data: DocumentUploadData) => {
@@ -270,7 +291,7 @@ const DocumentsPage: NextPage = () => {
       formData.append('file', data.file);
       formData.append('name', data.documentName);
       formData.append('description', data.description);
-      
+
       await uploadDocument.mutateAsync(formData);
       setIsUploadModalOpen(false);
     } catch (error) {
@@ -402,27 +423,6 @@ const DocumentsPage: NextPage = () => {
     );
   }
 
-  const getFileIcon = (fileType: string) => {
-    if (fileType === 'pdf') {
-      return (
-        <div className="w-8 h-8 bg-red-100 rounded flex items-center justify-center">
-          <FileText className="w-5 h-5 text-red-600" />
-        </div>
-      );
-    } else if (fileType === 'docx') {
-      return (
-        <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center">
-          <FileText className="w-5 h-5 text-blue-600" />
-        </div>
-      );
-    }
-    return (
-      <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center">
-        <FileText className="w-5 h-5 text-gray-600" />
-      </div>
-    );
-  };
-
   // Early returns for auth states (after all hooks are called)
   if (pageAuthLoading || authLoading) {
     return <AuthLoadingState />;
@@ -466,7 +466,9 @@ const DocumentsPage: NextPage = () => {
             <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
           </div>
           <div className="flex justify-center items-center py-12">
-            <div className="text-red-500">Error loading documents: {documentsError.message}</div>
+            <div className="text-red-500">
+              Error loading documents: {documentsError.message}
+            </div>
           </div>
         </div>
       </Layout>
@@ -538,19 +540,13 @@ const DocumentsPage: NextPage = () => {
                     </th>
                     <th className="text-left py-4 px-6 text-sm font-medium text-gray-600">
                       <div className="flex items-center space-x-1">
-                        <span>Size</span>
-                        <ChevronDown className="w-4 h-4" />
-                      </div>
-                    </th>
-                    <th className="text-left py-4 px-6 text-sm font-medium text-gray-600">
-                      <div className="flex items-center space-x-1">
                         <span>Type</span>
                         <ChevronDown className="w-4 h-4" />
                       </div>
                     </th>
-                    <th className="text-left py-4 px-6 text-sm font-medium text-gray-600">
+                    {/* <th className="text-left py-4 px-6 text-sm font-medium text-gray-600">
                       Actions
-                    </th>
+                    </th> */}
                   </tr>
                 </thead>
                 <tbody>
@@ -563,12 +559,33 @@ const DocumentsPage: NextPage = () => {
                         {index + 1}
                       </td>
                       <td className="py-4 px-6">
-                        <div className="flex items-center space-x-3">
-                          {getFileIcon(document.fileIcon)}
-                          <span className="text-sm text-gray-900 font-medium">
-                            {document.name}
-                          </span>
-                        </div>
+                        <FileViewer
+                          file={{
+                            id:
+                              document.originalDoc.id ||
+                              document.originalDoc._id,
+                            _id: document.originalDoc._id,
+                            name: document.originalDoc.name,
+                            fileName: document.originalDoc.fileName,
+                            originalName: document.originalDoc.originalName,
+                            fileType: document.originalDoc.fileType,
+                            type: document.originalDoc.type,
+                            uploadedAt: document.originalDoc.uploadedAt,
+                            createdAt: document.originalDoc.createdAt,
+                          }}
+                          currentApplicant={{
+                            _id:
+                              currentUserData?.applicantId || user?.sub || '',
+                          }}
+                          imageServer={imageServerUrl}
+                          company={{
+                            uploadPath: primaryCompany?.uploadPath,
+                          }}
+                          onView={() => {
+                            console.log('Viewing document:', document.name);
+                          }}
+                          size={60}
+                        />
                       </td>
 
                       <td className="py-4 px-6 text-sm text-gray-900">
@@ -580,12 +597,9 @@ const DocumentsPage: NextPage = () => {
                         </div>
                       </td>
                       <td className="py-4 px-6 text-sm text-gray-900">
-                        {document.size}
-                      </td>
-                      <td className="py-4 px-6 text-sm text-gray-900">
                         {document.type}
                       </td>
-                      <td className="py-4 px-6">
+                      {/* <td className="py-4 px-6">
                         <div className="flex items-center space-x-2">
                           <Button
                             variant="outline"
@@ -612,7 +626,7 @@ const DocumentsPage: NextPage = () => {
                             Delete
                           </Button>
                         </div>
-                      </td>
+                      </td> */}
                     </tr>
                   ))}
                 </tbody>

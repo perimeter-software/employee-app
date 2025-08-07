@@ -23,21 +23,34 @@ async function getDocumentsHandler(
 ) {
   try {
     const { db } = await getTenantAwareConnection(request);
-    const userId = request.user?.id || request.user?.sub;
+    // Use applicantId instead of id/sub for MongoDB operations
+    const applicantId =
+      request.user?.applicantId || request.user?.id || request.user?.sub;
 
-    if (!userId) {
+    console.log('🔍 API - User object:', request.user);
+    console.log('🔍 API - Extracted applicantId:', applicantId);
+    console.log('🔍 API - applicantId type:', typeof applicantId);
+
+    if (!applicantId) {
       return NextResponse.json(
-        { success: false, error: 'unauthorized', message: 'User ID not found' },
+        {
+          success: false,
+          error: 'unauthorized',
+          message: 'Applicant ID not found',
+        },
         { status: 401 }
       );
     }
 
-    const result = await getAllDocuments(db, userId as string);
+    const result = await getAllDocuments(db, applicantId as string);
 
     return NextResponse.json({
       success: true,
       message: 'Documents fetched successfully',
-      data: result, // { documents: Document[], count: number }
+      data: {
+        documents: result,
+        count: result.length,
+      },
     });
   } catch (error) {
     console.error('❌ GET /documents error:', error);
@@ -60,11 +73,15 @@ async function createDocumentHandler(
 ) {
   try {
     const { db } = await getTenantAwareConnection(request);
-    const userId = request.user?.id || request.user?.sub;
+    const applicantId = request.user?.applicantId || request.user?.sub;
 
-    if (!userId) {
+    if (!applicantId) {
       return NextResponse.json(
-        { success: false, error: 'unauthorized', message: 'User ID not found' },
+        {
+          success: false,
+          error: 'unauthorized',
+          message: 'Applicant ID not found',
+        },
         { status: 401 }
       );
     }
