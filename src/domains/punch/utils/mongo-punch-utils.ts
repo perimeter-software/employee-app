@@ -38,10 +38,39 @@ export async function deletePunchById(
   punchId: string
 ): Promise<boolean> {
   try {
-    const result = await db
+    // First, find the punch to be deleted
+    const punchToDelete = await db
+      .collection('timecard')
+      .findOne({ _id: new ObjectIdFunction(punchId) });
+
+    if (!punchToDelete) {
+      console.error('Punch not found for deletion:', punchId);
+      return false;
+    }
+
+    // Add deletion metadata
+    const deletedPunch = {
+      ...punchToDelete,
+      deletedAt: new Date().toISOString(),
+      originalId: punchToDelete._id,
+    };
+
+    // Move the punch to timecard-deleted collection
+    const insertResult = await db
+      .collection('timecard-deleted')
+      .insertOne(deletedPunch);
+
+    if (!insertResult.insertedId) {
+      console.error('Failed to move punch to deleted collection');
+      return false;
+    }
+
+    // Remove the punch from the original timecard collection
+    const deleteResult = await db
       .collection('timecard')
       .deleteOne({ _id: new ObjectIdFunction(punchId) });
-    return result.deletedCount === 1;
+
+    return deleteResult.deletedCount === 1;
   } catch (e) {
     console.error('Error deleting punch:', e);
     return false;

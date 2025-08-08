@@ -7,5 +7,6 @@ export interface TimeClockSettings {
 export type Company = {
   _id: string;
   imageUrl: string;
+  uploadPath?: string; // Path prefix for uploaded files (e.g., 'sp')
   timeClockSettings: TimeClockSettings;
 };

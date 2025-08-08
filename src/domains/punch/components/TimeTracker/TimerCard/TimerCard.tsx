@@ -9,10 +9,7 @@ import { JobShiftSelector } from './JobShiftSelector';
 import { ClockControls } from './ClockControls';
 import { ClockInValidationModal } from '../ClockInValidationModal';
 import { useTimerCard } from '@/domains/punch/hooks';
-import {
-  usePunchViewerStore,
-  isPersistedDataValid,
-} from '@/domains/punch/stores/punch-viewer-store';
+import { usePunchViewerStore } from '@/domains/punch/stores/punch-viewer-store';
 import { PunchWithJobInfo } from '@/domains/punch/types';
 import { GignologyUser } from '@/domains/user/types';
 import { noop } from '@tanstack/react-query';
@@ -23,19 +20,15 @@ interface TimerCardProps {
 }
 
 export function TimerCard({ userData, openPunches }: TimerCardProps) {
-  const { initializeFromServerData, lastUpdated } = usePunchViewerStore();
+  const { initializeFromServerData } = usePunchViewerStore();
 
   // Initialize store from server data when component mounts or data changes
   useEffect(() => {
     if (openPunches && userData) {
-      // Only initialize if we don't have valid persisted data or if server data is newer
-      const hasValidPersistedData = isPersistedDataValid(lastUpdated);
-
-      if (!hasValidPersistedData) {
-        initializeFromServerData(openPunches, userData);
-      }
+      // Always initialize from server data since we no longer persist
+      initializeFromServerData(openPunches, userData);
     }
-  }, [openPunches, userData, initializeFromServerData, lastUpdated]);
+  }, [openPunches, userData, initializeFromServerData]);
 
   const {
     // State
@@ -89,6 +82,9 @@ export function TimerCard({ userData, openPunches }: TimerCardProps) {
     );
   }
 
+  {
+    console.log('shiftInfo: ', shiftInfo);
+  }
 
   return (
     <>

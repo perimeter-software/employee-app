@@ -1,8 +1,8 @@
 // app/time-attendance/page.tsx
-"use client";
+'use client';
 
-import Layout from "@/components/layout/Layout";
-import { TimeTrackerContainer } from "@/domains/punch";
+import Layout from '@/components/layout/Layout';
+import { TimeTrackerContainer } from '@/domains/punch';
 import { usePageAuth } from '@/domains/shared/hooks/use-page-auth';
 import {
   AuthErrorState,
@@ -12,7 +12,11 @@ import {
 
 function TimeAttendancePage() {
   // Auth check
-  const { shouldShowContent, isLoading: authLoading, error: authError } = usePageAuth({
+  const {
+    shouldShowContent,
+    isLoading: authLoading,
+    error: authError,
+  } = usePageAuth({
     requireAuth: true,
   });
 

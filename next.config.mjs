@@ -12,6 +12,14 @@ const nextConfig = {
         hostname: 'images.stadiumpeople.com',
       },
       {
+        protocol: 'https',
+        hostname: 'images.dev.stadiumpeople.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.stage.stadiumpeople.com',
+      },
+      {
         protocol: 'http',
         hostname: 'localhost',
       },
@@ -35,22 +43,35 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com https://polyfill.io",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "img-src 'self' data: https: blob:",
               "font-src 'self' https://fonts.gstatic.com",
-              "connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com https://*.auth0.com",
-              "frame-src https://*.auth0.com",
+              "connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com https://*.auth0.com https://polyfill.io",
+              'frame-src https://*.auth0.com',
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",
               "frame-ancestors 'none'",
-              "upgrade-insecure-requests"
+              'upgrade-insecure-requests',
             ].join('; '),
           },
         ],
       },
     ];
+  },
+
+  compiler: {
+    // Add compatibility for older browsers
+    removeConsole: process.env.NODE_ENV === 'production',
+  },
+
+  // Add experimental features for better compatibility
+  experimental: {
+    // Enable SWC minifier for better performance
+    swcMinify: true,
+    // Optimize for older devices
+    optimizePackageImports: ['lucide-react', '@tanstack/react-query'],
   },
 };
 
