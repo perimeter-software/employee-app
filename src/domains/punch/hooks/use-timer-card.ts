@@ -164,12 +164,10 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       }
 
       // FIXED: Use the combineCurrentDateWithTimeFromDateObject for proper time handling
-      const shiftEndTime = new Date(
-        combineCurrentDateWithTimeFromDateObject(
-          end as Date,
-          nowIso,
-          start as Date // Pass start as reference for overnight detection
-        )
+      const shiftEndTime = combineCurrentDateWithTimeFromDateObject(
+        end as Date,
+        nowIso,
+        start as Date // Pass start as reference for overnight detection
       );
 
       console.log('Shift end time:', shiftEndTime.toISOString());
@@ -491,15 +489,14 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         );
 
         // Use the proper function to combine current date with shift times
-        const newStartDate = new Date(
-          combineCurrentDateWithTimeFromDateObject(start as Date, currentTime)
+        const newStartDate = combineCurrentDateWithTimeFromDateObject(
+          start as Date,
+          currentTime
         );
-        const newEndDate = new Date(
-          combineCurrentDateWithTimeFromDateObject(
-            end as Date,
-            currentTime,
-            start as Date
-          )
+        const newEndDate = combineCurrentDateWithTimeFromDateObject(
+          end as Date,
+          currentTime,
+          start as Date
         );
 
         const timeIn = getCalculatedTimeIn(
@@ -769,15 +766,14 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
     }
 
     // Use the proper function to combine current date with shift times
-    const shiftStartTime = new Date(
-      combineCurrentDateWithTimeFromDateObject(start as Date, currentTime)
+    const shiftStartTime = combineCurrentDateWithTimeFromDateObject(
+      start as Date,
+      currentTime
     );
-    const shiftEndTime = new Date(
-      combineCurrentDateWithTimeFromDateObject(
-        end as Date,
-        currentTime,
-        start as Date
-      )
+    const shiftEndTime = combineCurrentDateWithTimeFromDateObject(
+      end as Date,
+      currentTime,
+      start as Date
     );
 
     const shiftStart = new Date(shiftStartTime);
