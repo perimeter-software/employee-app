@@ -4,7 +4,7 @@ import redisService from '@/lib/cache/redis-client';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 
 /**
- * Gets the current user's tenant database name from Redis cache
+ * Gets the current user's tenant database name from Redis cache or database lookup
  */
 export async function getCurrentTenantDbName(
   userEmail: string
@@ -16,9 +16,73 @@ export async function getCurrentTenantDbName(
 
     if (!tenantData?.tenant) {
       console.warn(
-        `⚠️  No tenant data found for user: ${userEmail}, using default database`
+        `⚠️  No tenant data found in Redis for user: ${userEmail}, looking up in database...`
       );
-      return 'stadiumpeople'; // Default fallback
+
+      // FALLBACK: Look up tenant data from database for single-tenant users
+      try {
+        const { mongoConn } = await import('./mongodb');
+        const { checkUserMasterEmail } = await import('@/domains/user/utils');
+
+        // Connect to databases
+        const { dbTenant, userDb } = await mongoConn();
+
+        // Get tenant data from database
+        const userMasterRecord = await checkUserMasterEmail(
+          userDb,
+          dbTenant,
+          userEmail
+        );
+
+        if (userMasterRecord?.success && userMasterRecord?.tenant) {
+          console.log(
+            `🎯 Found tenant data in database for user: ${userEmail}`,
+            {
+              url: userMasterRecord.tenant.url,
+              dbName: userMasterRecord.tenant.dbName,
+              clientName: userMasterRecord.tenant.clientName,
+            }
+          );
+
+          // Use dbName from database lookup if available
+          if (userMasterRecord.tenant.dbName) {
+            console.log(
+              `🎯 Using database "${userMasterRecord.tenant.dbName}" from database lookup for tenant: ${userMasterRecord.tenant.url} (user: ${userEmail})`
+            );
+            return userMasterRecord.tenant.dbName;
+          }
+
+          // Fallback to URL-based database name
+          const tenantUrl = userMasterRecord.tenant.url;
+          let dbName = 'stadiumpeople'; // Default fallback
+
+          if (tenantUrl) {
+            // Special case: if the domain is jobs.stadiumpeople.com, use stadiumpeople
+            if (tenantUrl === 'jobs.stadiumpeople.com') {
+              dbName = 'stadiumpeople';
+            } else {
+              // Otherwise use the first part of the URL
+              dbName = tenantUrl.split('.')[0] || 'stadiumpeople';
+            }
+          }
+
+          console.log(
+            `🎯 Using database "${dbName}" (URL fallback) for tenant: ${tenantUrl} (user: ${userEmail})`
+          );
+          return dbName;
+        } else {
+          console.error(
+            `❌ No tenant data found in database for user: ${userEmail}`
+          );
+          return 'stadiumpeople'; // Default fallback
+        }
+      } catch (dbError) {
+        console.error(
+          `❌ Database lookup failed for user ${userEmail}:`,
+          dbError
+        );
+        return 'stadiumpeople'; // Default fallback
+      }
     }
 
     // Use the dbName from the tenant data if available
