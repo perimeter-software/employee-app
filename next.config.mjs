@@ -35,6 +35,27 @@ const nextConfig = {
   },
 
   async headers() {
+    // Get PureBlue URLs from environment variables
+    const pureblueApiUrl = process.env.NEXT_PUBLIC_PUREBLUE_API_URL;
+    const pureblueChatUrl = process.env.NEXT_PUBLIC_PUREBLUE_CHAT_URL;
+
+    // Build CSP directives
+    const connectSrc = [
+      "'self'",
+      'https://maps.googleapis.com',
+      'https://maps.gstatic.com',
+      'https://*.auth0.com',
+      'https://polyfill.io',
+    ];
+    if (pureblueApiUrl) {
+      connectSrc.push(pureblueApiUrl);
+    }
+
+    const frameSrc = ['https://*.auth0.com'];
+    if (pureblueChatUrl) {
+      frameSrc.push(pureblueChatUrl);
+    }
+
     return [
       {
         source: '/(.*)',
@@ -47,8 +68,8 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "img-src 'self' data: https: blob:",
               "font-src 'self' https://fonts.gstatic.com",
-              "connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com https://*.auth0.com https://polyfill.io",
-              'frame-src https://*.auth0.com',
+              `connect-src ${connectSrc.join(' ')}`,
+              `frame-src ${frameSrc.join(' ')}`,
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",
