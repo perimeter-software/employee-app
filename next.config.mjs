@@ -35,26 +35,19 @@ const nextConfig = {
   },
 
   async headers() {
-    // Get PureBlue URLs from environment variables
-    const pureblueApiUrl = process.env.NEXT_PUBLIC_PUREBLUE_API_URL;
-    const pureblueChatUrl = process.env.NEXT_PUBLIC_PUREBLUE_CHAT_URL;
-
-    // Build CSP directives
     const connectSrc = [
       "'self'",
       'https://maps.googleapis.com',
       'https://maps.gstatic.com',
       'https://*.auth0.com',
       'https://polyfill.io',
+      'https://*.pureblue.ai', // PureBlue API and services
     ];
-    if (pureblueApiUrl) {
-      connectSrc.push(pureblueApiUrl);
-    }
 
-    const frameSrc = ['https://*.auth0.com'];
-    if (pureblueChatUrl) {
-      frameSrc.push(pureblueChatUrl);
-    }
+    const frameSrc = [
+      'https://*.auth0.com',
+      'https://*.pureblue.info', // PureBlue chatbot iframes
+    ];
 
     return [
       {

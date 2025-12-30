@@ -1,14 +1,6 @@
 import type { NextResponse } from 'next/server';
 import { NextResponse as Response } from 'next/server';
 
-/**
- * Get PureBlue URLs from environment variables for CSP
- */
-function getPureBlueUrls(): { apiUrl?: string; chatUrl?: string } {
-  const apiUrl = process.env.NEXT_PUBLIC_PUREBLUE_API_URL;
-  const chatUrl = process.env.NEXT_PUBLIC_PUREBLUE_CHAT_URL;
-  return { apiUrl, chatUrl };
-}
 
 export async function securityMiddleware(): Promise<NextResponse | null> {
   // Add security headers
@@ -20,24 +12,18 @@ export async function securityMiddleware(): Promise<NextResponse | null> {
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('X-XSS-Protection', '1; mode=block');
 
-  // Get PureBlue URLs for CSP
-  const { apiUrl, chatUrl } = getPureBlueUrls();
-
-  // Build CSP directives
   const connectSrc = [
     "'self'",
     'https://maps.googleapis.com',
     'https://maps.gstatic.com',
     'https://*.auth0.com',
+    'https://*.pureblue.ai', // PureBlue API and services
   ];
-  if (apiUrl) {
-    connectSrc.push(apiUrl);
-  }
 
-  const frameSrc = ['https://*.auth0.com'];
-  if (chatUrl) {
-    frameSrc.push(chatUrl);
-  }
+  const frameSrc = [
+    'https://*.auth0.com',
+    'https://*.pureblue.info', // PureBlue chatbot iframes
+  ];
 
   // CSP header with Google Maps and PureBlue support
   response.headers.set(
