@@ -77,7 +77,7 @@ const ChatConversationPage = () => {
             </p>
             <Button
               onClick={() => refetch()}
-              variant="default"
+              variant="primary"
               className="mt-4"
             >
               <RefreshCw className="mr-2 h-4 w-4" />
