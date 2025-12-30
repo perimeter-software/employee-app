@@ -8,6 +8,8 @@ export async function findPrimaryCompany(db: Db): Promise<Company | null> {
       _id: 1,
       imageUrl: 1,
       timeClockSettings: 1,
+      uploadPath: 1,
+      pureBlueConfig: 1,
     };
 
     const companyDoc = await db

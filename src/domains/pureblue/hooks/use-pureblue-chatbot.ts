@@ -4,15 +4,19 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { PureBlueService } from '../services/pureblue-service';
 import { useCurrentUser } from '@/domains/user/hooks/use-current-user';
+import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 
 export function usePureBlueChatbot() {
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const { data: primaryCompany, isLoading: companyLoading } = usePrimaryCompany();
   const [chatbotUrl, setChatbotUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  console.log('currentUser', currentUser);
 
   // Get email from currentUser (EnhancedUser type has email field)
   const userEmail = currentUser?.email || null;
+  
+  // Get PureBlue config from primary company (required)
+  const pureBlueConfig = primaryCompany?.pureBlueConfig;
 
   const {
     data: authToken,
@@ -20,37 +24,46 @@ export function usePureBlueChatbot() {
     error: tokenError,
     refetch,
   } = useQuery({
-    queryKey: ['pureblue-auth-token', userEmail],
+    queryKey: ['pureblue-auth-token', userEmail, pureBlueConfig],
     queryFn: async () => {
       if (!userEmail) {
         throw new Error('User email is required');
       }
-      return PureBlueService.getAuthToken(userEmail);
+      if (!pureBlueConfig) {
+        throw new Error('Chatbot not available for this tenant');
+      }
+      return PureBlueService.getAuthToken(userEmail, pureBlueConfig);
     },
-    enabled: !!userEmail && !userLoading,
+    enabled: !!userEmail && !!pureBlueConfig && !userLoading && !companyLoading,
     staleTime: 50 * 60 * 1000, // 50 minutes (tokens expire in 1 hour)
     gcTime: 60 * 60 * 1000, // 1 hour
     retry: 2,
   });
 
   useEffect(() => {
+    if (!pureBlueConfig) {
+      setError('Chatbot not available for this tenant');
+      setChatbotUrl(null);
+      return;
+    }
+
     if (authToken?.success && authToken?.responseObject?.token) {
-      const token = authToken.responseObject.token;
-      const personaSlug = process.env.NEXT_PUBLIC_PUREBLUE_PERSONA_SLUG;
-      if (!personaSlug) {
-        setError('NEXT_PUBLIC_PUREBLUE_PERSONA_SLUG environment variable is not set');
+      try {
+        const token = authToken.responseObject.token;
+        const personaSlug = PureBlueService.getPersonaSlug(pureBlueConfig);
+        const chatUrl = PureBlueService.getChatUrl(pureBlueConfig);
+        const url = `${chatUrl}/chat-auth/external-chat?authToken=${token}&personaSlug=${personaSlug}`;
+        setChatbotUrl(url);
+        setError(null);
+      } catch (configError) {
+        setError(configError instanceof Error ? configError.message : 'Chatbot not available for this tenant');
         setChatbotUrl(null);
-        return;
       }
-      const chatUrl = PureBlueService.getChatUrl();
-      const url = `${chatUrl}/chat-auth/external-chat?authToken=${token}&personaSlug=${personaSlug}`;
-      setChatbotUrl(url);
-      setError(null);
     } else if (tokenError) {
-      setError(tokenError instanceof Error ? tokenError.message : 'Failed to load chatbot');
+      setError(tokenError instanceof Error ? tokenError.message : 'Chatbot not available for this tenant');
       setChatbotUrl(null);
     }
-  }, [authToken, tokenError]);
+  }, [authToken, tokenError, pureBlueConfig]);
 
   return {
     chatbotUrl,
