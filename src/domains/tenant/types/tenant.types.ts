@@ -9,6 +9,7 @@ export type TenantInfo = {
   lastLoginDate?: string;
   tenantLogo?: string;
   dbName?: string;
+  peoIntegration?: string;
 };
 
 export type TenantDocument = {
@@ -19,6 +20,7 @@ export type TenantDocument = {
   type: string;
   tenantLogo?: string;
   dbName?: string;
+  peoIntegration?: string;
 };
 
 export type TenantObjectsIndexed = {
@@ -29,6 +31,7 @@ export type TenantObjectsIndexed = {
     clientDomain?: string;
     additionalDomains?: string[];
     dbName?: string;
+    peoIntegration?: string;
   };
 };
 

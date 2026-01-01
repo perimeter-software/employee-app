@@ -35,6 +35,22 @@ const nextConfig = {
   },
 
   async headers() {
+    const connectSrc = [
+      "'self'",
+      'https://maps.googleapis.com',
+      'https://maps.gstatic.com',
+      'https://*.auth0.com',
+      'https://polyfill.io',
+      'https://*.pureblue.ai', // PureBlue API and services
+    ];
+
+    const frameSrc = [
+      'https://*.auth0.com',
+      'https://*.pureblue.info', // PureBlue chatbot iframes
+      // AWS S3 URLs - allow all S3 endpoints for PDF viewing
+      'https://*.amazonaws.com', // Matches all AWS S3 URLs (s3.region.amazonaws.com, bucket.s3.region.amazonaws.com, etc.)
+    ];
+
     return [
       {
         source: '/(.*)',
@@ -47,8 +63,8 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "img-src 'self' data: https: blob:",
               "font-src 'self' https://fonts.gstatic.com",
-              "connect-src 'self' https://maps.googleapis.com https://maps.gstatic.com https://*.auth0.com https://polyfill.io",
-              'frame-src https://*.auth0.com',
+              `connect-src ${connectSrc.join(' ')}`,
+              `frame-src ${frameSrc.join(' ')}`,
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",
