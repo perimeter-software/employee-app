@@ -37,6 +37,10 @@ on:
         required: true
       SECRET_AUTH0_SERVER_SECRET:
         required: true
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
 
 
 jobs:
@@ -101,4 +105,7 @@ jobs:
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_CLIENT_SECRET,Value=${{ secrets.SECRET_AUTH0_CLIENT_SECRET }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_DOMAIN,Value=${{ vars.SECRET_AUTH0_DOMAIN }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_AUDIENCE,Value=${{ vars.SECRET_AUTH0_AUDIENCE }}" \
-                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_SERVER_SECRET,Value=${{ secrets.SECRET_AUTH0_SERVER_SECRET }}"
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SECRET_AUTH0_SERVER_SECRET,Value=${{ secrets.SECRET_AUTH0_SERVER_SECRET }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AWS_REGION,Value=${{ vars.AWS_REGION }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AWS_ACCESS_KEY_ID,Value=${{ secrets.AWS_ACCESS_KEY_ID }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AWS_SECRET_ACCESS_KEY,Value=${{ secrets.AWS_SECRET_ACCESS_KEY }}"
