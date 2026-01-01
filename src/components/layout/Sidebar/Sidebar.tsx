@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   CalendarClock,
   MessageCircleQuestion,
+  Receipt,
   X,
 } from 'lucide-react';
 import { clsxm } from '@/lib/utils';
@@ -62,6 +63,19 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
         href: '/pto',
         icon: CalendarClock,
         current: pathname === '/pto' || pathname.startsWith('/pto'),
+      });
+    }
+
+    // Conditionally add Paycheck Stubs link for Prism companies
+    const isPrism = primaryCompany?.peoIntegration === 'Prism';
+    if (isPrism) {
+      baseNavigation.push({
+        name: 'Paycheck Stubs',
+        href: '/paycheck-stubs',
+        icon: Receipt,
+        current:
+          pathname === '/paycheck-stubs' ||
+          pathname.startsWith('/paycheck-stubs'),
       });
     }
 

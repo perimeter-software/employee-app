@@ -22,10 +22,17 @@ async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
       );
     }
 
+    // Get peoIntegration from tenant data (similar to sp1-api)
+    // The tenant data is available in request.user.tenant from the middleware
+    const peoIntegration = request.user?.tenant?.peoIntegration || 'Helm';
+
     return NextResponse.json({
       success: true,
       message: 'Primary company found',
-      data: primaryCompany,
+      data: {
+        ...primaryCompany,
+        peoIntegration,
+      },
     });
   } catch (error) {
     console.error('Primary company API error:', error);

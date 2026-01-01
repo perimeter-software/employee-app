@@ -17,4 +17,5 @@ export type Company = {
   uploadPath?: string; // Path prefix for uploaded files (e.g., 'sp')
   timeClockSettings: TimeClockSettings;
   pureBlueConfig?: PureBlueConfig;
+  peoIntegration?: string; // PEO integration type (e.g., 'Helm', 'Prism')
 };
