@@ -47,6 +47,8 @@ const nextConfig = {
     const frameSrc = [
       'https://*.auth0.com',
       'https://*.pureblue.info', // PureBlue chatbot iframes
+      // AWS S3 URLs - allow all S3 endpoints for PDF viewing
+      'https://*.amazonaws.com', // Matches all AWS S3 URLs (s3.region.amazonaws.com, bucket.s3.region.amazonaws.com, etc.)
     ];
 
     return [

@@ -6,10 +6,12 @@ import { generateS3PresignedUrl } from '@/lib/utils/s3-presigned-url';
 
 async function getPaycheckStubPresignedUrlHandler(
   request: AuthenticatedRequest,
-  context: { params: Promise<{ id: string; stubId: string }> }
+  context: { params: Promise<Record<string, string | string[] | undefined>> }
 ) {
   try {
-    const { id, stubId } = await context.params;
+    const params = await context.params;
+    const id = typeof params.id === 'string' ? params.id : params.id?.[0];
+    const stubId = typeof params.stubId === 'string' ? params.stubId : params.stubId?.[0];
     const { db } = await getTenantAwareConnection(request);
 
     if (!id || !stubId) {
@@ -73,8 +75,10 @@ async function getPaycheckStubPresignedUrlHandler(
 
     return NextResponse.json({
       success: true,
-      presignedUrl,
-      expiresIn: 1800, // 30 minutes in seconds
+      data: {
+        presignedUrl,
+        expiresIn: 1800, // 30 minutes in seconds
+      },
     });
   } catch (error) {
     console.error('Error generating paycheck stub pre-signed URL:', error);
