@@ -413,6 +413,7 @@ export async function checkUserMasterEmail(
           lastLoginDate: result.tenants[0].lastLoginDate,
           tenantLogo: tenantObject?.tenantLogo,
           dbName: tenantObject?.dbName,
+          peoIntegration: tenantObject?.peoIntegration || 'Helm',
         },
         message: 'Email exists!',
       };
@@ -468,6 +469,7 @@ export async function checkUserMasterEmail(
             clientDomain: tn.clientDomain,
             additionalDomains: tn.additionalDomains,
             dbName: tn.dbName,
+            peoIntegration: tn.peoIntegration,
           };
         }
         if (tn.additionalDomains) {
@@ -480,6 +482,7 @@ export async function checkUserMasterEmail(
                 clientDomain: tn.clientDomain,
                 additionalDomains: tn.additionalDomains,
                 dbName: tn.dbName,
+                peoIntegration: tn.peoIntegration,
               };
             }
           });
@@ -512,6 +515,7 @@ export async function checkUserMasterEmail(
           lastLoginDate: item.lastLoginDate,
           tenantLogo: tenantObjectsIndexed[item.url]?.tenantLogo,
           dbName: tenantObjectsIndexed[item.url]?.dbName || '',
+          peoIntegration: tenantObjectsIndexed[item.url]?.peoIntegration || 'Helm',
         }));
 
       const availableTenants = result.tenants
@@ -543,6 +547,8 @@ export async function checkUserMasterEmail(
             lastLoginDate: mostRecentActiveTenant.lastLoginDate,
             tenantLogo:
               tenantObjectsIndexed[mostRecentActiveTenant.url]?.tenantLogo,
+            peoIntegration:
+              tenantObjectsIndexed[mostRecentActiveTenant.url]?.peoIntegration || 'Helm',
           },
           availableTenants,
           availableTenantObjects,
