@@ -5,10 +5,12 @@ import { ObjectId } from 'mongodb';
 
 async function updatePaycheckStubViewStatusHandler(
   request: AuthenticatedRequest,
-  context: { params: Promise<{ id: string; stubId: string }> }
+  context: { params: Promise<Record<string, string | string[] | undefined>> }
 ) {
   try {
-    const { id, stubId } = await context.params;
+    const params = await context.params;
+    const id = typeof params.id === 'string' ? params.id : params.id?.[0];
+    const stubId = typeof params.stubId === 'string' ? params.stubId : params.stubId?.[0];
     const { db } = await getTenantAwareConnection(request);
     const body = await request.json();
     const { viewStatus } = body;

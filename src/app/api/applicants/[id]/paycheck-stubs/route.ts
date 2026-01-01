@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { AuthenticatedRequest, withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
-import { ObjectId } from 'mongodb';
 
 async function getPaycheckStubsHandler(
   request: AuthenticatedRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<Record<string, string | string[] | undefined>> }
 ) {
   try {
-    const { id } = await context.params;
+    const params = await context.params;
+    const id = typeof params.id === 'string' ? params.id : params.id?.[0];
     const { db } = await getTenantAwareConnection(request);
 
     if (!id) {

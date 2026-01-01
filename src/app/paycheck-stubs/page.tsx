@@ -1,7 +1,7 @@
 'use client';
 
 import { NextPage } from 'next';
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import {
@@ -36,7 +36,8 @@ import { useCurrentUser } from '@/domains/user';
 import { usePaycheckStubs } from '@/domains/paycheck-stubs';
 import { clsxm } from '@/lib/utils';
 
-const PaycheckStubsPage: NextPage = () => {
+// Component that uses useSearchParams - must be wrapped in Suspense
+const PaycheckStubsPageContent: React.FC = () => {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
@@ -502,6 +503,47 @@ const PaycheckStubsPage: NextPage = () => {
         )}
       </div>
     </Layout>
+  );
+};
+
+// Main page component with Suspense boundary
+const PaycheckStubsPage: NextPage = () => {
+  return (
+    <Suspense
+      fallback={
+        <Layout>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Card key={i} className="overflow-hidden">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3 flex-1">
+                        <Skeleton className="w-12 h-12 rounded-lg" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton className="h-5 w-3/4" />
+                          <Skeleton className="h-4 w-1/2" />
+                        </div>
+                      </div>
+                      <Skeleton className="h-6 w-16 rounded-full" />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex justify-between">
+                      <Skeleton className="h-16 w-24" />
+                      <Skeleton className="h-16 w-24" />
+                    </div>
+                    <Skeleton className="h-10 w-full rounded-md" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </Layout>
+      }
+    >
+      <PaycheckStubsPageContent />
+    </Suspense>
   );
 };
 

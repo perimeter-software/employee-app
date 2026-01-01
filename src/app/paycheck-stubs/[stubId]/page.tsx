@@ -103,6 +103,7 @@ const PaycheckStubViewPage: NextPage = () => {
         }
       );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paystub, applicantId, stubId, presignedUrl]);
 
   // Update view status when PDF is viewed
@@ -133,11 +134,8 @@ const PaycheckStubViewPage: NextPage = () => {
   const handleDownload = useCallback(() => {
     if (presignedUrl) {
       window.open(presignedUrl, '_blank');
-    } else if (paystub?.fileUrl) {
-      // Fallback to fileUrl if presigned URL not available
-      window.open(paystub.fileUrl, '_blank');
     }
-  }, [presignedUrl, paystub]);
+  }, [presignedUrl]);
 
   const handleBack = useCallback(() => {
     router.push('/paycheck-stubs');
@@ -295,7 +293,7 @@ const PaycheckStubViewPage: NextPage = () => {
                       onClick={handleDownload}
                       leftIcon={<Download className="w-4 h-4" />}
                       className="whitespace-nowrap"
-                      disabled={!presignedUrl && !paystub?.fileUrl}
+                      disabled={!presignedUrl || isPdfLoading}
                     >
                       Download
                     </Button>
@@ -329,7 +327,11 @@ const PaycheckStubViewPage: NextPage = () => {
                     <p className="text-gray-600 mb-6">
                       We couldn&apos;t load the PDF file. Please try downloading it instead.
                     </p>
-                    <Button onClick={handleDownload} leftIcon={<Download className="w-4 h-4" />}>
+                    <Button 
+                      onClick={handleDownload} 
+                      leftIcon={<Download className="w-4 h-4" />}
+                      disabled={!presignedUrl || isPdfLoading}
+                    >
                       Download PDF
                     </Button>
                   </div>
