@@ -19,9 +19,11 @@ export async function authMiddleware(
       console.log(`Unauthenticated access to: ${request.nextUrl.pathname}`);
 
       const returnUrl = createReturnUrl(request);
+      // Redirect to app's login page (/) instead of /api/auth/login
+      // This allows users to choose between Auth0 and OTP login methods
       const redirectUrl = createRedirectUrl(
         request,
-        '/api/auth/login',
+        '/',
         returnUrl
       );
 
@@ -38,8 +40,8 @@ export async function authMiddleware(
   } catch (error) {
     console.error('Auth middleware error:', error);
 
-    // Redirect to login on auth errors
-    const redirectUrl = createRedirectUrl(request, '/api/auth/login');
+    // Redirect to app's login page on auth errors (allows OTP option)
+    const redirectUrl = createRedirectUrl(request, '/');
     return Response.redirect(redirectUrl);
   }
 }
