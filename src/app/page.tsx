@@ -81,7 +81,7 @@ export default function LoginPage() {
   const { user, isLoading } = useUser();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [loginMethod, setLoginMethod] = useState<'auth0' | 'otp'>('auth0');
+  const [loginMethod, setLoginMethod] = useState<'auth0' | 'otp'>('otp');
   const [notification, setNotification] = useState<NotificationState>({
     message: '',
     level: 'info',
@@ -198,7 +198,7 @@ export default function LoginPage() {
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  Auth0 Login
+                  Account Login
                 </button>
                 <button
                   type="button"
@@ -209,7 +209,7 @@ export default function LoginPage() {
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  Email Code
+                  Email 1-Time Code
                 </button>
               </div>
 

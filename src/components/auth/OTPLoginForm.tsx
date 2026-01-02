@@ -34,6 +34,10 @@ export function OTPLoginForm({ returnUrl, onError }: OTPLoginFormProps) {
       const data = await response.json();
 
       if (!response.ok) {
+        // Handle employee not found error specifically
+        if (data.employeeNotFound) {
+          throw new Error('Employee not found. Please contact your supervisor');
+        }
         throw new Error(data.error || 'Failed to send code');
       }
 

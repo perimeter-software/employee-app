@@ -85,6 +85,10 @@ export async function POST(request: NextRequest) {
     // Delete OTP after successful verification
     await redisService.del(otpKey);
 
+    // Check employment status - Terminated/Inactive users get limited access (PDF only)
+    const employmentStatus = user.status || '';
+    const isTerminatedOrInactive = employmentStatus === 'Terminated' || employmentStatus === 'Inactive';
+    
     // Create OTP session in Redis (30 days)
     const sessionId = `otp_session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const sessionData = {
@@ -97,15 +101,30 @@ export async function POST(request: NextRequest) {
       lastName: user.lastName,
       picture: user.picture,
       loginMethod: 'otp',
+      isLimitedAccess: isTerminatedOrInactive, // Limited access for Terminated/Inactive employees
+      employmentStatus: employmentStatus,
       createdAt: new Date().toISOString(),
     };
 
     await redisService.set(`otp_session:${sessionId}`, sessionData, 30 * 24 * 60 * 60);
 
     // Determine redirect URL
-    const redirectUrl = returnTo 
-      ? decodeURIComponent(returnTo) 
-      : '/time-attendance';
+    // Terminated/Inactive employees should only access PDF pages
+    let redirectUrl = '/time-attendance';
+    if (returnTo) {
+      const decodedReturnTo = decodeURIComponent(returnTo);
+      // If returnTo is a PDF route, allow it for limited access users
+      if (decodedReturnTo.startsWith('/paycheck-stubs/') || decodedReturnTo.startsWith('/paycheck-stubs')) {
+        redirectUrl = decodedReturnTo;
+      } else if (!isTerminatedOrInactive) {
+        // Full access users can go to any returnTo
+        redirectUrl = decodedReturnTo;
+      }
+      // Limited access users trying to access non-PDF routes will be redirected to PDF page
+    } else if (isTerminatedOrInactive) {
+      // Terminated/Inactive employees default to paycheck stubs page
+      redirectUrl = '/paycheck-stubs';
+    }
 
     // Return JSON response instead of redirect (fetch doesn't follow redirects for POST)
     const response = NextResponse.json({

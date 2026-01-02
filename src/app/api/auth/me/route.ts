@@ -33,6 +33,8 @@ export async function GET(request: NextRequest) {
       lastName?: string;
       picture?: string;
       loginMethod: string;
+      isLimitedAccess?: boolean;
+      employmentStatus?: string;
       createdAt: string;
     }>(`otp_session:${otpSessionId}`);
 
@@ -51,6 +53,8 @@ export async function GET(request: NextRequest) {
       picture: otpSessionData.picture,
       // Add a flag to indicate this is an OTP session
       loginMethod: otpSessionData.loginMethod,
+      isLimitedAccess: otpSessionData.isLimitedAccess || false,
+      employmentStatus: otpSessionData.employmentStatus,
     });
   } catch (error) {
     console.error('Error in /api/auth/me:', error);

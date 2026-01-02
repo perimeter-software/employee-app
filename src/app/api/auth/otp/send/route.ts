@@ -31,12 +31,15 @@ export async function POST(request: NextRequest) {
     const { db } = await mongoConn();
     const user = await checkUserExistsByEmail(db, normalizedEmail);
 
+    // If user not found, return error before sending code
     if (!user) {
-      // Don't reveal if user exists for security
-      // Still send a response to prevent email enumeration
-      return NextResponse.json({
-        message: 'If an account exists with this email, a code has been sent.',
-      });
+      return NextResponse.json(
+        { 
+          error: 'Employee not found. Please contact your supervisor',
+          employeeNotFound: true 
+        },
+        { status: 404 }
+      );
     }
 
     // Generate OTP code

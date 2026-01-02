@@ -31,6 +31,8 @@ async function getUserSession(request: NextRequest): Promise<Auth0SessionUser | 
       lastName?: string;
       picture?: string;
       loginMethod: string;
+      isLimitedAccess?: boolean;
+      employmentStatus?: string;
       createdAt: string;
     }>(`otp_session:${otpSessionId}`);
 
@@ -47,6 +49,8 @@ async function getUserSession(request: NextRequest): Promise<Auth0SessionUser | 
       lastName: otpSessionData.lastName,
       picture: otpSessionData.picture,
       loginMethod: otpSessionData.loginMethod,
+      isLimitedAccess: otpSessionData.isLimitedAccess || false,
+      employmentStatus: otpSessionData.employmentStatus,
     } as Auth0SessionUser;
   } catch (error) {
     console.error('Error getting user session:', error);
