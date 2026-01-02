@@ -1,18 +1,18 @@
 'use client';
 
 import { NextPage } from 'next';
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import {
-  ArrowLeft,
-  Download,
-  FileText,
-  Calendar,
-  Loader2,
   AlertCircle,
+  ArrowLeft,
+  Calendar,
+  Download,
   Eye,
   EyeOff,
+  FileText,
+  Loader2,
   Upload,
 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
@@ -27,8 +27,8 @@ import {
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { useCurrentUser } from '@/domains/user';
 import {
-  usePaycheckStubs,
   useGetPaycheckStubPresignedUrl,
+  usePaycheckStubs,
   useUpdatePaycheckStubViewStatus,
 } from '@/domains/paycheck-stubs';
 import { clsxm } from '@/lib/utils';
@@ -41,7 +41,6 @@ const PaycheckStubViewPage: NextPage = () => {
   const [pdfLoadError, setPdfLoadError] = useState(false);
   const [isPdfLoading, setIsPdfLoading] = useState(true);
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
-  const [pdfLoadTimeout, setPdfLoadTimeout] = useState(false);
 
   // Auth check
   const {
@@ -53,7 +52,8 @@ const PaycheckStubViewPage: NextPage = () => {
   });
 
   // Fetch primary company data to check peoIntegration
-  const { data: primaryCompany, isLoading: companyLoading } = usePrimaryCompany();
+  const { data: primaryCompany, isLoading: companyLoading } =
+    usePrimaryCompany();
 
   // Get current user data
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
@@ -62,10 +62,8 @@ const PaycheckStubViewPage: NextPage = () => {
   const applicantId = currentUser?.applicantId;
 
   // Fetch paycheck stubs
-  const {
-    data: paycheckStubsData,
-    isLoading: stubsLoading,
-  } = usePaycheckStubs(applicantId);
+  const { data: paycheckStubsData, isLoading: stubsLoading } =
+    usePaycheckStubs(applicantId);
 
   // Mutation to get pre-signed URL
   const getPresignedUrlMutation = useGetPaycheckStubPresignedUrl();
@@ -87,7 +85,6 @@ const PaycheckStubViewPage: NextPage = () => {
   useEffect(() => {
     if (paystub && applicantId && stubId && !presignedUrl) {
       setIsPdfLoading(true);
-      setPdfLoadTimeout(false);
       getPresignedUrlMutation.mutate(
         {
           applicantId,
@@ -108,17 +105,6 @@ const PaycheckStubViewPage: NextPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paystub, applicantId, stubId, presignedUrl]);
 
-  // Set timeout to detect if PDF is taking too long to load
-  useEffect(() => {
-    if (presignedUrl && isPdfLoading) {
-      const timeout = setTimeout(() => {
-        setPdfLoadTimeout(true);
-      }, 10000); // 10 seconds timeout
-      
-      return () => clearTimeout(timeout);
-    }
-  }, [presignedUrl, isPdfLoading]);
-
   // Update view status when PDF is viewed
   useEffect(() => {
     if (
@@ -135,14 +121,7 @@ const PaycheckStubViewPage: NextPage = () => {
         viewStatus: 'viewed',
       });
     }
-  }, [
-    paystub,
-    isApplicantViewing,
-    applicantId,
-    updateViewStatusMutation,
-    isPdfLoading,
-    presignedUrl,
-  ]);
+  }, [paystub, isApplicantViewing, applicantId, isPdfLoading, presignedUrl]);
 
   const handleDownload = useCallback(() => {
     if (presignedUrl) {
@@ -157,7 +136,6 @@ const PaycheckStubViewPage: NextPage = () => {
   const handlePdfLoad = useCallback(() => {
     setIsPdfLoading(false);
     setPdfLoadError(false);
-    setPdfLoadTimeout(false);
   }, []);
 
   const handlePdfError = useCallback(() => {
@@ -210,9 +188,13 @@ const PaycheckStubViewPage: NextPage = () => {
                 Paycheck Stub Not Found
               </h2>
               <p className="text-gray-500 text-center mb-6">
-                The paycheck stub you&apos;re looking for doesn&apos;t exist or you don&apos;t have access to it.
+                The paycheck stub you&apos;re looking for doesn&apos;t exist or
+                you don&apos;t have access to it.
               </p>
-              <Button onClick={handleBack} leftIcon={<ArrowLeft className="w-4 h-4" />}>
+              <Button
+                onClick={handleBack}
+                leftIcon={<ArrowLeft className="w-4 h-4" />}
+              >
                 Back to Paycheck Stubs
               </Button>
             </CardContent>
@@ -266,7 +248,10 @@ const PaycheckStubViewPage: NextPage = () => {
                           <Upload className="w-4 h-4" />
                           <span>
                             <span className="font-medium">Uploaded:</span>{' '}
-                            {format(new Date(paystub.uploadedAt), 'MMM d, yyyy')}
+                            {format(
+                              new Date(paystub.uploadedAt),
+                              'MMM d, yyyy'
+                            )}
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -339,10 +324,11 @@ const PaycheckStubViewPage: NextPage = () => {
                       Failed to Load PDF
                     </h3>
                     <p className="text-gray-600 mb-6">
-                      We couldn&apos;t load the PDF file. Please try downloading it instead.
+                      We couldn&apos;t load the PDF file. Please try downloading
+                      it instead.
                     </p>
-                    <Button 
-                      onClick={handleDownload} 
+                    <Button
+                      onClick={handleDownload}
                       leftIcon={<Download className="w-4 h-4" />}
                       disabled={!presignedUrl || isPdfLoading}
                     >
@@ -353,42 +339,23 @@ const PaycheckStubViewPage: NextPage = () => {
               ) : (
                 presignedUrl && (
                   <div className="relative w-full flex-1 flex flex-col min-h-0">
-                    {/* Optimized iframe for PDF viewing - prevents browser hangs */}
                     <iframe
-                      src={`${presignedUrl}#toolbar=1&navpanes=1&scrollbar=1&zoom=page-width`}
+                      src={presignedUrl}
                       className={clsxm(
-                        'w-full flex-1 border-0 bg-white',
-                        isPdfLoading ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                        'w-full flex-1 border-0',
+                        isPdfLoading ? 'hidden' : 'block'
                       )}
                       title={`Paycheck Stub - ${paystub?.fileName || 'PDF'}`}
                       onLoad={handlePdfLoad}
                       onError={handlePdfError}
-                      style={{
-                        minHeight: '600px',
-                        transition: 'opacity 0.3s ease-in-out',
-                      }}
-                      loading="eager"
-                      allow="fullscreen"
                     />
-                    {(isPdfLoading || pdfLoadTimeout) && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-white z-10">
+                    {isPdfLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white">
                         <div className="text-center">
                           <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-3" />
-                          <p className="text-sm text-gray-600 mb-4">
-                            {pdfLoadTimeout 
-                              ? 'PDF is taking longer than expected to load...' 
-                              : 'Loading PDF...'}
+                          <p className="text-sm text-gray-600">
+                            Loading PDF...
                           </p>
-                          {pdfLoadTimeout && (
-                            <Button
-                              onClick={() => window.open(presignedUrl, '_blank')}
-                              variant="outline"
-                              size="sm"
-                              leftIcon={<Download className="w-4 h-4" />}
-                            >
-                              Open in New Tab
-                            </Button>
-                          )}
                         </div>
                       </div>
                     )}
@@ -404,4 +371,3 @@ const PaycheckStubViewPage: NextPage = () => {
 };
 
 export default PaycheckStubViewPage;
-
