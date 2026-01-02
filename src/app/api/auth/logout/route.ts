@@ -6,11 +6,6 @@ import redisService from '@/lib/cache/redis-client';
 
 export const dynamic = 'force-dynamic';
 
-// Create the Auth0 logout handler
-const auth0Logout = handleLogout({
-  returnTo: '/',
-});
-
 export async function GET(request: NextRequest) {
   try {
     // Get OTP session ID before clearing cookies
@@ -27,7 +22,28 @@ export async function GET(request: NextRequest) {
     }
 
     // Handle Auth0 logout (this will clear Auth0 cookies and redirect)
-    const response = await auth0Logout(request);
+    // handleLogout expects (request, context, options) for App Router
+    // Context should have params as Record<string, string | string[]>
+    const context = { params: {} };
+    const auth0Response = await handleLogout(request, context, {
+      returnTo: '/',
+    });
+
+    // Get redirect URL from Location header or default to '/'
+    const redirectUrl = auth0Response.headers.get('location') || '/';
+
+    // Convert Response to NextResponse to access cookies
+    const response = NextResponse.redirect(new URL(redirectUrl, request.url), {
+      status: auth0Response.status,
+      statusText: auth0Response.statusText,
+    });
+
+    // Copy headers from Auth0 response (except Location, which we handle above)
+    auth0Response.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== 'location') {
+        response.headers.set(key, value);
+      }
+    });
 
     // Also clear OTP session cookies
     response.cookies.delete('otp_session_id');
