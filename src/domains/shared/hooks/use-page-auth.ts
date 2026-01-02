@@ -56,7 +56,7 @@ export function usePageAuth(
     onAuthError?: (error: Error) => void;
   } = {}
 ) {
-  const { requireAuth, redirectTo = '/api/auth/login', onAuthError } = options;
+  const { requireAuth, redirectTo = '/', onAuthError } = options;
 
   const { user, isLoading, error } = useUser();
   const pathname = usePathname();

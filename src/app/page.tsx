@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
 import { Button } from '@/components/ui/Button';
 import Image from 'next/image';
+import { OTPLoginForm } from '@/components/auth/OTPLoginForm';
 
 interface NotificationState {
   message: string;
@@ -56,11 +57,8 @@ function SearchParamsHandler({
 }
 
 // Component for login button that uses search params
-function LoginButton() {
-  const searchParams = useSearchParams();
-
+function LoginButton({ returnUrl }: { returnUrl: string }) {
   const handleLogin = () => {
-    const returnUrl = searchParams.get('returnUrl') || '/time-attendance';
     // Using the correct API route for Auth0 login
     window.location.href = `/api/auth/login?returnTo=${encodeURIComponent(
       returnUrl
@@ -82,6 +80,8 @@ function LoginButton() {
 export default function LoginPage() {
   const { user, isLoading } = useUser();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [loginMethod, setLoginMethod] = useState<'auth0' | 'otp'>('auth0');
   const [notification, setNotification] = useState<NotificationState>({
     message: '',
     level: 'info',
@@ -187,22 +187,60 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Button Section */}
-              <div className="space-y-4">
-                {/* Login button wrapped in Suspense */}
-                <Suspense
-                  fallback={
-                    <Button
-                      className="w-full bg-gradient-to-r from-appPrimary to-appPrimary/90 hover:from-appPrimary/90 hover:to-appPrimary text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 text-lg min-h-[60px] border-0 relative overflow-hidden group"
-                      type="button"
-                      disabled
-                    >
-                      <span className="relative z-10">Loading...</span>
-                    </Button>
-                  }
+              {/* Login Method Tabs */}
+              <div className="flex gap-2 mb-6 bg-gray-100 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setLoginMethod('auth0')}
+                  className={`flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-all ${
+                    loginMethod === 'auth0'
+                      ? 'bg-white text-appPrimary shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
                 >
-                  <LoginButton />
-                </Suspense>
+                  Auth0 Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLoginMethod('otp')}
+                  className={`flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-all ${
+                    loginMethod === 'otp'
+                      ? 'bg-white text-appPrimary shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Email Code
+                </button>
+              </div>
+
+              {/* Login Section */}
+              <div className="space-y-4">
+                {loginMethod === 'auth0' ? (
+                  <Suspense
+                    fallback={
+                      <Button
+                        className="w-full bg-gradient-to-r from-appPrimary to-appPrimary/90 hover:from-appPrimary/90 hover:to-appPrimary text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 text-lg min-h-[60px] border-0 relative overflow-hidden group"
+                        type="button"
+                        disabled
+                      >
+                        <span className="relative z-10">Loading...</span>
+                      </Button>
+                    }
+                  >
+                    <LoginButton returnUrl={searchParams.get('returnTo') || searchParams.get('returnUrl') || '/time-attendance'} />
+                  </Suspense>
+                ) : (
+                  <OTPLoginForm
+                    returnUrl={searchParams.get('returnTo') || searchParams.get('returnUrl') || '/time-attendance'}
+                    onError={(error) => {
+                      setNotification({
+                        message: error,
+                        level: 'error',
+                        show: true,
+                      });
+                    }}
+                  />
+                )}
 
                 {/* Security Badge */}
                 <div className="flex items-center justify-center space-x-2 text-xs text-altText/60 mt-4">

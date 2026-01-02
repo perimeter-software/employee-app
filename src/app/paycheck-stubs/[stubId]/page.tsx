@@ -41,6 +41,7 @@ const PaycheckStubViewPage: NextPage = () => {
   const [pdfLoadError, setPdfLoadError] = useState(false);
   const [isPdfLoading, setIsPdfLoading] = useState(true);
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
+  const [pdfLoadTimeout, setPdfLoadTimeout] = useState(false);
 
   // Auth check
   const {
@@ -86,6 +87,7 @@ const PaycheckStubViewPage: NextPage = () => {
   useEffect(() => {
     if (paystub && applicantId && stubId && !presignedUrl) {
       setIsPdfLoading(true);
+      setPdfLoadTimeout(false);
       getPresignedUrlMutation.mutate(
         {
           applicantId,
@@ -105,6 +107,17 @@ const PaycheckStubViewPage: NextPage = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paystub, applicantId, stubId, presignedUrl]);
+
+  // Set timeout to detect if PDF is taking too long to load
+  useEffect(() => {
+    if (presignedUrl && isPdfLoading) {
+      const timeout = setTimeout(() => {
+        setPdfLoadTimeout(true);
+      }, 10000); // 10 seconds timeout
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [presignedUrl, isPdfLoading]);
 
   // Update view status when PDF is viewed
   useEffect(() => {
@@ -144,6 +157,7 @@ const PaycheckStubViewPage: NextPage = () => {
   const handlePdfLoad = useCallback(() => {
     setIsPdfLoading(false);
     setPdfLoadError(false);
+    setPdfLoadTimeout(false);
   }, []);
 
   const handlePdfError = useCallback(() => {
@@ -339,21 +353,42 @@ const PaycheckStubViewPage: NextPage = () => {
               ) : (
                 presignedUrl && (
                   <div className="relative w-full flex-1 flex flex-col min-h-0">
+                    {/* Optimized iframe for PDF viewing - prevents browser hangs */}
                     <iframe
-                      src={presignedUrl}
+                      src={`${presignedUrl}#toolbar=1&navpanes=1&scrollbar=1&zoom=page-width`}
                       className={clsxm(
-                        'w-full flex-1 border-0',
-                        isPdfLoading ? 'hidden' : 'block'
+                        'w-full flex-1 border-0 bg-white',
+                        isPdfLoading ? 'opacity-0 pointer-events-none' : 'opacity-100'
                       )}
                       title={`Paycheck Stub - ${paystub?.fileName || 'PDF'}`}
                       onLoad={handlePdfLoad}
                       onError={handlePdfError}
+                      style={{
+                        minHeight: '600px',
+                        transition: 'opacity 0.3s ease-in-out',
+                      }}
+                      loading="eager"
+                      allow="fullscreen"
                     />
-                    {isPdfLoading && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-white">
+                    {(isPdfLoading || pdfLoadTimeout) && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white z-10">
                         <div className="text-center">
                           <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-3" />
-                          <p className="text-sm text-gray-600">Loading PDF...</p>
+                          <p className="text-sm text-gray-600 mb-4">
+                            {pdfLoadTimeout 
+                              ? 'PDF is taking longer than expected to load...' 
+                              : 'Loading PDF...'}
+                          </p>
+                          {pdfLoadTimeout && (
+                            <Button
+                              onClick={() => window.open(presignedUrl, '_blank')}
+                              variant="outline"
+                              size="sm"
+                              leftIcon={<Download className="w-4 h-4" />}
+                            >
+                              Open in New Tab
+                            </Button>
+                          )}
                         </div>
                       </div>
                     )}
