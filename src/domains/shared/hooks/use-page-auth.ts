@@ -71,7 +71,10 @@ export function usePageAuth(
 
     // If not loading and no user and no error, redirect to login
     if (!isLoading && !user && !error) {
-      const returnUrl = encodeURIComponent(pathname);
+      // Include query parameters in returnUrl to preserve them (e.g., ?stubId=...)
+      const searchParams = typeof window !== 'undefined' ? window.location.search : '';
+      const fullPath = pathname + searchParams;
+      const returnUrl = encodeURIComponent(fullPath);
       const loginUrl = `${redirectTo}?returnTo=${returnUrl}`;
       window.location.href = loginUrl;
       return;
