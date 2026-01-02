@@ -62,9 +62,19 @@ class EmailService {
     }
 
     try {
+      // Format sender with display name for system accounts
+      // AWS SES supports format: "Display Name <email@address.com>"
+      let formattedSource = fromEmail;
+      const normalizedFromEmail = fromEmail.toLowerCase();
+      if (normalizedFromEmail === 'job@stadiumpeople.com' || normalizedFromEmail === 'jobs@stadiumpeople.com') {
+        // Use the original email case but with display name
+        formattedSource = `Employee App <${fromEmail}>`;
+        console.log(`📧 Using display name "Employee App" for email: ${fromEmail}`);
+      }
+
       // Prepare email parameters for SES
       const params = {
-        Source: fromEmail,
+        Source: formattedSource,
         Destination: {
           ToAddresses: [to],
         },
