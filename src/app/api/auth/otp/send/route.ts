@@ -27,19 +27,40 @@ export async function POST(request: NextRequest) {
     // Normalize email
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Check if user exists in database
+    // Check if user exists in users table
     const { db } = await mongoConn();
     const user = await checkUserExistsByEmail(db, normalizedEmail);
 
-    // If user not found, return error before sending code
+    // If not found in users table, check applicants table
     if (!user) {
-      return NextResponse.json(
+      const Applicants = db.collection('applicants');
+      const applicant = await Applicants.findOne(
         { 
-          error: 'Employee not found. Please contact your supervisor',
-          employeeNotFound: true 
+          email: normalizedEmail,
+          status: 'Employee'
         },
-        { status: 404 }
+        { 
+          projection: { 
+            _id: 1, 
+            email: 1, 
+            firstName: 1, 
+            lastName: 1, 
+            status: 1 
+          } 
+        }
       );
+
+      // If not found in applicants table either, return error
+      if (!applicant) {
+        return NextResponse.json(
+          { 
+            error: 'Employee not found. Please contact your supervisor',
+            employeeNotFound: true 
+          },
+          { status: 404 }
+        );
+      }
+      // If found in applicants with status: "Employee", allow OTP send (will have limited access)
     }
 
     // Generate OTP code

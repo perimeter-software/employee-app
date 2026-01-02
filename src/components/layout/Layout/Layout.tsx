@@ -1,11 +1,13 @@
 "use client";
 
-import React, { ReactNode, useState } from "react";
+import React, { ReactNode, useState, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import Head from "next/head";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { clsxm } from "@/lib/utils";
+import { useCurrentUser } from "@/domains/user";
 
 interface LayoutProps {
   children: ReactNode;
@@ -51,6 +53,21 @@ const Layout: React.FC<LayoutProps> = ({
   schema,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+
+  // Redirect limited-access users to paycheck stub page if they're on other routes
+  useEffect(() => {
+    if (userLoading) return;
+    
+    const isLimitedAccess = !currentUser?.tenant;
+    const isPaycheckStubRoute = pathname?.startsWith('/paycheck-stubs');
+    
+    if (isLimitedAccess && !isPaycheckStubRoute) {
+      router.replace('/paycheck-stubs');
+    }
+  }, [currentUser, pathname, router, userLoading]);
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
