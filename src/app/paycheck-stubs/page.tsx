@@ -1,16 +1,16 @@
 'use client';
 
 import { NextPage } from 'next';
-import { useState, useCallback, useMemo, useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import {
-  Receipt,
   Calendar,
+  ChevronRight,
   Eye,
   EyeOff,
   FileText,
-  ChevronRight,
+  Receipt,
   Search,
   Upload,
 } from 'lucide-react';
@@ -41,7 +41,9 @@ const PaycheckStubsPageContent: React.FC = () => {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'viewed' | 'unviewed'>('all');
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'viewed' | 'unviewed'
+  >('all');
 
   // Auth check
   const {
@@ -53,7 +55,8 @@ const PaycheckStubsPageContent: React.FC = () => {
   });
 
   // Fetch primary company data to check peoIntegration
-  const { data: primaryCompany, isLoading: companyLoading } = usePrimaryCompany();
+  const { data: primaryCompany, isLoading: companyLoading } =
+    usePrimaryCompany();
 
   // Get current user data
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
@@ -67,8 +70,6 @@ const PaycheckStubsPageContent: React.FC = () => {
     isLoading: stubsLoading,
     error: stubsError,
   } = usePaycheckStubs(applicantId);
-
-
 
   const getViewStatusBadge = useCallback((viewStatus: string) => {
     const isViewed = viewStatus === 'viewed';
@@ -99,25 +100,23 @@ const PaycheckStubsPageContent: React.FC = () => {
 
     // Apply status filter
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(
-        (stub) => stub.viewStatus === statusFilter
-      );
+      filtered = filtered.filter((stub) => stub.viewStatus === statusFilter);
     }
 
-          // Apply search filter
-          if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase();
-            filtered = filtered.filter(
-              (stub) =>
-                stub.fileName.toLowerCase().includes(query) ||
-                stub.employeeID.toLowerCase().includes(query) ||
-                stub.batchId.toLowerCase().includes(query) ||
-                stub.voucherNumber.toLowerCase().includes(query) ||
-                format(new Date(stub.checkDate), 'MMMM d, yyyy')
-                  .toLowerCase()
-                  .includes(query)
-            );
-          }
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (stub) =>
+          stub.fileName.toLowerCase().includes(query) ||
+          stub.employeeID.toLowerCase().includes(query) ||
+          stub.batchId.toLowerCase().includes(query) ||
+          stub.voucherNumber.toLowerCase().includes(query) ||
+          format(new Date(stub.checkDate), 'MMMM d, yyyy')
+            .toLowerCase()
+            .includes(query)
+      );
+    }
 
     return filtered;
   }, [paycheckStubsData?.paycheckStubs, statusFilter, searchQuery]);
@@ -171,7 +170,8 @@ const PaycheckStubsPageContent: React.FC = () => {
             </CardHeader>
             <CardContent>
               <p className="text-gray-600">
-                Paycheck stubs are only available for companies using Prism integration.
+                Paycheck stubs are only available for companies using Prism
+                integration.
               </p>
             </CardContent>
           </Card>
@@ -180,10 +180,11 @@ const PaycheckStubsPageContent: React.FC = () => {
     );
   }
 
-
   const paycheckStubs = paycheckStubsData?.paycheckStubs || [];
   const totalCount = paycheckStubs.length;
-  const viewedCount = paycheckStubs.filter((s) => s.viewStatus === 'viewed').length;
+  const viewedCount = paycheckStubs.filter(
+    (s) => s.viewStatus === 'viewed'
+  ).length;
   const unviewedCount = totalCount - viewedCount;
 
   return (
@@ -191,10 +192,8 @@ const PaycheckStubsPageContent: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         {/* Header Section */}
         <div className="space-y-4">
-                 <div>
-                   <h1 className="text-2xl font-bold text-gray-900">
-                     Paycheck Stubs
-                   </h1>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Paycheck Stubs</h1>
             <p className="text-gray-600 mt-2">
               Access and manage your paycheck stubs
             </p>
@@ -207,7 +206,9 @@ const PaycheckStubsPageContent: React.FC = () => {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Total Stubs</p>
+                      <p className="text-sm font-medium text-gray-600">
+                        Total Stubs
+                      </p>
                       <p className="text-xl font-bold text-gray-900 mt-1">
                         {totalCount}
                       </p>
@@ -222,7 +223,9 @@ const PaycheckStubsPageContent: React.FC = () => {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Viewed</p>
+                      <p className="text-sm font-medium text-gray-600">
+                        Viewed
+                      </p>
                       <p className="text-xl font-bold text-gray-900 mt-1">
                         {viewedCount}
                       </p>
@@ -237,7 +240,9 @@ const PaycheckStubsPageContent: React.FC = () => {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Not Viewed</p>
+                      <p className="text-sm font-medium text-gray-600">
+                        Not Viewed
+                      </p>
                       <p className="text-xl font-bold text-gray-900 mt-1">
                         {unviewedCount}
                       </p>
@@ -350,11 +355,12 @@ const PaycheckStubsPageContent: React.FC = () => {
                   <div className="p-4 bg-gray-100 rounded-full mb-4">
                     <Receipt className="w-12 h-12 text-gray-400" />
                   </div>
-                         <h3 className="text-base font-semibold text-gray-900 mb-2">
-                           No Paycheck Stubs Available
-                         </h3>
+                  <h3 className="text-base font-semibold text-gray-900 mb-2">
+                    No Paycheck Stubs Available
+                  </h3>
                   <p className="text-gray-500 text-center max-w-md">
-                    Your paycheck stubs will appear here once they are available.
+                    Your paycheck stubs will appear here once they are
+                    available.
                   </p>
                 </CardContent>
               </Card>
@@ -364,9 +370,9 @@ const PaycheckStubsPageContent: React.FC = () => {
                   <div className="p-4 bg-gray-100 rounded-full mb-4">
                     <Search className="w-12 h-12 text-gray-400" />
                   </div>
-                         <h3 className="text-base font-semibold text-gray-900 mb-2">
-                           No Results Found
-                         </h3>
+                  <h3 className="text-base font-semibold text-gray-900 mb-2">
+                    No Results Found
+                  </h3>
                   <p className="text-gray-500 text-center max-w-md">
                     Try adjusting your search or filter criteria.
                   </p>
@@ -387,8 +393,12 @@ const PaycheckStubsPageContent: React.FC = () => {
                 {/* Results Count */}
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-gray-600">
-                    Showing <span className="font-semibold">{filteredPaycheckStubs.length}</span>{' '}
-                    of <span className="font-semibold">{totalCount}</span> paycheck stubs
+                    Showing{' '}
+                    <span className="font-semibold">
+                      {filteredPaycheckStubs.length}
+                    </span>{' '}
+                    of <span className="font-semibold">{totalCount}</span>{' '}
+                    paycheck stubs
                   </p>
                 </div>
 
@@ -396,105 +406,119 @@ const PaycheckStubsPageContent: React.FC = () => {
                 <div className="max-h-[calc(100vh-30rem)] overflow-y-auto pr-2">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredPaycheckStubs.map((paystub) => {
-                    const isViewed = paystub.viewStatus === 'viewed';
-                    return (
-                      <Card
-                        key={paystub._id}
-                        className={clsxm(
-                          'group relative overflow-hidden transition-all duration-300',
-                          'hover:shadow-xl hover:-translate-y-1',
-                          'border-2',
-                          isViewed
-                            ? 'border-gray-200 hover:border-gray-300'
-                            : 'border-blue-200 hover:border-blue-300 bg-blue-50/30'
-                        )}
-                      >
-                        {/* Status Indicator Bar */}
-                        {!isViewed && (
-                          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-blue-400" />
-                        )}
+                      const isViewed = paystub.viewStatus === 'viewed';
+                      return (
+                        <Card
+                          key={paystub._id}
+                          className={clsxm(
+                            'group relative overflow-hidden transition-all duration-300',
+                            'hover:shadow-xl hover:-translate-y-1',
+                            'border-2',
+                            isViewed
+                              ? 'border-gray-200 hover:border-gray-300'
+                              : 'border-blue-200 hover:border-blue-300 bg-blue-50/30'
+                          )}
+                        >
+                          {/* Status Indicator Bar */}
+                          {!isViewed && (
+                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-blue-400" />
+                          )}
 
-                        <CardHeader className="pb-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-start gap-3 flex-1 min-w-0">
-                              <div
-                                className={clsxm(
-                                  'p-3 rounded-xl flex-shrink-0',
-                                  isViewed
-                                    ? 'bg-gray-100 group-hover:bg-gray-200'
-                                    : 'bg-blue-100 group-hover:bg-blue-200'
-                                )}
-                              >
-                                <FileText
+                          <CardHeader className="pb-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3 flex-1 min-w-0">
+                                <div
                                   className={clsxm(
-                                    'w-6 h-6',
-                                    isViewed ? 'text-gray-600' : 'text-blue-600'
+                                    'p-3 rounded-xl flex-shrink-0',
+                                    isViewed
+                                      ? 'bg-gray-100 group-hover:bg-gray-200'
+                                      : 'bg-blue-100 group-hover:bg-blue-200'
                                   )}
-                                />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <CardTitle className="text-xs font-semibold text-gray-900 line-clamp-2 mb-1.5">
-                                  {paystub.fileName}
-                                </CardTitle>
-                                <div className="flex flex-col gap-1 text-gray-500">
-                                  <div className="flex items-center gap-1.5">
-                                    <Upload className="w-3.5 h-3.5 flex-shrink-0" />
-                                    <span className="text-xs">
-                                      <span className="font-medium">Uploaded:</span>{' '}
-                                      {format(new Date(paystub.uploadedAt), 'MMM d, yyyy')}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-1.5">
-                                    <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-                                    <span className="text-xs">
-                                      <span className="font-medium">Check Date:</span>{' '}
-                                      {format(new Date(paystub.checkDate), 'MMM d, yyyy')}
-                                    </span>
+                                >
+                                  <FileText
+                                    className={clsxm(
+                                      'w-6 h-6',
+                                      isViewed
+                                        ? 'text-gray-600'
+                                        : 'text-blue-600'
+                                    )}
+                                  />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <CardTitle className="text-xs font-semibold text-gray-900 line-clamp-2 mb-1.5">
+                                    {paystub.fileName}
+                                  </CardTitle>
+                                  <div className="flex flex-col gap-1 text-gray-500">
+                                    <div className="flex items-center gap-1.5">
+                                      <Upload className="w-3.5 h-3.5 flex-shrink-0" />
+                                      <span className="text-xs">
+                                        <span className="font-medium">
+                                          Uploaded:
+                                        </span>{' '}
+                                        {format(
+                                          new Date(paystub.uploadedAt),
+                                          'MMM d, yyyy'
+                                        )}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                                      <span className="text-xs">
+                                        <span className="font-medium">
+                                          Check Date:
+                                        </span>{' '}
+                                        {format(
+                                          new Date(paystub.checkDate),
+                                          'MMM d, yyyy'
+                                        )}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
+                              <div className="flex-shrink-0">
+                                {getViewStatusBadge(paystub.viewStatus)}
+                              </div>
                             </div>
-                            <div className="flex-shrink-0">
-                              {getViewStatusBadge(paystub.viewStatus)}
-                            </div>
-                          </div>
-                        </CardHeader>
+                          </CardHeader>
 
-                        <CardContent className="space-y-4">
-                          {/* Employee, Batch, and Voucher Info */}
-                          <div className="grid grid-cols-2 gap-4 p-3 bg-gray-50 rounded-lg">
-                            <div>
-                              <p className="text-xs font-medium text-gray-500 mb-1">
-                                Batch ID
-                              </p>
-                              <p className="text-xs font-semibold text-gray-900 break-all">
-                                {paystub.batchId}
-                              </p>
+                          <CardContent className="space-y-4">
+                            {/* Employee, Batch, and Voucher Info */}
+                            <div className="grid grid-cols-2 gap-4 p-3 bg-gray-50 rounded-lg">
+                              <div>
+                                <p className="text-xs font-medium text-gray-500 mb-1">
+                                  Batch ID
+                                </p>
+                                <p className="text-xs font-semibold text-gray-900 break-all">
+                                  {paystub.batchId}
+                                </p>
+                              </div>
+                              <div className="col-span-2">
+                                <p className="text-xs font-medium text-gray-500 mb-1">
+                                  Voucher Number
+                                </p>
+                                <p className="text-xs font-semibold text-gray-900">
+                                  {paystub.voucherNumber}
+                                </p>
+                              </div>
                             </div>
-                            <div className="col-span-2">
-                              <p className="text-xs font-medium text-gray-500 mb-1">
-                                Voucher Number
-                              </p>
-                              <p className="text-xs font-semibold text-gray-900">
-                                {paystub.voucherNumber}
-                              </p>
-                            </div>
-                          </div>
 
-                          {/* View PDF Button */}
-                          <Button
-                            onClick={() => router.push(`/paycheck-stubs/${paystub._id}`)}
-                            className="w-full h-11 font-medium"
-                            variant={isViewed ? 'primary' : 'primary'}
-                            leftIcon={<FileText className="w-4 h-4" />}
-                            rightIcon={<ChevronRight className="w-4 h-4" />}
-                          >
-                            View PDF
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                            {/* View PDF Button */}
+                            <Button
+                              onClick={() =>
+                                router.push(`/paycheck-stubs/${paystub._id}`)
+                              }
+                              className="w-full h-11 font-medium"
+                              variant={isViewed ? 'primary' : 'primary'}
+                              leftIcon={<FileText className="w-4 h-4" />}
+                              rightIcon={<ChevronRight className="w-4 h-4" />}
+                            >
+                              View PDF
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 </div>
               </>
@@ -548,4 +572,3 @@ const PaycheckStubsPage: NextPage = () => {
 };
 
 export default PaycheckStubsPage;
-
