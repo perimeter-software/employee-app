@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
 import { Button } from '@/components/ui/Button';
 import Image from 'next/image';
+import { OTPLoginForm } from '@/components/auth/OTPLoginForm';
 
 interface NotificationState {
   message: string;
@@ -56,11 +57,8 @@ function SearchParamsHandler({
 }
 
 // Component for login button that uses search params
-function LoginButton() {
-  const searchParams = useSearchParams();
-
+function LoginButton({ returnUrl }: { returnUrl: string }) {
   const handleLogin = () => {
-    const returnUrl = searchParams.get('returnUrl') || '/time-attendance';
     // Using the correct API route for Auth0 login
     window.location.href = `/api/auth/login?returnTo=${encodeURIComponent(
       returnUrl
@@ -76,6 +74,73 @@ function LoginButton() {
       <span className="relative z-10">Proceed To Sign In</span>
       <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
     </Button>
+  );
+}
+
+// Component that handles login form with search params
+function LoginFormContent({
+  setNotification,
+}: {
+  setNotification: (state: NotificationState) => void;
+}) {
+  const searchParams = useSearchParams();
+  const [loginMethod, setLoginMethod] = useState<'auth0' | 'otp'>('otp');
+  const returnUrl = searchParams.get('returnTo') || searchParams.get('returnUrl') || '/time-attendance';
+
+  return (
+    <>
+      {/* Login Method Tabs */}
+      <div className="flex gap-2 mb-6 bg-gray-100 p-1 rounded-xl">
+        <button
+          type="button"
+          onClick={() => setLoginMethod('auth0')}
+          className={`flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-all ${
+            loginMethod === 'auth0'
+              ? 'bg-white text-appPrimary shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Account Login
+        </button>
+        <button
+          type="button"
+          onClick={() => setLoginMethod('otp')}
+          className={`flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-all ${
+            loginMethod === 'otp'
+              ? 'bg-white text-appPrimary shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Email 1-Time Code
+        </button>
+      </div>
+
+      {/* Login Section */}
+      <div className="space-y-4">
+        {loginMethod === 'auth0' ? (
+          <LoginButton returnUrl={returnUrl} />
+        ) : (
+          <OTPLoginForm
+            returnUrl={returnUrl}
+            onError={(error) => {
+              setNotification({
+                message: error,
+                level: 'error',
+                show: true,
+              });
+            }}
+          />
+        )}
+
+        {/* Security Badge */}
+        <div className="flex items-center justify-center space-x-2 text-xs text-altText/60 mt-4">
+          <div className="w-4 h-4 bg-successGreen/20 rounded-full flex items-center justify-center">
+            <div className="w-2 h-2 bg-successGreen rounded-full"></div>
+          </div>
+          <span>Secured with enterprise-grade authentication</span>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -187,31 +252,26 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Button Section */}
-              <div className="space-y-4">
-                {/* Login button wrapped in Suspense */}
-                <Suspense
-                  fallback={
+              {/* Login Form with Search Params (wrapped in Suspense) */}
+              <Suspense
+                fallback={
+                  <div className="space-y-4">
+                    <div className="flex gap-2 mb-6 bg-gray-100 p-1 rounded-xl">
+                      <div className="flex-1 py-2 px-4 rounded-lg bg-gray-200 animate-pulse"></div>
+                      <div className="flex-1 py-2 px-4 rounded-lg bg-gray-200 animate-pulse"></div>
+                    </div>
                     <Button
-                      className="w-full bg-gradient-to-r from-appPrimary to-appPrimary/90 hover:from-appPrimary/90 hover:to-appPrimary text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 text-lg min-h-[60px] border-0 relative overflow-hidden group"
+                      className="w-full bg-gradient-to-r from-appPrimary to-appPrimary/90 text-white font-semibold py-4 px-8 rounded-2xl text-lg min-h-[60px] border-0"
                       type="button"
                       disabled
                     >
-                      <span className="relative z-10">Loading...</span>
+                      Loading...
                     </Button>
-                  }
-                >
-                  <LoginButton />
-                </Suspense>
-
-                {/* Security Badge */}
-                <div className="flex items-center justify-center space-x-2 text-xs text-altText/60 mt-4">
-                  <div className="w-4 h-4 bg-successGreen/20 rounded-full flex items-center justify-center">
-                    <div className="w-2 h-2 bg-successGreen rounded-full"></div>
                   </div>
-                  <span>Secured with enterprise-grade authentication</span>
-                </div>
-              </div>
+                }
+              >
+                <LoginFormContent setNotification={setNotification} />
+              </Suspense>
             </div>
           </div>
 

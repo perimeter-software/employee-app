@@ -49,6 +49,15 @@ export const env = {
     anthropic: process.env.ANTHROPIC_API_KEY!,
   },
 
+  // AWS SES Configuration (for email service)
+  // Uses AWS SDK v3 default credential provider chain
+  // Credentials read from: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+  ses: {
+    region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-2',
+    fromEmail: 'jobs@stadiumpeople.com' ,
+    sendInDev: process.env.SES_SEND_IN_DEV === 'true',
+  },
+
   // Environment Detection
   isDevelopment: process.env.NODE_ENV === "development",
   isProduction: process.env.NODE_ENV === "production",

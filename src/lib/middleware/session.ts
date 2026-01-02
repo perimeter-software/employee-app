@@ -3,6 +3,60 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@auth0/nextjs-auth0';
 import { AuthenticatedRequest, RouteHandler } from './types';
 import { Auth0SessionUser, EnhancedUser } from '@/domains/user';
+import redisService from '@/lib/cache/redis-client';
+
+/**
+ * Get user session from either Auth0 or OTP
+ * Returns user data in Auth0-compatible format
+ */
+async function getUserSession(request: NextRequest): Promise<Auth0SessionUser | null> {
+  try {
+    // First, try Auth0 session
+    const auth0Session = await getSession();
+    if (auth0Session?.user?.email) {
+      return auth0Session.user as Auth0SessionUser;
+    }
+
+    // If no Auth0 session, try OTP session
+    const otpSessionId = request.cookies.get('otp_session_id')?.value;
+    if (!otpSessionId) {
+      return null;
+    }
+
+    const otpSessionData = await redisService.get<{
+      userId: string;
+      email: string;
+      name: string;
+      firstName?: string;
+      lastName?: string;
+      picture?: string;
+      loginMethod: string;
+      isLimitedAccess?: boolean;
+      employmentStatus?: string;
+      createdAt: string;
+    }>(`otp_session:${otpSessionId}`);
+
+    if (!otpSessionData) {
+      return null;
+    }
+
+    // Convert OTP session to Auth0-compatible format
+    return {
+      sub: otpSessionData.userId,
+      email: otpSessionData.email,
+      name: otpSessionData.name,
+      firstName: otpSessionData.firstName,
+      lastName: otpSessionData.lastName,
+      picture: otpSessionData.picture,
+      loginMethod: otpSessionData.loginMethod,
+      isLimitedAccess: otpSessionData.isLimitedAccess || false,
+      employmentStatus: otpSessionData.employmentStatus,
+    } as Auth0SessionUser;
+  } catch (error) {
+    console.error('Error getting user session:', error);
+    return null;
+  }
+}
 
 export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
   return async function (
@@ -10,10 +64,10 @@ export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
     context: { params: Promise<Record<string, string | string[] | undefined>> }
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
-      // Use getSession directly from named exports
-      const session = await getSession();
+      // Get user session (Auth0 or OTP)
+      const user = await getUserSession(request);
 
-      if (!session?.user?.email) {
+      if (!user?.email) {
         return NextResponse.json(
           { error: 'not-authenticated', message: 'Authentication required' },
           { status: 401 }
@@ -22,7 +76,7 @@ export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
 
       // Add user to request
       const authenticatedRequest = request as AuthenticatedRequest;
-      authenticatedRequest.user = session.user as Auth0SessionUser;
+      authenticatedRequest.user = user as Auth0SessionUser;
 
       return handler(authenticatedRequest, context);
     } catch (error) {
@@ -48,18 +102,18 @@ export function withEnhancedAuthAPI<T = unknown>(
     context: { params: Promise<Record<string, string | string[] | undefined>> }
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
-      // Use getSession directly from named exports
-      const session = await getSession();
+      // Get user session (Auth0 or OTP)
+      const user = await getUserSession(request);
 
       // If no session, return 401
-      if (!session?.user?.email) {
+      if (!user?.email) {
         return NextResponse.json(
           { error: 'not-authenticated', message: 'Authentication required' },
           { status: 401 }
         );
       }
 
-      const userEmail = session.user.email;
+      const userEmail = user.email;
       let enhancedUser: Auth0SessionUser | null = null;
 
       // FIRST: Try to get enhanced user data from middleware headers
@@ -76,7 +130,7 @@ export function withEnhancedAuthAPI<T = unknown>(
           // Convert EnhancedUser to Auth0SessionUser format
           enhancedUser = {
             // Auth0 fields
-            sub: session.user.sub,
+            sub: user.sub,
             email: parsedUser.email,
             name: parsedUser.name,
 
@@ -140,7 +194,7 @@ export function withEnhancedAuthAPI<T = unknown>(
             // FALLBACK: Look up in database using tenant-aware connection
             // Create a temporary authenticated request for getTenantAwareConnection
             const tempRequest = request as AuthenticatedRequest;
-            tempRequest.user = session.user as Auth0SessionUser;
+            tempRequest.user = user as Auth0SessionUser;
             
             const { db, dbTenant, userDb } = await getTenantAwareConnection(tempRequest);
 
@@ -179,9 +233,9 @@ export function withEnhancedAuthAPI<T = unknown>(
           // Create enhanced user object
           enhancedUser = {
             // Auth0 data
-            sub: session.user.sub,
+            sub: user.sub,
             email: userEmail,
-            name: session.user.name,
+            name: user.name,
 
             // Database user data
             _id: userExists._id,
@@ -235,7 +289,7 @@ export function withEnhancedAuthAPI<T = unknown>(
       // Add enhanced user to request
       const authenticatedRequest = request as AuthenticatedRequest;
       authenticatedRequest.user =
-        enhancedUser || (session.user as Auth0SessionUser);
+        enhancedUser || (user as Auth0SessionUser);
 
       console.log(
         `✅ Enhanced API Request authenticated: ${userEmail} → ${request.url}`
