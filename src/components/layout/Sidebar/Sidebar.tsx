@@ -18,6 +18,7 @@ import {
 import { clsxm } from '@/lib/utils';
 import { Button } from '@/components/ui/Button/Button';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
+import { useCurrentUser } from '@/domains/user';
 
 interface NavigationItem {
   name: string;
@@ -34,8 +35,27 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
   const pathname = usePathname();
   const { data: primaryCompany } = usePrimaryCompany();
+  const { data: currentUser } = useCurrentUser();
+
+  // Check if user has limited access (no tenant = limited access)
+  const isLimitedAccess = !currentUser?.tenant;
 
   const navigation: NavigationItem[] = useMemo(() => {
+    // For limited-access users, only show Paycheck Stubs
+    if (isLimitedAccess) {
+      return [
+        {
+          name: 'Paycheck Stubs',
+          href: '/paycheck-stubs',
+          icon: Receipt,
+          current:
+            pathname === '/paycheck-stubs' ||
+            pathname.startsWith('/paycheck-stubs'),
+        },
+      ];
+    }
+
+    // For full-access users, show all navigation items
     const baseNavigation = [
       {
         name: 'Time & Attendance',
@@ -97,7 +117,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     );
 
     return baseNavigation;
-  }, [pathname, primaryCompany]);
+  }, [pathname, primaryCompany, isLimitedAccess]);
 
   const handleLinkClick = () => {
     // Close mobile menu when a link is clicked
