@@ -40,7 +40,8 @@ export const isUserInRoster = (
   }
 
   // Check if user is in roster for specific date
-  const targetDateStr = new Date(targetDate).toISOString().split('T')[0]; // Get YYYY-MM-DD format
+  // Parse the date and format as YYYY-MM-DD using local time to avoid timezone issues
+  const targetDateStr = format(parseISO(targetDate), 'yyyy-MM-dd');
   console.log('  - Target date string (YYYY-MM-DD):', targetDateStr);
 
   const result = rosterEntries.some(
