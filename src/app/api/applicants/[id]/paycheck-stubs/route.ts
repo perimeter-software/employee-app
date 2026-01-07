@@ -9,22 +9,7 @@ async function getPaycheckStubsHandler(
   try {
     const params = await context.params;
     const id = typeof params.id === 'string' ? params.id : params.id?.[0];
-    
-    // For limited-access users (applicants), use default database connection
-    const user = request.user;
-    const isLimitedAccess = user.isLimitedAccess || false;
-    
-    let db;
-    if (isLimitedAccess) {
-      // Use default database connection for applicants
-      const { mongoConn } = await import('@/lib/db/mongodb');
-      const connection = await mongoConn();
-      db = connection.db;
-    } else {
-      // Use tenant-aware connection for regular users
-      const connection = await getTenantAwareConnection(request);
-      db = connection.db;
-    }
+    const { db } = await getTenantAwareConnection(request);
 
     if (!id) {
       return NextResponse.json(

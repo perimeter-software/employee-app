@@ -114,68 +114,6 @@ export function withEnhancedAuthAPI<T = unknown>(
       }
 
       const userEmail = user.email;
-      const isLimitedAccess = user.isLimitedAccess || false;
-      
-      // Check if this is an API route
-      const isApiRoute = request.url.includes('/api/');
-      
-      // Check if this is a paycheck stub route (page or API)
-      const isPaycheckStubRoute = request.url.includes('/paycheck-stubs') || 
-                                   (request.url.includes('/applicants/') && request.url.includes('/paycheck-stubs'));
-
-      // Essential API routes that limited-access users need
-      const allowedApiRoutes = [
-        '/api/current-user',
-        '/api/auth/me',
-        '/api/auth/logout',
-        '/api/applicants/',
-        '/api/companies/primary',
-      ];
-      const isAllowedApiRoute = isApiRoute && allowedApiRoutes.some(route => request.url.includes(route));
-
-      // For limited-access users (applicants)
-      if (isLimitedAccess) {
-        // Allow paycheck stub routes (both page and API)
-        if (isPaycheckStubRoute) {
-          const authenticatedRequest = request as AuthenticatedRequest;
-          authenticatedRequest.user = user as Auth0SessionUser;
-          
-          console.log(
-            `✅ Limited-access user accessing paycheck stub route: ${userEmail} → ${request.url}`
-          );
-          
-          return handler(authenticatedRequest, context);
-        }
-        
-        // Allow essential API routes
-        if (isAllowedApiRoute) {
-          const authenticatedRequest = request as AuthenticatedRequest;
-          authenticatedRequest.user = user as Auth0SessionUser;
-          
-          console.log(
-            `✅ Limited-access user accessing allowed API route: ${userEmail} → ${request.url}`
-          );
-          
-          return handler(authenticatedRequest, context);
-        }
-        
-        // For page routes (not API), redirect to paycheck stub page
-        if (!isApiRoute) {
-          console.log(`🔄 Redirecting limited-access user to paycheck stub page: ${userEmail} → ${request.url}`);
-          return NextResponse.redirect(new URL('/paycheck-stubs', request.url));
-        }
-        
-        // Block other API routes for limited-access users
-        console.log(`❌ Limited-access user blocked from API route: ${userEmail} → ${request.url}`);
-        return NextResponse.json(
-          {
-            error: 'access-denied',
-            message: 'Limited access: Paycheck stubs only',
-          },
-          { status: 403 }
-        );
-      }
-
       let enhancedUser: Auth0SessionUser | null = null;
 
       // FIRST: Try to get enhanced user data from middleware headers
@@ -263,99 +201,15 @@ export function withEnhancedAuthAPI<T = unknown>(
             // Get user data from tenant-specific database
             userExists = await checkUserExistsByEmail(db, userEmail);
 
-            // If not found in users table, check applicants table
             if (!userExists) {
-              console.log(`⚠️ User not found in users table, checking applicants table: ${userEmail}`);
-              
-              const Applicants = db.collection('applicants');
-              const applicant = await Applicants.findOne(
-                { 
-                  email: userEmail.toLowerCase(),
-                  status: 'Employee'
+              console.log(`❌ User not found in database: ${userEmail}`);
+              return NextResponse.json(
+                {
+                  error: 'user-not-found',
+                  message: 'User not found in database',
                 },
-                { 
-                  projection: { 
-                    _id: 1, 
-                    email: 1, 
-                    firstName: 1, 
-                    lastName: 1, 
-                    status: 1 
-                  } 
-                }
+                { status: 404 }
               );
-
-              if (applicant) {
-                // Found in applicants table - this is a limited-access user
-                const isApiRoute = request.url.includes('/api/');
-                const isPaycheckStubRoute = request.url.includes('/paycheck-stubs') || 
-                                           (request.url.includes('/applicants/') && request.url.includes('/paycheck-stubs'));
-                const allowedApiRoutes = [
-                  '/api/current-user',
-                  '/api/auth/me',
-                  '/api/auth/logout',
-                  '/api/applicants/',
-                  '/api/companies/primary',
-                ];
-                const isAllowedApiRoute = isApiRoute && allowedApiRoutes.some(route => request.url.includes(route));
-
-                // Allow paycheck stub routes (both page and API)
-                if (isPaycheckStubRoute) {
-                  const authenticatedRequest = request as AuthenticatedRequest;
-                  authenticatedRequest.user = {
-                    ...user,
-                    isLimitedAccess: true,
-                    employmentStatus: applicant.status || 'Employee',
-                  } as Auth0SessionUser;
-                  
-                  console.log(
-                    `✅ Limited-access user (applicant) accessing paycheck stub route: ${userEmail} → ${request.url}`
-                  );
-                  
-                  return handler(authenticatedRequest, context);
-                }
-                
-                // Allow essential API routes
-                if (isAllowedApiRoute) {
-                  const authenticatedRequest = request as AuthenticatedRequest;
-                  authenticatedRequest.user = {
-                    ...user,
-                    isLimitedAccess: true,
-                    employmentStatus: applicant.status || 'Employee',
-                  } as Auth0SessionUser;
-                  
-                  console.log(
-                    `✅ Limited-access user (applicant) accessing allowed API route: ${userEmail} → ${request.url}`
-                  );
-                  
-                  return handler(authenticatedRequest, context);
-                }
-                
-                // For page routes (not API), redirect to paycheck stub page
-                if (!isApiRoute) {
-                  console.log(`🔄 Redirecting limited-access user (applicant) to paycheck stub page: ${userEmail} → ${request.url}`);
-                  return NextResponse.redirect(new URL('/paycheck-stubs', request.url));
-                }
-                
-                // Block other API routes
-                console.log(`❌ Limited-access user (applicant) blocked from API route: ${userEmail} → ${request.url}`);
-                return NextResponse.json(
-                  {
-                    error: 'access-denied',
-                    message: 'Limited access: Paycheck stubs only',
-                  },
-                  { status: 403 }
-                );
-              } else {
-                // Not found in either table
-                console.log(`❌ User not found in database or applicants table: ${userEmail}`);
-                return NextResponse.json(
-                  {
-                    error: 'user-not-found',
-                    message: 'User not found in database',
-                  },
-                  { status: 404 }
-                );
-              }
             }
 
             // Get tenant data if required

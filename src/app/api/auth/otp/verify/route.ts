@@ -72,111 +72,57 @@ export async function POST(request: NextRequest) {
 
     // Code is valid, get user from database
     const { db } = await mongoConn();
-    let user = await checkUserExistsByEmail(db, normalizedEmail);
-    let isFromApplicants = false;
-    let applicantData = null;
+    const user = await checkUserExistsByEmail(db, normalizedEmail);
 
-    // If not found in users table, check applicants table
     if (!user || !user._id) {
-      const Applicants = db.collection('applicants');
-      const applicant = await Applicants.findOne(
-        { 
-          email: normalizedEmail,
-          status: 'Employee'
-        },
-        { 
-          projection: { 
-            _id: 1, 
-            email: 1, 
-            firstName: 1, 
-            lastName: 1, 
-            status: 1 
-          } 
-        }
+      await redisService.del(otpKey);
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
       );
-
-      if (!applicant) {
-        await redisService.del(otpKey);
-        return NextResponse.json(
-          { error: 'User not found' },
-          { status: 404 }
-        );
-      }
-
-      // Found in applicants table with status: "Employee"
-      isFromApplicants = true;
-      applicantData = applicant;
     }
 
     // Delete OTP after successful verification
     await redisService.del(otpKey);
 
-    // Determine access level and session data
-    let isLimitedAccess = false;
-    let employmentStatus = '';
-    let userId = '';
-    let userEmail = normalizedEmail;
-    let firstName = '';
-    let lastName = '';
-    let name = '';
-
-    if (isFromApplicants && applicantData) {
-      // Applicant with status: "Employee" - limited access (paycheck stubs only)
-      isLimitedAccess = true;
-      employmentStatus = applicantData.status || 'Employee';
-      userId = `applicant_${applicantData._id.toString()}`;
-      userEmail = applicantData.email || normalizedEmail;
-      firstName = applicantData.firstName || '';
-      lastName = applicantData.lastName || '';
-      name = firstName && lastName 
-        ? `${firstName} ${lastName}`.trim()
-        : firstName || lastName || userEmail.split('@')[0];
-    } else if (user && user._id) {
-      // User from users table - check employment status
-      employmentStatus = user.status || '';
-      const isTerminatedOrInactive = employmentStatus === 'Terminated' || employmentStatus === 'Inactive';
-      isLimitedAccess = isTerminatedOrInactive;
-      userId = user._id.toString();
-      userEmail = (typeof user.emailAddress === 'string' ? user.emailAddress : normalizedEmail);
-      firstName = user.firstName || '';
-      lastName = user.lastName || '';
-      name = firstName && lastName 
-        ? `${firstName} ${lastName}`.trim()
-        : firstName || lastName || userEmail.split('@')[0];
-    }
+    // Check employment status - Terminated/Inactive users get limited access (PDF only)
+    const employmentStatus = user.status || '';
+    const isTerminatedOrInactive = employmentStatus === 'Terminated' || employmentStatus === 'Inactive';
     
     // Create OTP session in Redis (30 days)
     const sessionId = `otp_session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const sessionData = {
-      userId,
-      email: userEmail,
-      name,
-      firstName,
-      lastName,
-      picture: user?.picture,
+      userId: user._id.toString(),
+      email: user.emailAddress || normalizedEmail,
+      name: user.firstName && user.lastName 
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : user.firstName || user.lastName || user.emailAddress || normalizedEmail,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      picture: user.picture,
       loginMethod: 'otp',
-      isLimitedAccess, // Limited access for applicants or Terminated/Inactive employees
-      employmentStatus,
+      isLimitedAccess: isTerminatedOrInactive, // Limited access for Terminated/Inactive employees
+      employmentStatus: employmentStatus,
       createdAt: new Date().toISOString(),
     };
 
     await redisService.set(`otp_session:${sessionId}`, sessionData, 30 * 24 * 60 * 60);
 
     // Determine redirect URL
-    // Limited access users (applicants or Terminated/Inactive) should only access PDF pages
+    // Terminated/Inactive employees should only access PDF pages
     let redirectUrl = '/time-attendance';
     if (returnTo) {
       const decodedReturnTo = decodeURIComponent(returnTo);
       // If returnTo is a PDF route, allow it for limited access users
       if (decodedReturnTo.startsWith('/paycheck-stubs/') || decodedReturnTo.startsWith('/paycheck-stubs')) {
         redirectUrl = decodedReturnTo;
-      } else if (!isLimitedAccess) {
+      } else if (!isTerminatedOrInactive) {
         // Full access users can go to any returnTo
         redirectUrl = decodedReturnTo;
       }
       // Limited access users trying to access non-PDF routes will be redirected to PDF page
-    } else if (isLimitedAccess) {
-      // Limited access users default to paycheck stubs page
+    } else if (isTerminatedOrInactive) {
+      // Terminated/Inactive employees default to paycheck stubs page
       redirectUrl = '/paycheck-stubs';
     }
 

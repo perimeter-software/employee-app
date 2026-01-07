@@ -5,20 +5,8 @@ import { findPrimaryCompany } from '@/domains/company';
 
 async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
   try {
-    const user = request.user;
-    const isLimitedAccess = user.isLimitedAccess || false;
-    
-    // For limited-access users, use default database connection
-    let db;
-    if (isLimitedAccess) {
-      const { mongoConn } = await import('@/lib/db/mongodb');
-      const connection = await mongoConn();
-      db = connection.db;
-    } else {
-      // For full-access users, use tenant-aware connection
-      const connection = await getTenantAwareConnection(request);
-      db = connection.db;
-    }
+    // Connect to databases
+    const { db } = await getTenantAwareConnection(request);
 
     // Get primary company
     const primaryCompany = await findPrimaryCompany(db);
@@ -35,10 +23,8 @@ async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
     }
 
     // Get peoIntegration from tenant data (similar to sp1-api)
-    // For limited-access users, default to 'Prism' since they only have paycheck stub access
-    const peoIntegration = isLimitedAccess 
-      ? 'Prism' 
-      : (request.user?.tenant?.peoIntegration || 'Helm');
+    // The tenant data is available in request.user.tenant from the middleware
+    const peoIntegration = request.user?.tenant?.peoIntegration || 'Helm';
 
     return NextResponse.json({
       success: true,
@@ -61,8 +47,8 @@ async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
   }
 }
 
-// Export with enhanced auth wrapper (allows limited-access users)
+// Export with enhanced auth wrapper (validates database user AND tenant)
 export const GET = withEnhancedAuthAPI(getPrimaryCompanyHandler, {
-  requireDatabaseUser: false, // Allow limited-access users (applicants)
-  requireTenant: false, // Limited-access users don't need tenant
+  requireDatabaseUser: true,
+  requireTenant: true,
 });
