@@ -163,8 +163,23 @@ export default function LoginPage() {
     }
   }, [notification.show]); // FIXED: Only depend on notification.show
 
-  // Redirect if user is already authenticated
+  // Redirect if user is already authenticated (but not if coming from logout)
   useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const loggedOut = searchParams.get('loggedout');
+    
+    // Don't redirect if user just logged out (even if useUser still has cached data)
+    if (loggedOut === 'true') {
+      // Clear any cached user data from client-side storage
+      if (typeof window !== 'undefined') {
+        // Clear Auth0 client cache by forcing a refresh
+        sessionStorage.clear();
+        localStorage.removeItem('auth0.is.authenticated');
+      }
+      return;
+    }
+    
+    // Only redirect if user is authenticated and not coming from logout
     if (user && !isLoading) {
       router.push('/time-attendance');
     }

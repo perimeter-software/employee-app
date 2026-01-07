@@ -25,15 +25,33 @@ export async function GET(request: NextRequest) {
     // handleLogout expects (request, context, options) for App Router
     // Context should have params as Record<string, string | string[]>
     const context = { params: {} };
+    // Set returnTo with loggedout parameter to prevent auto-login redirect
+    // Auth0 expects a relative path, not a full URL
+    const returnToPath = '/?loggedout=true';
     const auth0Response = await handleLogout(request, context, {
-      returnTo: '/',
+      returnTo: returnToPath,
     });
 
-    // Get redirect URL from Location header or default to '/'
-    const redirectUrl = auth0Response.headers.get('location') || '/';
+    // Get redirect URL from Location header
+    // Auth0 might redirect to its own logout endpoint first, then back to returnTo
+    // We need to ensure the final redirect includes the loggedout parameter
+    const locationHeader = auth0Response.headers.get('location');
+    let redirectUrl: URL;
+    
+    if (locationHeader) {
+      redirectUrl = new URL(locationHeader, request.url);
+      // If it's pointing to our domain (not Auth0's), ensure loggedout param is present
+      if (redirectUrl.pathname === '/' && !redirectUrl.searchParams.has('loggedout')) {
+        redirectUrl.searchParams.set('loggedout', 'true');
+      }
+    } else {
+      // Fallback: redirect to home with loggedout parameter
+      redirectUrl = new URL('/', request.url);
+      redirectUrl.searchParams.set('loggedout', 'true');
+    }
 
     // Convert Response to NextResponse to access cookies
-    const response = NextResponse.redirect(new URL(redirectUrl, request.url), {
+    const response = NextResponse.redirect(redirectUrl, {
       status: auth0Response.status,
       statusText: auth0Response.statusText,
     });
@@ -72,7 +90,10 @@ export async function GET(request: NextRequest) {
     console.error('Error during logout:', error);
     
     // Even if there's an error, try to clear cookies and redirect
-    const response = NextResponse.redirect(new URL('/', request.url));
+    // Add loggedout parameter to prevent auto-login redirect
+    const redirectUrl = new URL('/', request.url);
+    redirectUrl.searchParams.set('loggedout', 'true');
+    const response = NextResponse.redirect(redirectUrl);
     
     // Clear all auth cookies
     const cookiesToClear = [
