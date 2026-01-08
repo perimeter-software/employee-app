@@ -293,6 +293,7 @@ async function createPunchHandler(
       const agentName = user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Employee';
       
       await logActivity(
+        db,
         createActivityLogData(
           'Event Clock In',
           `${agentName} clocked in at ${new Date(timeIn).toISOString()} for job ${jobId}`,
@@ -300,6 +301,7 @@ async function createPunchHandler(
             applicantId: applicantId || user.applicantId,
             userId: user._id || userId,
             agent: agentName,
+            email: user.email || '',
             jobId: jobId,
             details: {
               rosterRecord: {
@@ -371,6 +373,7 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
         const timeOut = punch.timeOut || new Date().toISOString();
         
         await logActivity(
+          db,
           createActivityLogData(
             'Event Clock Out',
             `${agentName} clocked out at ${new Date(timeOut).toISOString()} for job ${punch.jobId}`,
@@ -378,6 +381,7 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
               applicantId: user.applicantId || punch.applicantId,
               userId: user._id || punch.userId,
               agent: agentName,
+              email: user.email || '',
               jobId: punch.jobId,
               details: {
                 rosterRecord: {

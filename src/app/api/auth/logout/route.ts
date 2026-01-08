@@ -41,15 +41,19 @@ export async function GET(request: NextRequest) {
     }
 
     // Try to get Auth0 session for logging
+    let userEmail: string | undefined;
     try {
       const { getSession } = await import('@auth0/nextjs-auth0');
       const auth0Session = await getSession();
-      if (auth0Session?.user && !userInfoForLogging) {
-        userInfoForLogging = {
-          userId: auth0Session.user.sub,
-          applicantId: auth0Session.user.sub,
-          agent: auth0Session.user.name || auth0Session.user.email,
-        };
+      if (auth0Session?.user) {
+        userEmail = auth0Session.user.email;
+        if (!userInfoForLogging) {
+          userInfoForLogging = {
+            userId: auth0Session.user.sub,
+            applicantId: auth0Session.user.sub,
+            agent: auth0Session.user.name || auth0Session.user.email,
+          };
+        }
       }
     } catch {
       // Ignore errors getting Auth0 session
@@ -59,7 +63,10 @@ export async function GET(request: NextRequest) {
     if (userInfoForLogging) {
       try {
         const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
+        const { mongoConn } = await import('@/lib/db/mongodb');
+        const { db } = await mongoConn();
         await logActivity(
+          db,
           createActivityLogData(
             'User Logout',
             `${userInfoForLogging.agent || 'User'} logged out`,
@@ -67,6 +74,7 @@ export async function GET(request: NextRequest) {
               applicantId: userInfoForLogging.applicantId,
               userId: userInfoForLogging.userId,
               agent: userInfoForLogging.agent,
+              email: userEmail || '',
               details: {
                 logoutMethod: otpSessionId ? 'OTP' : 'Auth0',
               },

@@ -1,5 +1,10 @@
 // lib/services/activity-logger.ts
-// Service for logging employee activities to the Big App API
+// Service for logging employee activities directly to the database
+// This file is server-only and should not be imported in client components
+
+import 'server-only';
+import type { Db } from 'mongodb';
+import { ObjectId } from 'mongodb';
 
 export interface ActivityLogData {
   action: string;
@@ -8,6 +13,7 @@ export interface ActivityLogData {
   userId?: string;
   agent?: string;
   createAgent?: string;
+  email?: string;
   eventId?: string;
   jobId?: string;
   venueId?: string;
@@ -19,51 +25,120 @@ export interface ActivityLogData {
 }
 
 /**
- * Get the base URL for the activity logging API
- * Uses production URL by default, dev URL for development
+ * Helper to safely convert string to ObjectId
  */
-function getActivityApiBaseUrl(): string {
-  const isDevelopment = process.env.NODE_ENV === 'development';
-  const useDevApi = process.env.NEXT_PUBLIC_USE_DEV_API === 'true';
-  
-  if (isDevelopment || useDevApi) {
-    return 'https://api.dev.gignology.biz';
+function toObjectId(id: string | undefined): ObjectId | undefined {
+  if (!id) return undefined;
+  try {
+    return new ObjectId(id);
+  } catch {
+    return undefined;
   }
-  return 'https://api.stadiumpeople.com';
 }
 
 /**
- * Log an activity to the Big App API
+ * Log an activity directly to the database
  * This function is fire-and-forget - errors are logged but don't throw
  */
-export async function logActivity(data: ActivityLogData): Promise<void> {
+export async function logActivity(
+  db: Db,
+  data: ActivityLogData
+): Promise<void> {
   try {
-    const baseUrl = getActivityApiBaseUrl();
-    const url = `${baseUrl}/activities`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
+    const dbName = db.databaseName;
+    console.log(`💾 Logging activity to database: "${dbName}"`, {
+      action: data.action,
+      description: data.description,
     });
+    
+    const Activities = db.collection('activities');
+    const now = new Date();
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Activity logging failed:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
-        data,
+    const activityDocument: Record<string, unknown> = {
+      action: data.action,
+      description: data.description,
+      activityDate: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Add optional fields only if they exist
+    if (data.applicantId) {
+      const objId = toObjectId(data.applicantId);
+      if (objId) activityDocument.applicantId = objId;
+    }
+    if (data.userId) {
+      const objId = toObjectId(data.userId);
+      if (objId) activityDocument.userId = objId;
+    }
+    if (data.agent) activityDocument.agent = data.agent;
+    if (data.email) activityDocument.email = data.email;
+    if (data.createAgent) {
+      const objId = toObjectId(data.createAgent);
+      if (objId) activityDocument.createAgent = objId;
+    }
+    if (data.eventId) {
+      const objId = toObjectId(data.eventId);
+      if (objId) activityDocument.eventId = objId;
+    }
+    if (data.jobId) {
+      const objId = toObjectId(data.jobId);
+      if (objId) activityDocument.jobId = objId;
+    }
+    if (data.venueId) activityDocument.venueId = data.venueId;
+    if (data.details || data.detail) {
+      activityDocument.details = data.details || data.detail;
+    }
+    if (data.type) activityDocument.type = data.type;
+    if (data.integration) activityDocument.integration = data.integration;
+    if (data.hideFromEmployee) activityDocument.hideFromEmployee = data.hideFromEmployee;
+
+    const result = await Activities.insertOne(activityDocument);
+    
+    // Verify the document was inserted by querying it back
+    const insertedDoc = await Activities.findOne({ _id: result.insertedId });
+    
+    console.log(`✅ Activity logged successfully to database: "${dbName}"`, {
+      insertedId: result.insertedId,
+      action: data.action,
+      description: data.description,
+      applicantId: data.applicantId,
+      userId: data.userId,
+      agent: data.agent,
+      email: data.email,
+      verified: !!insertedDoc,
+      documentExists: insertedDoc ? 'YES' : 'NO',
+    });
+    
+    if (insertedDoc) {
+      console.log('📄 Inserted document structure:', {
+        _id: insertedDoc._id,
+        action: insertedDoc.action,
+        description: insertedDoc.description,
+        applicantId: insertedDoc.applicantId,
+        userId: insertedDoc.userId,
+        agent: insertedDoc.agent,
+        activityDate: insertedDoc.activityDate,
+        createdAt: insertedDoc.createdAt,
+        hasDetails: !!insertedDoc.details,
       });
-    } else {
-      const result = await response.json();
-      console.log('Activity logged successfully:', result);
+      
+      // Test query: Can we find this activity by applicantId?
+      if (data.applicantId) {
+        const objId = toObjectId(data.applicantId);
+        if (objId) {
+          const count = await Activities.countDocuments({ applicantId: objId });
+          console.log(`🔍 Total activities found for applicantId ${data.applicantId}: ${count}`);
+        }
+      }
     }
   } catch (error) {
     // Log error but don't throw - activity logging should not break the app
-    console.error('Error logging activity:', error, data);
+    console.error('❌ Error logging activity:', error, {
+      action: data.action,
+      description: data.description,
+      data,
+    });
   }
 }
 
@@ -77,6 +152,7 @@ export function createActivityLogData(
     applicantId?: string;
     userId?: string;
     agent?: string;
+    email?: string;
     eventId?: string;
     jobId?: string;
     details?: Record<string, unknown>;
@@ -89,6 +165,7 @@ export function createActivityLogData(
     applicantId: options.applicantId,
     userId: options.userId || options.applicantId, // Default userId to applicantId if not provided
     agent: options.agent,
+    email: options.email,
     createAgent: options.userId || options.applicantId,
     eventId: options.eventId,
     jobId: options.jobId,

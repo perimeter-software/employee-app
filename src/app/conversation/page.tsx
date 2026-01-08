@@ -40,45 +40,78 @@ const ChatConversationPage = () => {
 
   // Log "Ask a Question" activity when chatbot is successfully loaded
   useEffect(() => {
+    console.log('🔍 Activity logging useEffect triggered:', {
+      chatbotUrl: !!chatbotUrl,
+      chatbotLoading,
+      chatbotError: !!chatbotError,
+      currentUser: !!currentUser,
+      hasLoggedActivity: hasLoggedActivity.current,
+    });
+    
+    // Log activity when user is available, even if chatbot isn't loaded yet
+    // This ensures we capture the page visit
     if (
-      chatbotUrl &&
-      !chatbotLoading &&
-      !chatbotError &&
       currentUser &&
       !hasLoggedActivity.current
     ) {
-      hasLoggedActivity.current = true;
-      
-      const logAskQuestionActivity = async () => {
-        try {
-          const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
-          const agentName = currentUser.name || 
-            `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 
-            currentUser.email || 
-            'Employee';
-          
-          await logActivity(
-            createActivityLogData(
-              'Ask a Question',
-              `${agentName} accessed the "Ask a Question" chatbot`,
-              {
+      // Wait a bit for chatbot to load, but don't require it
+      const timeoutId = setTimeout(() => {
+        if (hasLoggedActivity.current) return;
+        
+        hasLoggedActivity.current = true;
+        
+        const logAskQuestionActivity = async () => {
+          try {
+            const agentName = currentUser.name || 
+              `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 
+              currentUser.email || 
+              'Employee';
+            
+            console.log('📝 Logging "Ask a Question" activity:', {
+              applicantId: currentUser.applicantId,
+              userId: currentUser._id,
+              agent: agentName,
+              email: currentUser.email,
+            });
+            
+            const response = await fetch('/api/activities/log', {
+              method: 'POST',
+              credentials: 'include', // Ensure cookies are sent
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                action: 'Ask a Question',
+                description: `${agentName} accessed the "Ask a Question" chatbot`,
                 applicantId: currentUser.applicantId,
                 userId: currentUser._id,
                 agent: agentName,
+                email: currentUser.email,
                 details: {
-                  chatbotUrl: chatbotUrl,
+                  chatbotUrl: chatbotUrl || 'not-loaded',
                   accessTime: new Date().toISOString(),
+                  chatbotLoaded: !!chatbotUrl,
                 },
-              }
-            )
-          );
-        } catch (error) {
-          // Don't fail page load if logging fails
-          console.error('Error logging "Ask a Question" activity:', error);
-        }
-      };
+              }),
+            });
 
-      logAskQuestionActivity();
+            const result = await response.json();
+            
+            if (response.ok && result.success) {
+              console.log('✅ "Ask a Question" activity logged successfully:', result);
+            } else {
+              console.error('❌ Failed to log "Ask a Question" activity:', result);
+            }
+          } catch (error) {
+            // Don't fail page load if logging fails
+            console.error('❌ Error logging "Ask a Question" activity:', error);
+          }
+        };
+
+        logAskQuestionActivity();
+      }, chatbotUrl ? 0 : 2000); // Wait 2 seconds if chatbot isn't loaded yet
+      
+      return () => clearTimeout(timeoutId);
     }
   }, [chatbotUrl, chatbotLoading, chatbotError, currentUser]);
 

@@ -36,9 +36,12 @@ const afterCallback = async (req: NextRequest, session: Session): Promise<Sessio
     if (session?.user) {
       try {
         const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
+        const { mongoConn } = await import('@/lib/db/mongodb');
+        const { db } = await mongoConn();
         const agentName = session.user.name || session.user.email || 'User';
         
         await logActivity(
+          db,
           createActivityLogData(
             'User Login',
             `${agentName} logged in using Auth0`,
@@ -46,6 +49,7 @@ const afterCallback = async (req: NextRequest, session: Session): Promise<Sessio
               userId: session.user.sub,
               applicantId: session.user.sub, // May need to fetch from DB later
               agent: agentName,
+              email: session.user.email || '',
               details: {
                 loginMethod: 'Auth0',
                 email: session.user.email,
