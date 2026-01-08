@@ -287,6 +287,39 @@ async function createPunchHandler(
       );
     }
 
+    // Log clock in activity
+    try {
+      const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
+      const agentName = user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Employee';
+      
+      await logActivity(
+        db,
+        createActivityLogData(
+          'Event Clock In',
+          `${agentName} clocked in at ${new Date(timeIn).toISOString()} for job ${jobId}`,
+          {
+            applicantId: applicantId || user.applicantId,
+            userId: user._id || userId,
+            agent: agentName,
+            email: user.email || '',
+            jobId: jobId,
+            details: {
+              rosterRecord: {
+                timeIn: timeIn,
+                platform: 'Mobile',
+                clockInCoordinates: usersCurrentCoordinates,
+                shiftSlug: selectedShift.slug,
+                shiftName: selectedShift.shiftName,
+              },
+            },
+          }
+        )
+      );
+    } catch (error) {
+      // Don't fail clock in if logging fails
+      console.error('Error logging clock in activity:', error);
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -331,6 +364,40 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
           { error: 'clock-out-failed', message: 'Error clocking out' },
           { status: 500 }
         );
+      }
+
+      // Log clock out activity
+      try {
+        const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
+        const agentName = user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Employee';
+        const timeOut = punch.timeOut || new Date().toISOString();
+        
+        await logActivity(
+          db,
+          createActivityLogData(
+            'Event Clock Out',
+            `${agentName} clocked out at ${new Date(timeOut).toISOString()} for job ${punch.jobId}`,
+            {
+              applicantId: user.applicantId || punch.applicantId,
+              userId: user._id || punch.userId,
+              agent: agentName,
+              email: user.email || '',
+              jobId: punch.jobId,
+              details: {
+                rosterRecord: {
+                  timeIn: punch.timeIn,
+                  timeOut: timeOut,
+                  platform: 'Mobile',
+                  clockOutCoordinates: punch.clockOutCoordinates || null,
+                  shiftSlug: punch.shiftSlug,
+                },
+              },
+            }
+          )
+        );
+      } catch (error) {
+        // Don't fail clock out if logging fails
+        console.error('Error logging clock out activity:', error);
       }
     } else if (action === 'update') {
       // Get the original punch from database to compare times

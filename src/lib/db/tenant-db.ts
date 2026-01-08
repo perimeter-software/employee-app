@@ -3,6 +3,9 @@ import { mongoConn } from './mongodb';
 import redisService from '@/lib/cache/redis-client';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 
+// Default database name from environment variable, fallback to 'stadiumpeople' for backward compatibility
+const DEFAULT_DB_NAME = process.env.DEFAULT_TENANT_DB_NAME || 'stadiumpeople';
+
 /**
  * Gets the current user's tenant database name from Redis cache or database lookup
  */
@@ -54,15 +57,15 @@ export async function getCurrentTenantDbName(
 
           // Fallback to URL-based database name
           const tenantUrl = userMasterRecord.tenant.url;
-          let dbName = 'stadiumpeople'; // Default fallback
+          let dbName = DEFAULT_DB_NAME; // Default fallback from env
 
           if (tenantUrl) {
-            // Special case: if the domain is jobs.stadiumpeople.com, use stadiumpeople
+            // Special case: if the domain is jobs.stadiumpeople.com, use default
             if (tenantUrl === 'jobs.stadiumpeople.com') {
-              dbName = 'stadiumpeople';
+              dbName = DEFAULT_DB_NAME;
             } else {
               // Otherwise use the first part of the URL
-              dbName = tenantUrl.split('.')[0] || 'stadiumpeople';
+              dbName = tenantUrl.split('.')[0] || DEFAULT_DB_NAME;
             }
           }
 
@@ -74,14 +77,14 @@ export async function getCurrentTenantDbName(
           console.error(
             `❌ No tenant data found in database for user: ${userEmail}`
           );
-          return 'stadiumpeople'; // Default fallback
+          return DEFAULT_DB_NAME; // Default fallback from env
         }
       } catch (dbError) {
         console.error(
           `❌ Database lookup failed for user ${userEmail}:`,
           dbError
         );
-        return 'stadiumpeople'; // Default fallback
+        return DEFAULT_DB_NAME; // Default fallback from env
       }
     }
 
@@ -101,15 +104,15 @@ export async function getCurrentTenantDbName(
 
     // Fallback logic for when dbName is not available
     const tenantUrl = tenantData.tenant.url;
-    let dbName = 'stadiumpeople'; // Default fallback
+    let dbName = DEFAULT_DB_NAME; // Default fallback from env
 
     if (tenantUrl) {
-      // Special case: if the domain is jobs.stadiumpeople.com, use stadiumpeople
+      // Special case: if the domain is jobs.stadiumpeople.com, use default
       if (tenantUrl === 'jobs.stadiumpeople.com') {
-        dbName = 'stadiumpeople';
+        dbName = DEFAULT_DB_NAME;
       } else {
         // Otherwise use the first part of the URL
-        dbName = tenantUrl.split('.')[0] || 'stadiumpeople';
+        dbName = tenantUrl.split('.')[0] || DEFAULT_DB_NAME;
       }
     }
 
@@ -126,7 +129,7 @@ export async function getCurrentTenantDbName(
     return dbName;
   } catch (error) {
     console.error(`❌ Error getting tenant database for ${userEmail}:`, error);
-    return 'stadiumpeople'; // Default fallback
+    return DEFAULT_DB_NAME; // Default fallback from env
   }
 }
 
@@ -135,7 +138,28 @@ export async function getCurrentTenantDbName(
  */
 export async function getTenantAwareConnection(request: AuthenticatedRequest) {
   const userEmail = request.user.email!;
-  const dbName = await getCurrentTenantDbName(userEmail);
+  
+  // PRIORITY 1: Use tenant from request.user if available (most up-to-date after tenant switch)
+  // The middleware sets request.user.tenant when processing the request
+  const userTenant = request.user.tenant;
+  let dbName: string;
+  
+  if (userTenant?.dbName) {
+    dbName = userTenant.dbName;
+    console.log(
+      `🎯 Using database "${dbName}" from request.user.tenant for tenant: ${userTenant.url} (user: ${userEmail})`
+    );
+    console.log(`📊 Tenant data from request:`, {
+      url: userTenant.url,
+      dbName: userTenant.dbName,
+      clientName: userTenant.clientName,
+      type: userTenant.type,
+    });
+  } else {
+    // PRIORITY 2: Fall back to Redis cache lookup
+    console.log(`⚠️ No tenant in request.user, falling back to Redis cache for user: ${userEmail}`);
+    dbName = await getCurrentTenantDbName(userEmail);
+  }
 
   console.log(
     `🔗 Opening tenant-aware connection to database: ${dbName} for user: ${userEmail}`

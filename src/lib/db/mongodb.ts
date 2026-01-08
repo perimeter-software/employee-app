@@ -13,8 +13,13 @@ const isServer = typeof window === "undefined";
 // Check if we're running in Edge Runtime
 const isEdgeRuntime = process.env.NEXT_RUNTIME === "edge";
 
+// Default database name from environment variable, fallback to 'stadiumpeople' for backward compatibility
+const DEFAULT_DB_NAME = process.env.DEFAULT_TENANT_DB_NAME || "stadiumpeople";
+const TENANT_DB_NAME = process.env.TENANT_DB_NAME || "tenant";
+const USER_MASTER_DB_NAME = process.env.USER_MASTER_DB_NAME || "usermaster";
+
 export const mongoConn = async (
-  dbName = "stadiumpeople",
+  dbName = DEFAULT_DB_NAME,
   retries = 3
 ): Promise<MongoConnection> => {
   // Early return for client-side or edge runtime
@@ -79,10 +84,10 @@ export const mongoConn = async (
       socketTimeoutMS: 45000,
     });
 
-    // Use the exact same database names as your SvelteKit setup
-    const db = client.db(dbName); // Default: "stadiumpeople"
-    const dbTenant = client.db("tenant"); // Tenant database
-    const userDb = client.db("usermaster"); // User master database
+    // Use database names from environment variables with fallbacks
+    const db = client.db(dbName);
+    const dbTenant = client.db(TENANT_DB_NAME);
+    const userDb = client.db(USER_MASTER_DB_NAME);
 
     // Test the connections
     await Promise.all([
