@@ -38,14 +38,26 @@ export default function CalendarBodyMonth({
 
   const today = new Date();
 
-  const visibleEvents = events.filter(
-    (event: CalendarEventType) =>
-      isWithinInterval(event.start, {
-        start: calendarStart,
-        end: calendarEnd,
-      }) ||
-      isWithinInterval(event.end, { start: calendarStart, end: calendarEnd })
-  );
+  // Include events that start, end, or span across the visible calendar range
+  const visibleEvents = events.filter((event: CalendarEventType) => {
+    const eventStart = event.start;
+    const eventEnd = event.end;
+
+    const startsInRange = isWithinInterval(eventStart, {
+      start: calendarStart,
+      end: calendarEnd,
+    });
+
+    const endsInRange = isWithinInterval(eventEnd, {
+      start: calendarStart,
+      end: calendarEnd,
+    });
+
+    // Event spans across the whole visible range
+    const spansRange = eventStart <= calendarStart && eventEnd >= calendarEnd;
+
+    return startsInRange || endsInRange || spansRange;
+  });
 
   const calculateDayHours = (day: Date) => {
     const dayEvents = visibleEvents.filter((event: CalendarEventType) =>
@@ -127,7 +139,7 @@ export default function CalendarBodyMonth({
                     <div
                       key={day.toISOString()}
                       className={clsxm(
-                        'relative flex flex-col border-r border-gray-200 p-1 lg:p-2 min-h-[80px] lg:min-h-[120px] cursor-pointer bg-white hover:bg-gray-50 transition-colors',
+                        'relative flex flex-col border-r border-gray-200 p-1 lg:p-2 min-h-[80px] lg:min-h-[120px] cursor-pointer bg-white hover:bg-gray-50 transition-colors overflow-visible',
                         !isCurrentMonth && 'bg-gray-50'
                       )}
                       onClick={(e) => {
@@ -138,9 +150,10 @@ export default function CalendarBodyMonth({
                     >
                       <div
                         className={clsxm(
-                          'text-xs lg:text-sm font-medium w-fit p-0.5 lg:p-1 flex flex-col items-center justify-center rounded-full aspect-square mb-1 lg:mb-2',
+                          'text-xs lg:text-sm font-medium w-fit p-0.5 lg:p-1 flex items-center justify-center rounded-full aspect-square mb-1 lg:mb-2 min-w-[24px] min-h-[24px]',
                           isToday && 'bg-appPrimary text-white',
-                          !isCurrentMonth && 'text-gray-400'
+                          !isCurrentMonth && 'text-gray-400',
+                          isCurrentMonth && 'text-gray-900'
                         )}
                       >
                         {format(day, 'd')}
@@ -148,7 +161,7 @@ export default function CalendarBodyMonth({
                       <AnimatePresence mode="wait">
                         <div className="flex flex-col gap-0.5 lg:gap-1 flex-1">
                           {dayEvents
-                            .slice(0, 1)
+                            .slice(0, 2)
                             .map((event: CalendarEventType) => (
                               <CalendarEvent
                                 key={event.id}
@@ -157,7 +170,7 @@ export default function CalendarBodyMonth({
                                 month
                               />
                             ))}
-                          {dayEvents.length > 1 && (
+                          {dayEvents.length > 2 && (
                             <motion.div
                               key={`more-${day.toISOString()}`}
                               initial={{ opacity: 0 }}
@@ -173,7 +186,7 @@ export default function CalendarBodyMonth({
                                 setMode('day');
                               }}
                             >
-                              +{dayEvents.length - 1} more
+                              +{dayEvents.length - 2} more
                             </motion.div>
                           )}
                         </div>
