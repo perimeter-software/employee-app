@@ -3,6 +3,9 @@ import { mongoConn } from './mongodb';
 import redisService from '@/lib/cache/redis-client';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 
+// Default database name from environment variable, fallback to 'stadiumpeople' for backward compatibility
+const DEFAULT_DB_NAME = process.env.DEFAULT_TENANT_DB_NAME || 'stadiumpeople';
+
 /**
  * Gets the current user's tenant database name from Redis cache or database lookup
  */
@@ -54,15 +57,15 @@ export async function getCurrentTenantDbName(
 
           // Fallback to URL-based database name
           const tenantUrl = userMasterRecord.tenant.url;
-          let dbName = 'stadiumpeople'; // Default fallback
+          let dbName = DEFAULT_DB_NAME; // Default fallback from env
 
           if (tenantUrl) {
-            // Special case: if the domain is jobs.stadiumpeople.com, use stadiumpeople
+            // Special case: if the domain is jobs.stadiumpeople.com, use default
             if (tenantUrl === 'jobs.stadiumpeople.com') {
-              dbName = 'stadiumpeople';
+              dbName = DEFAULT_DB_NAME;
             } else {
               // Otherwise use the first part of the URL
-              dbName = tenantUrl.split('.')[0] || 'stadiumpeople';
+              dbName = tenantUrl.split('.')[0] || DEFAULT_DB_NAME;
             }
           }
 
@@ -74,14 +77,14 @@ export async function getCurrentTenantDbName(
           console.error(
             `❌ No tenant data found in database for user: ${userEmail}`
           );
-          return 'stadiumpeople'; // Default fallback
+          return DEFAULT_DB_NAME; // Default fallback from env
         }
       } catch (dbError) {
         console.error(
           `❌ Database lookup failed for user ${userEmail}:`,
           dbError
         );
-        return 'stadiumpeople'; // Default fallback
+        return DEFAULT_DB_NAME; // Default fallback from env
       }
     }
 
@@ -101,15 +104,15 @@ export async function getCurrentTenantDbName(
 
     // Fallback logic for when dbName is not available
     const tenantUrl = tenantData.tenant.url;
-    let dbName = 'stadiumpeople'; // Default fallback
+    let dbName = DEFAULT_DB_NAME; // Default fallback from env
 
     if (tenantUrl) {
-      // Special case: if the domain is jobs.stadiumpeople.com, use stadiumpeople
+      // Special case: if the domain is jobs.stadiumpeople.com, use default
       if (tenantUrl === 'jobs.stadiumpeople.com') {
-        dbName = 'stadiumpeople';
+        dbName = DEFAULT_DB_NAME;
       } else {
         // Otherwise use the first part of the URL
-        dbName = tenantUrl.split('.')[0] || 'stadiumpeople';
+        dbName = tenantUrl.split('.')[0] || DEFAULT_DB_NAME;
       }
     }
 
@@ -126,7 +129,7 @@ export async function getCurrentTenantDbName(
     return dbName;
   } catch (error) {
     console.error(`❌ Error getting tenant database for ${userEmail}:`, error);
-    return 'stadiumpeople'; // Default fallback
+    return DEFAULT_DB_NAME; // Default fallback from env
   }
 }
 
