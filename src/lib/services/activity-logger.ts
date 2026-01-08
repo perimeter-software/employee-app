@@ -144,6 +144,7 @@ export async function logActivity(
 
 /**
  * Helper to create activity log data with common fields
+ * Always includes integration: "Employee App" to identify activities from this app
  */
 export function createActivityLogData(
   action: string,
@@ -157,6 +158,7 @@ export function createActivityLogData(
     jobId?: string;
     details?: Record<string, unknown>;
     type?: string;
+    integration?: string; // Allow override, but default to "Employee App"
   } = {}
 ): ActivityLogData {
   return {
@@ -171,6 +173,7 @@ export function createActivityLogData(
     jobId: options.jobId,
     details: options.details,
     type: options.type,
+    integration: options.integration || 'Employee App', // Always set to "Employee App" by default
   };
 }
 
