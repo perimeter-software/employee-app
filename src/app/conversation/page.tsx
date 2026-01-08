@@ -1,6 +1,7 @@
 // /app/conversation/page.tsx
 'use client';
 
+import { useEffect, useRef } from 'react';
 import Layout from '@/components/layout/Layout';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { usePureBlueChatbot } from '@/domains/pureblue';
@@ -12,8 +13,11 @@ import {
 } from '@/components/shared/PageProtection';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/Button/Button';
+import { useCurrentUser } from '@/domains/user';
 
 const ChatConversationPage = () => {
+  const hasLoggedActivity = useRef(false);
+  
   // Auth check
   const {
     shouldShowContent,
@@ -23,6 +27,9 @@ const ChatConversationPage = () => {
     requireAuth: true,
   });
 
+  // Get current user for logging
+  const { data: currentUser } = useCurrentUser();
+
   // Get PureBlue chatbot URL
   const {
     chatbotUrl,
@@ -30,6 +37,50 @@ const ChatConversationPage = () => {
     error: chatbotError,
     refetch,
   } = usePureBlueChatbot();
+
+  // Log "Ask a Question" activity when chatbot is successfully loaded
+  useEffect(() => {
+    if (
+      chatbotUrl &&
+      !chatbotLoading &&
+      !chatbotError &&
+      currentUser &&
+      !hasLoggedActivity.current
+    ) {
+      hasLoggedActivity.current = true;
+      
+      const logAskQuestionActivity = async () => {
+        try {
+          const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
+          const agentName = currentUser.name || 
+            `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 
+            currentUser.email || 
+            'Employee';
+          
+          await logActivity(
+            createActivityLogData(
+              'Ask a Question',
+              `${agentName} accessed the "Ask a Question" chatbot`,
+              {
+                applicantId: currentUser.applicantId,
+                userId: currentUser._id,
+                agent: agentName,
+                details: {
+                  chatbotUrl: chatbotUrl,
+                  accessTime: new Date().toISOString(),
+                },
+              }
+            )
+          );
+        } catch (error) {
+          // Don't fail page load if logging fails
+          console.error('Error logging "Ask a Question" activity:', error);
+        }
+      };
+
+      logAskQuestionActivity();
+    }
+  }, [chatbotUrl, chatbotLoading, chatbotError, currentUser]);
 
   // Early returns for auth states
   if (authLoading) {

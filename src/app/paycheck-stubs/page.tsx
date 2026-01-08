@@ -13,6 +13,9 @@ import {
   Receipt,
   Search,
   Upload,
+  Grid3x3,
+  Table as TableIcon,
+  Calendar as CalendarIcon,
 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import {
@@ -44,6 +47,7 @@ const PaycheckStubsPageContent: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'viewed' | 'unviewed'
   >('all');
+  const [viewMode, setViewMode] = useState<'card' | 'table' | 'calendar'>('card');
 
   // Auth check
   const {
@@ -294,6 +298,36 @@ const PaycheckStubsPageContent: React.FC = () => {
                   Not Viewed
                 </Button>
               </div>
+              {/* View Mode Toggle */}
+              <div className="flex gap-2 border border-gray-200 rounded-lg p-1">
+                <Button
+                  variant={viewMode === 'card' ? 'primary' : 'ghost'}
+                  onClick={() => setViewMode('card')}
+                  className="h-9 px-3"
+                  size="sm"
+                  leftIcon={<Grid3x3 className="w-4 h-4" />}
+                >
+                  Card
+                </Button>
+                <Button
+                  variant={viewMode === 'table' ? 'primary' : 'ghost'}
+                  onClick={() => setViewMode('table')}
+                  className="h-9 px-3"
+                  size="sm"
+                  leftIcon={<TableIcon className="w-4 h-4" />}
+                >
+                  Table
+                </Button>
+                <Button
+                  variant={viewMode === 'calendar' ? 'primary' : 'ghost'}
+                  onClick={() => setViewMode('calendar')}
+                  className="h-9 px-3"
+                  size="sm"
+                  leftIcon={<CalendarIcon className="w-4 h-4" />}
+                >
+                  Calendar
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -402,10 +436,11 @@ const PaycheckStubsPageContent: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Paycheck Stubs Grid */}
+                {/* Paycheck Stubs Views */}
                 <div className="max-h-[calc(100vh-30rem)] overflow-y-auto pr-2">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredPaycheckStubs.map((paystub) => {
+                  {viewMode === 'card' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {filteredPaycheckStubs.map((paystub) => {
                       const isViewed = paystub.viewStatus === 'viewed';
                       return (
                         <Card
@@ -518,8 +553,224 @@ const PaycheckStubsPageContent: React.FC = () => {
                           </CardContent>
                         </Card>
                       );
-                    })}
-                  </div>
+                      })}
+                    </div>
+                  )}
+
+                  {viewMode === 'table' && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="border-b border-gray-200 bg-gray-50">
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                              File Name
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                              Check Date
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                              Uploaded
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                              Batch ID
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                              Voucher Number
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                              Status
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                              Action
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {filteredPaycheckStubs.map((paystub) => {
+                            const isViewed = paystub.viewStatus === 'viewed';
+                            return (
+                              <tr
+                                key={paystub._id}
+                                className={clsxm(
+                                  'hover:bg-gray-50 transition-colors',
+                                  !isViewed && 'bg-blue-50/30'
+                                )}
+                              >
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <div className="flex items-center gap-2">
+                                    <FileText className="w-4 h-4 text-gray-400" />
+                                    <span className="text-sm font-medium text-gray-900">
+                                      {paystub.fileName}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                                  {format(new Date(paystub.checkDate), 'MMM d, yyyy')}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                                  {format(new Date(paystub.uploadedAt), 'MMM d, yyyy')}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 font-mono">
+                                  {paystub.batchId}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                                  {paystub.voucherNumber}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  {getViewStatusBadge(paystub.viewStatus)}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <Button
+                                    onClick={() =>
+                                      router.push(`/paycheck-stubs/${paystub._id}`)
+                                    }
+                                    variant="primary"
+                                    size="sm"
+                                    leftIcon={<FileText className="w-4 h-4" />}
+                                  >
+                                    View
+                                  </Button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {viewMode === 'calendar' && (
+                    <div className="space-y-4">
+                      {/* Group stubs by month */}
+                      {(() => {
+                        const groupedByMonth = filteredPaycheckStubs.reduce(
+                          (acc, stub) => {
+                            const monthKey = format(
+                              new Date(stub.checkDate),
+                              'MMMM yyyy'
+                            );
+                            if (!acc[monthKey]) {
+                              acc[monthKey] = [];
+                            }
+                            acc[monthKey].push(stub);
+                            return acc;
+                          },
+                          {} as Record<string, typeof filteredPaycheckStubs>
+                        );
+
+                        return Object.entries(groupedByMonth)
+                          .sort((a, b) => {
+                            const dateA = new Date(a[0]);
+                            const dateB = new Date(b[0]);
+                            return dateB.getTime() - dateA.getTime();
+                          })
+                          .map(([month, stubs]) => (
+                            <Card key={month} className="overflow-hidden">
+                              <CardHeader className="bg-gray-50 border-b">
+                                <CardTitle className="text-lg">
+                                  {month}
+                                </CardTitle>
+                                <CardDescription>
+                                  {stubs.length} paycheck stub{stubs.length !== 1 ? 's' : ''}
+                                </CardDescription>
+                              </CardHeader>
+                              <CardContent className="p-0">
+                                <div className="divide-y divide-gray-200">
+                                  {stubs
+                                    .sort(
+                                      (a, b) =>
+                                        new Date(b.checkDate).getTime() -
+                                        new Date(a.checkDate).getTime()
+                                    )
+                                    .map((paystub) => {
+                                      const isViewed =
+                                        paystub.viewStatus === 'viewed';
+                                      return (
+                                        <div
+                                          key={paystub._id}
+                                          className={clsxm(
+                                            'p-4 hover:bg-gray-50 transition-colors',
+                                            !isViewed && 'bg-blue-50/30'
+                                          )}
+                                        >
+                                          <div className="flex items-center justify-between gap-4">
+                                            <div className="flex items-center gap-4 flex-1 min-w-0">
+                                              <div
+                                                className={clsxm(
+                                                  'p-2 rounded-lg flex-shrink-0',
+                                                  isViewed
+                                                    ? 'bg-gray-100'
+                                                    : 'bg-blue-100'
+                                                )}
+                                              >
+                                                <Calendar
+                                                  className={clsxm(
+                                                    'w-5 h-5',
+                                                    isViewed
+                                                      ? 'text-gray-600'
+                                                      : 'text-blue-600'
+                                                  )}
+                                                />
+                                              </div>
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                  <p className="text-sm font-semibold text-gray-900 truncate">
+                                                    {paystub.fileName}
+                                                  </p>
+                                                  {getViewStatusBadge(
+                                                    paystub.viewStatus
+                                                  )}
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600">
+                                                  <span>
+                                                    <span className="font-medium">
+                                                      Check Date:
+                                                    </span>{' '}
+                                                    {format(
+                                                      new Date(paystub.checkDate),
+                                                      'MMM d, yyyy'
+                                                    )}
+                                                  </span>
+                                                  <span>
+                                                    <span className="font-medium">
+                                                      Batch:
+                                                    </span>{' '}
+                                                    {paystub.batchId}
+                                                  </span>
+                                                  <span>
+                                                    <span className="font-medium">
+                                                      Voucher:
+                                                    </span>{' '}
+                                                    {paystub.voucherNumber}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <Button
+                                              onClick={() =>
+                                                router.push(
+                                                  `/paycheck-stubs/${paystub._id}`
+                                                )
+                                              }
+                                              variant="primary"
+                                              size="sm"
+                                              leftIcon={
+                                                <FileText className="w-4 h-4" />
+                                              }
+                                            >
+                                              View PDF
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ));
+                      })()}
+                    </div>
+                  )}
                 </div>
               </>
             )}

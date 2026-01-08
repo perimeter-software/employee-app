@@ -32,6 +32,33 @@ const afterCallback = async (req: NextRequest, session: Session): Promise<Sessio
       (session as Session & { returnTo?: string }).returnTo = returnTo;
     }
 
+    // Log Auth0 login activity
+    if (session?.user) {
+      try {
+        const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
+        const agentName = session.user.name || session.user.email || 'User';
+        
+        await logActivity(
+          createActivityLogData(
+            'User Login',
+            `${agentName} logged in using Auth0`,
+            {
+              userId: session.user.sub,
+              applicantId: session.user.sub, // May need to fetch from DB later
+              agent: agentName,
+              details: {
+                loginMethod: 'Auth0',
+                email: session.user.email,
+              },
+            }
+          )
+        );
+      } catch (error) {
+        // Don't fail login if logging fails
+        console.error('Error logging Auth0 login activity:', error);
+      }
+    }
+
   return session;
 };
 

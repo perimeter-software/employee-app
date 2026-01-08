@@ -126,6 +126,35 @@ export async function POST(request: NextRequest) {
       redirectUrl = '/paycheck-stubs';
     }
 
+    // Log OTP login activity
+    try {
+      const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
+      const agentName: string = user.firstName && user.lastName 
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : (user.firstName || user.lastName || user.emailAddress || normalizedEmail) as string;
+      
+      await logActivity(
+        createActivityLogData(
+          'OTP Login',
+          `${agentName} logged in using OTP (Email: ${normalizedEmail})`,
+          {
+            applicantId: user.applicantId ? String(user.applicantId) : undefined,
+            userId: user._id ? String(user._id) : undefined,
+            agent: agentName,
+            details: {
+              loginMethod: 'OTP',
+              email: normalizedEmail,
+              employmentStatus: employmentStatus,
+              isLimitedAccess: isTerminatedOrInactive,
+            },
+          }
+        )
+      );
+    } catch (error) {
+      // Don't fail login if logging fails
+      console.error('Error logging OTP login activity:', error);
+    }
+
     // Return JSON response instead of redirect (fetch doesn't follow redirects for POST)
     const response = NextResponse.json({
       success: true,

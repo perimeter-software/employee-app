@@ -11,6 +11,74 @@ export async function GET(request: NextRequest) {
     // Get OTP session ID before clearing cookies
     const otpSessionId = request.cookies.get('otp_session_id')?.value;
 
+    // Get user info for logging before clearing session
+    let userInfoForLogging: {
+      userId?: string;
+      applicantId?: string;
+      agent?: string;
+    } | null = null;
+
+    if (otpSessionId) {
+      try {
+        const otpSessionData = await redisService.get<{
+          userId: string;
+          email: string;
+          name: string;
+          firstName?: string;
+          lastName?: string;
+        }>(`otp_session:${otpSessionId}`);
+        
+        if (otpSessionData) {
+          userInfoForLogging = {
+            userId: otpSessionData.userId,
+            applicantId: otpSessionData.userId, // For OTP, userId might be the same
+            agent: otpSessionData.name || otpSessionData.firstName || otpSessionData.email,
+          };
+        }
+      } catch {
+        // Ignore errors getting OTP session for logging
+      }
+    }
+
+    // Try to get Auth0 session for logging
+    try {
+      const { getSession } = await import('@auth0/nextjs-auth0');
+      const auth0Session = await getSession();
+      if (auth0Session?.user && !userInfoForLogging) {
+        userInfoForLogging = {
+          userId: auth0Session.user.sub,
+          applicantId: auth0Session.user.sub,
+          agent: auth0Session.user.name || auth0Session.user.email,
+        };
+      }
+    } catch {
+      // Ignore errors getting Auth0 session
+    }
+
+    // Log logout activity before clearing session
+    if (userInfoForLogging) {
+      try {
+        const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
+        await logActivity(
+          createActivityLogData(
+            'User Logout',
+            `${userInfoForLogging.agent || 'User'} logged out`,
+            {
+              applicantId: userInfoForLogging.applicantId,
+              userId: userInfoForLogging.userId,
+              agent: userInfoForLogging.agent,
+              details: {
+                logoutMethod: otpSessionId ? 'OTP' : 'Auth0',
+              },
+            }
+          )
+        );
+      } catch (error) {
+        // Don't fail logout if logging fails
+        console.error('Error logging logout activity:', error);
+      }
+    }
+
     // Clear OTP session from Redis if it exists
     if (otpSessionId) {
       try {
@@ -63,24 +131,27 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Also clear OTP session cookies
-    response.cookies.delete('otp_session_id');
-    response.cookies.set('otp_session_id', '', {
-      expires: new Date(0),
-      path: '/',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-    });
+    // Clear all auth-related cookies to ensure complete logout
+    const cookiesToClear = [
+      'otp_session_id',
+      'auth0.is.authenticated',
+      'appSession',
+      'appSession.0',
+      'appSession.1',
+      'appSession.2',
+    ];
 
-    // Clear auth0.is.authenticated cookie (used for compatibility)
-    response.cookies.delete('auth0.is.authenticated');
-    response.cookies.set('auth0.is.authenticated', '', {
-      expires: new Date(0),
-      path: '/',
-      httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+    cookiesToClear.forEach((cookieName) => {
+      // Delete cookie
+      response.cookies.delete(cookieName);
+      // Set expired cookie for all possible paths
+      response.cookies.set(cookieName, '', {
+        expires: new Date(0),
+        path: '/',
+        httpOnly: cookieName !== 'auth0.is.authenticated',
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+      });
     });
 
     console.log('✅ All sessions cleared (Auth0 and OTP)');

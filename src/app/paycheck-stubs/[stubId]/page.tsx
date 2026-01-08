@@ -120,8 +120,45 @@ const PaycheckStubViewPage: NextPage = () => {
         stubId: paystub._id,
         viewStatus: 'viewed',
       });
+
+      // Log paycheck stub PDF viewed activity
+      const logPaycheckStubView = async () => {
+        try {
+          const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
+          const agentName = currentUser?.name || 
+            `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() || 
+            currentUser?.email || 
+            'Employee';
+          
+          await logActivity(
+            createActivityLogData(
+              'Paycheck Stub PDF Viewed',
+              `${agentName} viewed paycheck stub PDF: ${paystub.fileName}`,
+              {
+                applicantId: applicantId,
+                userId: currentUser?._id,
+                agent: agentName,
+                details: {
+                  stubId: paystub._id,
+                  fileName: paystub.fileName,
+                  batchId: paystub.batchId,
+                  voucherNumber: paystub.voucherNumber,
+                  checkDate: paystub.checkDate,
+                  uploadedAt: paystub.uploadedAt,
+                },
+              }
+            )
+          );
+        } catch (error) {
+          // Don't fail view if logging fails
+          console.error('Error logging paycheck stub view activity:', error);
+        }
+      };
+
+      logPaycheckStubView();
     }
-  }, [paystub, isApplicantViewing, applicantId, isPdfLoading, presignedUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paystub, isApplicantViewing, applicantId, isPdfLoading, presignedUrl, currentUser]);
 
   const handleDownload = useCallback(() => {
     if (presignedUrl) {
