@@ -54,12 +54,18 @@ export async function logActivity(
     const Activities = db.collection('activities');
     const now = new Date();
 
+    // Always set integration and type for Employee App activities
+    const integrationValue = data.integration || 'Employee App';
+    const typeValue = data.type || 'Employee App';
+    
     const activityDocument: Record<string, unknown> = {
       action: data.action,
       description: data.description,
       activityDate: now,
       createdAt: now,
       updatedAt: now,
+      integration: integrationValue,
+      type: typeValue,
     };
 
     // Add optional fields only if they exist
@@ -89,7 +95,9 @@ export async function logActivity(
     if (data.details || data.detail) {
       activityDocument.details = data.details || data.detail;
     }
+    // Override type if explicitly provided (already set above, but allow override)
     if (data.type) activityDocument.type = data.type;
+    // Override integration if explicitly provided (already set above, but allow override)
     if (data.integration) activityDocument.integration = data.integration;
     if (data.hideFromEmployee) activityDocument.hideFromEmployee = data.hideFromEmployee;
 
