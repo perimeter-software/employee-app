@@ -5,7 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import {
-  Calendar,
+  Calendar as CalendarIcon,
   ChevronRight,
   Eye,
   EyeOff,
@@ -15,7 +15,6 @@ import {
   Upload,
   Grid3x3,
   Table as TableIcon,
-  Calendar as CalendarIcon,
 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import {
@@ -38,6 +37,36 @@ import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { useCurrentUser } from '@/domains/user';
 import { usePaycheckStubs } from '@/domains/paycheck-stubs';
 import { clsxm } from '@/lib/utils';
+import CalendarProvider from '@/components/ui/Calendar/CalendarProvider';
+import Calendar from '@/components/ui/Calendar/Calendar';
+import type { CalendarEvent, Mode } from '@/components/ui/Calendar/types';
+import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
+import { startOfMonth } from 'date-fns';
+import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
+import type { PaycheckStub } from '@/domains/paycheck-stubs/types/paycheck-stub.types';
+
+// Calendar Event Handler Component for Paycheck Stubs
+const PaycheckStubCalendarEventHandler = ({
+  onStubClick,
+}: {
+  onStubClick: (stubId: string) => void;
+}) => {
+  const { selectedEvent, manageEventDialogOpen, setManageEventDialogOpen } =
+    useCalendarContext();
+
+  useEffect(() => {
+    // When calendar selects an event and opens the dialog
+    if (selectedEvent && manageEventDialogOpen) {
+      // Close the calendar's default dialog
+      setManageEventDialogOpen(false);
+
+      // Navigate to the paycheck stub detail page
+      onStubClick(selectedEvent.id);
+    }
+  }, [selectedEvent, manageEventDialogOpen, onStubClick, setManageEventDialogOpen]);
+
+  return null; // This component doesn't render anything
+};
 
 // Component that uses useSearchParams - must be wrapped in Suspense
 const PaycheckStubsPageContent: React.FC = () => {
@@ -48,6 +77,12 @@ const PaycheckStubsPageContent: React.FC = () => {
     'all' | 'viewed' | 'unviewed'
   >('all');
   const [viewMode, setViewMode] = useState<'card' | 'table' | 'calendar'>('card');
+  const [calendarDate, setCalendarDate] = useState<Date>(() => startOfMonth(new Date()));
+  const [calendarMode, setCalendarMode] = useState<Mode>('month');
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  
+  // Get company work week settings for calendar
+  const { weekStartsOn, isLoading: workWeekLoading } = useCompanyWorkWeek();
 
   // Auth check
   const {
@@ -124,6 +159,29 @@ const PaycheckStubsPageContent: React.FC = () => {
 
     return filtered;
   }, [paycheckStubsData?.paycheckStubs, statusFilter, searchQuery]);
+
+  // Convert filtered paycheck stubs to calendar events
+  const paycheckStubEvents = useMemo(() => {
+    return filteredPaycheckStubs.map((stub) => {
+      const checkDate = new Date(stub.checkDate);
+      const isViewed = stub.viewStatus === 'viewed';
+      
+      return {
+        id: stub._id,
+        title: stub.fileName,
+        color: isViewed ? 'gray' : 'blue',
+        start: checkDate,
+        end: checkDate,
+        // Store additional data for the event
+        data: stub,
+      } as CalendarEvent & { data: typeof stub };
+    });
+  }, [filteredPaycheckStubs]);
+
+  // Update calendar events when filtered stubs change
+  useEffect(() => {
+    setCalendarEvents(paycheckStubEvents);
+  }, [paycheckStubEvents]);
 
   // Handle redirect from query parameter (for email links)
   useEffect(() => {
@@ -497,7 +555,7 @@ const PaycheckStubsPageContent: React.FC = () => {
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-1.5">
-                                      <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                                      <CalendarIcon className="w-3.5 h-3.5 flex-shrink-0" />
                                       <span className="text-xs">
                                         <span className="font-medium">
                                           Check Date:
@@ -641,134 +699,47 @@ const PaycheckStubsPageContent: React.FC = () => {
 
                   {viewMode === 'calendar' && (
                     <div className="space-y-4">
-                      {/* Group stubs by month */}
-                      {(() => {
-                        const groupedByMonth = filteredPaycheckStubs.reduce(
-                          (acc, stub) => {
-                            const monthKey = format(
-                              new Date(stub.checkDate),
-                              'MMMM yyyy'
-                            );
-                            if (!acc[monthKey]) {
-                              acc[monthKey] = [];
-                            }
-                            acc[monthKey].push(stub);
-                            return acc;
-                          },
-                          {} as Record<string, typeof filteredPaycheckStubs>
-                        );
-
-                        return Object.entries(groupedByMonth)
-                          .sort((a, b) => {
-                            const dateA = new Date(a[0]);
-                            const dateB = new Date(b[0]);
-                            return dateB.getTime() - dateA.getTime();
-                          })
-                          .map(([month, stubs]) => (
-                            <Card key={month} className="overflow-hidden">
-                              <CardHeader className="bg-gray-50 border-b">
-                                <CardTitle className="text-lg">
-                                  {month}
-                                </CardTitle>
-                                <CardDescription>
-                                  {stubs.length} paycheck stub{stubs.length !== 1 ? 's' : ''}
-                                </CardDescription>
-                              </CardHeader>
-                              <CardContent className="p-0">
-                                <div className="divide-y divide-gray-200">
-                                  {stubs
-                                    .sort(
-                                      (a, b) =>
-                                        new Date(b.checkDate).getTime() -
-                                        new Date(a.checkDate).getTime()
-                                    )
-                                    .map((paystub) => {
-                                      const isViewed =
-                                        paystub.viewStatus === 'viewed';
-                                      return (
-                                        <div
-                                          key={paystub._id}
-                                          className={clsxm(
-                                            'p-4 hover:bg-gray-50 transition-colors',
-                                            !isViewed && 'bg-blue-50/30'
-                                          )}
-                                        >
-                                          <div className="flex items-center justify-between gap-4">
-                                            <div className="flex items-center gap-4 flex-1 min-w-0">
-                                              <div
-                                                className={clsxm(
-                                                  'p-2 rounded-lg flex-shrink-0',
-                                                  isViewed
-                                                    ? 'bg-gray-100'
-                                                    : 'bg-blue-100'
-                                                )}
-                                              >
-                                                <Calendar
-                                                  className={clsxm(
-                                                    'w-5 h-5',
-                                                    isViewed
-                                                      ? 'text-gray-600'
-                                                      : 'text-blue-600'
-                                                  )}
-                                                />
-                                              </div>
-                                              <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                  <p className="text-sm font-semibold text-gray-900 truncate">
-                                                    {paystub.fileName}
-                                                  </p>
-                                                  {getViewStatusBadge(
-                                                    paystub.viewStatus
-                                                  )}
-                                                </div>
-                                                <div className="flex flex-wrap items-center gap-4 text-xs text-gray-600">
-                                                  <span>
-                                                    <span className="font-medium">
-                                                      Check Date:
-                                                    </span>{' '}
-                                                    {format(
-                                                      new Date(paystub.checkDate),
-                                                      'MMM d, yyyy'
-                                                    )}
-                                                  </span>
-                                                  <span>
-                                                    <span className="font-medium">
-                                                      Batch:
-                                                    </span>{' '}
-                                                    {paystub.batchId}
-                                                  </span>
-                                                  <span>
-                                                    <span className="font-medium">
-                                                      Voucher:
-                                                    </span>{' '}
-                                                    {paystub.voucherNumber}
-                                                  </span>
-                                                </div>
-                                              </div>
-                                            </div>
-                                            <Button
-                                              onClick={() =>
-                                                router.push(
-                                                  `/paycheck-stubs/${paystub._id}`
-                                                )
-                                              }
-                                              variant="primary"
-                                              size="sm"
-                                              leftIcon={
-                                                <FileText className="w-4 h-4" />
-                                              }
-                                            >
-                                              View PDF
-                                            </Button>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ));
-                      })()}
+                      {workWeekLoading ? (
+                        <div className="flex items-center justify-center min-h-[500px]">
+                          <div className="text-gray-500">Loading calendar...</div>
+                        </div>
+                      ) : (
+                        <Card>
+                          <CardContent className="p-4 sm:p-6">
+                            <div className="border rounded-lg overflow-hidden bg-white">
+                              <CalendarProvider
+                                events={calendarEvents}
+                                setEvents={setCalendarEvents}
+                                mode={calendarMode}
+                                setMode={setCalendarMode}
+                                date={calendarDate}
+                                setDate={setCalendarDate}
+                                calendarIconIsToday={false}
+                                weekStartsOn={weekStartsOn || 0}
+                              >
+                                <Calendar hideTotalColumn={true} />
+                                <PaycheckStubCalendarEventHandler
+                                  onStubClick={(stubId) => {
+                                    router.push(`/paycheck-stubs/${stubId}`);
+                                  }}
+                                />
+                              </CalendarProvider>
+                            </div>
+                            
+                            {/* Legend */}
+                            <div className="flex flex-wrap items-center gap-4 mt-4 text-xs">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded bg-blue-500"></div>
+                                <span className="text-gray-600">Not Viewed</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded bg-gray-500"></div>
+                                <span className="text-gray-600">Viewed</span>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
                     </div>
                   )}
                 </div>
