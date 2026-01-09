@@ -70,18 +70,18 @@ export async function logActivity(
 
     // Add optional fields only if they exist
     if (data.applicantId) {
-      const objId = toObjectId(data.applicantId);
-      if (objId) activityDocument.applicantId = objId;
+      // const objId = toObjectId(data.applicantId);
+      activityDocument.applicantId = data.applicantId;
     }
     if (data.userId) {
-      const objId = toObjectId(data.userId);
-      if (objId) activityDocument.userId = objId;
+      // const objId = toObjectId(data.userId);
+     activityDocument.userId = data.userId;
     }
     if (data.agent) activityDocument.agent = data.agent;
     if (data.email) activityDocument.email = data.email;
     if (data.createAgent) {
-      const objId = toObjectId(data.createAgent);
-      if (objId) activityDocument.createAgent = objId;
+      // const objId = toObjectId(data.createAgent);
+      activityDocument.createAgent = data.createAgent;
     }
     if (data.eventId) {
       const objId = toObjectId(data.eventId);
