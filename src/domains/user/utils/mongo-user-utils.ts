@@ -14,8 +14,11 @@ export async function checkUserExistsByEmail(
   email: string
 ): Promise<EnhancedUser | undefined> {
   try {
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // First, check users collection
     const userExists = await db.collection('users').findOne(
-      { emailAddress: email },
+      { emailAddress: normalizedEmail },
       {
         projection: {
           _id: 1,
@@ -31,19 +34,54 @@ export async function checkUserExistsByEmail(
       }
     );
 
-    return userExists
-      ? {
-          _id: userExists._id.toHexString(),
-          applicantId: userExists.applicantId,
-          firstName: userExists.firstName,
-          lastName: userExists.lastName,
-          emailAddress: userExists.emailAddress,
-          userType: userExists.userType,
-          employeeType: userExists.employeeType,
-          status: userExists.status,
-          tenant: userExists.tenant,
-        }
-      : undefined;
+    if (userExists) {
+      return {
+        _id: userExists._id.toHexString(),
+        applicantId: userExists.applicantId,
+        firstName: userExists.firstName,
+        lastName: userExists.lastName,
+        emailAddress: userExists.emailAddress,
+        userType: userExists.userType,
+        employeeType: userExists.employeeType,
+        status: userExists.status,
+        tenant: userExists.tenant,
+      };
+    }
+
+    // If not found in users, check applicants collection with status Employee and employmentStatus Active
+    const applicantExists = await db.collection('applicants').findOne(
+      {
+        email: normalizedEmail,
+        status: 'Employee',
+        employmentStatus: 'Active',
+      },
+      {
+        projection: {
+          _id: 1,
+          firstName: 1,
+          lastName: 1,
+          email: 1,
+          status: 1,
+          employmentStatus: 1,
+        },
+      }
+    );
+
+    if (applicantExists) {
+      return {
+        _id: applicantExists._id.toHexString(),
+        applicantId: applicantExists._id.toHexString(),
+        firstName: applicantExists.firstName,
+        lastName: applicantExists.lastName,
+        emailAddress: applicantExists.email || normalizedEmail,
+        userType: undefined,
+        employeeType: undefined,
+        status: applicantExists.employmentStatus || applicantExists.status,
+        tenant: undefined,
+      };
+    }
+
+    return undefined;
   } catch (e) {
     console.error('Error checking email existence in database:', e);
     return undefined;

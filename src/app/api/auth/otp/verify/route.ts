@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mongoConn } from '@/lib/db/mongodb';
 import { checkUserExistsByEmail } from '@/domains/user/utils/mongo-user-utils';
 import redisService from '@/lib/cache/redis-client';
-import { SignJWT } from 'jose';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,9 +84,21 @@ export async function POST(request: NextRequest) {
     // Delete OTP after successful verification
     await redisService.del(otpKey);
 
-    // Check employment status - Terminated/Inactive users get limited access (PDF only)
+    // Check if user came from applicants collection (no userType means from applicants)
+    const isFromApplicants = !user.userType;
     const employmentStatus = user.status || '';
     const isTerminatedOrInactive = employmentStatus === 'Terminated' || employmentStatus === 'Inactive';
+    const isLimitedAccess = isFromApplicants || isTerminatedOrInactive;
+    
+    console.log('🔍 OTP Verify - User details:', {
+      email: normalizedEmail,
+      userId: user._id,
+      userType: user.userType,
+      isFromApplicants,
+      employmentStatus,
+      isTerminatedOrInactive,
+      isLimitedAccess,
+    });
     
     // Create OTP session in Redis (30 days)
     const sessionId = `otp_session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -101,30 +112,33 @@ export async function POST(request: NextRequest) {
       lastName: user.lastName,
       picture: user.picture,
       loginMethod: 'otp',
-      isLimitedAccess: isTerminatedOrInactive, // Limited access for Terminated/Inactive employees
+      isLimitedAccess: isLimitedAccess,
       employmentStatus: employmentStatus,
       createdAt: new Date().toISOString(),
     };
 
     await redisService.set(`otp_session:${sessionId}`, sessionData, 30 * 24 * 60 * 60);
 
-    // Determine redirect URL
-    // Terminated/Inactive employees should only access PDF pages
-    let redirectUrl = '/time-attendance';
-    if (returnTo) {
-      const decodedReturnTo = decodeURIComponent(returnTo);
-      // If returnTo is a PDF route, allow it for limited access users
-      if (decodedReturnTo.startsWith('/paycheck-stubs/') || decodedReturnTo.startsWith('/paycheck-stubs')) {
-        redirectUrl = decodedReturnTo;
-      } else if (!isTerminatedOrInactive) {
-        // Full access users can go to any returnTo
-        redirectUrl = decodedReturnTo;
+    // Determine redirect URL - applicants and terminated/inactive MUST go to paycheck stubs
+    let redirectUrl = '/paycheck-stubs';
+    if (isLimitedAccess) {
+      // Limited access users always go to paycheck stubs (ignore returnTo if not paycheck-stubs)
+      if (returnTo) {
+        const decodedReturnTo = decodeURIComponent(returnTo);
+        if (decodedReturnTo.startsWith('/paycheck-stubs')) {
+          redirectUrl = decodedReturnTo;
+        }
       }
-      // Limited access users trying to access non-PDF routes will be redirected to PDF page
-    } else if (isTerminatedOrInactive) {
-      // Terminated/Inactive employees default to paycheck stubs page
-      redirectUrl = '/paycheck-stubs';
+    } else {
+      // Full access users go to returnTo or default to time-attendance
+      redirectUrl = returnTo ? decodeURIComponent(returnTo) : '/time-attendance';
     }
+    
+    console.log('🔀 OTP Verify - Redirect decision:', {
+      isLimitedAccess,
+      returnTo,
+      redirectUrl,
+    });
 
     // Log OTP login activity
     try {
@@ -148,7 +162,7 @@ export async function POST(request: NextRequest) {
               loginMethod: 'OTP',
               email: normalizedEmail,
               employmentStatus: employmentStatus,
-              isLimitedAccess: isTerminatedOrInactive,
+              isLimitedAccess: isLimitedAccess,
             },
           }
         )
@@ -172,6 +186,15 @@ export async function POST(request: NextRequest) {
       sameSite: 'lax',
       path: '/',
       maxAge: 30 * 24 * 60 * 60, // 30 days
+    });
+
+    // Set limited access flag in cookie for middleware
+    response.cookies.set('is_limited_access', isLimitedAccess ? 'true' : 'false', {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60,
     });
 
     // Also set auth0.is.authenticated for compatibility with existing checks

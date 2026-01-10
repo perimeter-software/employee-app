@@ -14,11 +14,32 @@ async function getUserNotificationsHandler(request: AuthenticatedRequest) {
     if (!user._id) {
       return NextResponse.json(
         {
-          success: false,
-          error: 'missing-user-id',
-          message: 'User ID not found',
+          success: true,
+          message: 'No notifications found',
+          data: {
+            notifications: [],
+            count: 0,
+          },
         },
-        { status: 400 }
+        { status: 200 }
+      );
+    }
+
+    // Check if user is limited access (no userType means from applicants collection)
+    const isLimitedAccess = !user.userType;
+    
+    if (isLimitedAccess) {
+      // Return empty notifications for limited access users
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'No notifications found',
+          data: {
+            notifications: [],
+            count: 0,
+          },
+        },
+        { status: 200 }
       );
     }
 
@@ -73,8 +94,8 @@ async function getUserNotificationsHandler(request: AuthenticatedRequest) {
   }
 }
 
-// Export with enhanced auth wrapper
+// Export with enhanced auth wrapper (tenant optional for limited access users)
 export const GET = withEnhancedAuthAPI(getUserNotificationsHandler, {
   requireDatabaseUser: true,
-  requireTenant: true,
+  requireTenant: false,
 });

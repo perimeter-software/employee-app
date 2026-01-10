@@ -65,3 +65,7 @@ export function createRedirectUrl(
   }
   return url;
 }
+
+export function isPaycheckStubRoute(pathname: string): boolean {
+  return pathname.startsWith('/paycheck-stubs');
+}

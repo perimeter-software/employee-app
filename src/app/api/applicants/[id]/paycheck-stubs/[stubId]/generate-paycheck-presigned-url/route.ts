@@ -99,6 +99,6 @@ async function getPaycheckStubPresignedUrlHandler(
 // Export with enhanced auth wrapper
 export const GET = withEnhancedAuthAPI(getPaycheckStubPresignedUrlHandler, {
   requireDatabaseUser: true,
-  requireTenant: true,
+  requireTenant: false,
 });
 

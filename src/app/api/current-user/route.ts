@@ -13,46 +13,65 @@ export const dynamic = 'force-dynamic';
 
 async function getUserDataHandler(request: AuthenticatedRequest) {
   try {
-    // User is authenticated AND exists in database AND has tenant access
     const user = request.user;
     const userEmail = user.email!;
 
-    // Connect to databases (we know user exists because of withEnhancedAuth)
+    // Connect to databases
     const { db, dbTenant, userDb } = await getTenantAwareConnection(request);
 
-    // Get user and tenant info (we know they exist)
+    // Get user info
     const userExists = await checkUserExistsByEmail(db, userEmail);
-    const userMasterRecord = await checkUserMasterEmail(
-      userDb,
-      dbTenant,
-      userEmail
-    );
+    if (!userExists) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'user-not-found',
+          message: 'User not found',
+        },
+        { status: 404 }
+      );
+    }
 
-    // Store tenant data in Redis
-    const tenantData = {
-      tenant: userMasterRecord.tenant,
-      availableTenants: userMasterRecord.availableTenantObjects || [],
-    };
+    // Check if user is from applicants (limited access) - no userType means from applicants
+    const isLimitedAccess = !userExists.userType;
+    
+    let tenant = undefined;
+    let availableTenants: EnhancedUser['availableTenants'] = [];
 
-    await redisService.setTenantData(
-      userEmail.toLowerCase(),
-      tenantData,
-      60 * 60 * 24
-    );
+    // Only get tenant data for non-limited access users
+    if (!isLimitedAccess) {
+      const userMasterRecord = await checkUserMasterEmail(
+        userDb,
+        dbTenant,
+        userEmail
+      );
+      
+      if (userMasterRecord) {
+        tenant = userMasterRecord.tenant;
+        availableTenants = userMasterRecord.availableTenantObjects || [];
+        
+        // Store tenant data in Redis
+        await redisService.setTenantData(
+          userEmail.toLowerCase(),
+          { tenant, availableTenants },
+          60 * 60 * 24
+        );
+      }
+    }
 
     // Return enhanced user data
     const enhancedUser: EnhancedUser = {
-      _id: userExists?._id,
-      applicantId: userExists?.applicantId,
-      tenant: userMasterRecord.tenant,
-      availableTenants: userMasterRecord.availableTenantObjects || [],
+      _id: userExists._id,
+      applicantId: userExists.applicantId,
+      tenant,
+      availableTenants,
       email: user.email,
-      firstName: userExists?.firstName,
-      lastName: userExists?.lastName,
+      firstName: userExists.firstName,
+      lastName: userExists.lastName,
       name: user.name,
-      userType: userExists?.userType,
-      employeeType: userExists?.employeeType,
-      status: userExists?.status,
+      userType: userExists.userType,
+      employeeType: userExists.employeeType,
+      status: userExists.status,
     };
 
     return NextResponse.json({
@@ -73,8 +92,8 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
   }
 }
 
-// Export with enhanced auth wrapper (validates database user AND tenant)
+// Export with enhanced auth wrapper (tenant optional for limited access users)
 export const GET = withEnhancedAuthAPI(getUserDataHandler, {
   requireDatabaseUser: true,
-  requireTenant: true,
+  requireTenant: false,
 });

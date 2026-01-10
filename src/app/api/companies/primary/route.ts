@@ -2,11 +2,29 @@ import { NextResponse } from 'next/server';
 import { AuthenticatedRequest, withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
 import { findPrimaryCompany } from '@/domains/company';
+import { checkUserMasterEmail } from '@/domains/user/utils';
 
 async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
   try {
+    // Check if user is limited access (no userType means from applicants collection)
+    const isLimitedAccess = !request.user?.userType;
+    
+    if (isLimitedAccess) {
+      // Return default for limited access users
+      return NextResponse.json({
+        success: true,
+        message: 'Primary company (limited access)',
+        data: {
+          _id: '',
+          name: '',
+          peoIntegration: 'Helm',
+        },
+      });
+    }
+
     // Connect to databases
-    const { db } = await getTenantAwareConnection(request);
+    const { db, dbTenant, userDb } = await getTenantAwareConnection(request);
+    const userEmail = request.user.email!;
 
     // Get primary company
     const primaryCompany = await findPrimaryCompany(db);
@@ -22,16 +40,25 @@ async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
       );
     }
 
-    // Get peoIntegration from tenant data (similar to sp1-api)
-    // The tenant data is available in request.user.tenant from the middleware
-    const peoIntegration = request.user?.tenant?.peoIntegration || 'Helm';
+    // Get peoIntegration from tenant data - fetch it if not in request.user.tenant
+    let peoIntegration = request.user?.tenant?.peoIntegration;
+    
+    if (!peoIntegration) {
+      // Fetch tenant data to get peoIntegration
+      const userMasterRecord = await checkUserMasterEmail(
+        userDb,
+        dbTenant,
+        userEmail
+      );
+      peoIntegration = userMasterRecord?.tenant?.peoIntegration || 'Helm';
+    }
 
     return NextResponse.json({
       success: true,
       message: 'Primary company found',
       data: {
         ...primaryCompany,
-        peoIntegration,
+        peoIntegration: peoIntegration || 'Helm',
       },
     });
   } catch (error) {
@@ -47,8 +74,8 @@ async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
   }
 }
 
-// Export with enhanced auth wrapper (validates database user AND tenant)
+// Export with enhanced auth wrapper (tenant optional for limited access users)
 export const GET = withEnhancedAuthAPI(getPrimaryCompanyHandler, {
   requireDatabaseUser: true,
-  requireTenant: true,
+  requireTenant: false,
 });

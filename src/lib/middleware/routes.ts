@@ -14,6 +14,7 @@ export const routeConfig: RouteConfig = {
     "/applications",
     "/jobs",
     "/timecard",
+    "/time-attendance",
     "/schedule",
     "/admin",
   ],

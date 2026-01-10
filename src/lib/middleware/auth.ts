@@ -1,14 +1,16 @@
 // lib/middleware/auth.ts - Auth0 v3 middleware
 import type { NextRequest, NextResponse } from 'next/server';
 import { NextResponse as Response } from 'next/server';
-import { isProtectedRoute, createReturnUrl, createRedirectUrl } from './utils';
+import { isProtectedRoute, createReturnUrl, createRedirectUrl, isPaycheckStubRoute } from './utils';
 import { hasSessionCookie } from '../auth/session-handler';
 
 export async function authMiddleware(
   request: NextRequest
 ): Promise<NextResponse | null> {
-  // Only apply auth logic to protected routes
-  if (!isProtectedRoute(request.nextUrl.pathname)) {
+  const { pathname } = request.nextUrl;
+  
+  // Only apply auth logic to protected routes and paycheck stub routes
+  if (!isProtectedRoute(pathname) && !isPaycheckStubRoute(pathname)) {
     return null; // Continue to next middleware
   }
 
@@ -16,7 +18,7 @@ export async function authMiddleware(
     // Simple session cookie check for middleware
     // Full session validation will happen in API route handlers
     if (!hasSessionCookie(request)) {
-      console.log(`Unauthenticated access to: ${request.nextUrl.pathname}`);
+      console.log(`Unauthenticated access to: ${pathname}`);
 
       const returnUrl = createReturnUrl(request);
       // Redirect to app's login page (/) instead of /api/auth/login
@@ -30,7 +32,16 @@ export async function authMiddleware(
       return Response.redirect(redirectUrl);
     }
 
-    console.log(`✅ Session cookie found for: ${request.nextUrl.pathname}`);
+    console.log(`✅ Session cookie found for: ${pathname}`);
+
+    // Check for limited access users - redirect them away from protected routes (but allow paycheck stubs)
+    const isLimitedAccess = request.cookies.get('is_limited_access')?.value === 'true';
+    console.log(`🔒 Limited access check: ${isLimitedAccess}, pathname: ${pathname}, isProtected: ${isProtectedRoute(pathname)}, isPaycheck: ${isPaycheckStubRoute(pathname)}`);
+    
+    if (isLimitedAccess && isProtectedRoute(pathname) && !isPaycheckStubRoute(pathname)) {
+      console.log(`🚫 Redirecting limited access user from ${pathname} to /paycheck-stubs`);
+      return Response.redirect(new URL('/paycheck-stubs', request.url));
+    }
 
     // Continue with session cookie present
     const nextResponse = Response.next();

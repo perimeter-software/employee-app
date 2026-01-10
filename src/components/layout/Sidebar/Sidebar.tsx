@@ -18,6 +18,7 @@ import {
 import { clsxm } from '@/lib/utils';
 import { Button } from '@/components/ui/Button/Button';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
+import { useUser } from '@auth0/nextjs-auth0/client';
 
 interface NavigationItem {
   name: string;
@@ -34,8 +35,24 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
   const pathname = usePathname();
   const { data: primaryCompany } = usePrimaryCompany();
+  const { user } = useUser();
+  const isLimitedAccess = (user as { isLimitedAccess?: boolean })?.isLimitedAccess === true;
 
   const navigation: NavigationItem[] = useMemo(() => {
+    // For limited access users, only show Paycheck Stubs
+    if (isLimitedAccess) {
+      return [
+        {
+          name: 'Paycheck Stubs',
+          href: '/paycheck-stubs',
+          icon: Receipt,
+          current:
+            pathname === '/paycheck-stubs' ||
+            pathname.startsWith('/paycheck-stubs'),
+        },
+      ];
+    }
+
     const baseNavigation = [
       {
         name: 'Time & Attendance',
@@ -66,18 +83,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       });
     }
 
-    // Conditionally add Paycheck Stubs link for Prism companies
-    const isPrism = primaryCompany?.peoIntegration === 'Prism';
-    if (isPrism) {
-      baseNavigation.push({
-        name: 'Paycheck Stubs',
-        href: '/paycheck-stubs',
-        icon: Receipt,
-        current:
-          pathname === '/paycheck-stubs' ||
-          pathname.startsWith('/paycheck-stubs'),
-      });
-    }
+    // Always show Paycheck Stubs for regular users (page will handle Prism-only restriction)
+    baseNavigation.push({
+      name: 'Paycheck Stubs',
+      href: '/paycheck-stubs',
+      icon: Receipt,
+      current:
+        pathname === '/paycheck-stubs' ||
+        pathname.startsWith('/paycheck-stubs'),
+    });
 
     // Add remaining navigation items
     baseNavigation.push(
@@ -97,7 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     );
 
     return baseNavigation;
-  }, [pathname, primaryCompany]);
+  }, [pathname, primaryCompany, isLimitedAccess]);
 
   const handleLinkClick = () => {
     // Close mobile menu when a link is clicked

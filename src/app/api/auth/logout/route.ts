@@ -142,6 +142,7 @@ export async function GET(request: NextRequest) {
     // Clear all auth-related cookies to ensure complete logout
     const cookiesToClear = [
       'otp_session_id',
+      'is_limited_access',
       'auth0.is.authenticated',
       'appSession',
       'appSession.0',
@@ -183,6 +184,7 @@ export async function GET(request: NextRequest) {
       'auth0',
       'auth0.is.authenticated',
       'otp_session_id',
+      'is_limited_access',
     ];
 
     cookiesToClear.forEach((cookieName) => {

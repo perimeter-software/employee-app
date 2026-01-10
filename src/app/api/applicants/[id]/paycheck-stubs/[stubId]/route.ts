@@ -90,6 +90,6 @@ async function updatePaycheckStubViewStatusHandler(
 // Export with enhanced auth wrapper
 export const PUT = withEnhancedAuthAPI(updatePaycheckStubViewStatusHandler, {
   requireDatabaseUser: true,
-  requireTenant: true,
+  requireTenant: false,
 });
 

@@ -53,6 +53,6 @@ async function getPaycheckStubsHandler(
 // Export with enhanced auth wrapper
 export const GET = withEnhancedAuthAPI(getPaycheckStubsHandler, {
   requireDatabaseUser: true,
-  requireTenant: true,
+  requireTenant: false,
 });
 
