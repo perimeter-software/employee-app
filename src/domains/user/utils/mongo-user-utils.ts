@@ -594,3 +594,126 @@ export async function updateTenantLastLoginDate(
       { $set: { 'tenants.$.lastLoginDate': new Date().toISOString() } }
     );
 }
+
+/**
+ * Find applicant and tenant(s) by searching applicants collection across all tenants
+ * 
+ * Note: Applicant _id IS the applicantId
+ * Applicant structure:
+ * - _id: ObjectId (this is the applicantId)
+ * - email: string (not emailAddress)
+ * - firstName, lastName: string
+ * - status: string (e.g., "Employee")
+ * - employmentStatus: string (e.g., "Active")
+ * 
+ * IMPORTANT: An applicant can exist in multiple tenants!
+ * This function returns ALL tenants where the applicant exists.
+ * This is a generic function that can be used for any applicant-based functionality.
+ */
+export async function findApplicantAndTenantsByEmail(
+  email: string
+): Promise<{
+  applicantId: string; // This is the _id from applicants collection
+  tenants: TenantInfo[];
+  applicantInfo: {
+    firstName?: string;
+    lastName?: string;
+    email: string;
+    status?: string;
+    employmentStatus?: string;
+  };
+} | null> {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // Get all tenants
+    const { mongoConn } = await import('@/lib/db/mongodb');
+    const { dbTenant } = await mongoConn();
+    const Tenants = dbTenant.collection<TenantDocument>('tenants');
+    const tenants = await Tenants.find({}).toArray();
+    
+    const foundTenants: TenantInfo[] = [];
+    
+    let applicantInfo: {
+      firstName?: string;
+      lastName?: string;
+      email: string;
+      status?: string;
+      employmentStatus?: string;
+    } | null = null;
+    let applicantId: string | null = null;
+    
+    // Search each tenant's applicants collection
+    for (const tenant of tenants) {
+      if (!tenant.dbName) continue;
+      
+      try {
+        const { db } = await mongoConn(tenant.dbName);
+        
+        // Find applicant by email
+        const Applicants = db.collection('applicants');
+        const applicant = await Applicants.findOne(
+          { email: normalizedEmail },
+          {
+            projection: {
+              _id: 1,
+              email: 1,
+              firstName: 1,
+              lastName: 1,
+              status: 1,
+              employmentStatus: 1,
+            },
+          }
+        );
+        
+        if (applicant) {
+          // Store applicant info (should be same across tenants, but use first found)
+          if (!applicantInfo) {
+            applicantInfo = {
+              firstName: applicant.firstName,
+              lastName: applicant.lastName,
+              email: applicant.email,
+              status: applicant.status,
+              employmentStatus: applicant.employmentStatus,
+            };
+            applicantId = applicant._id.toString();
+          }
+          
+          // Add tenant where applicant exists (convert TenantDocument to TenantInfo)
+          if (tenant.dbName) {
+            foundTenants.push({
+              _id: tenant._id?.toString() || '',
+              url: tenant.clientDomain || '',
+              status: 'active', // Default status for tenants
+              clientName: tenant.clientName,
+              type: tenant.type || '',
+              dbName: tenant.dbName,
+              peoIntegration: tenant.peoIntegration,
+              tenantLogo: tenant.tenantLogo,
+            });
+          }
+        }
+      } catch (error) {
+        console.warn(`Failed to check tenant ${tenant.dbName}:`, error);
+        continue;
+      }
+    }
+    
+    // If no tenants found, return null
+    if (foundTenants.length === 0 || !applicantId || !applicantInfo) {
+      return null;
+    }
+    
+    // Return tenants in the order they were found (consistent with user tenant handling)
+    // Users don't sort tenants, so applicants shouldn't either
+    return {
+      applicantId,
+      tenants: foundTenants,
+      applicantInfo,
+    };
+  } catch (error) {
+    console.error('Error finding applicant and tenants:', error);
+    return null;
+  }
+}
+

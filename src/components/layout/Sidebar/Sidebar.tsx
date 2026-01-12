@@ -18,6 +18,7 @@ import {
 import { clsxm } from '@/lib/utils';
 import { Button } from '@/components/ui/Button/Button';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
+import { useCurrentUser } from '@/domains/user/hooks/use-current-user';
 
 interface NavigationItem {
   name: string;
@@ -34,8 +35,26 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
   const pathname = usePathname();
   const { data: primaryCompany } = usePrimaryCompany();
+  const { data: currentUser } = useCurrentUser();
+  // Check if user has limited access (applicants or terminated/inactive employees)
+  const isLimitedAccess = currentUser?.isLimitedAccess || false;
 
   const navigation: NavigationItem[] = useMemo(() => {
+    // For limited access users (applicants or terminated/inactive employees), only show Paycheck Stubs
+    if (isLimitedAccess) {
+      return [
+        {
+          name: 'Paycheck Stubs',
+          href: '/paycheck-stubs',
+          icon: Receipt,
+          current:
+            pathname === '/paycheck-stubs' ||
+            pathname.startsWith('/paycheck-stubs'),
+        },
+      ];
+    }
+
+    // Full user navigation
     const baseNavigation = [
       {
         name: 'Time & Attendance',
@@ -97,7 +116,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     );
 
     return baseNavigation;
-  }, [pathname, primaryCompany]);
+  }, [pathname, primaryCompany, isLimitedAccess]);
 
   const handleLinkClick = () => {
     // Close mobile menu when a link is clicked

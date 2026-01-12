@@ -31,11 +31,19 @@ export async function POST(request: NextRequest) {
     const { db } = await mongoConn();
     const user = await checkUserExistsByEmail(db, normalizedEmail);
 
-    // If user not found, return error before sending code
+    // If user not found, check if applicant exists
+    let isApplicant = false;
     if (!user) {
+      const { findApplicantAndTenantsByEmail } = await import('@/domains/user/utils/mongo-user-utils');
+      const applicantData = await findApplicantAndTenantsByEmail(normalizedEmail);
+      isApplicant = !!applicantData;
+    }
+
+    // If neither user nor applicant found, return error before sending code
+    if (!user && !isApplicant) {
       return NextResponse.json(
         { 
-          error: 'Employee not found. Please contact your supervisor',
+          error: 'Employee or applicant not found. Please contact your supervisor',
           employeeNotFound: true 
         },
         { status: 404 }
@@ -52,6 +60,7 @@ export async function POST(request: NextRequest) {
       email: normalizedEmail,
       createdAt: new Date().toISOString(),
       attempts: 0,
+      isApplicantOnly: isApplicant, // Flag to indicate applicant-only login
     }, 600); // 10 minutes
 
     // Send OTP via email

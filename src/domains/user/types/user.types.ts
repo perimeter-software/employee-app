@@ -53,6 +53,9 @@ export type EnhancedUser = {
   userType?: string;
   employeeType?: string;
   status?: string;
+  employmentStatus?: string;
+  isApplicantOnly?: boolean; // True if this is an applicant-only session
+  isLimitedAccess?: boolean; // True if user/applicant has limited access
   [key: string]: unknown;
 };
 
@@ -87,6 +90,12 @@ export type Auth0SessionUser = EnhancedUser & {
   aud?: string | string[]; // Audience
   iat?: number; // Issued at
   exp?: number; // Expires at
+  // Applicant-only session flags
+  isApplicantOnly?: boolean; // True if this is an applicant-only session (not a full user)
+  isLimitedAccess?: boolean; // True if user/applicant has limited access (paycheck stubs only)
+  loginMethod?: string; // 'auth0' | 'otp'
+  employmentStatus?: string; // Employment status
+  userId?: string; // For applicant-only sessions, userId is the applicantId
   [key: string]: unknown; // Allow other custom claims
 };
 
