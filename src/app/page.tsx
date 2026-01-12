@@ -23,19 +23,12 @@ function SearchParamsHandler({
 
   useEffect(() => {
     const expired = searchParams.get('expired');
-    const loggedOut = searchParams.get('loggedout');
     const error = searchParams.get('error');
 
     if (expired) {
       setNotification({
         message: 'Please sign in again.',
         level: 'warning',
-        show: true,
-      });
-    } else if (loggedOut) {
-      setNotification({
-        message: 'You have successfully logged out.',
-        level: 'info',
         show: true,
       });
     } else if (error) {
@@ -163,23 +156,9 @@ export default function LoginPage() {
     }
   }, [notification.show]); // FIXED: Only depend on notification.show
 
-  // Redirect if user is already authenticated (but not if coming from logout)
+  // Redirect if user is already authenticated
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const loggedOut = searchParams.get('loggedout');
-    
-    // Don't redirect if user just logged out (even if useUser still has cached data)
-    if (loggedOut === 'true') {
-      // Clear any cached user data from client-side storage
-      if (typeof window !== 'undefined') {
-        // Clear Auth0 client cache by forcing a refresh
-        sessionStorage.clear();
-        localStorage.removeItem('auth0.is.authenticated');
-      }
-      return;
-    }
-    
-    // Only redirect if user is authenticated and not coming from logout
+    // Only redirect if user is authenticated
     if (user && !isLoading) {
       router.push('/time-attendance');
     }
