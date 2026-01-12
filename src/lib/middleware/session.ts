@@ -25,6 +25,7 @@ async function getUserSession(request: NextRequest): Promise<Auth0SessionUser | 
 
     const otpSessionData = await redisService.get<{
       userId: string;
+      applicantId?: string;
       email: string;
       name: string;
       firstName?: string;
@@ -32,7 +33,9 @@ async function getUserSession(request: NextRequest): Promise<Auth0SessionUser | 
       picture?: string;
       loginMethod: string;
       isLimitedAccess?: boolean;
+      isApplicantOnly?: boolean;
       employmentStatus?: string;
+      status?: string;
       createdAt: string;
     }>(`otp_session:${otpSessionId}`);
 
@@ -41,6 +44,7 @@ async function getUserSession(request: NextRequest): Promise<Auth0SessionUser | 
     }
 
     // Convert OTP session to Auth0-compatible format
+    // Note: tenant objects are populated in withEnhancedAuthAPI when needed
     return {
       sub: otpSessionData.userId,
       email: otpSessionData.email,
@@ -48,9 +52,12 @@ async function getUserSession(request: NextRequest): Promise<Auth0SessionUser | 
       firstName: otpSessionData.firstName,
       lastName: otpSessionData.lastName,
       picture: otpSessionData.picture,
+      applicantId: otpSessionData.applicantId,
       loginMethod: otpSessionData.loginMethod,
       isLimitedAccess: otpSessionData.isLimitedAccess || false,
+      isApplicantOnly: otpSessionData.isApplicantOnly || false,
       employmentStatus: otpSessionData.employmentStatus,
+      status: otpSessionData.status,
     } as Auth0SessionUser;
   } catch (error) {
     console.error('Error getting user session:', error);
@@ -95,8 +102,11 @@ export function withEnhancedAuthAPI<T = unknown>(
   options: {
     requireDatabaseUser?: boolean;
     requireTenant?: boolean;
+    allowApplicants?: boolean; // Allow applicant-only sessions (default: false)
   } = {}
 ) {
+  // Default allowApplicants to false if not specified
+  const allowApplicants = options.allowApplicants ?? false;
   return async function (
     request: NextRequest,
     context: { params: Promise<Record<string, string | string[] | undefined>> }
@@ -110,6 +120,16 @@ export function withEnhancedAuthAPI<T = unknown>(
         return NextResponse.json(
           { error: 'not-authenticated', message: 'Authentication required' },
           { status: 401 }
+        );
+      }
+      // Check if applicant-only session is allowed
+      if (user.isApplicantOnly && !allowApplicants) {
+        return NextResponse.json(
+          {
+            error: 'applicant-not-allowed',
+            message: 'This endpoint requires full user access'
+          },
+          { status: 403 }
         );
       }
 
@@ -150,8 +170,59 @@ export function withEnhancedAuthAPI<T = unknown>(
         }
       }
 
-      // FALLBACK: If no enhanced user in headers, fetch from database
-      if (
+      // For applicant-only sessions, populate tenant data if allowed
+      if (user.isApplicantOnly) {
+        try {
+          const redisService = await import('@/lib/cache/redis-client');
+          // FIRST: Check Redis cache for tenant data (same as regular users)
+          const cachedTenantData = await redisService.default.getTenantData(userEmail.toLowerCase());
+
+          if (cachedTenantData?.tenant && cachedTenantData.isApplicantOnly === true && cachedTenantData.tenant.url) {
+            // Use cached tenant data for applicant
+            enhancedUser = {
+              ...user,
+              tenant: cachedTenantData.tenant,
+              availableTenants: cachedTenantData.availableTenants || [],
+            } as Auth0SessionUser;
+            console.log(`📦 Using cached tenant data for applicant: ${userEmail}`, {
+              tenant: cachedTenantData.tenant.dbName,
+              availableTenants: cachedTenantData.availableTenants?.length || 0,
+            });
+          } else {
+            // FALLBACK: Cache miss - fetch from database using utility function
+            // This ensures we have the most up-to-date tenant list and full TenantInfo objects
+            const { findApplicantAndTenantsByEmail } = await import('@/domains/user/utils/mongo-user-utils');
+            const applicantData = await findApplicantAndTenantsByEmail(userEmail);
+
+            if (applicantData && applicantData.tenants.length > 0) {
+              // Primary tenant is the first one (alphabetically sorted)
+              const primaryTenant = applicantData.tenants[0];
+              // Available tenants are the rest
+              const availableTenants = applicantData.tenants.length > 1 ? applicantData.tenants.slice(1) : [];
+
+              enhancedUser = {
+                ...user,
+                tenant: primaryTenant,
+                availableTenants: availableTenants,
+              } as Auth0SessionUser;
+
+              console.log(`✅ Fetched tenant data from database for applicant: ${userEmail}`, {
+                tenant: primaryTenant.dbName,
+                availableTenants: availableTenants.length,
+              });
+            } else {
+              // No tenant data found, use user as-is
+              enhancedUser = user as Auth0SessionUser;
+            }
+          }
+        } catch (tenantError) {
+          console.warn('Failed to fetch tenant data for applicant:', tenantError);
+          // Continue with user data without tenant
+          enhancedUser = user as Auth0SessionUser;
+        }
+      }
+      // FALLBACK: If no enhanced user in headers, fetch from database (for regular users)
+      else if (
         !enhancedUser &&
         (options.requireDatabaseUser || options.requireTenant)
       ) {
@@ -195,7 +266,7 @@ export function withEnhancedAuthAPI<T = unknown>(
             // Create a temporary authenticated request for getTenantAwareConnection
             const tempRequest = request as AuthenticatedRequest;
             tempRequest.user = user as Auth0SessionUser;
-            
+
             const { db, dbTenant, userDb } = await getTenantAwareConnection(tempRequest);
 
             // Get user data from tenant-specific database
@@ -265,25 +336,27 @@ export function withEnhancedAuthAPI<T = unknown>(
         }
       }
 
-      // Validate requirements
-      if (options.requireDatabaseUser && !enhancedUser?._id) {
-        return NextResponse.json(
-          {
-            error: 'database-user-required',
-            message: 'Database user record required',
-          },
-          { status: 403 }
-        );
-      }
+      // Validate requirements (skip for applicant-only sessions)
+      if (!user.isApplicantOnly) {
+        if (options.requireDatabaseUser && !enhancedUser?._id) {
+          return NextResponse.json(
+            {
+              error: 'database-user-required',
+              message: 'Database user record required',
+            },
+            { status: 403 }
+          );
+        }
 
-      if (options.requireTenant && !enhancedUser?.tenant) {
-        return NextResponse.json(
-          {
-            error: 'tenant-required',
-            message: 'Tenant access required',
-          },
-          { status: 403 }
-        );
+        if (options.requireTenant && !enhancedUser?.tenant) {
+          return NextResponse.json(
+            {
+              error: 'tenant-required',
+              message: 'Tenant access required',
+            },
+            { status: 403 }
+          );
+        }
       }
 
       // Add enhanced user to request

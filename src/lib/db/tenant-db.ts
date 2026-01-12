@@ -138,16 +138,16 @@ export async function getCurrentTenantDbName(
  */
 export async function getTenantAwareConnection(request: AuthenticatedRequest) {
   const userEmail = request.user.email!;
-  
-  // PRIORITY 1: Use tenant from request.user if available (most up-to-date after tenant switch)
+  // PRIORITY 1: Use tenant from request.user.tenant if available (works for both users and applicants)
   // The middleware sets request.user.tenant when processing the request
   const userTenant = request.user.tenant;
   let dbName: string;
   
   if (userTenant?.dbName) {
     dbName = userTenant.dbName;
+    const userType = request.user.isApplicantOnly ? 'applicant' : 'user';
     console.log(
-      `🎯 Using database "${dbName}" from request.user.tenant for tenant: ${userTenant.url} (user: ${userEmail})`
+      `🎯 Using database "${dbName}" from request.user.tenant for tenant: ${userTenant.url} (${userType}: ${userEmail})`
     );
     console.log(`📊 Tenant data from request:`, {
       url: userTenant.url,
@@ -157,7 +157,7 @@ export async function getTenantAwareConnection(request: AuthenticatedRequest) {
     });
   } else {
     // PRIORITY 2: Fall back to Redis cache lookup
-    console.log(`⚠️ No tenant in request.user, falling back to Redis cache for user: ${userEmail}`);
+    console.log(`⚠️ No tenant in request.user, falling back to Redis cache for: ${userEmail}`);
     dbName = await getCurrentTenantDbName(userEmail);
   }
 

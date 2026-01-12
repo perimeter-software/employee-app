@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { withEnhancedAuthAPI } from '@/lib/middleware';
+import { AuthenticatedRequest, withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
-import type { AuthenticatedRequest } from '@/domains/user/types';
 import { findNotificationsByUserId } from '@/domains/notification';
 
 export const dynamic = 'force-dynamic';
@@ -11,14 +10,19 @@ async function getUserNotificationsHandler(request: AuthenticatedRequest) {
   try {
     const user = request.user;
 
-    if (!user._id) {
+    // For applicant-only sessions, return empty notifications
+    // Applicants don't have user._id and don't receive notifications
+    if (user.isApplicantOnly || !user._id) {
       return NextResponse.json(
         {
-          success: false,
-          error: 'missing-user-id',
-          message: 'User ID not found',
+          success: true,
+          message: 'No notifications found',
+          data: {
+            notifications: [],
+            count: 0,
+          },
         },
-        { status: 400 }
+        { status: 200 }
       );
     }
 
@@ -73,8 +77,10 @@ async function getUserNotificationsHandler(request: AuthenticatedRequest) {
   }
 }
 
-// Export with enhanced auth wrapper
+// Export with applicant-aware auth wrapper (allows both users and applicants)
+// Applicants will get empty notifications array
 export const GET = withEnhancedAuthAPI(getUserNotificationsHandler, {
   requireDatabaseUser: true,
   requireTenant: true,
+  allowApplicants: true,
 });

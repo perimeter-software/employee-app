@@ -3,8 +3,10 @@ import { Loader2, Shield } from "lucide-react";
 // Enhanced Loading component
 export const AuthLoadingState = ({
   message = "Checking authentication...",
+  title = "Authenticating",
 }: {
   message?: string;
+  title?: string;
 }) => (
   <div className="min-h-screen bg-gradient-to-br from-appBackground via-altMutedBackground to-altPrimaryBackground flex items-center justify-center relative overflow-hidden">
     {/* Background decorative elements */}
@@ -31,7 +33,7 @@ export const AuthLoadingState = ({
 
         {/* Text content */}
         <div className="text-center space-y-2">
-          <h2 className="text-xl font-semibold text-altText">Authenticating</h2>
+          <h2 className="text-xl font-semibold text-altText">{title}</h2>
           <p className="text-altText/70 text-sm">{message}</p>
         </div>
 
