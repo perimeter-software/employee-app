@@ -101,29 +101,26 @@ export async function GET(request: NextRequest) {
     // handleLogout expects (request, context, options) for App Router
     // Context should have params as Record<string, string | string[]>
     const context = { params: {} };
-    // Set returnTo with loggedout parameter to prevent auto-login redirect
-    // Auth0 expects a relative path, not a full URL
-    const returnToPath = '/?loggedout=true';
+    // Redirect to clean home page without any parameters
+    const returnToPath = '/';
     const auth0Response = await handleLogout(request, context, {
       returnTo: returnToPath,
     });
 
     // Get redirect URL from Location header
     // Auth0 might redirect to its own logout endpoint first, then back to returnTo
-    // We need to ensure the final redirect includes the loggedout parameter
     const locationHeader = auth0Response.headers.get('location');
     let redirectUrl: URL;
     
     if (locationHeader) {
       redirectUrl = new URL(locationHeader, request.url);
-      // If it's pointing to our domain (not Auth0's), ensure loggedout param is present
-      if (redirectUrl.pathname === '/' && !redirectUrl.searchParams.has('loggedout')) {
-        redirectUrl.searchParams.set('loggedout', 'true');
+      // If it's pointing to our domain (not Auth0's), ensure clean URL without parameters
+      if (redirectUrl.pathname === '/') {
+        redirectUrl.search = ''; // Remove all query parameters
       }
     } else {
-      // Fallback: redirect to home with loggedout parameter
+      // Fallback: redirect to clean home page
       redirectUrl = new URL('/', request.url);
-      redirectUrl.searchParams.set('loggedout', 'true');
     }
 
     // Convert Response to NextResponse to access cookies
@@ -162,6 +159,19 @@ export async function GET(request: NextRequest) {
       });
     });
 
+    // Clear appSession cookies (Auth0 session cookies)
+    const appSessionCookies = ['appSession', 'appSession.0', 'appSession.1', 'appSession.2'];
+    appSessionCookies.forEach((cookieName) => {
+      response.cookies.delete(cookieName);
+      response.cookies.set(cookieName, '', {
+        expires: new Date(0),
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+      });
+    });
+
     console.log('✅ All sessions cleared (Auth0 and OTP)');
 
     return response;
@@ -169,9 +179,8 @@ export async function GET(request: NextRequest) {
     console.error('Error during logout:', error);
     
     // Even if there's an error, try to clear cookies and redirect
-    // Add loggedout parameter to prevent auto-login redirect
+    // Redirect to clean home page
     const redirectUrl = new URL('/', request.url);
-    redirectUrl.searchParams.set('loggedout', 'true');
     const response = NextResponse.redirect(redirectUrl);
     
     // Clear all auth cookies

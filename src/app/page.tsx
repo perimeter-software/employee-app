@@ -23,19 +23,12 @@ function SearchParamsHandler({
 
   useEffect(() => {
     const expired = searchParams.get('expired');
-    const loggedOut = searchParams.get('loggedout');
     const error = searchParams.get('error');
 
     if (expired) {
       setNotification({
         message: 'Please sign in again.',
         level: 'warning',
-        show: true,
-      });
-    } else if (loggedOut) {
-      setNotification({
-        message: 'You have successfully logged out.',
-        level: 'info',
         show: true,
       });
     } else if (error) {
@@ -163,91 +156,11 @@ export default function LoginPage() {
     }
   }, [notification.show]); // FIXED: Only depend on notification.show
 
-  // Redirect if user is already authenticated (but verify session is actually valid)
+  // Redirect if user is already authenticated
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const loggedOut = searchParams.get('loggedout');
-    
-    // Don't redirect if user just logged out (even if useUser still has cached data)
-    if (loggedOut === 'true') {
-      // Clear any cached user data from client-side storage
-      if (typeof window !== 'undefined') {
-        // Clear Auth0 client cache by forcing a refresh
-        sessionStorage.clear();
-        localStorage.removeItem('auth0.is.authenticated');
-        // Store logout timestamp to prevent auto-login for a short period
-        sessionStorage.setItem('logout_timestamp', Date.now().toString());
-        // Remove the query param from URL without reload
-        const newUrl = new URL(window.location.href);
-        newUrl.searchParams.delete('loggedout');
-        window.history.replaceState({}, '', newUrl.toString());
-      }
-      return;
-    }
-    
-    // Check if logout happened recently (within last 10 seconds)
-    if (typeof window !== 'undefined') {
-      const logoutTimestamp = sessionStorage.getItem('logout_timestamp');
-      if (logoutTimestamp) {
-        const timeSinceLogout = Date.now() - parseInt(logoutTimestamp, 10);
-        // If logout happened within last 10 seconds, don't redirect
-        if (timeSinceLogout < 10000) {
-          return;
-        }
-        // Clear the logout timestamp if it's old
-        sessionStorage.removeItem('logout_timestamp');
-      }
-      
-      // Check if we already tried to verify session (prevent infinite loops)
-      const sessionCheckDone = sessionStorage.getItem('session_check_done');
-      if (sessionCheckDone === 'true') {
-        return;
-      }
-    }
-    
-    // Only redirect if user is authenticated and session is actually valid
-    // Verify session by checking API before redirecting
+    // Only redirect if user is authenticated
     if (user && !isLoading) {
-      // Mark that we're checking session to prevent duplicate checks
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('session_check_done', 'true');
-      }
-      
-      // Verify the session is actually valid by making an API call
-      fetch('/api/auth/me', { credentials: 'include' })
-        .then(async (response) => {
-          // Check if response has user data (status 200 with JSON) vs no session (204)
-          if (response.status === 200) {
-            try {
-              const data = await response.json();
-              // If we got user data, session is valid
-              if (data && (data.email || data.sub)) {
-                // Clear the check flag since session is valid
-                if (typeof window !== 'undefined') {
-                  sessionStorage.removeItem('session_check_done');
-                }
-                router.push('/time-attendance');
-                return;
-              }
-            } catch {
-              // Not JSON, treat as invalid
-            }
-          }
-          
-          // No valid session (204 or no user data), clear cache
-          if (typeof window !== 'undefined') {
-            sessionStorage.clear();
-            localStorage.removeItem('auth0.is.authenticated');
-            // Clear the check flag
-            sessionStorage.removeItem('session_check_done');
-          }
-        })
-        .catch(() => {
-          // API call failed, don't redirect
-          if (typeof window !== 'undefined') {
-            sessionStorage.removeItem('session_check_done');
-          }
-        });
+      router.push('/time-attendance');
     }
   }, [user, isLoading, router]);
 
