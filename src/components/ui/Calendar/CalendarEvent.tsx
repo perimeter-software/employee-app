@@ -294,25 +294,25 @@ export default function CalendarEvent({
           layoutId={`event-${animationKey}-day`}
         >
           <motion.div
-            className="flex items-center justify-between w-full h-full min-w-0 px-1"
+            className="flex flex-col w-full h-full min-w-0 px-1.5 py-0.5 gap-0.5"
             layout="position"
           >
             {/* Title with smart responsive display */}
             <span
-              className="font-semibold truncate mr-1 flex-1 min-w-0 text-xs sm:text-sm"
+              className="font-semibold truncate text-xs sm:text-sm leading-tight"
               title={safeTitle} // Show full title on hover
             >
               {/* Show abbreviated title on very small screens */}
               <span className="hidden sm:inline">{safeTitle}</span>
               <span className="sm:hidden">
-                {safeTitle.length > 8
-                  ? `${safeTitle.substring(0, 8)}...`
+                {safeTitle.length > 10
+                  ? `${safeTitle.substring(0, 10)}...`
                   : safeTitle}
               </span>
             </span>
 
-            {/* Time display - responsive */}
-            <span className="text-[10px] sm:text-xs opacity-75 flex-shrink-0 whitespace-nowrap">
+            {/* Time display - responsive, always visible */}
+            <span className="text-[10px] sm:text-xs opacity-90 font-medium leading-tight">
               {/* Mobile: show shorter time format */}
               <span className="sm:hidden">
                 {format(safeStart, 'h:mm')}-{format(safeEnd, 'h:mm')}

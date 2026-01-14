@@ -34,6 +34,7 @@ interface SelectItemProps {
 
 interface SelectValueProps {
   placeholder?: string;
+  displayText?: string;
 }
 
 const SelectContext = React.createContext<{
@@ -98,13 +99,11 @@ const SelectItem = ({ value, children, onSelect }: SelectItemProps) => {
   );
 };
 
-const SelectValue = ({ placeholder }: SelectValueProps) => {
+const SelectValue = ({ placeholder, displayText }: SelectValueProps) => {
   const context = React.useContext(SelectContext);
-  return (
-    <span>
-      {context.value || context.placeholder || placeholder || "Select..."}
-    </span>
-  );
+  // Use displayText if provided, otherwise fall back to value or placeholder
+  const text = displayText || context.value || context.placeholder || placeholder || "Select...";
+  return <span>{text}</span>;
 };
 
 export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue };

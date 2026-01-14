@@ -6,16 +6,22 @@ import CalendarHeaderActionsMode from './Header/Actions/CalendarHeaderActionsMod
 
 export default function Calendar({
   hideTotalColumn = false,
+  hideHeaderActions = false,
+  hideHeaderDate = false,
 }: {
   hideTotalColumn?: boolean;
+  hideHeaderActions?: boolean;
+  hideHeaderDate?: boolean;
 }) {
   return (
     <div className="flex flex-col">
       <CalendarHeader>
-        <CalendarHeaderDate />
-        <CalendarHeaderActions>
-          <CalendarHeaderActionsMode />
-        </CalendarHeaderActions>
+        {!hideHeaderDate && <CalendarHeaderDate />}
+        {!hideHeaderActions && (
+          <CalendarHeaderActions>
+            <CalendarHeaderActionsMode />
+          </CalendarHeaderActions>
+        )}
       </CalendarHeader>
       <div className="flex-1">
         <CalendarBody hideTotalColumn={hideTotalColumn} />
