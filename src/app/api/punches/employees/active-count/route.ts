@@ -24,15 +24,18 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
     // Connect to tenant-specific database
     const { db } = await getTenantAwareConnection(request);
 
-    // Build query - get all active punches (timeOut is null)
+    // Build query - get all active punches (has timeIn but no timeOut)
+    // ERROR-PROOF: Explicitly check that timeIn exists and timeOut is null or doesn't exist
     const query: {
       type: 'punch';
-      timeOut: null;
+      timeIn: { $ne: null; $exists: true };
+      $or: [{ timeOut: null }, { timeOut: { $exists: false } }];
       jobId?: { $in: string[] };
       shiftSlug?: string;
     } = {
       type: 'punch',
-      timeOut: null,
+      timeIn: { $ne: null, $exists: true },
+      $or: [{ timeOut: null }, { timeOut: { $exists: false } }],
     };
 
     // If jobIds are provided, filter by them
@@ -53,10 +56,24 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
       query.shiftSlug = shiftSlug;
     }
 
+    // Log query for debugging (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Active Employee Count API] Query:', JSON.stringify(query, null, 2));
+    }
+
     // Count distinct applicants with active punches
+    // This finds all punches where timeIn exists and timeOut is null/missing
     const activeCount = await db
       .collection('timecard')
       .distinct('applicantId', query);
+
+    // Log result for debugging (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Active Employee Count API] Result:', {
+        count: activeCount.length,
+        applicantIds: activeCount,
+      });
+    }
 
     return NextResponse.json(
       {

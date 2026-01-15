@@ -9,7 +9,9 @@ import redisService from '@/lib/cache/redis-client';
  * Get user session from either Auth0 or OTP
  * Returns user data in Auth0-compatible format
  */
-async function getUserSession(request: NextRequest): Promise<Auth0SessionUser | null> {
+async function getUserSession(
+  request: NextRequest
+): Promise<Auth0SessionUser | null> {
   try {
     // First, try Auth0 session
     const auth0Session = await getSession();
@@ -127,7 +129,7 @@ export function withEnhancedAuthAPI<T = unknown>(
         return NextResponse.json(
           {
             error: 'applicant-not-allowed',
-            message: 'This endpoint requires full user access'
+            message: 'This endpoint requires full user access',
           },
           { status: 403 }
         );
@@ -141,11 +143,10 @@ export function withEnhancedAuthAPI<T = unknown>(
       if (enhancedUserHeader) {
         try {
           const parsedUser = JSON.parse(enhancedUserHeader) as EnhancedUser;
-          console.log(`📦 Using enhanced user from middleware: ${userEmail}`, {
-            _id: parsedUser._id,
-            applicantId: parsedUser.applicantId,
-            tenant: parsedUser.tenant,
-          });
+          // Only log in development
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`📦 Using enhanced user from middleware: ${userEmail}`);
+          }
 
           // Convert EnhancedUser to Auth0SessionUser format
           enhancedUser = {
@@ -175,30 +176,46 @@ export function withEnhancedAuthAPI<T = unknown>(
         try {
           const redisService = await import('@/lib/cache/redis-client');
           // FIRST: Check Redis cache for tenant data (same as regular users)
-          const cachedTenantData = await redisService.default.getTenantData(userEmail.toLowerCase());
+          const cachedTenantData = await redisService.default.getTenantData(
+            userEmail.toLowerCase()
+          );
 
-          if (cachedTenantData?.tenant && cachedTenantData.isApplicantOnly === true && cachedTenantData.tenant.url) {
+          if (
+            cachedTenantData?.tenant &&
+            cachedTenantData.isApplicantOnly === true &&
+            cachedTenantData.tenant.url
+          ) {
             // Use cached tenant data for applicant
             enhancedUser = {
               ...user,
               tenant: cachedTenantData.tenant,
               availableTenants: cachedTenantData.availableTenants || [],
             } as Auth0SessionUser;
-            console.log(`📦 Using cached tenant data for applicant: ${userEmail}`, {
-              tenant: cachedTenantData.tenant.dbName,
-              availableTenants: cachedTenantData.availableTenants?.length || 0,
-            });
+            console.log(
+              `📦 Using cached tenant data for applicant: ${userEmail}`,
+              {
+                tenant: cachedTenantData.tenant.dbName,
+                availableTenants:
+                  cachedTenantData.availableTenants?.length || 0,
+              }
+            );
           } else {
             // FALLBACK: Cache miss - fetch from database using utility function
             // This ensures we have the most up-to-date tenant list and full TenantInfo objects
-            const { findApplicantAndTenantsByEmail } = await import('@/domains/user/utils/mongo-user-utils');
-            const applicantData = await findApplicantAndTenantsByEmail(userEmail);
+            const { findApplicantAndTenantsByEmail } = await import(
+              '@/domains/user/utils/mongo-user-utils'
+            );
+            const applicantData =
+              await findApplicantAndTenantsByEmail(userEmail);
 
             if (applicantData && applicantData.tenants.length > 0) {
               // Primary tenant is the first one (alphabetically sorted)
               const primaryTenant = applicantData.tenants[0];
               // Available tenants are the rest
-              const availableTenants = applicantData.tenants.length > 1 ? applicantData.tenants.slice(1) : [];
+              const availableTenants =
+                applicantData.tenants.length > 1
+                  ? applicantData.tenants.slice(1)
+                  : [];
 
               enhancedUser = {
                 ...user,
@@ -206,17 +223,23 @@ export function withEnhancedAuthAPI<T = unknown>(
                 availableTenants: availableTenants,
               } as Auth0SessionUser;
 
-              console.log(`✅ Fetched tenant data from database for applicant: ${userEmail}`, {
-                tenant: primaryTenant.dbName,
-                availableTenants: availableTenants.length,
-              });
+              console.log(
+                `✅ Fetched tenant data from database for applicant: ${userEmail}`,
+                {
+                  tenant: primaryTenant.dbName,
+                  availableTenants: availableTenants.length,
+                }
+              );
             } else {
               // No tenant data found, use user as-is
               enhancedUser = user as Auth0SessionUser;
             }
           }
         } catch (tenantError) {
-          console.warn('Failed to fetch tenant data for applicant:', tenantError);
+          console.warn(
+            'Failed to fetch tenant data for applicant:',
+            tenantError
+          );
           // Continue with user data without tenant
           enhancedUser = user as Auth0SessionUser;
         }
@@ -226,9 +249,12 @@ export function withEnhancedAuthAPI<T = unknown>(
         !enhancedUser &&
         (options.requireDatabaseUser || options.requireTenant)
       ) {
-        console.log(
-          '⚠️ No enhanced user in headers, fetching from database...'
-        );
+        // Only log in development
+        if (process.env.NODE_ENV === 'development') {
+          console.log(
+            '⚠️ No enhanced user in headers, fetching from database...'
+          );
+        }
 
         try {
           const { getTenantAwareConnection } = await import('@/lib/db');
@@ -247,13 +273,12 @@ export function withEnhancedAuthAPI<T = unknown>(
             cachedTenantData?.tenant?.dbName &&
             cachedTenantData?.userIdentity
           ) {
-            console.log(
-              `📦 Using cached user identity for tenant: ${cachedTenantData.tenant.dbName}`,
-              {
-                _id: cachedTenantData.userIdentity._id,
-                applicantId: cachedTenantData.userIdentity.applicantId,
-              }
-            );
+            // Only log in development
+            if (process.env.NODE_ENV === 'development') {
+              console.log(
+                `📦 Using cached user identity for tenant: ${cachedTenantData.tenant.dbName}`
+              );
+            }
 
             // Use cached user identity for the current tenant
             userExists = cachedTenantData.userIdentity;
@@ -267,13 +292,17 @@ export function withEnhancedAuthAPI<T = unknown>(
             const tempRequest = request as AuthenticatedRequest;
             tempRequest.user = user as Auth0SessionUser;
 
-            const { db, dbTenant, userDb } = await getTenantAwareConnection(tempRequest);
+            const { db, dbTenant, userDb } =
+              await getTenantAwareConnection(tempRequest);
 
             // Get user data from tenant-specific database
             userExists = await checkUserExistsByEmail(db, userEmail);
 
             if (!userExists) {
-              console.log(`❌ User not found in database: ${userEmail}`);
+              // Only log in development
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`❌ User not found in database: ${userEmail}`);
+              }
               return NextResponse.json(
                 {
                   error: 'user-not-found',
@@ -292,7 +321,10 @@ export function withEnhancedAuthAPI<T = unknown>(
               );
 
               if (!userMasterRecord?.tenant) {
-                console.log(`❌ No tenant found for user: ${userEmail}`);
+                // Only log in development
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`❌ No tenant found for user: ${userEmail}`);
+                }
                 return NextResponse.json(
                   { error: 'no-tenant', message: 'No tenant found for user' },
                   { status: 404 }
@@ -322,11 +354,10 @@ export function withEnhancedAuthAPI<T = unknown>(
             availableTenants: userMasterRecord?.availableTenantObjects || [],
           } as Auth0SessionUser;
 
-          console.log(`✅ Enhanced user data loaded from DB: ${userEmail}`, {
-            _id: enhancedUser._id,
-            applicantId: enhancedUser.applicantId,
-            tenant: enhancedUser.tenant,
-          });
+          // Only log in development
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`✅ Enhanced user data loaded from DB: ${userEmail}`);
+          }
         } catch (dbError) {
           console.error('Database validation error:', dbError);
           return NextResponse.json(
@@ -361,12 +392,14 @@ export function withEnhancedAuthAPI<T = unknown>(
 
       // Add enhanced user to request
       const authenticatedRequest = request as AuthenticatedRequest;
-      authenticatedRequest.user =
-        enhancedUser || (user as Auth0SessionUser);
+      authenticatedRequest.user = enhancedUser || (user as Auth0SessionUser);
 
-      console.log(
-        `✅ Enhanced API Request authenticated: ${userEmail} → ${request.url}`
-      );
+      // Only log in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log(
+          `✅ Enhanced API Request authenticated: ${userEmail} → ${request.url}`
+        );
+      }
 
       return handler(authenticatedRequest, context);
     } catch (error) {

@@ -187,8 +187,13 @@ export default function CalendarEvent({
             )}
             onClick={(e) => {
               e.stopPropagation();
+              console.log('🖱️ CalendarEvent (month view) clicked:', {
+                eventId: event.id,
+                eventTitle: event.title,
+              });
               setSelectedEvent(event);
               setManageEventDialogOpen(true);
+              console.log('✅ CalendarEvent (month): setSelectedEvent and setManageEventDialogOpen called');
             }}
             initial={{
               opacity: 0,
@@ -258,8 +263,13 @@ export default function CalendarEvent({
           }}
           onClick={(e) => {
             e.stopPropagation();
+            console.log('🖱️ CalendarEvent clicked:', {
+              eventId: event.id,
+              eventTitle: event.title,
+            });
             setSelectedEvent(event);
             setManageEventDialogOpen(true);
+            console.log('✅ CalendarEvent: setSelectedEvent and setManageEventDialogOpen called');
           }}
           initial={{
             opacity: 0,

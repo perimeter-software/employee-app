@@ -18,9 +18,9 @@ export default function Calendar({
       <CalendarHeader>
         {!hideHeaderDate && <CalendarHeaderDate />}
         {!hideHeaderActions && (
-          <CalendarHeaderActions>
-            <CalendarHeaderActionsMode />
-          </CalendarHeaderActions>
+        <CalendarHeaderActions>
+          <CalendarHeaderActionsMode />
+        </CalendarHeaderActions>
         )}
       </CalendarHeader>
       <div className="flex-1">

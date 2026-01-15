@@ -4,6 +4,7 @@ import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
 import { ObjectId } from 'mongodb';
+import type { GignologyJob } from '@/domains/job/types/job.types';
 
 // GET Handler for Getting Shifts for a Job (for Client role)
 async function getJobShiftsHandler(
@@ -74,7 +75,16 @@ async function getJobShiftsHandler(
       );
     }
 
-    const convertedJob = convertToJSON(job);
+    const convertedJob = convertToJSON(job) as GignologyJob | null;
+    if (!convertedJob) {
+      return NextResponse.json(
+        {
+          error: 'internal-error',
+          message: 'Failed to process job data',
+        },
+        { status: 500 }
+      );
+    }
     const shifts = convertedJob.shifts || [];
 
     return NextResponse.json(

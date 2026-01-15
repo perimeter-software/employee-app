@@ -1,13 +1,13 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Table } from '@/components/ui/Table';
 import { TableColumn } from '@/components/ui/Table/types';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import {
   Select,
@@ -22,7 +22,6 @@ import {
   startOfMonth,
   endOfMonth,
   startOfDay,
-  endOfDay,
   format,
 } from 'date-fns';
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
@@ -30,6 +29,8 @@ import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
 import CalendarProvider from '@/components/ui/Calendar/CalendarProvider';
 import Calendar from '@/components/ui/Calendar/Calendar';
 import type { CalendarEvent, Mode } from '@/components/ui/Calendar';
+import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
+import { EmployeePunchDetailsModal } from '../EmployeePunchDetailsModal/EmployeePunchDetailsModal';
 
 interface EmployeePunch extends Record<string, unknown> {
   _id: string;
@@ -46,6 +47,8 @@ interface EmployeePunch extends Record<string, unknown> {
   jobTitle: string;
   jobSite: string;
   location: string;
+  userNote?: string; // ERROR-PROOF: Include userNote field
+  managerNote?: string; // ERROR-PROOF: Include managerNote field
   isSelected?: boolean;
   checkbox?: unknown;
   date?: unknown;
@@ -90,6 +93,23 @@ async function fetchEmployeePunches(
   jobIds?: string[],
   shiftSlug?: string
 ) {
+  // ERROR-PROOF: Normalize shiftSlug before sending
+  const normalizedShiftSlug =
+    shiftSlug && shiftSlug !== 'all' && shiftSlug.trim() !== ''
+      ? shiftSlug.trim()
+      : undefined;
+
+  // Log for debugging (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[Employee Punches Fetch] Request params:', {
+      startDate,
+      endDate,
+      jobIds,
+      shiftSlug: normalizedShiftSlug || 'all',
+      originalShiftSlug: shiftSlug,
+    });
+  }
+
   const response = await fetch('/api/punches/employees', {
     method: 'POST',
     headers: {
@@ -99,16 +119,31 @@ async function fetchEmployeePunches(
       startDate,
       endDate,
       jobIds: jobIds && jobIds.length > 0 ? jobIds : undefined,
-      shiftSlug: shiftSlug && shiftSlug !== 'all' ? shiftSlug : undefined,
+      shiftSlug: normalizedShiftSlug,
     }),
   });
 
   if (!response.ok) {
     const error = await response.json();
+    console.error('[Employee Punches Fetch] API Error:', error);
     throw new Error(error.message || 'Failed to fetch employee punches');
   }
 
   const data = await response.json();
+
+  // Log for debugging (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[Employee Punches Fetch] Response:', {
+      count: data.count,
+      shiftSlug: normalizedShiftSlug || 'all',
+      samplePunches: (data.data || []).slice(0, 3).map((p: EmployeePunch) => ({
+        id: p._id,
+        shiftSlug: p.shiftSlug,
+        timeIn: p.timeIn,
+      })),
+    });
+  }
+
   return data.data as EmployeePunch[];
 }
 
@@ -240,8 +275,8 @@ export function EmployeeTimeAttendanceTable({
       !companyLoading && selectedJobId !== 'all' && !selectedJobHasShifts, // Only fetch if shifts not in job data
   });
 
-  // Get available shifts for selected job (from fetched shifts or job data)
-  const availableShifts = useMemo(() => {
+  // Get all available shifts for selected job (from fetched shifts or job data)
+  const allAvailableShifts = useMemo(() => {
     if (selectedJobId === 'all') {
       return [];
     }
@@ -254,24 +289,6 @@ export function EmployeeTimeAttendanceTable({
     }
     return [];
   }, [selectedJobId, selectedJob, jobShifts]);
-
-  // Reset shift when job changes
-  useEffect(() => {
-    if (selectedJobId === 'all') {
-      setSelectedShiftSlug('all');
-    } else if (selectedJob && availableShifts.length > 0) {
-      // Keep current shift if it exists in the new job, otherwise reset
-      setSelectedShiftSlug((currentShift) => {
-        const shiftExists = availableShifts.some(
-          (shift) => shift.slug === currentShift
-        );
-        return shiftExists ? currentShift : 'all';
-      });
-    } else {
-      setSelectedShiftSlug('all');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedJobId, selectedJob, availableShifts]);
 
   // Get selected job IDs for filtering - use stable string key for query
   const selectedJobIds = useMemo(() => {
@@ -287,61 +304,124 @@ export function EmployeeTimeAttendanceTable({
   }, [selectedJobIds]);
 
   // Calculate date range based on view type
+  // ERROR-PROOF: Ensures consistent date normalization matching backend expectations
   const dateRange = useMemo(() => {
+    // If props are provided, validate and use them
     if (propStartDate && propEndDate) {
-      return {
-        startDate: propStartDate,
-        endDate: propEndDate,
-        displayRange: `${format(new Date(propStartDate), 'MMM d')} - ${format(new Date(propEndDate), 'MMM d, yyyy')}`,
-      };
+      try {
+        const start = new Date(propStartDate);
+        const end = new Date(propEndDate);
+
+        // Validate dates
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+          console.error(
+            'Invalid date props provided, falling back to calculated range'
+          );
+        } else {
+          return {
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+            displayRange: `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`,
+          };
+        }
+      } catch (error) {
+        console.error('Error parsing prop dates:', error);
+        // Fall through to calculated range
+      }
     }
 
     let start: Date;
     let end: Date;
     let displayRange: string;
 
-    if (viewType === 'day') {
-      // For day view, use calendarDate (what the calendar is showing) to ensure consistency
+    try {
+      // ERROR-PROOF: Always use calendarDate for consistency across all views
+      // calendarDate is the source of truth for what the calendar is displaying
       const dateToUse = calendarDate || baseDate;
-      
-      // Use startOfDay to normalize the date to midnight in local time
-      const normalizedDate = startOfDay(dateToUse);
-      
-      // Create start and end boundaries for the local day
-      const localStart = new Date(normalizedDate);
-      const localEnd = new Date(normalizedDate);
-      localEnd.setHours(23, 59, 59, 999);
-      
-      // Convert local day boundaries to UTC for API
-      // The API expects UTC, but we want to query for events that occur during the LOCAL day
-      // So we convert: local midnight -> UTC, local 23:59:59 -> UTC
-      start = new Date(localStart.toISOString());
-      end = new Date(localEnd.toISOString());
-      
-      displayRange = format(normalizedDate, 'MMM d, yyyy');
-    } else if (viewType === 'week' || viewType === 'table') {
-      start = startOfWeek(baseDate, { weekStartsOn: weekStartsOn || 0 });
-      start.setHours(0, 0, 0, 0);
-      end = endOfWeek(baseDate, { weekStartsOn: weekStartsOn || 0 });
-      end.setHours(23, 59, 59, 999);
-      displayRange = `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
-    } else {
-      // Month view
-      start = startOfMonth(baseDate);
-      start.setHours(0, 0, 0, 0);
-      end = endOfMonth(baseDate);
-      end.setHours(23, 59, 59, 999);
-      displayRange = format(start, 'MMMM yyyy');
+
+      // Validate date
+      if (!dateToUse || isNaN(dateToUse.getTime())) {
+        throw new Error('Invalid date for view');
+      }
+
+      if (viewType === 'day') {
+        // Normalize to start of day in local timezone
+        start = new Date(dateToUse);
+        start = startOfDay(start);
+        start.setHours(0, 0, 0, 0);
+
+        // Normalize to end of day in local timezone
+        end = new Date(dateToUse);
+        end = startOfDay(end);
+        end.setHours(23, 59, 59, 999);
+
+        displayRange = format(start, 'MMM d, yyyy');
+      } else if (viewType === 'week' || viewType === 'table') {
+        // Use calendarDate (which should already be normalized to week start)
+        start = startOfWeek(dateToUse, { weekStartsOn: weekStartsOn || 0 });
+        start.setHours(0, 0, 0, 0);
+
+        end = endOfWeek(dateToUse, { weekStartsOn: weekStartsOn || 0 });
+        end.setHours(23, 59, 59, 999);
+
+        displayRange = `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
+      } else {
+        // Month view - use calendarDate (which should already be normalized to month start)
+        start = startOfMonth(dateToUse);
+        start.setHours(0, 0, 0, 0);
+
+        end = endOfMonth(dateToUse);
+        end.setHours(23, 59, 59, 999);
+
+        displayRange = format(start, 'MMMM yyyy');
+      }
+
+      // Final validation: ensure start <= end
+      if (start.getTime() > end.getTime()) {
+        console.error('Date range validation failed: start > end', {
+          start,
+          end,
+        });
+        // Swap if needed (shouldn't happen, but safety check)
+        [start, end] = [end, start];
+      }
+
+      // Validate dates are valid
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        throw new Error('Calculated dates are invalid');
+      }
+
+      return {
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        displayRange,
+      };
+    } catch (error) {
+      console.error('Error calculating date range:', error);
+      // Fallback to today's date range
+      const today = new Date();
+      const fallbackStart = startOfDay(today);
+      fallbackStart.setHours(0, 0, 0, 0);
+      const fallbackEnd = startOfDay(today);
+      fallbackEnd.setHours(23, 59, 59, 999);
+
+      return {
+        startDate: fallbackStart.toISOString(),
+        endDate: fallbackEnd.toISOString(),
+        displayRange: format(fallbackStart, 'MMM d, yyyy'),
+      };
     }
+  }, [
+    propStartDate,
+    propEndDate,
+    baseDate,
+    calendarDate,
+    viewType,
+    weekStartsOn,
+  ]);
 
-    return {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      displayRange,
-    };
-  }, [propStartDate, propEndDate, baseDate, calendarDate, viewType, weekStartsOn]);
-
-  // Fetch employee punches
+  // Fetch employee punches (with shift filter applied)
+  // ERROR-PROOF: Increased staleTime and added refetchOnWindowFocus: false to reduce API calls
   const {
     data: employeePunches,
     isLoading,
@@ -365,40 +445,149 @@ export function EmployeeTimeAttendanceTable({
       !companyLoading &&
       !jobsLoading &&
       availableJobs.length > 0 &&
-      selectedJobIds.length > 0,
-    staleTime: 60000, // Consider data fresh for 1 minute
+      selectedJobIds.length > 0 &&
+      !!dateRange.startDate &&
+      !!dateRange.endDate,
+    staleTime: 120000, // Consider data fresh for 2 minutes (reduced API calls)
+    gcTime: 300000, // Keep in cache for 5 minutes
+    refetchOnWindowFocus: false, // Don't refetch on window focus (reduces API calls)
+    refetchOnReconnect: false, // Don't refetch on reconnect (reduces API calls)
+    refetchOnMount: false, // Don't refetch when component remounts (reduces API calls)
   });
 
-  // Debug employee punches fetch
+  // Get unique shift slugs from actual punches in the date range
+  // ERROR-PROOF: Only show shifts that have data in the current date range
+  // NOTE: We extract this from the main employeePunches query to avoid duplicate API calls
+  // This must be AFTER employeePunches is defined
+  const availableShiftSlugs = useMemo(() => {
+    // When "all" shifts is selected, we can extract shift slugs from the current data
+    // This avoids making a separate API call just to get shift slugs
+    if (!employeePunches || employeePunches.length === 0) {
+      return new Set<string>();
+    }
+    // Extract unique shift slugs from punches
+    const shiftSlugs = employeePunches
+      .map((punch) => punch.shiftSlug)
+      .filter((slug): slug is string => !!slug && slug !== 'all');
+    return new Set(shiftSlugs);
+  }, [employeePunches]);
+
+  // Filter available shifts to only show those with actual punches
+  // This prevents users from selecting shifts that don't have any data
+  // NOTE: This must be AFTER availableShiftSlugs is defined
+  const availableShifts = useMemo(() => {
+    if (selectedJobId === 'all') {
+      return [];
+    }
+
+    // If we have punches, include shifts with data
+    if (availableShiftSlugs.size > 0) {
+      // Start with shifts from the job that have matching slugs
+      const existingShifts = allAvailableShifts.filter((shift) =>
+        availableShiftSlugs.has(shift.slug)
+      );
+
+      // Find shift slugs from punches that don't exist in the job's shifts
+      const missingShiftSlugs = Array.from(availableShiftSlugs).filter(
+        (slug) => !allAvailableShifts.some((shift) => shift.slug === slug)
+      );
+
+      // Create virtual shifts for deleted/missing shifts using data from punches
+      const virtualShifts: Shift[] = missingShiftSlugs.map((slug) => {
+        // Find a punch with this slug to get the shiftName
+        const punchWithShift = employeePunches?.find(
+          (p) => p.shiftSlug === slug
+        );
+
+        // Use shiftName from punch if available, otherwise format the slug
+        let shiftName = punchWithShift?.shiftName;
+        if (!shiftName && slug) {
+          // Format slug: remove timestamp and random suffix, then format nicely
+          shiftName = slug
+            .replace(/-\d{13}-[a-z0-9]+$/i, '') // Remove timestamp and random suffix
+            .split('-')
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+        }
+
+        // Create empty default schedule with all days
+        const emptySchedule = {
+          monday: { start: '', end: '', roster: [] },
+          tuesday: { start: '', end: '', roster: [] },
+          wednesday: { start: '', end: '', roster: [] },
+          thursday: { start: '', end: '', roster: [] },
+          friday: { start: '', end: '', roster: [] },
+          saturday: { start: '', end: '', roster: [] },
+          sunday: { start: '', end: '', roster: [] },
+        };
+
+        return {
+          slug,
+          shiftName: shiftName || slug,
+          shiftStartDate: '',
+          shiftEndDate: '',
+          defaultSchedule: emptySchedule,
+          billRate: 0,
+          payRate: 0,
+          shiftRoster: [],
+          exceptions: [],
+        } as Shift;
+      });
+
+      const allShifts = [...existingShifts, ...virtualShifts];
+
+      // Log for debugging (only in development)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Employee Time Attendance] Available shifts:', {
+          allShifts: allAvailableShifts.map((s) => s.slug),
+          shiftsWithData: Array.from(availableShiftSlugs),
+          existingShifts: existingShifts.map((s) => s.slug),
+          missingShiftSlugs,
+          virtualShifts: virtualShifts.map((s) => ({
+            slug: s.slug,
+            shiftName: s.shiftName,
+          })),
+          finalShifts: allShifts.map((s) => s.slug),
+        });
+      }
+
+      return allShifts;
+    }
+
+    // If no punches yet, show all shifts (they might have data we haven't loaded)
+    return allAvailableShifts;
+  }, [selectedJobId, allAvailableShifts, availableShiftSlugs, employeePunches]);
+
+  // Reset shift when job changes
+  // NOTE: This must be AFTER availableShifts is defined
   useEffect(() => {
-    console.log('📥 Employee Punches Query State:', {
-      isLoading,
-      error: error?.message,
-      employeePunchesCount: employeePunches?.length || 0,
-      dateRange: {
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate,
-        displayRange: dateRange.displayRange,
-      },
-      selectedJobIds,
-      selectedShiftSlug,
-      enabled:
-        !companyLoading &&
-        !jobsLoading &&
-        availableJobs.length > 0 &&
-        selectedJobIds.length > 0,
-    });
-  }, [
-    isLoading,
-    error,
-    employeePunches,
-    dateRange,
-    selectedJobIds,
-    selectedShiftSlug,
-    companyLoading,
-    jobsLoading,
-    availableJobs.length,
-  ]);
+    if (selectedJobId === 'all') {
+      setSelectedShiftSlug('all');
+    } else if (selectedJob && availableShifts.length > 0) {
+      // Keep current shift if it exists in the new job, otherwise reset
+      setSelectedShiftSlug((currentShift) => {
+        const shiftExists = availableShifts.some(
+          (shift) => shift.slug === currentShift
+        );
+        return shiftExists ? currentShift : 'all';
+      });
+    } else {
+      setSelectedShiftSlug('all');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedJobId, selectedJob, availableShifts]);
+
+  // Debug employee punches fetch - ERROR-PROOF: Only log when values actually change
+  // NOTE: Removed to prevent infinite loops - uncomment only for debugging
+  // useEffect(() => {
+  //   if (process.env.NODE_ENV === 'development') {
+  //     console.log('📥 Employee Punches Query State:', {
+  //       isLoading,
+  //       employeePunchesCount: employeePunches?.length || 0,
+  //       dateRange: dateRange.displayRange,
+  //     });
+  //   }
+  // }, [isLoading, employeePunches?.length, dateRange.displayRange]);
 
   // Fetch active employee count
   const { data: activeCount, isLoading: activeCountLoading } = useQuery({
@@ -409,19 +598,24 @@ export function EmployeeTimeAttendanceTable({
       !jobsLoading &&
       availableJobs.length > 0 &&
       selectedJobIds.length > 0,
-    refetchInterval: 60000, // Refetch every 60 seconds (reduced from 30)
-    staleTime: 30000, // Consider data fresh for 30 seconds
+    refetchInterval: 120000, // ERROR-PROOF: Refetch every 2 minutes (reduced from 60 seconds to prevent rate limiting)
+    staleTime: 60000, // ERROR-PROOF: Consider data fresh for 1 minute (increased from 30 seconds)
+    refetchOnWindowFocus: false, // ERROR-PROOF: Don't refetch on window focus
+    refetchOnMount: false, // ERROR-PROOF: Don't refetch on remount
   });
 
   // Update baseDate and calendar mode when view type changes
+  // ERROR-PROOF: Only update when viewType or weekStartsOn changes, not baseDate (to prevent infinite loops)
   useEffect(() => {
     if (viewType === 'day') {
       setCalendarMode('day');
       // Normalize to start of day - use the same date for both
       const dayStart = startOfDay(baseDate);
       setCalendarDate(dayStart);
-      // Also update baseDate to ensure they're in sync
-      setBaseDate(dayStart);
+      // Only update baseDate if it's different to prevent infinite loops
+      if (baseDate.getTime() !== dayStart.getTime()) {
+        setBaseDate(dayStart);
+      }
     } else if (viewType === 'week') {
       setCalendarMode('week');
       // Normalize to start of week
@@ -429,27 +623,38 @@ export function EmployeeTimeAttendanceTable({
         weekStartsOn: weekStartsOn || 0,
       });
       setCalendarDate(weekStart);
+      // Only update baseDate if it's different to prevent infinite loops
+      if (baseDate.getTime() !== weekStart.getTime()) {
+        setBaseDate(weekStart);
+      }
     } else if (viewType === 'month') {
       setCalendarMode('month');
       // Normalize to start of month
       const monthStart = startOfMonth(baseDate);
       setCalendarDate(monthStart);
+      // Only update baseDate if it's different to prevent infinite loops
+      if (baseDate.getTime() !== monthStart.getTime()) {
+        setBaseDate(monthStart);
+      }
     }
-  }, [viewType, baseDate, weekStartsOn]);
+    // ERROR-PROOF: Removed baseDate from dependencies to prevent infinite loops
+    // baseDate is only used as input, not as a trigger
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewType, weekStartsOn]);
 
   // Update baseDate when company work week settings change
+  // ERROR-PROOF: Always sync calendarDate and baseDate
   useEffect(() => {
     if (!companyLoading && weekStartsOn !== undefined) {
       const now = new Date();
       if (viewType === 'day') {
-        setBaseDate(now);
-        setCalendarDate(now);
+        const dayStart = startOfDay(now);
+        setBaseDate(dayStart);
+        setCalendarDate(dayStart);
       } else if (viewType === 'week' || viewType === 'table') {
         const weekStart = startOfWeek(now, { weekStartsOn });
         setBaseDate(weekStart);
-        if (viewType === 'week') {
-          setCalendarDate(weekStart);
-        }
+        setCalendarDate(weekStart);
       } else if (viewType === 'month') {
         const monthStart = startOfMonth(now);
         setBaseDate(monthStart);
@@ -458,17 +663,19 @@ export function EmployeeTimeAttendanceTable({
     }
   }, [weekStartsOn, companyLoading, viewType]);
 
-  // Keep calendarDate and baseDate in sync for day view
+  // Keep calendarDate in sync with baseDate for day view
+  // ERROR-PROOF: Only sync calendarDate when baseDate changes, don't modify baseDate here
   useEffect(() => {
     if (viewType === 'day') {
-      // Normalize to start of day - ensure both are the same
+      // Normalize to start of day
       const dayStart = startOfDay(baseDate);
-      setCalendarDate(dayStart);
-      // If baseDate changed, update it to normalized version
-      if (baseDate.getTime() !== dayStart.getTime()) {
-        setBaseDate(dayStart);
+      // Only update calendarDate if it's different to prevent infinite loops
+      if (calendarDate.getTime() !== dayStart.getTime()) {
+        setCalendarDate(dayStart);
       }
     }
+    // ERROR-PROOF: Only depend on baseDate and viewType, not calendarDate
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseDate, viewType]);
 
   const handleDateNavigation = (direction: number) => {
@@ -499,20 +706,9 @@ export function EmployeeTimeAttendanceTable({
   };
 
   // Convert employee punches to calendar events
+  // ERROR-PROOF: Removed console.logs to prevent re-renders
   const calendarEvents = useMemo<CalendarEvent[]>(() => {
-    console.log('🔄 Creating calendar events from employeePunches:', {
-      employeePunchesCount: employeePunches?.length || 0,
-      employeePunches: employeePunches?.map((p) => ({
-        _id: p._id,
-        timeIn: p.timeIn,
-        timeOut: p.timeOut,
-        employeeName: p.employeeName,
-        jobTitle: p.jobTitle,
-      })),
-    });
-
     if (!employeePunches || employeePunches.length === 0) {
-      console.log('⚠️ No employeePunches, returning empty array');
       return [];
     }
 
@@ -537,53 +733,217 @@ export function EmployeeTimeAttendanceTable({
       };
     });
 
-    console.log('✅ Created calendar events:', {
-      count: events.length,
-      events: events.map((e) => ({
-        id: e.id,
-        title: e.title,
-        start: e.start.toISOString(),
-        end: e.end.toISOString(),
-        color: e.color,
-      })),
-    });
-
     return events;
   }, [employeePunches]);
 
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [selectedPunch, setSelectedPunch] = useState<EmployeePunch | null>(
+    null
+  );
+  const [showPunchModal, setShowPunchModal] = useState(false);
+
+  // ERROR-PROOF: Update selectedPunch when employeePunches data changes (after save/refetch)
+  // This ensures the modal shows the latest data when reopened
+  useEffect(() => {
+    if (selectedPunch && employeePunches && employeePunches.length > 0) {
+      // Find the updated punch from the fresh data
+      const updatedPunch = employeePunches.find(
+        (p) => p._id === selectedPunch._id
+      );
+      if (updatedPunch) {
+        // Only update if the data actually changed to prevent unnecessary re-renders
+        const punchChanged =
+          updatedPunch.timeIn !== selectedPunch.timeIn ||
+          updatedPunch.timeOut !== selectedPunch.timeOut ||
+          (updatedPunch as unknown as { userNote?: string }).userNote !==
+            (selectedPunch as unknown as { userNote?: string }).userNote ||
+          (updatedPunch as unknown as { managerNote?: string }).managerNote !==
+            (selectedPunch as unknown as { managerNote?: string }).managerNote;
+
+        if (punchChanged) {
+          console.log('🔄 Updating selectedPunch with fresh data');
+          setSelectedPunch(updatedPunch);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeePunches, selectedPunch?._id]);
 
   // Update calendar events when they change
+  // ERROR-PROOF: Only update when events actually change (by length and IDs)
   useEffect(() => {
-    console.log('📊 Setting calendar events:', {
-      count: calendarEvents.length,
-      events: calendarEvents.map((e) => ({
-        id: e.id,
-        title: e.title,
-        start: e.start.toISOString(),
-        end: e.end.toISOString(),
-        color: e.color,
-      })),
-    });
+    // Only log in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📊 Setting calendar events:', {
+        count: calendarEvents.length,
+      });
+    }
     setEvents(calendarEvents);
   }, [calendarEvents]);
 
+  // Component that listens to calendar event clicks
+  // ERROR-PROOF: Prevent multiple rapid calls that could cause rate limiting
+  const CalendarEventHandler = () => {
+    const { selectedEvent, manageEventDialogOpen, setManageEventDialogOpen } =
+      useCalendarContext();
+    const lastProcessedRef = useRef<{
+      eventId: string | null;
+      timestamp: number;
+    }>({
+      eventId: null,
+      timestamp: 0,
+    });
+    const isProcessingRef = useRef(false);
+
+    // Debug: Log when component renders
+    console.log('🎯 CalendarEventHandler rendered');
+
+    useEffect(() => {
+      console.log('🔍 CalendarEventHandler effect running:', {
+        hasSelectedEvent: !!selectedEvent,
+        selectedEventId: selectedEvent?.id,
+        manageEventDialogOpen,
+        showPunchModal,
+        employeePunchesCount: employeePunches?.length || 0,
+        isLoading,
+      });
+
+      // Early return guards
+      // ERROR-PROOF: Don't block if employeePunches is loading - allow the click to work
+      if (!selectedEvent || showPunchModal) {
+        console.log(
+          '⏭️ Early return: no selectedEvent or showPunchModal is true'
+        );
+        return;
+      }
+
+      // ERROR-PROOF: If we're processing and modal is already open, we're done
+      if (isProcessingRef.current && showPunchModal) {
+        console.log('⏭️ Early return: Already processing and modal is open');
+        return;
+      }
+
+      // ERROR-PROOF: Only process when dialog opens OR when we're in the process of opening
+      // If dialog is closed and we're not processing, return early
+      if (!manageEventDialogOpen && !isProcessingRef.current) {
+        // Reset processing flag when dialog closes and modal is not open
+        if (!showPunchModal) {
+          isProcessingRef.current = false;
+        }
+        console.log(
+          '⏭️ Early return: manageEventDialogOpen is false and not processing'
+        );
+        return;
+      }
+
+      // If we're already processing (but modal not open yet), continue to open it
+      if (isProcessingRef.current) {
+        console.log('⏭️ Already processing, skipping duplicate call');
+        return;
+      }
+
+      // ERROR-PROOF: Wait for employeePunches to be loaded before processing
+      if (!employeePunches || employeePunches.length === 0) {
+        // If still loading, wait a bit and try again
+        if (isLoading) {
+          return;
+        }
+        // If not loading but no punches, close dialog and show error
+        console.warn('No employee punches found for event:', selectedEvent.id);
+        setManageEventDialogOpen(false);
+        return;
+      }
+
+      const now = Date.now();
+      const timeSinceLastProcess = now - lastProcessedRef.current.timestamp;
+      const isSameEvent = selectedEvent.id === lastProcessedRef.current.eventId;
+
+      // Prevent processing if same event was processed recently (within 2 seconds)
+      if (isSameEvent && timeSinceLastProcess < 2000) {
+        setManageEventDialogOpen(false);
+        return;
+      }
+
+      // Find the corresponding punch
+      console.log('🔍 Looking for punch with eventId:', selectedEvent.id);
+      const punch = employeePunches.find((p) => p._id === selectedEvent.id);
+
+      if (punch) {
+        console.log('✅ Punch found! Opening modal:', {
+          punchId: punch._id,
+          employeeName: punch.employeeName,
+        });
+        // Mark as processing immediately to prevent duplicate calls
+        isProcessingRef.current = true;
+        lastProcessedRef.current = {
+          eventId: selectedEvent.id,
+          timestamp: now,
+        };
+
+        // ERROR-PROOF: Set the punch and modal state FIRST, then close the calendar dialog
+        // This ensures showPunchModal is true before manageEventDialogOpen becomes false
+        setSelectedPunch(punch);
+        setShowPunchModal(true);
+
+        // Close the calendar's default dialog after a small delay to ensure modal state is set
+        setTimeout(() => {
+          setManageEventDialogOpen(false);
+          // Reset processing flag after modal opens
+          setTimeout(() => {
+            isProcessingRef.current = false;
+          }, 100);
+        }, 100);
+
+        // No cleanup needed since we're not using setTimeout for critical state updates
+        return;
+      } else {
+        // If punch not found, log and close dialog
+        console.warn('❌ Punch not found for event:', {
+          eventId: selectedEvent.id,
+          eventTitle: selectedEvent.title,
+          availablePunchIds: employeePunches.map((p) => p._id),
+        });
+        setManageEventDialogOpen(false);
+      }
+      // ERROR-PROOF: Only depend on primitive values to prevent infinite loops
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+      selectedEvent?.id,
+      manageEventDialogOpen,
+      showPunchModal,
+      employeePunches?.length,
+      isLoading,
+    ]);
+
+    return null; // This component doesn't render anything
+  };
+
+  // Component to handle modal close and reset calendar state
+  // ERROR-PROOF: This must be inside CalendarProvider to use useCalendarContext
+  // Only render this inside CalendarProvider (for calendar views)
+  const ModalCloseHandler = () => {
+    const { setSelectedEvent, setManageEventDialogOpen } = useCalendarContext();
+
+    useEffect(() => {
+      // When modal closes, reset calendar event selection
+      if (!showPunchModal) {
+        setSelectedEvent(null);
+        setManageEventDialogOpen(false);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showPunchModal]);
+
+    return null;
+  };
+
+  // Handler to open modal for a punch
+  const handleOpenPunchModal = useCallback((punch: EmployeePunch) => {
+    setSelectedPunch(punch);
+    setShowPunchModal(true);
+  }, []);
+
   const columns: TableColumn<EmployeePunch>[] = useMemo(
     () => [
-      {
-        key: 'checkbox',
-        header: '',
-        render: (_, row) => (
-          <input
-            type="checkbox"
-            checked={row.isSelected || false}
-            onChange={() => {
-              // Checkbox functionality can be added later if needed
-            }}
-            className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-          />
-        ),
-      },
       {
         key: 'date',
         header: 'DATE',
@@ -670,8 +1030,25 @@ export function EmployeeTimeAttendanceTable({
           );
         },
       },
+      {
+        key: 'actions',
+        header: 'ACTIONS',
+        render: (_, row) => (
+          <button
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent row click from firing
+              handleOpenPunchModal(row);
+            }}
+            className="flex items-center justify-center p-2 text-gray-600 hover:text-teal-600 hover:bg-teal-50 rounded-md transition-colors"
+            title="Edit punch details"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        ),
+        className: 'w-16 text-center',
+      },
     ],
-    []
+    [handleOpenPunchModal]
   );
 
   if (
@@ -978,25 +1355,31 @@ export function EmployeeTimeAttendanceTable({
             calendarIconIsToday={false}
             weekStartsOn={weekStartsOn || 0}
           >
-            {(() => {
-              console.log('🎯 CalendarProvider Debug:', {
-                viewType,
-                calendarMode,
-                calendarDate: calendarDate.toISOString(),
-                calendarDateFormatted: calendarDate.toLocaleDateString(),
-                eventsCount: events.length,
-                weekStartsOn,
-              });
-              return null;
-            })()}
+            <CalendarEventHandler />
             <div className="space-y-4">
               <div className="border rounded-lg bg-white shadow-sm min-h-[500px]">
                 <Calendar hideHeaderActions={true} hideHeaderDate={true} />
               </div>
             </div>
+            {/* ModalCloseHandler must be inside CalendarProvider */}
+            <ModalCloseHandler />
           </CalendarProvider>
         )}
       </div>
+
+      {/* Employee Punch Details Modal */}
+      <EmployeePunchDetailsModal
+        isOpen={showPunchModal}
+        onClose={() => {
+          setShowPunchModal(false);
+          setSelectedPunch(null);
+        }}
+        punch={selectedPunch}
+        onSuccess={() => {
+          // Refetch data after successful update will be handled by queryClient
+          // The modal component will handle the refetch
+        }}
+      />
     </div>
   );
 }

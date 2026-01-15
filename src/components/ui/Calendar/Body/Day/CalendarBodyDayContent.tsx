@@ -14,23 +14,9 @@ export default function CalendarBodyDayContent({
 }) {
   const { events, mode } = useCalendarContext();
 
-  // Debug logging
-  console.log('🔍 CalendarBodyDayContent Debug:', {
-    mode,
-    date: date.toISOString(),
-    dateFormatted: date.toLocaleDateString(),
-    totalEvents: events.length,
-    events: events.map(e => ({
-      id: e.id,
-      title: e.title,
-      start: e.start.toISOString(),
-      end: e.end.toISOString(),
-      startDate: e.start.toLocaleDateString(),
-      endDate: e.end.toLocaleDateString(),
-    })),
-  });
-
-  // Filter events for this day - check if event starts on this day OR spans across this day
+  // Filter events for this day - ERROR-PROOF: Only show events that actually occur on this day
+  // For week view: Only show events on the day they START (prevents duplication)
+  // For day view: Show events that start OR span this day
   const dayEvents = events.filter((event: CalendarEventType) => {
     // Normalize dates to start of day for comparison
     const eventStartDay = new Date(event.start);
@@ -40,41 +26,24 @@ export default function CalendarBodyDayContent({
     const targetDay = new Date(date);
     targetDay.setHours(0, 0, 0, 0);
     
-    // Check if event starts on this day
+    // Primary check: Event starts on this day
     const startsOnDay = eventStartDay.getTime() === targetDay.getTime();
-    // Check if event ends on this day (for events that span multiple days)
+    
+    // For week view: ONLY show events that start on this day (prevents duplication)
+    if (mode === 'week') {
+      return startsOnDay;
+    }
+    
+    // For day view: Show events that start, end, or span this day
     const endsOnDay = eventEndDay.getTime() === targetDay.getTime();
-    // Check if event spans across this day (starts before and ends after)
-    const spansDay = event.start <= new Date(targetDay.getTime() + 24 * 60 * 60 * 1000 - 1) && 
-                      event.end >= targetDay;
+    
+    // Event spans this day if it starts before this day AND ends after this day
+    const spansDay = eventStartDay.getTime() < targetDay.getTime() && 
+                      eventEndDay.getTime() > targetDay.getTime();
     
     const matches = startsOnDay || endsOnDay || spansDay;
     
-    if (mode === 'day') {
-      console.log(`📅 Event "${event.title}":`, {
-        eventStart: event.start.toISOString(),
-        eventEnd: event.end.toISOString(),
-        eventStartDay: eventStartDay.toISOString(),
-        eventEndDay: eventEndDay.toISOString(),
-        targetDay: targetDay.toISOString(),
-        startsOnDay,
-        endsOnDay,
-        spansDay,
-        matches,
-      });
-    }
-    
     return matches;
-  });
-
-  console.log('✅ Filtered dayEvents:', {
-    count: dayEvents.length,
-    events: dayEvents.map(e => ({
-      id: e.id,
-      title: e.title,
-      start: e.start.toISOString(),
-      end: e.end.toISOString(),
-    })),
   });
 
   return (

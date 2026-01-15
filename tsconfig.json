@@ -13,6 +13,10 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    // Performance optimizations
+    "assumeChangesOnlyAffectDirectDependencies": true,
+    // Skip type checking for faster compilation
+    "skipDefaultLibCheck": true,
     "baseUrl": ".",           // Required for paths
     "plugins": [
       {

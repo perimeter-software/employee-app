@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { getWeekStartsOnFromWorkWeek } from '@/lib/utils/date-utils';
 
@@ -8,8 +9,17 @@ import { getWeekStartsOnFromWorkWeek } from '@/lib/utils/date-utils';
 export function useCompanyWorkWeek() {
   const { data: primaryCompany } = usePrimaryCompany();
 
-  const workWeek = primaryCompany?.timeClockSettings?.workWeek;
-  const weekStartsOn = getWeekStartsOnFromWorkWeek(workWeek);
+  // ERROR-PROOF: Memoize workWeek to prevent infinite loops
+  const workWeek = useMemo(
+    () => primaryCompany?.timeClockSettings?.workWeek,
+    [primaryCompany?.timeClockSettings?.workWeek]
+  );
+
+  // ERROR-PROOF: Memoize weekStartsOn calculation to prevent calling getWeekStartsOnFromWorkWeek on every render
+  const weekStartsOn = useMemo(
+    () => getWeekStartsOnFromWorkWeek(workWeek),
+    [workWeek]
+  );
 
   return {
     workWeek,
