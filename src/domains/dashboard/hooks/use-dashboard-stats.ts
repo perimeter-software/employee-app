@@ -8,7 +8,7 @@ import { DashboardParams } from '../types';
 export const useDashboardStats = (
   params: Pick<
     DashboardParams,
-    'userId' | 'view' | 'startDate' | 'endDate' | 'weekStartsOn'
+    'userId' | 'view' | 'startDate' | 'endDate' | 'weekStartsOn' | 'selectedEmployeeId'
   > | null,
   options?: {
     enabled?: boolean;
@@ -23,7 +23,7 @@ export const useDashboardStats = (
           params.view,
           params.startDate,
           params.endDate
-        )
+        ).concat(params.selectedEmployeeId || 'all')
       : ['dashboard-stats-disabled'],
     queryFn: () => {
       if (!params) throw new Error('No params provided');

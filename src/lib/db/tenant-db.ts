@@ -142,27 +142,37 @@ export async function getTenantAwareConnection(request: AuthenticatedRequest) {
   // The middleware sets request.user.tenant when processing the request
   const userTenant = request.user.tenant;
   let dbName: string;
-  
+
   if (userTenant?.dbName) {
     dbName = userTenant.dbName;
-    const userType = request.user.isApplicantOnly ? 'applicant' : 'user';
-    console.log(
-      `🎯 Using database "${dbName}" from request.user.tenant for tenant: ${userTenant.url} (${userType}: ${userEmail})`
-    );
-    console.log(`📊 Tenant data from request:`, {
-      url: userTenant.url,
-      dbName: userTenant.dbName,
-      clientName: userTenant.clientName,
-      type: userTenant.type,
-    });
+    // Only log in development
+    if (process.env.NODE_ENV === 'development') {
+      const userType = request.user.isApplicantOnly ? 'applicant' : 'user';
+      console.log(
+        `🎯 Using database "${dbName}" from request.user.tenant for tenant: ${userTenant.url} (${userType}: ${userEmail})`
+      );
+      console.log(`📊 Tenant data from request:`, {
+        url: userTenant.url,
+        dbName: userTenant.dbName,
+        clientName: userTenant.clientName,
+        type: userTenant.type,
+      });
+    }
   } else {
     // PRIORITY 2: Fall back to Redis cache lookup
-    console.log(`⚠️ No tenant in request.user, falling back to Redis cache for: ${userEmail}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(
+        `⚠️ No tenant in request.user, falling back to Redis cache for: ${userEmail}`
+      );
+    }
     dbName = await getCurrentTenantDbName(userEmail);
   }
 
-  console.log(
-    `🔗 Opening tenant-aware connection to database: ${dbName} for user: ${userEmail}`
-  );
+  // Only log in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(
+      `🔗 Opening tenant-aware connection to database: ${dbName} for user: ${userEmail}`
+    );
+  }
   return mongoConn(dbName);
 }

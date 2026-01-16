@@ -24,6 +24,8 @@ export const routeConfig: RouteConfig = {
 
   staticAssets: [
     "/_next",
+    "/__nextjs_original-stack-frame", // ERROR-PROOF: Exclude Next.js error stack frames
+    "/__nextjs_", // ERROR-PROOF: Exclude all Next.js internal routes
     "/favicon.ico",
     "/images",
     "/powered-by-gig-blue.png",

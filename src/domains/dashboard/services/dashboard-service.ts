@@ -98,7 +98,7 @@ export class DashboardApiService {
   static async getDashboardStats(
     params: Pick<
       DashboardParams,
-      'userId' | 'view' | 'startDate' | 'endDate' | 'weekStartsOn'
+      'userId' | 'view' | 'startDate' | 'endDate' | 'weekStartsOn' | 'selectedEmployeeId'
     >
   ): Promise<DashboardData['stats']> {
     try {

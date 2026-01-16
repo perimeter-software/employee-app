@@ -28,7 +28,8 @@ export async function calculateDashboardStats(
   view: 'monthly' | 'weekly' | 'calendar',
   startDate?: string,
   endDate?: string,
-  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0,
+  selectedEmployeeId?: string
 ): Promise<DashboardStats> {
   try {
     const user = await db
@@ -45,6 +46,7 @@ export async function calculateDashboardStats(
         shiftsCompleted: 0,
         absences: 0,
         geofenceViolations: 0,
+        totalSpend: 0,
         weeklyChange: {
           hours: 0,
           shifts: 0,
@@ -54,19 +56,46 @@ export async function calculateDashboardStats(
       };
     }
 
+    const userType = (user as { userType?: string }).userType;
     const applicantId = user.applicantId;
     const dateRange = getDateRange(view, startDate, endDate, weekStartsOn);
+
+    // Build query for punches
+    // If selectedEmployeeId is provided, filter by that employee's applicantId
+    // Otherwise, for Client users, get all punches (no applicantId filter)
+    const punchQuery: {
+      timeIn: {
+        $gte: string;
+        $lte: string;
+      };
+      applicantId?: string | { $in: string[] };
+    } = {
+      timeIn: {
+        $gte: dateRange.start.toISOString(),
+        $lte: dateRange.end.toISOString(),
+      },
+    };
+
+    if (selectedEmployeeId) {
+      // Filter by specific employee
+      const selectedUser = await db
+        .collection('users')
+        .findOne({ _id: new ObjectId(selectedEmployeeId) });
+      if (selectedUser?.applicantId) {
+        punchQuery.applicantId = selectedUser.applicantId.toString();
+      }
+    } else if (userType === 'Client') {
+      // For Client users viewing all employees, don't filter by applicantId
+      // This will get all punches in the date range
+    } else {
+      // For non-Client users, filter by their own applicantId
+      punchQuery.applicantId = applicantId;
+    }
 
     // Get punches in date range
     const punches = await db
       .collection('timecard')
-      .find({
-        applicantId,
-        timeIn: {
-          $gte: dateRange.start.toISOString(),
-          $lte: dateRange.end.toISOString(),
-        },
-      })
+      .find(punchQuery)
       .toArray();
 
     // Calculate stats
@@ -131,6 +160,62 @@ export async function calculateDashboardStats(
 
     const absences = Math.max(0, scheduledShifts - shiftsCompleted);
 
+    // Calculate Total Spend (Bill Rate × Total Hours)
+    // Only calculate for Client users
+    let totalSpend = 0;
+    if (userType === 'Client') {
+      // Get unique job IDs from punches
+      const jobIds = [
+        ...new Set(punches.map((punch) => punch.jobId).filter(Boolean)),
+      ];
+
+      // Fetch jobs with shifts to get billRate
+      const jobsWithShifts = await db
+        .collection('jobs')
+        .find({
+          _id: { $in: jobIds.map((id) => new ObjectId(id)) },
+        })
+        .project({
+          _id: 1,
+          shifts: 1,
+        })
+        .toArray();
+
+      // Create a map of jobId -> shifts for quick lookup
+      const jobShiftsMap = new Map();
+      jobsWithShifts.forEach((job) => {
+        if (job.shifts && Array.isArray(job.shifts)) {
+          jobShiftsMap.set(job._id.toString(), job.shifts);
+        }
+      });
+
+      // Calculate total spend for each punch
+      for (const punch of punches) {
+        if (!punch.timeOut) continue; // Skip open punches
+
+        // Calculate hours for this punch
+        const start = new Date(punch.timeIn);
+        const end = new Date(punch.timeOut);
+        const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+
+        // Get billRate from job's shift
+        const jobId = punch.jobId?.toString();
+        const shiftSlug = punch.shiftSlug;
+
+        if (jobId && shiftSlug && jobShiftsMap.has(jobId)) {
+          const shifts = jobShiftsMap.get(jobId);
+          const shift = shifts.find((s: { slug?: string }) => s.slug === shiftSlug);
+
+          if (shift && shift.billRate && typeof shift.billRate === 'number') {
+            totalSpend += shift.billRate * hours;
+          }
+        }
+      }
+
+      // Round to 2 decimal places
+      totalSpend = Math.round(totalSpend * 100) / 100;
+    }
+
     // Calculate weekly changes (compare with previous period)
     let weeklyChange;
     if (view === 'weekly') {
@@ -140,15 +225,33 @@ export async function calculateDashboardStats(
       const previousWeekEnd = new Date(dateRange.end);
       previousWeekEnd.setDate(previousWeekEnd.getDate() - 7);
 
+      const previousPunchQuery: {
+        timeIn: {
+          $gte: string;
+          $lte: string;
+        };
+        applicantId?: string;
+      } = {
+        timeIn: {
+          $gte: previousWeekStart.toISOString(),
+          $lte: previousWeekEnd.toISOString(),
+        },
+      };
+
+      if (selectedEmployeeId) {
+        const selectedUser = await db
+          .collection('users')
+          .findOne({ _id: new ObjectId(selectedEmployeeId) });
+        if (selectedUser?.applicantId) {
+          previousPunchQuery.applicantId = selectedUser.applicantId.toString();
+        }
+      } else if (userType !== 'Client') {
+        previousPunchQuery.applicantId = applicantId;
+      }
+
       const previousPunches = await db
         .collection('timecard')
-        .find({
-          applicantId,
-          timeIn: {
-            $gte: previousWeekStart.toISOString(),
-            $lte: previousWeekEnd.toISOString(),
-          },
-        })
+        .find(previousPunchQuery)
         .toArray();
 
       const prevTotalHours = previousPunches.reduce((sum, punch) => {
@@ -190,6 +293,7 @@ export async function calculateDashboardStats(
       shiftsCompleted,
       absences,
       geofenceViolations,
+      totalSpend: userType === 'Client' ? totalSpend : undefined,
       weeklyChange,
     };
   } catch (error) {

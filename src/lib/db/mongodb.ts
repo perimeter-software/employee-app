@@ -72,16 +72,23 @@ export const mongoConn = async (
       throw new Error("MONGODB_CONNECTION_STRING is not defined");
     }
 
-    console.log("🔄 Connecting to MongoDB...");
+    // Only log in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log("🔄 Connecting to MongoDB...");
+    }
 
     // Connect with specific options to avoid client-side encryption issues
     const client = await MongoClient.connect(connectionString, {
       // Disable client-side field level encryption
       autoEncryption: undefined,
-      // Add connection options for stability
-      maxPoolSize: 10,
+      // Optimized connection pool for better performance
+      maxPoolSize: 50, // Increased from 10 for better concurrency
+      minPoolSize: 5, // Keep minimum connections alive
+      maxIdleTimeMS: 30000, // Close idle connections after 30s
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
+      // Connection pool monitoring
+      monitorCommands: false, // Disable command monitoring in dev for performance
     });
 
     // Use database names from environment variables with fallbacks
@@ -102,11 +109,14 @@ export const mongoConn = async (
     cachedDbTenant = dbTenant;
     cachedUserDb = userDb;
 
-    console.log("✅ Connected to MongoDB databases:", {
-      main: db.databaseName,
-      tenant: dbTenant.databaseName,
-      user: userDb.databaseName,
-    });
+    // Only log in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log("✅ Connected to MongoDB databases:", {
+        main: db.databaseName,
+        tenant: dbTenant.databaseName,
+        user: userDb.databaseName,
+      });
+    }
 
     return { client, db, dbTenant, userDb };
   } catch (error) {

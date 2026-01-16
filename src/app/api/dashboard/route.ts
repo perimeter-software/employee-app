@@ -23,6 +23,7 @@ async function getDashboardDataHandler(request: AuthenticatedRequest) {
       endDate,
       userId: requestUserId,
       weekStartsOn = 0,
+      selectedEmployeeId,
     } = body;
 
     const userId = user._id || requestUserId;
@@ -38,6 +39,18 @@ async function getDashboardDataHandler(request: AuthenticatedRequest) {
       );
     }
 
+    // Only allow Client users to use employee filter
+    if (selectedEmployeeId && user.userType !== 'Client') {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Employee filter is only available for Client users',
+          error: 'UNAUTHORIZED',
+        },
+        { status: 403 }
+      );
+    }
+
     const { db } = await getTenantAwareConnection(request);
 
     // Get all dashboard data in parallel
@@ -49,7 +62,8 @@ async function getDashboardDataHandler(request: AuthenticatedRequest) {
           view,
           startDate,
           endDate,
-          weekStartsOn
+          weekStartsOn,
+          selectedEmployeeId
         ),
         getAttendanceData(db, userId, view, startDate, endDate, weekStartsOn),
         getPerformanceMetrics(db, userId, startDate, endDate, weekStartsOn),

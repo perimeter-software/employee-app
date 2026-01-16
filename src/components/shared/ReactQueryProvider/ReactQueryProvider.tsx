@@ -19,8 +19,8 @@ const ReactQueryProvider: React.FC<ReactQueryProviderProps> = ({
         defaultOptions: {
           queries: {
             // Global defaults for all queries
-            staleTime: 60 * 1000, // 1 minute
-            gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
+            staleTime: 5 * 60 * 1000, // 5 minutes (increased from 1 minute)
+            gcTime: 30 * 60 * 1000, // 30 minutes (increased from 10 minutes)
             retry: (failureCount, error) => {
               // Don't retry on auth errors
               if (
@@ -33,10 +33,11 @@ const ReactQueryProvider: React.FC<ReactQueryProviderProps> = ({
               if (error.message.includes("422")) {
                 return false;
               }
-              return failureCount < 3;
+              return failureCount < 2; // Reduced from 3 to 2
             },
             refetchOnWindowFocus: false,
-            refetchOnReconnect: true,
+            refetchOnReconnect: false, // Changed to false to prevent unnecessary refetches
+            refetchOnMount: false, // Don't refetch on mount if data is fresh
           },
           mutations: {
             // Global defaults for all mutations

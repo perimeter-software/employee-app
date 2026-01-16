@@ -12,7 +12,10 @@ export async function middleware(request: NextRequest) {
 
   // Always let Auth0 handle auth routes
   if (isAuthRoute(pathname)) {
-    console.log(`🔐 Auth route detected: ${pathname}`);
+    // Only log in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🔐 Auth route detected: ${pathname}`);
+    }
     return null; // Let the API route handle it
   }
 
@@ -21,8 +24,19 @@ export async function middleware(request: NextRequest) {
     return null;
   }
 
-  // Run middleware chain
-  console.log(`📝 Request to: ${pathname}`);
+  // ERROR-PROOF: Skip Next.js internal routes (they shouldn't go through middleware)
+  if (
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/__nextjs_original-stack-frame') ||
+    pathname.startsWith('/__nextjs_')
+  ) {
+    return null;
+  }
+
+  // Only log in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`📝 Request to: ${pathname}`);
+  }
 
   try {
     // First run logging
