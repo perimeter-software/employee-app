@@ -11,7 +11,7 @@ import {
   checkForPreviousPunchesWithinShift,
   getTotalWorkedHoursForWeek,
 } from '@/domains/punch/utils';
-import { ObjectId as ObjectIdFunction } from 'mongodb';
+import { ObjectId as ObjectIdFunction, ObjectId } from 'mongodb';
 import { parseClockInCoordinates } from '@/lib/utils';
 import { ClockInCoordinates, Shift } from '@/domains/job';
 import { findJobByjobId, getUserType } from '@/domains/user/utils';
@@ -22,6 +22,8 @@ import {
   jobHasShiftForUser,
 } from '@/domains/punch/utils/shift-job-utils';
 import { Punch, PunchNoId } from '@/domains/punch';
+import { createNotification } from '@/domains/notification/utils/mongo-notification-utils';
+import { convertToJSON } from '@/lib/utils/mongo-utils';
 
 // Utility Functions
 const calculateDistance = (
@@ -436,6 +438,11 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
         }
       }
 
+      // Check if managerNote was added or updated
+      const managerNoteAdded = 
+        punch.managerNote && 
+        (!originalPunch.managerNote || originalPunch.managerNote !== punch.managerNote);
+
       const updateData: Punch = {
         ...punch,
         modifiedDate: new Date().toISOString(),
@@ -449,6 +456,73 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
           { error: 'update-failed', message: 'Error updating punch' },
           { status: 500 }
         );
+      }
+
+      // Send notification to venue manager if managerNote was added/updated
+      if (managerNoteAdded && punch.managerNote) {
+        try {
+          // Fetch job to get venueSlug
+          const job = await findJobByjobId(db, punch.jobId);
+          
+          if (job && job.venueSlug) {
+            // Fetch venue to get manager info
+            const venue = await db.collection('venues').findOne(
+              { slug: job.venueSlug },
+              { projection: { venueContact1: 1, venueContact2: 1 } }
+            );
+
+            if (venue?.venueContact1?.email) {
+              const managerEmail = venue.venueContact1.email;
+              
+              // Find user/applicant by email to get userId and applicantId
+              const managerUser = await db.collection('users').findOne(
+                { emailAddress: managerEmail }
+              );
+
+              if (managerUser) {
+                const managerApplicant = managerUser.applicantId
+                  ? await db.collection('applicants').findOne({
+                      _id: new ObjectIdFunction(managerUser.applicantId),
+                    })
+                  : null;
+
+                // Get employee/applicant info for the punch
+                const employeeApplicant = await db.collection('applicants').findOne({
+                  _id: new ObjectIdFunction(punch.applicantId),
+                });
+
+                const employeeName = employeeApplicant
+                  ? `${employeeApplicant.firstName || ''} ${employeeApplicant.lastName || ''}`.trim()
+                  : 'Employee';
+
+                // Create notification
+                const notificationBody = `A manager note has been added to a punch for ${employeeName}.\n\nJob: ${job.title || 'N/A'}\nNote: ${punch.managerNote}`;
+
+                await createNotification(db, {
+                  fromUserId: user._id || '',
+                  fromFirstName: user.firstName || user.name?.split(' ')[0] || 'Client',
+                  fromLastName: user.lastName || user.name?.split(' ').slice(1).join(' ') || 'User',
+                  recipient: {
+                    userId: managerUser._id?.toString() || '',
+                    applicantId: managerUser.applicantId?.toString() || managerApplicant?._id?.toString() || '',
+                    firstName: venue.venueContact1.firstName || '',
+                    lastName: venue.venueContact1.lastName || '',
+                  },
+                  msgType: 'system',
+                  subject: 'Manager Note Added to Punch',
+                  msgTemplate: 'system',
+                  body: notificationBody,
+                  profileImg: '',
+                  status: 'active',
+                  type: 'info',
+                });
+              }
+            }
+          }
+        } catch (notificationError) {
+          // Don't fail punch update if notification fails
+          console.error('Error sending notification to venue manager:', notificationError);
+        }
       }
     } else {
       return NextResponse.json(

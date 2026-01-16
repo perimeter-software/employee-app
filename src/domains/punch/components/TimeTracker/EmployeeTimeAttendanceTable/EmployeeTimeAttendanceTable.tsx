@@ -7,7 +7,7 @@ import { TableColumn } from '@/components/ui/Table/types';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
-import { ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pencil, MapPin } from 'lucide-react';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import {
   Select,
@@ -31,6 +31,7 @@ import Calendar from '@/components/ui/Calendar/Calendar';
 import type { CalendarEvent, Mode } from '@/components/ui/Calendar';
 import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
 import { EmployeePunchDetailsModal } from '../EmployeePunchDetailsModal/EmployeePunchDetailsModal';
+import { MapModal } from '../MapModal/MapModal';
 
 interface EmployeePunch extends Record<string, unknown> {
   _id: string;
@@ -232,6 +233,9 @@ export function EmployeeTimeAttendanceTable({
   // Selected shift state
   const [selectedShiftSlug, setSelectedShiftSlug] = useState<string>('all');
 
+  // Geofence modal state
+  const [showGeofenceModal, setShowGeofenceModal] = useState(false);
+
   // Base date for navigation
   const [baseDate, setBaseDate] = useState(() => {
     const now = new Date();
@@ -261,6 +265,128 @@ export function EmployeeTimeAttendanceTable({
     }
     return availableJobs.find((job) => job._id === selectedJobId);
   }, [selectedJobId, availableJobs]);
+
+  // Fetch venue location data if job doesn't have location
+  const { data: venueLocationData } = useQuery<{
+    latitude: number;
+    longitude: number;
+    name: string;
+    address: string;
+    geoFenceRadius: number;
+    graceDistance?: number;
+  }>({
+    queryKey: ['venueLocation', selectedJob?.venueSlug],
+    queryFn: async () => {
+      if (!selectedJob?.venueSlug) return null;
+      const response = await fetch(
+        `/api/venues/${selectedJob.venueSlug}/location`
+      );
+      if (!response.ok) return null;
+      const result = await response.json();
+      return result.data;
+    },
+    enabled: !!selectedJob?.venueSlug && !selectedJob?.location,
+    staleTime: 300000, // Cache for 5 minutes
+  });
+
+  // Extract geofence location data from job or venue (following stadium-people pattern)
+  const geofenceLocationData = useMemo(() => {
+    if (!selectedJob) return null;
+
+    const job = selectedJob as GignologyJob & {
+      venueSlug?: string;
+      venueName?: string;
+      location?: {
+        latitude?: number;
+        longitude?: number;
+        locationName?: string;
+        address?: string;
+        city?: string;
+        state?: string;
+        geocoordinates?: {
+          coordinates?: [number, number]; // [longitude, latitude]
+          geoFenceRadius?: number;
+          type?: string;
+        };
+        graceDistanceFeet?: number;
+      };
+    };
+
+    // Priority 1: Check job.location with geocoordinates.coordinates array
+    if (
+      job.location?.geocoordinates?.coordinates &&
+      Array.isArray(job.location.geocoordinates.coordinates)
+    ) {
+      const [longitude, latitude] = job.location.geocoordinates.coordinates;
+      if (
+        typeof latitude === 'number' &&
+        typeof longitude === 'number' &&
+        latitude !== 0 &&
+        longitude !== 0
+      ) {
+        const geoFenceRadius =
+          job.location.geocoordinates.geoFenceRadius ||
+          (job.location.graceDistanceFeet
+            ? job.location.graceDistanceFeet * 0.3048
+            : 100);
+
+        const graceDistance = job.location.graceDistanceFeet
+          ? job.location.graceDistanceFeet * 0.3048
+          : undefined;
+
+        return {
+          latitude,
+          longitude,
+          name: job.location.locationName || job.title,
+          address:
+            job.location.address ||
+            `${job.location.city || ''}, ${job.location.state || ''}`.trim() ||
+            `${job.venueName || ''}`.trim(),
+          geoFenceRadius,
+          graceDistance,
+        };
+      }
+    }
+
+    // Priority 2: Check job.location with direct latitude/longitude
+    if (
+      job.location?.latitude &&
+      job.location?.longitude &&
+      typeof job.location.latitude === 'number' &&
+      typeof job.location.longitude === 'number' &&
+      job.location.latitude !== 0 &&
+      job.location.longitude !== 0
+    ) {
+      const geoFenceRadius =
+        job.location.geocoordinates?.geoFenceRadius ||
+        (job.location.graceDistanceFeet
+          ? job.location.graceDistanceFeet * 0.3048
+          : 100);
+
+      const graceDistance = job.location.graceDistanceFeet
+        ? job.location.graceDistanceFeet * 0.3048
+        : undefined;
+
+      return {
+        latitude: job.location.latitude,
+        longitude: job.location.longitude,
+        name: job.location.locationName || job.title,
+        address:
+          job.location.address ||
+          `${job.location.city || ''}, ${job.location.state || ''}`.trim() ||
+          `${job.venueName || ''}`.trim(),
+        geoFenceRadius,
+        graceDistance,
+      };
+    }
+
+    // Priority 3: Use venue location data (from venues.locations array with primaryLocation)
+    if (venueLocationData) {
+      return venueLocationData;
+    }
+
+    return null;
+  }, [selectedJob, venueLocationData]);
 
   // Check if selected job already has shifts
   const selectedJobHasShifts = useMemo(() => {
@@ -1202,6 +1328,23 @@ export function EmployeeTimeAttendanceTable({
             </div>
           )}
 
+          {/* Geofence Map Button - Only show when a job is selected and has location data */}
+          {selectedJobId !== 'all' && selectedJob && geofenceLocationData && (
+            <div className="flex flex-col">
+              <label className="block text-sm font-medium text-gray-700 mb-2 opacity-0 pointer-events-none">
+                Map
+              </label>
+              <Button
+                variant="outline"
+                onClick={() => setShowGeofenceModal(true)}
+                className="h-10 w-10 p-0 flex items-center justify-center bg-white hover:bg-gray-50 border-gray-300 text-gray-700 shadow-sm"
+                title="View Geofence Map"
+              >
+                <MapPin className="h-5 w-5" />
+              </Button>
+            </div>
+          )}
+
           {/* Currently Clocked In Summary Card */}
           <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 min-w-[240px]">
             <div className="flex items-center gap-4">
@@ -1380,6 +1523,23 @@ export function EmployeeTimeAttendanceTable({
           // The modal component will handle the refetch
         }}
       />
+
+      {/* Geofence Map Modal */}
+      {selectedJob && geofenceLocationData && (
+        <MapModal
+          isOpen={showGeofenceModal}
+          onClose={() => setShowGeofenceModal(false)}
+          jobLocation={{
+            latitude: geofenceLocationData.latitude,
+            longitude: geofenceLocationData.longitude,
+            name: geofenceLocationData.name,
+            address: geofenceLocationData.address,
+          }}
+          geoFenceRadius={geofenceLocationData.geoFenceRadius}
+          graceDistance={geofenceLocationData.graceDistance}
+          title={`Geofence: ${geofenceLocationData.name}`}
+        />
+      )}
     </div>
   );
 }

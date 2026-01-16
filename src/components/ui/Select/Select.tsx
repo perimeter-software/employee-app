@@ -76,7 +76,9 @@ const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerProps>(
 SelectTrigger.displayName = "SelectTrigger";
 
 const SelectContent = ({ children }: SelectContentProps) => (
-  <DropdownMenuContent className="min-w-[8rem]">{children}</DropdownMenuContent>
+  <DropdownMenuContent className="min-w-[8rem] max-h-60 overflow-y-auto overflow-x-hidden">
+    {children}
+  </DropdownMenuContent>
 );
 
 const SelectItem = ({ value, children, onSelect }: SelectItemProps) => {

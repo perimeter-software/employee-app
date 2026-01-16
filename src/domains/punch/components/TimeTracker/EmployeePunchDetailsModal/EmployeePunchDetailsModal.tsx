@@ -99,8 +99,8 @@ export function EmployeePunchDetailsModal({
   const userLocation = useMemo(() => {
     if (!clockInCoords) return null;
     return {
-      lat: clockInCoords.latitude,
-      lng: clockInCoords.longitude,
+      latitude: clockInCoords.latitude,
+      longitude: clockInCoords.longitude,
     };
   }, [clockInCoords]);
 
@@ -111,8 +111,8 @@ export function EmployeePunchDetailsModal({
     }).jobLocation;
     if (!jobLoc) return null;
     return {
-      lat: jobLoc.latitude,
-      lng: jobLoc.longitude,
+      latitude: jobLoc.latitude,
+      longitude: jobLoc.longitude,
     };
   }, [punch]);
 

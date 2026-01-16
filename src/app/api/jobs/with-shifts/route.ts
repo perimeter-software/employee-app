@@ -24,35 +24,97 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
     // Connect to tenant-specific database
     const { db } = await getTenantAwareConnection(request);
 
-    // Fetch all jobs that have shifts
-    // For Client role, we want all jobs with shifts (not just user's jobs)
+    // OPTIMIZATION: Fetch only active jobs with shifts, limit results, and optimize projection
+    // Filter by status to avoid fetching inactive/old jobs (case-insensitive)
+    const query = {
+      $or: [{ shiftJob: 'Yes' }, { shiftJob: true }],
+      shifts: { $exists: true, $ne: [] },
+      // Only fetch active jobs to reduce dataset size (exclude deleted/inactive)
+      status: { $nin: ['Deleted', 'deleted', 'Inactive', 'inactive'] },
+    };
+
+    // OPTIMIZATION: Limit shifts projection to only essential fields (slug and shiftName)
+    // This dramatically reduces data transfer for jobs with many shifts
     const jobs = await db
       .collection('jobs')
-      .find({
-        $or: [
-          { shiftJob: 'Yes' },
-          { shiftJob: true },
-        ],
-        shifts: { $exists: true, $ne: [] },
-      })
+      .find(query)
       .project({
         _id: 1,
         title: 1,
         jobSlug: 1,
-        shifts: 1,
         venueName: 1,
-        location: 1,
+        venueSlug: 1, // Need venueSlug to fetch venue location if job location is missing
+        // OPTIMIZATION: Only fetch minimal location data needed for geofence
+        'location.latitude': 1,
+        'location.longitude': 1,
+        'location.locationName': 1,
+        'location.address': 1,
+        'location.city': 1,
+        'location.state': 1,
+        'location.geocoordinates.coordinates': 1, // [longitude, latitude] array
+        'location.geocoordinates.geoFenceRadius': 1,
+        'location.graceDistanceFeet': 1,
+        // OPTIMIZATION: Project only essential shift fields to reduce payload
+        'shifts.slug': 1,
+        'shifts.shiftName': 1,
+        'shifts.shiftStartDate': 1,
+        'shifts.shiftEndDate': 1,
       })
+      .sort({ modifiedDate: -1 }) // Most recently modified first
+      .limit(500) // OPTIMIZATION: Reasonable limit to prevent excessive data transfer
       .toArray();
 
-    const convertedJobs = jobs.map((job) => {
-      const converted = convertToJSON(job);
-      return {
-        ...converted,
-        _id: job._id.toString(),
-        shifts: converted.shifts || [],
-      } as GignologyJob;
-    });
+    // OPTIMIZATION: Process in batches and filter out jobs with empty shifts after projection
+    const convertedJobs = jobs
+      .map((job) => {
+        const converted = convertToJSON(job) as {
+          shifts?: Array<{
+            slug?: string;
+            shiftName?: string;
+            shiftStartDate?: string;
+            shiftEndDate?: string;
+          }>;
+          title?: string;
+          jobSlug?: string;
+          venueName?: string;
+          venueSlug?: string;
+          location?: {
+            latitude?: number;
+            longitude?: number;
+            locationName?: string;
+            address?: string;
+            city?: string;
+            state?: string;
+            geocoordinates?: {
+              coordinates?: [number, number]; // [longitude, latitude]
+              geoFenceRadius?: number;
+              type?: string;
+            };
+            graceDistanceFeet?: number;
+          };
+        } | null;
+
+        if (!converted) {
+          return null;
+        }
+
+        // Filter out any jobs that ended up with empty shifts after projection
+        const shifts = (converted.shifts || []).filter(
+          (shift: { slug?: string; shiftName?: string }) =>
+            shift.slug && shift.shiftName
+        );
+
+        if (shifts.length === 0) {
+          return null; // Skip jobs with no valid shifts
+        }
+
+        return {
+          ...converted,
+          _id: job._id.toString(),
+          shifts,
+        } as GignologyJob;
+      })
+      .filter((job): job is GignologyJob => job !== null);
 
     return NextResponse.json(
       {

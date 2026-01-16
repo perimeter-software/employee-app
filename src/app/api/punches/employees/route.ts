@@ -391,17 +391,22 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
     }
 
     // Fetch jobs with shifts
+    // Convert jobIds to ObjectId, filtering out invalid ones
+    const validJobObjectIds = uniqueJobIds
+      .map((id) => {
+        try {
+          return new ObjectId(id);
+        } catch {
+          return null;
+        }
+      })
+      .filter((id): id is ObjectId => id !== null);
+
     const jobDocs = await db
       .collection('jobs')
       .find({
         _id: {
-          $in: uniqueJobIds.map((id) => {
-            try {
-              return new ObjectId(id);
-            } catch {
-              return id;
-            }
-          }),
+          $in: validJobObjectIds,
         },
       })
       .toArray();
