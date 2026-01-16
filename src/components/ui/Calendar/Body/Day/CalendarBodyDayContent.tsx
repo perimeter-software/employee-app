@@ -14,9 +14,37 @@ export default function CalendarBodyDayContent({
 }) {
   const { events, mode } = useCalendarContext();
 
-  const dayEvents = events.filter((event: CalendarEventType) =>
-    isSameDay(event.start, date)
-  );
+  // Filter events for this day - ERROR-PROOF: Only show events that actually occur on this day
+  // For week view: Only show events on the day they START (prevents duplication)
+  // For day view: Show events that start OR span this day
+  const dayEvents = events.filter((event: CalendarEventType) => {
+    // Normalize dates to start of day for comparison
+    const eventStartDay = new Date(event.start);
+    eventStartDay.setHours(0, 0, 0, 0);
+    const eventEndDay = new Date(event.end);
+    eventEndDay.setHours(0, 0, 0, 0);
+    const targetDay = new Date(date);
+    targetDay.setHours(0, 0, 0, 0);
+    
+    // Primary check: Event starts on this day
+    const startsOnDay = eventStartDay.getTime() === targetDay.getTime();
+    
+    // For week view: ONLY show events that start on this day (prevents duplication)
+    if (mode === 'week') {
+      return startsOnDay;
+    }
+    
+    // For day view: Show events that start, end, or span this day
+    const endsOnDay = eventEndDay.getTime() === targetDay.getTime();
+    
+    // Event spans this day if it starts before this day AND ends after this day
+    const spansDay = eventStartDay.getTime() < targetDay.getTime() && 
+                      eventEndDay.getTime() > targetDay.getTime();
+    
+    const matches = startsOnDay || endsOnDay || spansDay;
+    
+    return matches;
+  });
 
   return (
     <div className="flex flex-col flex-grow">

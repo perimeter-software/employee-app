@@ -16,7 +16,10 @@ export async function authMiddleware(
     // Simple session cookie check for middleware
     // Full session validation will happen in API route handlers
     if (!hasSessionCookie(request)) {
-      console.log(`Unauthenticated access to: ${request.nextUrl.pathname}`);
+      // Only log in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Unauthenticated access to: ${request.nextUrl.pathname}`);
+      }
 
       const returnUrl = createReturnUrl(request);
       // Redirect to app's login page (/) instead of /api/auth/login
@@ -30,7 +33,10 @@ export async function authMiddleware(
       return Response.redirect(redirectUrl);
     }
 
-    console.log(`✅ Session cookie found for: ${request.nextUrl.pathname}`);
+    // Only log in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`✅ Session cookie found for: ${request.nextUrl.pathname}`);
+    }
 
     // Continue with session cookie present
     const nextResponse = Response.next();

@@ -5,6 +5,7 @@ export interface DashboardStats {
   shiftsCompleted: number;
   absences: number;
   geofenceViolations: number;
+  totalSpend?: number;
   weeklyChange?: {
     hours: number;
     shifts: number;
@@ -75,6 +76,7 @@ export interface DashboardParams {
   endDate: string;
   userId: string;
   weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  selectedEmployeeId?: string;
 }
 
 export interface DashboardResponse {

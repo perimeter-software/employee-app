@@ -132,8 +132,10 @@ export async function loggingMiddleware(
     userAgent: request.headers.get("user-agent") || undefined,
   };
 
-  // Log request start
-  logger.info("Middleware request started", requestData);
+  // Only log in development to reduce overhead
+  if (process.env.NODE_ENV === 'development') {
+    logger.info("Middleware request started", requestData);
+  }
 
   return null;
 }
