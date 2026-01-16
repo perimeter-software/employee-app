@@ -34,6 +34,7 @@ interface MapModalProps {
     address?: string;
   } | null;
   geoFenceRadius?: number;
+  graceDistance?: number; // Grace distance in meters (converted from feet)
   title?: string;
 }
 
@@ -68,6 +69,7 @@ export const MapModal = React.memo(function GoogleMapsModal({
   userLocation,
   jobLocation,
   geoFenceRadius = 100,
+  graceDistance,
   title = 'Location Map',
 }: MapModalProps) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -236,7 +238,23 @@ export const MapModal = React.memo(function GoogleMapsModal({
           jobInfoWindow.open(map, jobMarker);
         });
 
-        // Add geofence circle around job location
+        // Add grace distance circle (outer, yellow) if available
+        if (graceDistance && graceDistance > 0) {
+          const totalGraceRadius = geoFenceRadius + graceDistance;
+          new google.maps.Circle({
+            strokeColor: '#F7C501', // Yellow
+            strokeOpacity: 0.8,
+            strokeWeight: 2,
+            fillColor: '#F7C501',
+            fillOpacity: 0.15,
+            map,
+            center: { lat: jobLocation.latitude, lng: jobLocation.longitude },
+            radius: totalGraceRadius,
+            zIndex: -1, // Behind geofence circle
+          });
+        }
+
+        // Add geofence circle around job location (inner, green/red)
         if (geoFenceRadius > 0) {
           new google.maps.Circle({
             strokeColor: isWithinGeofence ? '#10B981' : '#EF4444',
@@ -247,7 +265,7 @@ export const MapModal = React.memo(function GoogleMapsModal({
             map,
             center: { lat: jobLocation.latitude, lng: jobLocation.longitude },
             radius: geoFenceRadius,
-            zIndex: 0, // Lowest z-index
+            zIndex: 0, // Above grace distance circle
           });
         }
       }
@@ -264,6 +282,7 @@ export const MapModal = React.memo(function GoogleMapsModal({
     userLocation,
     jobLocation,
     geoFenceRadius,
+    graceDistance,
     isWithinGeofence,
   ]);
 
@@ -362,6 +381,9 @@ export const MapModal = React.memo(function GoogleMapsModal({
               <div className="text-sm text-gray-600">
                 Distance from job site • Required:{' '}
                 {formatDistance(geoFenceRadius)}
+                {graceDistance && graceDistance > 0 && (
+                  <span> • Grace: {formatDistance(graceDistance)}</span>
+                )}
               </div>
             </div>
           )}
@@ -429,6 +451,18 @@ export const MapModal = React.memo(function GoogleMapsModal({
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-blue-600 rounded-full border-2 border-white shadow"></div>
                   <span>Job Site</span>
+                </div>
+              )}
+              {geoFenceRadius > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 border-2 border-green-600 rounded-full bg-green-600 bg-opacity-15"></div>
+                  <span>Geofence ({formatDistance(geoFenceRadius)})</span>
+                </div>
+              )}
+              {graceDistance && graceDistance > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 border-2 border-yellow-500 rounded-full bg-yellow-500 bg-opacity-15"></div>
+                  <span>Grace ({formatDistance(graceDistance)})</span>
                 </div>
               )}
             </div>

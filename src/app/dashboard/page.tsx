@@ -26,6 +26,7 @@ import {
   CheckCircle,
   BarChart3,
   Target,
+  DollarSign,
 } from 'lucide-react';
 import {
   BarChart,
@@ -56,8 +57,10 @@ import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week
 import { Table } from '@/components/ui/Table';
 import { TableColumn } from '@/components/ui/Table/types';
 import { clsxm } from '@/lib/utils';
+import ReactSelect from 'react-select';
 
 // Dashboard domain imports
+import { useQuery } from '@tanstack/react-query';
 import { useDashboardStats } from '@/domains/dashboard/hooks/use-dashboard-stats';
 import { useAttendanceData } from '@/domains/dashboard/hooks/use-attendance-data';
 import { usePerformanceMetrics } from '@/domains/dashboard/hooks/use-performance-metrics';
@@ -225,16 +228,21 @@ const StatsCards = ({
   view,
   statsData,
   isLoading,
+  isClient,
 }: {
   view: 'monthly' | 'weekly' | 'calendar';
   statsData?: DashboardStats;
   isLoading?: boolean;
+  isClient?: boolean;
 }) => {
   // Show loading state
   if (isLoading) {
+    const cardCount = isClient ? 5 : 4;
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[1, 2, 3, 4].map((i) => (
+      <div
+        className={`grid grid-cols-1 sm:grid-cols-2 ${isClient ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6`}
+      >
+        {Array.from({ length: cardCount }).map((_, i) => (
           <Card key={i}>
             <CardContent className="p-6">
               <div className="animate-pulse">
@@ -321,7 +329,9 @@ const StatsCards = ({
 
   // Weekly and Calendar view stats
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div
+      className={`grid grid-cols-1 sm:grid-cols-2 ${isClient ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6`}
+    >
       <Card>
         <CardContent className="p-6">
           <div className="flex items-center justify-between">
@@ -412,6 +422,31 @@ const StatsCards = ({
           </div>
         </CardContent>
       </Card>
+
+      {/* Total Spend Card - Only for Client users */}
+      {isClient && (
+        <Card>
+          <CardContent className="p-6">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <DollarSign className="w-4 h-4 text-purple-500" />
+                <p className="text-sm text-gray-600">Total Spend</p>
+              </div>
+              <p className="text-3xl font-bold text-purple-600">
+                {statsData?.totalSpend !== undefined
+                  ? `$${statsData.totalSpend.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}`
+                  : '$0.00'}
+              </p>
+              <div className="flex items-center gap-1 mt-2">
+                <span className="text-xs text-gray-500">Bill Rate × Hours</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
@@ -784,6 +819,33 @@ const DashboardPage: NextPage = () => {
   );
   const [showShiftModal, setShowShiftModal] = useState(false);
 
+  // Employee filter state (only for Client users)
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(
+    null
+  );
+  const isClient = currentUser?.userType === 'Client';
+
+  // Fetch employees list (only for Client users)
+  const { data: employeesList = [] } = useQuery<
+    Array<{
+      _id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      fullName: string;
+    }>
+  >({
+    queryKey: ['employeesList'],
+    queryFn: async () => {
+      const response = await fetch('/api/employees/list');
+      if (!response.ok) return [];
+      const result = await response.json();
+      return result.data || [];
+    },
+    enabled: isClient,
+    staleTime: 300000, // Cache for 5 minutes
+  });
+
   // Calendar date range for punch data fetching
   const calendarDateRange = useMemo(() => {
     // For calendar view, fetch a month range around current date
@@ -874,6 +936,11 @@ const DashboardPage: NextPage = () => {
       weekStartsOn || 0
     );
 
+    // Add selectedEmployeeId for Client users
+    if (isClient && selectedEmployeeId) {
+      params.selectedEmployeeId = selectedEmployeeId;
+    }
+
     // Debug log to verify parameters are changing
     console.log('Dashboard params updated:', {
       view: dashboardView,
@@ -881,10 +948,18 @@ const DashboardPage: NextPage = () => {
       startDate: params.startDate,
       endDate: params.endDate,
       weekStartsOn,
+      selectedEmployeeId,
     });
 
     return params;
-  }, [currentUser?._id, dashboardView, currentDate, weekStartsOn]);
+  }, [
+    currentUser?._id,
+    dashboardView,
+    currentDate,
+    weekStartsOn,
+    isClient,
+    selectedEmployeeId,
+  ]);
 
   // Fetch dashboard data using our hooks
   const { data: statsData, isLoading: statsLoading } = useDashboardStats(
@@ -987,6 +1062,85 @@ const DashboardPage: NextPage = () => {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <div className="flex items-center gap-4">
+            {/* Employee Filter - Only for Client users */}
+            {isClient && (
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Employee:
+                </label>
+                <div className="w-[250px]">
+                  <ReactSelect
+                    value={
+                      selectedEmployeeId
+                        ? {
+                            value: selectedEmployeeId,
+                            label:
+                              employeesList.find(
+                                (e) => e._id === selectedEmployeeId
+                              )?.fullName || 'Employee',
+                          }
+                        : { value: 'all', label: 'All Employees' }
+                    }
+                    onChange={(option) => {
+                      setSelectedEmployeeId(
+                        option?.value === 'all' ? null : option?.value || null
+                      );
+                    }}
+                    options={[
+                      { value: 'all', label: 'All Employees' },
+                      ...employeesList.map((employee) => ({
+                        value: employee._id,
+                        label: employee.fullName,
+                      })),
+                    ]}
+                    isSearchable
+                    placeholder="Search employees..."
+                    className="react-select-container"
+                    classNamePrefix="react-select"
+                    styles={{
+                      control: (base) => ({
+                        ...base,
+                        minHeight: '40px',
+                        fontSize: '14px',
+                        borderColor: '#d1d5db',
+                        '&:hover': {
+                          borderColor: '#9ca3af',
+                        },
+                      }),
+                      menu: (base) => ({
+                        ...base,
+                        zIndex: 9999,
+                      }),
+                      option: (base, state) => ({
+                        ...base,
+                        fontSize: '14px',
+                        backgroundColor: state.isSelected
+                          ? '#3b82f6'
+                          : state.isFocused
+                            ? '#f3f4f6'
+                            : 'white',
+                        color: state.isSelected ? 'white' : '#111827',
+                        '&:active': {
+                          backgroundColor: state.isSelected
+                            ? '#2563eb'
+                            : '#e5e7eb',
+                        },
+                      }),
+                    }}
+                    theme={(theme) => ({
+                      ...theme,
+                      colors: {
+                        ...theme.colors,
+                        primary: '#3b82f6',
+                        primary25: '#f3f4f6',
+                        primary50: '#e5e7eb',
+                        primary75: '#d1d5db',
+                      },
+                    })}
+                  />
+                </div>
+              </div>
+            )}
             {/* Date Navigation for all views */}
             <div className="flex items-center gap-2">
               <Button
@@ -1093,6 +1247,7 @@ const DashboardPage: NextPage = () => {
           view={dashboardView}
           statsData={statsData}
           isLoading={statsLoading}
+          isClient={isClient}
         />
 
         {/* Monthly View */}

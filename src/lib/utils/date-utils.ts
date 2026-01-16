@@ -233,8 +233,8 @@ export function getWeekStartsOnFromWorkWeek(
   // Parse the work week string to get the start day
   const startDay = workWeek.split('-')[0]?.trim().toLowerCase();
 
-  // Debug logging to see what's being parsed
-  console.log('Parsing work week:', workWeek, 'Start day:', startDay);
+  // ERROR-PROOF: Removed console.log to prevent infinite loops
+  // The function is called frequently and logging causes performance issues
 
   switch (startDay) {
     case 'sun':

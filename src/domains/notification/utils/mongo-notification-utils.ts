@@ -121,3 +121,42 @@ export async function markAllUnreadNotificationsAsRead(
     throw error;
   }
 }
+
+export async function createNotification(
+  db: Db,
+  notificationData: Omit<Notification, '_id' | 'sendTime'>
+): Promise<Notification | null> {
+  if (!notificationData) {
+    throw new Error('Invalid notification data');
+  }
+
+  const Notifications = db.collection('notifications');
+
+  try {
+    const notificationDoc = {
+      ...notificationData,
+      sendTime: new Date(),
+      _id: new ObjectId(),
+    };
+
+    const result = await Notifications.insertOne(notificationDoc);
+
+    if (!result.insertedId) {
+      return null;
+    }
+
+    const insertedDoc = await Notifications.findOne({
+      _id: result.insertedId,
+    });
+
+    if (!insertedDoc) {
+      return null;
+    }
+
+    const notification = convertToJSON(insertedDoc) as Notification;
+    return notification;
+  } catch (error) {
+    console.error('Error creating notification:', error);
+    throw error;
+  }
+}

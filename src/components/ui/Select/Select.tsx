@@ -34,6 +34,7 @@ interface SelectItemProps {
 
 interface SelectValueProps {
   placeholder?: string;
+  displayText?: string;
 }
 
 const SelectContext = React.createContext<{
@@ -75,7 +76,9 @@ const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerProps>(
 SelectTrigger.displayName = "SelectTrigger";
 
 const SelectContent = ({ children }: SelectContentProps) => (
-  <DropdownMenuContent className="min-w-[8rem]">{children}</DropdownMenuContent>
+  <DropdownMenuContent className="min-w-[8rem] max-h-60 overflow-y-auto overflow-x-hidden">
+    {children}
+  </DropdownMenuContent>
 );
 
 const SelectItem = ({ value, children, onSelect }: SelectItemProps) => {
@@ -98,13 +101,11 @@ const SelectItem = ({ value, children, onSelect }: SelectItemProps) => {
   );
 };
 
-const SelectValue = ({ placeholder }: SelectValueProps) => {
+const SelectValue = ({ placeholder, displayText }: SelectValueProps) => {
   const context = React.useContext(SelectContext);
-  return (
-    <span>
-      {context.value || context.placeholder || placeholder || "Select..."}
-    </span>
-  );
+  // Use displayText if provided, otherwise fall back to value or placeholder
+  const text = displayText || context.value || context.placeholder || placeholder || "Select...";
+  return <span>{text}</span>;
 };
 
 export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue };

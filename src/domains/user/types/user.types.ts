@@ -4,7 +4,7 @@ import { TenantInfo } from "@/domains/tenant";
 import { ApiResponse } from "@/lib/api";
 import { NextRequest, NextResponse } from "next/server";
 
-export type UserType = "Master" | "User" | "Admin";
+export type UserType = "Master" | "User" | "Admin" | "Client";
 
 export type GignologyUser = {
   _id: string;

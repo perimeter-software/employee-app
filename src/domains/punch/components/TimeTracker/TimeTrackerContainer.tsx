@@ -3,23 +3,36 @@
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { useUserApplicantJob } from '@/domains/job/hooks';
 import { useAllOpenPunches, useFindPunches } from '@/domains/punch/hooks';
+import { useCurrentUser } from '@/domains/user';
 import { ErrorState, LoadingState } from './States';
 import { TimerCard } from './TimerCard';
 import { ShiftsSection } from './ShiftsSection';
+import { EmployeeTimeAttendanceTable } from './EmployeeTimeAttendanceTable';
 import { useMemo, useState, useEffect } from 'react';
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
 import { startOfWeek, endOfWeek } from 'date-fns';
 
 export const TimeTrackerContainer = () => {
   const { user: auth0User, isLoading: auth0Loading } = useUser();
+
+  // Get company work week settings
+  const { weekStartsOn, isLoading: companyLoading } = useCompanyWorkWeek();
+
+  // Get current user data to check userType (this is already cached by Header component)
+  const { data: currentUser, isLoading: currentUserLoading } = useCurrentUser();
+
+  // Check if user is Client - userType comes from API, not Auth0
+  const isClient = currentUser?.userType === 'Client';
+
+  // Only fetch user data if not a Client (to avoid unnecessary API calls)
+  const shouldFetchUserData = !isClient && !!auth0User?.email;
   const {
     data: userData,
     isLoading: userLoading,
     error: userError,
-  } = useUserApplicantJob(auth0User?.email || '');
-
-  // Get company work week settings
-  const { weekStartsOn, isLoading: companyLoading } = useCompanyWorkWeek();
+  } = useUserApplicantJob(auth0User?.email || '', {
+    enabled: shouldFetchUserData,
+  });
 
   // Track the current view type to adjust date range
   const [currentViewType, setCurrentViewType] = useState<'table' | 'calendar'>(
@@ -32,9 +45,6 @@ export const TimeTrackerContainer = () => {
     const now = new Date();
     return startOfWeek(now, { weekStartsOn: weekStartsOn || 0 });
   });
-
-  // Still need open punches for the timer card
-  const { data: openPunches } = useAllOpenPunches(userData?._id || '');
 
   // Update baseDate when company work week settings change
   useEffect(() => {
@@ -78,7 +88,7 @@ export const TimeTrackerContainer = () => {
         endDate: endDate.toISOString(),
       };
     }
-  }, [currentViewType, baseDate]);
+  }, [currentViewType, baseDate, weekStartsOn]);
 
   // Get job IDs for the user
   const jobIds = useMemo(() => {
@@ -86,7 +96,10 @@ export const TimeTrackerContainer = () => {
     return ids;
   }, [userData?.jobs]);
 
-  // Fetch punches based on current date range
+  // Still need open punches for the timer card (only enabled for non-Client users)
+  const { data: openPunches } = useAllOpenPunches(userData?._id || '');
+
+  // Fetch punches based on current date range (only enabled for non-Client users)
   const { data: allPunches, isLoading: punchesLoading } = useFindPunches({
     userId: userData?._id || '',
     jobIds,
@@ -111,7 +124,20 @@ export const TimeTrackerContainer = () => {
     // Calendar view navigation is handled by the calendar component itself
   };
 
-  if (auth0Loading || userLoading) {
+  // For Client role, show only the employee time and attendance table
+  if (isClient) {
+    if (auth0Loading || companyLoading || currentUserLoading) {
+      return <LoadingState />;
+    }
+    return (
+      <div className="max-w-6xl mx-auto space-y-6">
+        <EmployeeTimeAttendanceTable />
+      </div>
+    );
+  }
+
+  // For non-Client users, wait for user data
+  if (auth0Loading || userLoading || currentUserLoading) {
     return <LoadingState />;
   }
 
@@ -123,6 +149,7 @@ export const TimeTrackerContainer = () => {
     return <ErrorState error="No user data found" />;
   }
 
+  // For regular users, show the normal time tracker with TimerCard and ShiftsSection
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <TimerCard userData={userData} openPunches={openPunches} />

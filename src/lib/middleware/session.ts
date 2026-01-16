@@ -3,6 +3,69 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@auth0/nextjs-auth0';
 import { AuthenticatedRequest, RouteHandler } from './types';
 import { Auth0SessionUser, EnhancedUser } from '@/domains/user';
+import redisService from '@/lib/cache/redis-client';
+
+/**
+ * Get user session from either Auth0 or OTP
+ * Returns user data in Auth0-compatible format
+ */
+async function getUserSession(
+  request: NextRequest
+): Promise<Auth0SessionUser | null> {
+  try {
+    // First, try Auth0 session
+    const auth0Session = await getSession();
+    if (auth0Session?.user?.email) {
+      return auth0Session.user as Auth0SessionUser;
+    }
+
+    // If no Auth0 session, try OTP session
+    const otpSessionId = request.cookies.get('otp_session_id')?.value;
+    if (!otpSessionId) {
+      return null;
+    }
+
+    const otpSessionData = await redisService.get<{
+      userId: string;
+      applicantId?: string;
+      email: string;
+      name: string;
+      firstName?: string;
+      lastName?: string;
+      picture?: string;
+      loginMethod: string;
+      isLimitedAccess?: boolean;
+      isApplicantOnly?: boolean;
+      employmentStatus?: string;
+      status?: string;
+      createdAt: string;
+    }>(`otp_session:${otpSessionId}`);
+
+    if (!otpSessionData) {
+      return null;
+    }
+
+    // Convert OTP session to Auth0-compatible format
+    // Note: tenant objects are populated in withEnhancedAuthAPI when needed
+    return {
+      sub: otpSessionData.userId,
+      email: otpSessionData.email,
+      name: otpSessionData.name,
+      firstName: otpSessionData.firstName,
+      lastName: otpSessionData.lastName,
+      picture: otpSessionData.picture,
+      applicantId: otpSessionData.applicantId,
+      loginMethod: otpSessionData.loginMethod,
+      isLimitedAccess: otpSessionData.isLimitedAccess || false,
+      isApplicantOnly: otpSessionData.isApplicantOnly || false,
+      employmentStatus: otpSessionData.employmentStatus,
+      status: otpSessionData.status,
+    } as Auth0SessionUser;
+  } catch (error) {
+    console.error('Error getting user session:', error);
+    return null;
+  }
+}
 
 export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
   return async function (
@@ -48,18 +111,16 @@ export function withEnhancedAuthAPI<T = unknown>(
     context: { params: Promise<Record<string, string | string[] | undefined>> }
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
-      // Use getSession directly from named exports
-      const session = await getSession();
-
-      // If no session, return 401
-      if (!session?.user?.email) {
+      // Get user from session (could be Auth0 or OTP session)
+      const user = await getUserSession(request);
+      if (!user?.email) {
         return NextResponse.json(
           { error: 'not-authenticated', message: 'Authentication required' },
           { status: 401 }
         );
       }
 
-      const userEmail = session.user.email;
+      const userEmail = user.email;
       let enhancedUser: Auth0SessionUser | null = null;
 
       // FIRST: Try to get enhanced user data from middleware headers
@@ -67,16 +128,15 @@ export function withEnhancedAuthAPI<T = unknown>(
       if (enhancedUserHeader) {
         try {
           const parsedUser = JSON.parse(enhancedUserHeader) as EnhancedUser;
-          console.log(`📦 Using enhanced user from middleware: ${userEmail}`, {
-            _id: parsedUser._id,
-            applicantId: parsedUser.applicantId,
-            tenant: parsedUser.tenant,
-          });
+          // Only log in development
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`📦 Using enhanced user from middleware: ${userEmail}`);
+          }
 
           // Convert EnhancedUser to Auth0SessionUser format
           enhancedUser = {
             // Auth0 fields
-            sub: session.user.sub,
+            sub: user.sub,
             email: parsedUser.email,
             name: parsedUser.name,
 
@@ -96,14 +156,108 @@ export function withEnhancedAuthAPI<T = unknown>(
         }
       }
 
-      // FALLBACK: If no enhanced user in headers, fetch from database
+      // For applicant-only sessions, populate tenant data if needed
+      if (user.isApplicantOnly && !enhancedUser) {
+        try {
+          // FIRST: Check Redis cache for tenant data (same as regular users)
+          const cachedTenantData = await redisService.getTenantData(
+            userEmail.toLowerCase()
+          );
+
+          if (
+            cachedTenantData?.tenant &&
+            cachedTenantData.isApplicantOnly === true &&
+            cachedTenantData.tenant.url
+          ) {
+            // Use cached tenant data for applicant
+            enhancedUser = {
+              ...user,
+              tenant: cachedTenantData.tenant,
+              availableTenants: cachedTenantData.availableTenants || [],
+            } as Auth0SessionUser;
+            // Only log in development
+            if (process.env.NODE_ENV === 'development') {
+              console.log(
+                `📦 Using cached tenant data for applicant: ${userEmail}`,
+                {
+                  tenant: cachedTenantData.tenant.dbName,
+                  availableTenants:
+                    cachedTenantData.availableTenants?.length || 0,
+                }
+              );
+            }
+          } else {
+            // FALLBACK: Cache miss - fetch from database
+            // For applicants, we need to get tenant data from the database
+            try {
+              const { mongoConn } = await import('@/lib/db/mongodb');
+              const { checkUserMasterEmail } = await import(
+                '@/domains/user/utils'
+              );
+
+              // Connect to default databases for lookup
+              const { dbTenant, userDb } = await mongoConn();
+
+              // Get tenant data using checkUserMasterEmail (works for both users and applicants)
+              const userMasterRecord = await checkUserMasterEmail(
+                userDb,
+                dbTenant,
+                userEmail
+              );
+
+              if (userMasterRecord?.success && userMasterRecord?.tenant) {
+                enhancedUser = {
+                  ...user,
+                  tenant: userMasterRecord.tenant,
+                  availableTenants:
+                    userMasterRecord.availableTenantObjects || [],
+                } as Auth0SessionUser;
+
+                // Only log in development
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(
+                    `✅ Fetched tenant data from database for applicant: ${userEmail}`,
+                    {
+                      tenant: userMasterRecord.tenant.dbName,
+                      availableTenants:
+                        userMasterRecord.availableTenantObjects?.length || 0,
+                    }
+                  );
+                }
+              } else {
+                // No tenant data found, use user as-is
+                enhancedUser = user as Auth0SessionUser;
+              }
+            } catch (dbError) {
+              console.warn(
+                'Failed to fetch tenant data from database for applicant:',
+                dbError
+              );
+              // Continue with user data without tenant
+              enhancedUser = user as Auth0SessionUser;
+            }
+          }
+        } catch (tenantError) {
+          console.warn(
+            'Failed to fetch tenant data for applicant:',
+            tenantError
+          );
+          // Continue with user data without tenant
+          enhancedUser = user as Auth0SessionUser;
+        }
+      }
+
+      // FALLBACK: If no enhanced user in headers, fetch from database (for regular users)
       if (
         !enhancedUser &&
         (options.requireDatabaseUser || options.requireTenant)
       ) {
-        console.log(
-          '⚠️ No enhanced user in headers, fetching from database...'
-        );
+        // Only log in development
+        if (process.env.NODE_ENV === 'development') {
+          console.log(
+            '⚠️ No enhanced user in headers, fetching from database...'
+          );
+        }
 
         try {
           const { getTenantAwareConnection } = await import('@/lib/db');
@@ -122,13 +276,12 @@ export function withEnhancedAuthAPI<T = unknown>(
             cachedTenantData?.tenant?.dbName &&
             cachedTenantData?.userIdentity
           ) {
-            console.log(
-              `📦 Using cached user identity for tenant: ${cachedTenantData.tenant.dbName}`,
-              {
-                _id: cachedTenantData.userIdentity._id,
-                applicantId: cachedTenantData.userIdentity.applicantId,
-              }
-            );
+            // Only log in development
+            if (process.env.NODE_ENV === 'development') {
+              console.log(
+                `📦 Using cached user identity for tenant: ${cachedTenantData.tenant.dbName}`
+              );
+            }
 
             // Use cached user identity for the current tenant
             userExists = cachedTenantData.userIdentity;
@@ -140,15 +293,20 @@ export function withEnhancedAuthAPI<T = unknown>(
             // FALLBACK: Look up in database using tenant-aware connection
             // Create a temporary authenticated request for getTenantAwareConnection
             const tempRequest = request as AuthenticatedRequest;
-            tempRequest.user = session.user as Auth0SessionUser;
-            
-            const { db, dbTenant, userDb } = await getTenantAwareConnection(tempRequest);
+            // Use user from getUserSession (handles both Auth0 and OTP sessions)
+            tempRequest.user = user as Auth0SessionUser;
+
+            const { db, dbTenant, userDb } =
+              await getTenantAwareConnection(tempRequest);
 
             // Get user data from tenant-specific database
             userExists = await checkUserExistsByEmail(db, userEmail);
 
             if (!userExists) {
-              console.log(`❌ User not found in database: ${userEmail}`);
+              // Only log in development
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`❌ User not found in database: ${userEmail}`);
+              }
               return NextResponse.json(
                 {
                   error: 'user-not-found',
@@ -167,7 +325,10 @@ export function withEnhancedAuthAPI<T = unknown>(
               );
 
               if (!userMasterRecord?.tenant) {
-                console.log(`❌ No tenant found for user: ${userEmail}`);
+                // Only log in development
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`❌ No tenant found for user: ${userEmail}`);
+                }
                 return NextResponse.json(
                   { error: 'no-tenant', message: 'No tenant found for user' },
                   { status: 404 }
@@ -179,9 +340,9 @@ export function withEnhancedAuthAPI<T = unknown>(
           // Create enhanced user object
           enhancedUser = {
             // Auth0 data
-            sub: session.user.sub,
+            sub: user.sub,
             email: userEmail,
-            name: session.user.name,
+            name: user.name,
 
             // Database user data
             _id: userExists._id,
@@ -197,11 +358,10 @@ export function withEnhancedAuthAPI<T = unknown>(
             availableTenants: userMasterRecord?.availableTenantObjects || [],
           } as Auth0SessionUser;
 
-          console.log(`✅ Enhanced user data loaded from DB: ${userEmail}`, {
-            _id: enhancedUser._id,
-            applicantId: enhancedUser.applicantId,
-            tenant: enhancedUser.tenant,
-          });
+          // Only log in development
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`✅ Enhanced user data loaded from DB: ${userEmail}`);
+          }
         } catch (dbError) {
           console.error('Database validation error:', dbError);
           return NextResponse.json(
@@ -234,12 +394,15 @@ export function withEnhancedAuthAPI<T = unknown>(
 
       // Add enhanced user to request
       const authenticatedRequest = request as AuthenticatedRequest;
-      authenticatedRequest.user =
-        enhancedUser || (session.user as Auth0SessionUser);
+      // Use enhancedUser if available, otherwise fall back to user from getUserSession
+      authenticatedRequest.user = enhancedUser || (user as Auth0SessionUser);
 
-      console.log(
-        `✅ Enhanced API Request authenticated: ${userEmail} → ${request.url}`
-      );
+      // Only log in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log(
+          `✅ Enhanced API Request authenticated: ${userEmail} → ${request.url}`
+        );
+      }
 
       return handler(authenticatedRequest, context);
     } catch (error) {
