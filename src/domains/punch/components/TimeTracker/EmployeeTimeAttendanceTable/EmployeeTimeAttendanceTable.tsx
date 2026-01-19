@@ -598,21 +598,21 @@ export function EmployeeTimeAttendanceTable({
     return new Set(shiftSlugs);
   }, [employeePunches]);
 
-  // Filter available shifts to only show those with actual punches
-  // This prevents users from selecting shifts that don't have any data
+  // Get all available shifts for the dropdown
+  // Always show all shifts from the job, regardless of current filter
+  // This ensures users can always see and select all shifts, even when a specific shift is selected
   // NOTE: This must be AFTER availableShiftSlugs is defined
   const availableShifts = useMemo(() => {
     if (selectedJobId === 'all') {
       return [];
     }
 
-    // If we have punches, include shifts with data
-    if (availableShiftSlugs.size > 0) {
-      // Start with shifts from the job that have matching slugs
-      const existingShifts = allAvailableShifts.filter((shift) =>
-        availableShiftSlugs.has(shift.slug)
-      );
+    // Always start with all shifts from the job
+    // This ensures all shifts are always visible in the dropdown
+    const baseShifts = [...allAvailableShifts];
 
+    // If we have punches, check for virtual shifts (deleted/missing shifts that appear in punches)
+    if (availableShiftSlugs.size > 0 && employeePunches) {
       // Find shift slugs from punches that don't exist in the job's shifts
       const missingShiftSlugs = Array.from(availableShiftSlugs).filter(
         (slug) => !allAvailableShifts.some((shift) => shift.slug === slug)
@@ -621,7 +621,7 @@ export function EmployeeTimeAttendanceTable({
       // Create virtual shifts for deleted/missing shifts using data from punches
       const virtualShifts: Shift[] = missingShiftSlugs.map((slug) => {
         // Find a punch with this slug to get the shiftName
-        const punchWithShift = employeePunches?.find(
+        const punchWithShift = employeePunches.find(
           (p) => p.shiftSlug === slug
         );
 
@@ -660,14 +660,14 @@ export function EmployeeTimeAttendanceTable({
         } as Shift;
       });
 
-      const allShifts = [...existingShifts, ...virtualShifts];
+      // Combine base shifts with virtual shifts
+      const allShifts = [...baseShifts, ...virtualShifts];
 
       // Log for debugging (only in development)
       if (process.env.NODE_ENV === 'development') {
         console.log('[Employee Time Attendance] Available shifts:', {
           allShifts: allAvailableShifts.map((s) => s.slug),
           shiftsWithData: Array.from(availableShiftSlugs),
-          existingShifts: existingShifts.map((s) => s.slug),
           missingShiftSlugs,
           virtualShifts: virtualShifts.map((s) => ({
             slug: s.slug,
@@ -681,7 +681,7 @@ export function EmployeeTimeAttendanceTable({
     }
 
     // If no punches yet, show all shifts (they might have data we haven't loaded)
-    return allAvailableShifts;
+    return baseShifts;
   }, [selectedJobId, allAvailableShifts, availableShiftSlugs, employeePunches]);
 
   // Reset shift when job changes
