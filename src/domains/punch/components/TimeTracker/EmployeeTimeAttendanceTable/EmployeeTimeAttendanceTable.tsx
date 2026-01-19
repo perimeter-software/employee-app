@@ -814,14 +814,13 @@ export function EmployeeTimeAttendanceTable({
       setBaseDate(dayStart);
     } else if (viewType === 'week' || viewType === 'table') {
       newDate.setDate(baseDate.getDate() + direction * 7);
-      if (viewType === 'week') {
-        // Normalize to start of week
-        const weekStart = startOfWeek(newDate, {
-          weekStartsOn: weekStartsOn || 0,
-        });
-        setCalendarDate(weekStart);
-      }
-      setBaseDate(newDate);
+      // Normalize to start of week for both week and table views
+      const weekStart = startOfWeek(newDate, {
+        weekStartsOn: weekStartsOn || 0,
+      });
+      // Update calendarDate for both week and table views to ensure dateRange updates
+      setCalendarDate(weekStart);
+      setBaseDate(weekStart);
     } else if (viewType === 'month') {
       newDate.setMonth(baseDate.getMonth() + direction);
       // Normalize to start of month
@@ -1437,9 +1436,14 @@ export function EmployeeTimeAttendanceTable({
           {/* Date Navigation */}
           <div className="flex items-center gap-2">
             <Button
+              type="button"
               variant="outline"
               className="h-8 w-8 p-1"
-              onClick={() => handleDateNavigation(-1)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleDateNavigation(-1);
+              }}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -1447,9 +1451,14 @@ export function EmployeeTimeAttendanceTable({
               {dateRange.displayRange}
             </span>
             <Button
+              type="button"
               variant="outline"
               className="h-8 w-8 p-1"
-              onClick={() => handleDateNavigation(1)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleDateNavigation(1);
+              }}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
