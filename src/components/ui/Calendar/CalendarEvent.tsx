@@ -10,6 +10,8 @@ interface EventPosition {
   top: string;
   height: string;
   zIndex: number;
+  hidden?: boolean;
+  overflowCount?: number;
 }
 
 function getOverlappingEvents(
@@ -41,6 +43,14 @@ function calculateEventPosition(
   let width: string;
   let left: string;
   let zIndex: number;
+  let hidden: boolean | undefined;
+  let overflowCount: number | undefined;
+
+  // When many events overlap (common in punch/clock-in views), rendering all columns
+  // produces unreadable "slivers". We cap visible stacked cards and show an overflow badge.
+  const MAX_VISIBLE_STACK = 6; // includes the top card
+  const STACK_OFFSET_PX = 6;
+  const BASE_LEFT_PX = 6;
 
   if (totalEvents === 1) {
     // Single event takes full width
@@ -48,13 +58,26 @@ function calculateEventPosition(
     left = '2%';
     zIndex = 1;
   } else {
-    // Multiple events - use stacking approach for better visibility
-    const stackOffset = position * 4; // 4px offset per event
-    const maxWidth = Math.max(60, 95 - (totalEvents - 1) * 15); // Minimum 60% width
+    // Multiple events - use capped stacking approach for better visibility
+    const visiblePosition = Math.min(position, MAX_VISIBLE_STACK - 1);
+    const stackOffset = visiblePosition * STACK_OFFSET_PX;
+
+    // Hide events beyond the visible stack cap; users can still access all events via the day list
+    if (position >= MAX_VISIBLE_STACK) {
+      hidden = true;
+    }
+
+    const effectiveColumns = Math.min(totalEvents, MAX_VISIBLE_STACK);
+    const maxWidth = Math.max(72, 95 - (effectiveColumns - 1) * 10); // Don't shrink too far
 
     width = `${maxWidth}%`;
-    left = `${2 + stackOffset}px`;
+    left = `${BASE_LEFT_PX + stackOffset}px`;
     zIndex = totalEvents - position; // Higher events have higher z-index
+
+    const hiddenCount = Math.max(0, totalEvents - MAX_VISIBLE_STACK);
+    if (hiddenCount > 0 && position === 0) {
+      overflowCount = hiddenCount;
+    }
   }
 
   const startHour = event.start.getHours();
@@ -78,6 +101,8 @@ function calculateEventPosition(
     top: `${topPosition}px`,
     height: `${height}px`,
     zIndex,
+    hidden,
+    overflowCount,
   };
 }
 
@@ -242,6 +267,11 @@ export default function CalendarEvent({
     );
   }
 
+  // If this event is part of a large overlap group, we may hide it to prevent slivers
+  if (!month && (style as EventPosition).hidden) {
+    return null;
+  }
+
   // Week/Day view styling - improved format with better truncation and responsive design
   return (
     <MotionConfig reducedMotion="user">
@@ -307,6 +337,13 @@ export default function CalendarEvent({
             className="flex flex-col w-full h-full min-w-0 px-1.5 py-0.5 gap-0.5"
             layout="position"
           >
+            {/* Overflow badge when many overlapping events exist */}
+            {!!(style as EventPosition).overflowCount && (
+              <span className="absolute top-1 right-1 text-[10px] px-1.5 py-0.5 rounded-full bg-black/20 text-white font-semibold">
+                +{(style as EventPosition).overflowCount}
+              </span>
+            )}
+
             {/* Title with smart responsive display */}
             <span
               className="font-semibold truncate text-xs sm:text-sm leading-tight"
