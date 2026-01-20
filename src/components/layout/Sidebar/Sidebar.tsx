@@ -40,6 +40,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
   const isLimitedAccess = currentUser?.isLimitedAccess || false;
 
   const navigation: NavigationItem[] = useMemo(() => {
+    // Check if user is a Client
+    const isClient = currentUser?.userType === 'Client';
+
     // For limited access users (applicants or terminated/inactive employees), only show Paycheck Stubs
     if (isLimitedAccess) {
       return [
@@ -85,9 +88,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       });
     }
 
-    // Conditionally add Paycheck Stubs link for Prism companies
+    // Conditionally add Paycheck Stubs link for Prism companies (exclude for Client users)
     const isPrism = primaryCompany?.peoIntegration === 'Prism';
-    if (isPrism) {
+    if (isPrism && !isClient) {
       baseNavigation.push({
         name: 'Paycheck Stubs',
         href: '/paycheck-stubs',
@@ -98,25 +101,27 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       });
     }
 
-    // Add remaining navigation items
-    baseNavigation.push(
-      {
-        name: 'Ask a Question',
-        href: '/conversation',
-        icon: MessageCircleQuestion,
-        current:
-          pathname === '/conversation' || pathname.startsWith('/conversation'),
-      },
-      {
-        name: 'Documents',
-        href: '/documents',
-        icon: FileText,
-        current: pathname === '/documents' || pathname.startsWith('/documents'),
-      }
-    );
+    // Add remaining navigation items (exclude for Client users)
+    if (!isClient) {
+      baseNavigation.push(
+        {
+          name: 'Ask a Question',
+          href: '/conversation',
+          icon: MessageCircleQuestion,
+          current:
+            pathname === '/conversation' || pathname.startsWith('/conversation'),
+        },
+        {
+          name: 'Documents',
+          href: '/documents',
+          icon: FileText,
+          current: pathname === '/documents' || pathname.startsWith('/documents'),
+        }
+      );
+    }
 
     return baseNavigation;
-  }, [pathname, primaryCompany, isLimitedAccess]);
+  }, [pathname, primaryCompany, isLimitedAccess, currentUser?.userType]);
 
   const handleLinkClick = () => {
     // Close mobile menu when a link is clicked

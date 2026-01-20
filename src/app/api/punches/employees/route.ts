@@ -349,9 +349,12 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
                 { $ifNull: ['$applicant.lastName', ''] },
               ],
             },
+            firstName: { $ifNull: ['$applicant.firstName', ''] },
+            lastName: { $ifNull: ['$applicant.lastName', ''] },
             employeeEmail: {
               $ifNull: ['$applicant.email', '$user.emailAddress', ''],
             },
+            phoneNumber: { $ifNull: ['$applicant.phone', ''] },
             jobTitle: { $ifNull: ['$job.title', ''] },
             jobSite: { $ifNull: ['$job.venueName', '$job.title', ''] },
             location: { $ifNull: ['$job.venueName', '$job.location.name', ''] },

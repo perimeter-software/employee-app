@@ -44,7 +44,10 @@ interface EmployeePunch extends Record<string, unknown> {
   shiftSlug?: string;
   shiftName?: string;
   employeeName: string;
+  firstName?: string;
+  lastName?: string;
   employeeEmail: string;
+  phoneNumber?: string;
   jobTitle: string;
   jobSite: string;
   location: string;
@@ -71,7 +74,7 @@ const formatTime24 = (dateString: string) => {
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
-  return format(date, 'yyyy-MM-dd');
+  return format(date, 'MM-dd-yyyy');
 };
 
 const calculateTotalHours = (timeIn: string, timeOut: string | null) => {
@@ -249,7 +252,7 @@ export function EmployeeTimeAttendanceTable({
   });
 
   // Fetch all jobs with shifts
-  const { data: availableJobs = [], isLoading: jobsLoading } = useQuery<
+  const { data: availableJobs = [], isLoading: jobsLoading, error: jobsError } = useQuery<
     GignologyJob[]
   >({
     queryKey: ['jobsWithShifts'],
@@ -1075,12 +1078,26 @@ export function EmployeeTimeAttendanceTable({
         render: (_, row) => formatDate(row.timeIn),
       },
       {
-        key: 'employee',
-        header: 'EMPLOYEE',
+        key: 'lastName',
+        header: 'LAST NAME',
         render: (_, row) => (
           <div>
             <div className="font-medium">
-              {row.employeeName.trim() || 'Unknown'}
+              {row.lastName?.trim() || 'N/A'}
+            </div>
+            {row.phoneNumber && (
+              <div className="text-xs text-gray-500">{row.phoneNumber}</div>
+            )}
+          </div>
+        ),
+      },
+      {
+        key: 'firstName',
+        header: 'FIRST NAME',
+        render: (_, row) => (
+          <div>
+            <div className="font-medium">
+              {row.firstName?.trim() || 'N/A'}
             </div>
             {row.employeeEmail && (
               <div className="text-xs text-gray-500">{row.employeeEmail}</div>
@@ -1176,12 +1193,8 @@ export function EmployeeTimeAttendanceTable({
     [handleOpenPunchModal]
   );
 
-  if (
-    isLoading ||
-    companyLoading ||
-    jobsLoading ||
-    availableJobs.length === 0
-  ) {
+  // Show loading state only when actually loading
+  if (isLoading || companyLoading || jobsLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-8 w-64" />
@@ -1194,12 +1207,13 @@ export function EmployeeTimeAttendanceTable({
     );
   }
 
-  if (error) {
+  // Show error state
+  if (error || jobsError) {
     return (
       <div className="text-center py-8">
         <p className="text-red-600">
           Failed to load employee time and attendance:{' '}
-          {(error as Error).message}
+          {(error as Error)?.message || (jobsError as Error)?.message || 'Unknown error'}
         </p>
         <Button
           variant="outline"
@@ -1208,6 +1222,52 @@ export function EmployeeTimeAttendanceTable({
         >
           Retry
         </Button>
+      </div>
+    );
+  }
+
+  // Show empty state when no jobs are available (e.g., no client organizations)
+  if (availableJobs.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <h1 className="text-2xl font-semibold text-gray-900 mb-4">
+            Time & Attendance
+          </h1>
+          <div className="text-center py-12">
+            <div className="max-w-md mx-auto">
+              <div className="mb-4">
+                <svg
+                  className="mx-auto h-12 w-12 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                No Jobs Available
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">
+                There are no jobs with shifts available for your account. This may be because:
+              </p>
+              <ul className="text-sm text-gray-500 text-left list-disc list-inside space-y-1 mb-4">
+                <li>No organizations have been assigned to your account</li>
+                <li>No jobs with shifts exist for your assigned organizations</li>
+              </ul>
+              <p className="text-sm text-gray-500">
+                Please contact your administrator if you believe this is an error.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1221,7 +1281,7 @@ export function EmployeeTimeAttendanceTable({
         </h1>
 
         {/* Job Selector and Clocked In Summary Row */}
-        <div className="flex items-start gap-4 mb-4">
+        <div className="flex gap-4 mb-3">
           {/* Job Selector */}
           <div className="flex-1 max-w-md">
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1345,26 +1405,26 @@ export function EmployeeTimeAttendanceTable({
           )}
 
           {/* Currently Clocked In Summary Card */}
-          <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 min-w-[240px]">
+          <div className="flex item-center bg-teal-50 border border-teal-200 rounded-lg p-2 min-w-[240px]">
             <div className="flex items-center gap-4">
               {/* Large teal circle with count */}
               <div className="relative flex-shrink-0">
-                <div className="w-16 h-16 bg-appPrimary rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-sm">
+                <div className="w-8 h-8 bg-appPrimary rounded-full flex items-center justify-center text-white text-xl font-bold shadow-sm">
                   {activeCountLoading ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                   ) : (
                     activeCount || 0
                   )}
                 </div>
                 {/* Green status dot on top-right */}
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
               </div>
               {/* Text content */}
               <div className="flex-1">
-                <div className="text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">
+                <div className="text-[10px] font-medium text-gray-600 mb-1 uppercase tracking-wide">
                   Currently Clocked In
                 </div>
-                <div className="text-lg font-bold text-gray-900">
+                <div className="text-xs font-semibold text-gray-900">
                   {activeCountLoading ? (
                     <span className="text-gray-400">Loading...</span>
                   ) : (
