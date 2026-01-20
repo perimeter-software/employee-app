@@ -240,6 +240,10 @@ export function EmployeePunchDetailsModal({
               <span className="text-gray-600">{punch.employeeEmail || 'N/A'}</span>
             </div>
             <div className="text-sm">
+              <span className="font-medium text-gray-700">Phone:</span>{' '}
+              <span className="text-gray-600">{punch.phoneNumber || 'N/A'}</span>
+            </div>
+            <div className="text-sm">
               <span className="font-medium text-gray-700">Location:</span>{' '}
               <span className="text-gray-600">{punch.location || punch.jobSite || 'N/A'}</span>
             </div>

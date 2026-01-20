@@ -24,6 +24,8 @@ interface SelectTriggerProps
 
 interface SelectContentProps {
   children: React.ReactNode;
+  className?: string;
+  align?: "start" | "center" | "end";
 }
 
 interface SelectItemProps {
@@ -75,8 +77,14 @@ const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerProps>(
 );
 SelectTrigger.displayName = "SelectTrigger";
 
-const SelectContent = ({ children }: SelectContentProps) => (
-  <DropdownMenuContent className="min-w-[8rem] max-h-60 overflow-y-auto overflow-x-hidden">
+const SelectContent = ({ children, className, align = "start" }: SelectContentProps) => (
+  <DropdownMenuContent 
+    align={align}
+    className={clsxm(
+      "w-[var(--radix-dropdown-menu-trigger-width)] max-h-60 overflow-y-auto overflow-x-hidden",
+      className
+    )}
+  >
     {children}
   </DropdownMenuContent>
 );
