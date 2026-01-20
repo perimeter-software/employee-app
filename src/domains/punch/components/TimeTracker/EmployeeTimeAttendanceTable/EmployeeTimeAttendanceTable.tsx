@@ -32,6 +32,7 @@ import type { CalendarEvent, Mode } from '@/components/ui/Calendar';
 import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
 import { EmployeePunchDetailsModal } from '../EmployeePunchDetailsModal/EmployeePunchDetailsModal';
 import { MapModal } from '../MapModal/MapModal';
+import { formatPhoneNumber } from '@/lib/utils';
 
 interface EmployeePunch extends Record<string, unknown> {
   _id: string;
@@ -1178,7 +1179,9 @@ export function EmployeeTimeAttendanceTable({
               {row.lastName?.trim() || 'N/A'}
             </div>
             {row.phoneNumber && (
-              <div className="text-xs text-gray-500">{row.phoneNumber}</div>
+              <div className="text-xs text-gray-500">
+                {formatPhoneNumber(row.phoneNumber)}
+              </div>
             )}
           </div>
         ),
