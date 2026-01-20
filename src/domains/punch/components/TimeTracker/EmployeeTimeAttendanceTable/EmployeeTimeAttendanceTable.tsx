@@ -217,6 +217,10 @@ export function EmployeeTimeAttendanceTable({
     'table'
   );
 
+  // Table-only controls (do not affect calendar view toggles)
+  const [tableRange, setTableRange] = useState<'day' | 'week' | 'month'>('week');
+  const [includeUpcoming, setIncludeUpcoming] = useState(false);
+
   // Calendar mode state (for calendar views)
   const [calendarMode, setCalendarMode] = useState<Mode>('month');
   const [calendarDate, setCalendarDate] = useState<Date>(() => {
@@ -485,7 +489,37 @@ export function EmployeeTimeAttendanceTable({
         end.setHours(23, 59, 59, 999);
 
         displayRange = format(start, 'MMM d, yyyy');
-      } else if (viewType === 'week' || viewType === 'table') {
+      } else if (viewType === 'table') {
+        // Table view range is controlled by tableRange (day/week/month)
+        if (tableRange === 'day') {
+          start = new Date(dateToUse);
+          start = startOfDay(start);
+          start.setHours(0, 0, 0, 0);
+
+          end = new Date(dateToUse);
+          end = startOfDay(end);
+          end.setHours(23, 59, 59, 999);
+
+          displayRange = format(start, 'MMM d, yyyy');
+        } else if (tableRange === 'month') {
+          start = startOfMonth(dateToUse);
+          start.setHours(0, 0, 0, 0);
+
+          end = endOfMonth(dateToUse);
+          end.setHours(23, 59, 59, 999);
+
+          displayRange = `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
+        } else {
+          // week (default)
+          start = startOfWeek(dateToUse, { weekStartsOn: weekStartsOn || 0 });
+          start.setHours(0, 0, 0, 0);
+
+          end = endOfWeek(dateToUse, { weekStartsOn: weekStartsOn || 0 });
+          end.setHours(23, 59, 59, 999);
+
+          displayRange = `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
+        }
+      } else if (viewType === 'week') {
         // Use calendarDate (which should already be normalized to week start)
         start = startOfWeek(dateToUse, { weekStartsOn: weekStartsOn || 0 });
         start.setHours(0, 0, 0, 0);
@@ -546,6 +580,7 @@ export function EmployeeTimeAttendanceTable({
     baseDate,
     calendarDate,
     viewType,
+    tableRange,
     weekStartsOn,
   ]);
 
@@ -583,6 +618,19 @@ export function EmployeeTimeAttendanceTable({
     refetchOnReconnect: false, // Don't refetch on reconnect (reduces API calls)
     refetchOnMount: false, // Don't refetch when component remounts (reduces API calls)
   });
+
+  // Upcoming detection + Table-only filtering (does not affect calendar views)
+  const tableData = useMemo(() => {
+    const punches = employeePunches || [];
+    if (viewType !== 'table') return punches;
+    if (includeUpcoming) return punches;
+    const now = Date.now();
+    return punches.filter((p) => {
+      const timeInMs = new Date(p.timeIn).getTime();
+      if (Number.isNaN(timeInMs)) return true; // keep malformed rows rather than hiding unexpectedly
+      return timeInMs <= now;
+    });
+  }, [employeePunches, includeUpcoming, viewType]);
 
   // Get unique shift slugs from actual punches in the date range
   // ERROR-PROOF: Only show shifts that have data in the current date range
@@ -771,6 +819,26 @@ export function EmployeeTimeAttendanceTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewType, weekStartsOn]);
 
+  // Keep baseDate/calendarDate normalized for Table view when tableRange changes
+  useEffect(() => {
+    if (viewType !== 'table') return;
+    const dateToUse = baseDate || new Date();
+    if (tableRange === 'day') {
+      const dayStart = startOfDay(dateToUse);
+      setBaseDate(dayStart);
+      setCalendarDate(dayStart);
+    } else if (tableRange === 'month') {
+      const monthStart = startOfMonth(dateToUse);
+      setBaseDate(monthStart);
+      setCalendarDate(monthStart);
+    } else {
+      const weekStart = startOfWeek(dateToUse, { weekStartsOn: weekStartsOn || 0 });
+      setBaseDate(weekStart);
+      setCalendarDate(weekStart);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewType, tableRange, weekStartsOn]);
+
   // Update baseDate when company work week settings change
   // ERROR-PROOF: Always sync calendarDate and baseDate
   useEffect(() => {
@@ -815,13 +883,32 @@ export function EmployeeTimeAttendanceTable({
       const dayStart = startOfDay(newDate);
       setCalendarDate(dayStart);
       setBaseDate(dayStart);
-    } else if (viewType === 'week' || viewType === 'table') {
+    } else if (viewType === 'table') {
+      // Table view navigation depends on tableRange (day/week/month)
+      if (tableRange === 'day') {
+        newDate.setDate(baseDate.getDate() + direction);
+        const dayStart = startOfDay(newDate);
+        setCalendarDate(dayStart);
+        setBaseDate(dayStart);
+      } else if (tableRange === 'month') {
+        newDate.setMonth(baseDate.getMonth() + direction);
+        const monthStart = startOfMonth(newDate);
+        setCalendarDate(monthStart);
+        setBaseDate(monthStart);
+      } else {
+        // week (default)
+        newDate.setDate(baseDate.getDate() + direction * 7);
+        const weekStart = startOfWeek(newDate, {
+          weekStartsOn: weekStartsOn || 0,
+        });
+        setCalendarDate(weekStart);
+        setBaseDate(weekStart);
+      }
+    } else if (viewType === 'week') {
       newDate.setDate(baseDate.getDate() + direction * 7);
-      // Normalize to start of week for both week and table views
       const weekStart = startOfWeek(newDate, {
         weekStartsOn: weekStartsOn || 0,
       });
-      // Update calendarDate for both week and table views to ensure dateRange updates
       setCalendarDate(weekStart);
       setBaseDate(weekStart);
     } else if (viewType === 'month') {
@@ -1455,7 +1542,7 @@ export function EmployeeTimeAttendanceTable({
         </div>
 
         {/* View Toggle Buttons and Date Navigation */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <ToggleGroup
             type="single"
             value={viewType}
@@ -1464,7 +1551,7 @@ export function EmployeeTimeAttendanceTable({
                 setViewType(value as 'table' | 'month' | 'week' | 'day');
               }
             }}
-            className="inline-flex rounded-lg border border-gray-300 p-1"
+            className="inline-flex w-full flex-wrap rounded-lg border border-gray-300 p-1 md:w-auto"
           >
             <ToggleGroupItem
               value="table"
@@ -1508,35 +1595,83 @@ export function EmployeeTimeAttendanceTable({
             </ToggleGroupItem>
           </ToggleGroup>
 
-          {/* Date Navigation */}
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-8 w-8 p-1"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleDateNavigation(-1);
-              }}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-center font-medium text-sm min-w-[180px] px-2">
-              {dateRange.displayRange}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-8 w-8 p-1"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleDateNavigation(1);
-              }}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:flex-nowrap md:items-center md:justify-end md:gap-4">
+            {/* Table-only filters (do not affect calendar view toggles) */}
+            {viewType === 'table' && (
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-start md:w-auto md:flex-row md:flex-nowrap md:items-center md:gap-3">
+                {/* Table Range */}
+                <div className="w-full sm:w-36 md:w-36">
+                  <Select
+                    value={tableRange}
+                    onValueChange={(value) =>
+                      setTableRange(value as 'day' | 'week' | 'month')
+                    }
+                  >
+                    <SelectTrigger className="w-full h-8">
+                      <SelectValue
+                        placeholder="Range"
+                        displayText={
+                          tableRange === 'day'
+                            ? 'Day'
+                            : tableRange === 'month'
+                              ? 'Month'
+                              : 'Week'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="day">Day</SelectItem>
+                      <SelectItem value="week">Week</SelectItem>
+                      <SelectItem value="month">Month</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Upcoming Shifts */}
+                <label className="flex items-center gap-2 h-8 px-3 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 select-none w-full sm:w-auto md:w-auto sm:min-w-max whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={includeUpcoming}
+                    onChange={(e) => setIncludeUpcoming(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 accent-blue-600"
+                    aria-label="Include upcoming shifts"
+                    title="Include upcoming shifts"
+                  />
+                  <span className="whitespace-nowrap">Upcoming Shifts</span>
+                </label>
+              </div>
+            )}
+
+            {/* Date Navigation */}
+            <div className="flex w-full items-center justify-between gap-2 md:w-auto md:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 w-8 p-1"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleDateNavigation(-1);
+                }}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-center font-medium text-sm px-2 flex-1 md:flex-none md:min-w-[180px]">
+                {dateRange.displayRange}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 w-8 p-1"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleDateNavigation(1);
+                }}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -1560,11 +1695,20 @@ export function EmployeeTimeAttendanceTable({
             title=""
             description=""
             columns={columns}
-            data={employeePunches || []}
+            data={tableData}
             showPagination={false}
             selectable={false}
             className="w-full"
             emptyMessage="No employee time and attendance records found for the selected date range."
+            getRowClassName={(row) => {
+              const timeInMs = new Date(row.timeIn).getTime();
+              if (Number.isNaN(timeInMs)) return '';
+              if (timeInMs > Date.now()) {
+                // Slightly different background to indicate upcoming shifts
+                return 'bg-blue-50 hover:bg-blue-100';
+              }
+              return '';
+            }}
           />
         ) : /* Calendar view (Month, Week, Day) */
         companyLoading ? (
