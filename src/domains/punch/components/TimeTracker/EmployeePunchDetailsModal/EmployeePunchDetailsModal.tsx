@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { MapModal } from '../MapModal';
 import { toast } from 'sonner';
 import type { EmployeePunch } from './types';
+import { formatPhoneNumber } from '@/lib/utils';
 
 interface EmployeePunchDetailsModalProps {
   isOpen: boolean;
@@ -241,7 +242,9 @@ export function EmployeePunchDetailsModal({
             </div>
             <div className="text-sm">
               <span className="font-medium text-gray-700">Phone:</span>{' '}
-              <span className="text-gray-600">{punch.phoneNumber || 'N/A'}</span>
+              <span className="text-gray-600">
+                {formatPhoneNumber(punch.phoneNumber)}
+              </span>
             </div>
             <div className="text-sm">
               <span className="font-medium text-gray-700">Location:</span>{' '}
