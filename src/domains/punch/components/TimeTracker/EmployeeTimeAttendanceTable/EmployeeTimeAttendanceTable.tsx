@@ -1076,6 +1076,11 @@ export function EmployeeTimeAttendanceTable({
         key: 'date',
         header: 'DATE',
         render: (_, row) => formatDate(row.timeIn),
+        sortFn: (a, b) => {
+          const dateA = new Date(a.timeIn).getTime();
+          const dateB = new Date(b.timeIn).getTime();
+          return dateA - dateB;
+        },
       },
       {
         key: 'lastName',
@@ -1128,6 +1133,11 @@ export function EmployeeTimeAttendanceTable({
             {row.timeOut ? formatTime24(row.timeOut) : '----'}
           </div>
         ),
+        sortFn: (a, b) => {
+          const timeA = new Date(a.timeIn).getTime();
+          const timeB = new Date(b.timeIn).getTime();
+          return timeA - timeB;
+        },
       },
       {
         key: 'totalHours',
@@ -1135,6 +1145,11 @@ export function EmployeeTimeAttendanceTable({
         render: (_, row) => {
           const hours = calculateTotalHours(row.timeIn, row.timeOut);
           return <div className="font-medium">{hours} hrs</div>;
+        },
+        sortFn: (a, b) => {
+          const hoursA = calculateTotalHours(a.timeIn, a.timeOut);
+          const hoursB = calculateTotalHours(b.timeIn, b.timeOut);
+          return hoursA - hoursB;
         },
       },
       {
