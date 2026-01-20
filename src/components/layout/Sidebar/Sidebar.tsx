@@ -18,6 +18,7 @@ import {
 import { clsxm } from '@/lib/utils';
 import { Button } from '@/components/ui/Button/Button';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
+import { useCurrentUser } from '@/domains/user/hooks/use-current-user';
 
 interface NavigationItem {
   name: string;
@@ -34,8 +35,29 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
   const pathname = usePathname();
   const { data: primaryCompany } = usePrimaryCompany();
+  const { data: currentUser } = useCurrentUser();
+  // Check if user has limited access (applicants or terminated/inactive employees)
+  const isLimitedAccess = currentUser?.isLimitedAccess || false;
 
   const navigation: NavigationItem[] = useMemo(() => {
+    // Check if user is a Client
+    const isClient = currentUser?.userType === 'Client';
+
+    // For limited access users (applicants or terminated/inactive employees), only show Paycheck Stubs
+    if (isLimitedAccess) {
+      return [
+        {
+          name: 'Paycheck Stubs',
+          href: '/paycheck-stubs',
+          icon: Receipt,
+          current:
+            pathname === '/paycheck-stubs' ||
+            pathname.startsWith('/paycheck-stubs'),
+        },
+      ];
+    }
+
+    // Full user navigation
     const baseNavigation = [
       {
         name: 'Time & Attendance',
@@ -66,9 +88,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       });
     }
 
-    // Conditionally add Paycheck Stubs link for Prism companies
+    // Conditionally add Paycheck Stubs link for Prism companies (exclude for Client users)
     const isPrism = primaryCompany?.peoIntegration === 'Prism';
-    if (isPrism) {
+    if (isPrism && !isClient) {
       baseNavigation.push({
         name: 'Paycheck Stubs',
         href: '/paycheck-stubs',
@@ -79,25 +101,27 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       });
     }
 
-    // Add remaining navigation items
-    baseNavigation.push(
-      {
-        name: 'Ask a Question',
-        href: '/conversation',
-        icon: MessageCircleQuestion,
-        current:
-          pathname === '/conversation' || pathname.startsWith('/conversation'),
-      },
-      {
-        name: 'Documents',
-        href: '/documents',
-        icon: FileText,
-        current: pathname === '/documents' || pathname.startsWith('/documents'),
-      }
-    );
+    // Add remaining navigation items (exclude for Client users)
+    if (!isClient) {
+      baseNavigation.push(
+        {
+          name: 'Ask a Question',
+          href: '/conversation',
+          icon: MessageCircleQuestion,
+          current:
+            pathname === '/conversation' || pathname.startsWith('/conversation'),
+        },
+        {
+          name: 'Documents',
+          href: '/documents',
+          icon: FileText,
+          current: pathname === '/documents' || pathname.startsWith('/documents'),
+        }
+      );
+    }
 
     return baseNavigation;
-  }, [pathname, primaryCompany]);
+  }, [pathname, primaryCompany, isLimitedAccess, currentUser?.userType]);
 
   const handleLinkClick = () => {
     // Close mobile menu when a link is clicked

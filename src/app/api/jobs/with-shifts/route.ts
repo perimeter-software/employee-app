@@ -4,6 +4,34 @@ import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
 import type { GignologyJob } from '@/domains/job/types';
+import { ObjectId } from 'mongodb';
+
+// Type definition for clientOrgs structure
+type ClientOrg = {
+  slug?: string;
+  userType?: string;
+  status?: string;
+  primary?: string;
+  modifiedDate?: string;
+};
+
+type UserWithClientOrgs = {
+  clientOrgs?: ClientOrg[];
+};
+
+/**
+ * Extract client organization slugs from user record
+ * Returns empty array if user has no clientOrgs or if extraction fails
+ */
+function extractClientOrgSlugs(clientOrgs: ClientOrg[] | undefined): string[] {
+  if (!clientOrgs || !Array.isArray(clientOrgs)) {
+    return [];
+  }
+
+  return clientOrgs
+    .map((org) => org.slug)
+    .filter((slug): slug is string => typeof slug === 'string' && slug.trim() !== '');
+}
 
 // GET Handler for Getting All Jobs with Shifts (for Client role)
 async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
@@ -21,8 +49,110 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
       );
     }
 
+    // Validate user._id exists
+    if (!user._id) {
+      // Security: If no user ID, return empty results
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[Jobs with Shifts API] User ID missing for Client user');
+      }
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'Jobs with shifts retrieved successfully',
+          count: 0,
+          data: [],
+        },
+        { status: 200 }
+      );
+    }
+
     // Connect to tenant-specific database
     const { db } = await getTenantAwareConnection(request);
+
+    // Get user's clientOrgs to filter jobs by venue
+    // For Client users, ALWAYS filter by clientOrgs - if no orgs, return empty results
+    let clientOrgSlugs: string[] = [];
+    try {
+      // Validate ObjectId format before querying
+      let userObjectId: ObjectId;
+      try {
+        userObjectId = new ObjectId(user._id.toString());
+      } catch {
+        console.error('[Jobs with Shifts API] Invalid user._id format:', user._id);
+        return NextResponse.json(
+          {
+            success: true,
+            message: 'Jobs with shifts retrieved successfully',
+            count: 0,
+            data: [],
+          },
+          { status: 200 }
+        );
+      }
+
+      const clientUser = await db.collection('users').findOne({
+        _id: userObjectId,
+      });
+
+      if (!clientUser) {
+        // User not found in database - return empty results for security
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[Jobs with Shifts API] User not found in database:', user._id);
+        }
+        return NextResponse.json(
+          {
+            success: true,
+            message: 'Jobs with shifts retrieved successfully',
+            count: 0,
+            data: [],
+          },
+          { status: 200 }
+        );
+      }
+
+      // Extract clientOrgs array from user record
+      // Structure: clientOrgs: [{ slug: "formula-one-lv", userType: "User", status: "Active", ... }, ...]
+      const clientOrgs = (clientUser as UserWithClientOrgs)?.clientOrgs;
+      clientOrgSlugs = extractClientOrgSlugs(clientOrgs);
+
+      // Log for debugging (only in development)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Jobs with Shifts API] Client user clientOrgs:', {
+          userId: user._id,
+          clientOrgSlugs,
+          clientOrgsCount: clientOrgs?.length || 0,
+          willFilter: clientOrgSlugs.length > 0,
+        });
+      }
+    } catch (error) {
+      console.error('[Jobs with Shifts API] Error fetching user clientOrgs:', error);
+      // If we can't fetch clientOrgs, return empty results for security
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'Jobs with shifts retrieved successfully',
+          count: 0,
+          data: [],
+        },
+        { status: 200 }
+      );
+    }
+
+    // PERFORMANCE: Early return if no clientOrgs - no need to query database
+    if (clientOrgSlugs.length === 0) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Jobs with Shifts API] No clientOrgs found, returning empty result');
+      }
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'Jobs with shifts retrieved successfully',
+          count: 0,
+          data: [],
+        },
+        { status: 200 }
+      );
+    }
 
     // OPTIMIZATION: Fetch only active jobs with shifts, limit results, and optimize projection
     // Filter by status to avoid fetching inactive/old jobs (case-insensitive)
@@ -31,6 +161,8 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
       shifts: { $exists: true, $ne: [] },
       // Only fetch active jobs to reduce dataset size (exclude deleted/inactive)
       status: { $nin: ['Deleted', 'deleted', 'Inactive', 'inactive'] },
+      // ALWAYS filter by clientOrgs for Client users
+      venueSlug: { $in: clientOrgSlugs },
     };
 
     // OPTIMIZATION: Limit shifts projection to only essential fields (slug and shiftName)
@@ -126,7 +258,7 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Error fetching jobs with shifts:', error);
+    console.error('[Jobs with Shifts API] Error fetching jobs with shifts:', error);
     return NextResponse.json(
       {
         error: 'internal-error',

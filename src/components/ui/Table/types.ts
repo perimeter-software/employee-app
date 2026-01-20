@@ -6,6 +6,8 @@ export interface TableColumn<T extends Record<string, unknown>> {
   render?: (value: T[keyof T], row: T, index: number) => ReactNode;
   className?: string;
   headerClassName?: string;
+  sortable?: boolean;
+  sortFn?: (a: T, b: T) => number;
 }
 
 export interface TableProps<T extends Record<string, unknown>> {
@@ -21,4 +23,6 @@ export interface TableProps<T extends Record<string, unknown>> {
   onRowClick?: (row: T, index: number) => void;
   loading?: boolean;
   loadingRows?: number;
+  pageSize?: number;
+  pageSizeOptions?: number[];
 }

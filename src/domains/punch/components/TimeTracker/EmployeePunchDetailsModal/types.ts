@@ -11,6 +11,7 @@ export interface EmployeePunch {
   shiftName?: string;
   employeeName: string;
   employeeEmail: string;
+  phoneNumber?: string;
   jobTitle: string;
   jobSite: string;
   location: string;
