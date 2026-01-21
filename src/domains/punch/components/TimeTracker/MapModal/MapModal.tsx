@@ -23,6 +23,22 @@ interface Coordinates {
   accuracy?: number;
 }
 
+interface EmployeePunchForMap {
+  _id: string;
+  employeeName: string;
+  firstName?: string;
+  lastName?: string;
+  profileImg?: string | null;
+  clockInCoordinates?: { latitude: number; longitude: number; accuracy?: number } | null;
+  clockOutCoordinates?: { latitude: number; longitude: number; accuracy?: number } | null;
+  timeIn: string;
+  timeOut: string | null;
+  jobTitle?: string;
+  shiftName?: string;
+  userId?: string;
+  applicantId?: string;
+}
+
 interface MapModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -36,6 +52,8 @@ interface MapModalProps {
   geoFenceRadius?: number;
   graceDistance?: number; // Grace distance in meters (converted from feet)
   title?: string;
+  employeePunches?: EmployeePunchForMap[] | null;
+  primaryCompanyImageUrl?: string | null;
 }
 
 // Simple distance calculation
@@ -63,6 +81,67 @@ function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(1)}km`;
 }
 
+// Helper function to create Google Maps marker icon from avatar
+function createAvatarMarkerIcon(
+  avatarUrl: string | null,
+  initials: string,
+  size: number = 50,
+  borderColor: string = '#ffffff',
+  borderWidth: number = 3,
+  backgroundColor: string = '#6B7280'
+): google.maps.Icon | google.maps.Symbol {
+  // If we have an avatar URL, use it directly
+  if (avatarUrl) {
+    return {
+      url: avatarUrl,
+      scaledSize: new google.maps.Size(size, size),
+      anchor: new google.maps.Point(size / 2, size / 2),
+    };
+  }
+
+  // Otherwise, create a data URL with initials
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  
+  if (!ctx) {
+    // Fallback to default marker - returns Symbol type
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: size / 2,
+      fillColor: backgroundColor,
+      fillOpacity: 1,
+      strokeColor: borderColor,
+      strokeWeight: borderWidth,
+    } as google.maps.Symbol;
+  }
+
+  // Draw circle background
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2 - borderWidth, 0, 2 * Math.PI);
+  ctx.fillStyle = backgroundColor;
+  ctx.fill();
+  
+  // Draw border
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = borderWidth;
+  ctx.stroke();
+  
+  // Draw initials
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${size * 0.4}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(initials.toUpperCase(), size / 2, size / 2);
+  
+  return {
+    url: canvas.toDataURL(),
+    scaledSize: new google.maps.Size(size, size),
+    anchor: new google.maps.Point(size / 2, size / 2),
+  };
+}
+
 export const MapModal = React.memo(function GoogleMapsModal({
   isOpen,
   onClose,
@@ -71,6 +150,8 @@ export const MapModal = React.memo(function GoogleMapsModal({
   geoFenceRadius = 100,
   graceDistance,
   title = 'Location Map',
+  employeePunches,
+  primaryCompanyImageUrl,
 }: MapModalProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
@@ -270,6 +351,184 @@ export const MapModal = React.memo(function GoogleMapsModal({
         }
       }
 
+      // Add employee markers for clock-in/clock-out locations
+      if (employeePunches && employeePunches.length > 0) {
+        employeePunches.forEach((punch) => {
+          // Add clock-in marker
+          if (punch.clockInCoordinates && punch.clockInCoordinates.latitude && punch.clockInCoordinates.longitude) {
+            const isActive = !punch.timeOut;
+            const initials = `${punch.firstName?.[0] || ''}${punch.lastName?.[0] || ''}`.toUpperCase() || 'N/A';
+            
+            // Generate avatar URL
+            let avatarUrl: string | null = null;
+            if (punch.profileImg && primaryCompanyImageUrl) {
+              const userId = punch.applicantId || punch.userId;
+              if (userId) {
+                if (punch.profileImg.startsWith('http')) {
+                  avatarUrl = punch.profileImg;
+                } else {
+                  avatarUrl = `${primaryCompanyImageUrl}/users/${userId}/photo/${punch.profileImg}`;
+                }
+              }
+            }
+            
+            // Create marker icon (larger for active punches)
+            const markerSize = isActive ? 60 : 50;
+            const markerColor = isActive ? '#10B981' : '#3B82F6'; // Green for active, blue for completed
+            const markerIcon = createAvatarMarkerIcon(
+              avatarUrl,
+              initials,
+              markerSize,
+              '#ffffff',
+              3,
+              markerColor
+            );
+            
+            const clockInMarker = new google.maps.Marker({
+              position: {
+                lat: punch.clockInCoordinates.latitude,
+                lng: punch.clockInCoordinates.longitude,
+              },
+              map,
+              title: `${punch.employeeName} - Clock In`,
+              icon: markerIcon,
+              zIndex: isActive ? 100 : 50, // Active punches on top
+            });
+            
+            // Format clock-in time
+            const clockInTime = new Date(punch.timeIn);
+            const clockInTimeString = clockInTime.toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
+            });
+            
+            // Format clock-out time if available
+            let clockOutTimeString = '';
+            if (punch.timeOut) {
+              const clockOutTime = new Date(punch.timeOut);
+              clockOutTimeString = clockOutTime.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+              });
+            }
+            
+            // Create info window for clock-in
+            const clockInInfoWindow = new google.maps.InfoWindow({
+              content: `
+                <div style="padding: 12px; min-width: 200px;">
+                  <h3 style="margin: 0 0 8px 0; color: ${markerColor}; font-size: 14px; font-weight: 600;">
+                    ${punch.employeeName}
+                  </h3>
+                  <p style="margin: 4px 0; font-size: 12px; color: #666;">
+                    <strong>Clock In:</strong> ${clockInTimeString}
+                  </p>
+                  ${clockOutTimeString ? `<p style="margin: 4px 0; font-size: 12px; color: #666;"><strong>Clock Out:</strong> ${clockOutTimeString}</p>` : '<p style="margin: 4px 0; font-size: 12px; color: #666;"><strong>Clock Out:</strong> <span style="color: #999;">Not clocked out</span></p>'}
+                  ${punch.jobTitle ? `<p style="margin: 4px 0; font-size: 12px; color: #666;"><strong>Job:</strong> ${punch.jobTitle}</p>` : ''}
+                  ${punch.shiftName ? `<p style="margin: 4px 0; font-size: 12px; color: #666;"><strong>Shift:</strong> ${punch.shiftName}</p>` : ''}
+                  ${isActive ? '<p style="margin: 4px 0; font-size: 11px; color: #10B981; font-weight: 600;">● Active</p>' : ''}
+                </div>
+              `,
+            });
+            
+            clockInMarker.addListener('click', () => {
+              clockInInfoWindow.open(map, clockInMarker);
+            });
+          }
+          
+          // Add clock-out marker if available
+          if (punch.clockOutCoordinates && punch.clockOutCoordinates.latitude && punch.clockOutCoordinates.longitude && punch.timeOut) {
+            const initials = `${punch.firstName?.[0] || ''}${punch.lastName?.[0] || ''}`.toUpperCase() || 'N/A';
+            
+            // Generate avatar URL
+            let avatarUrl: string | null = null;
+            if (punch.profileImg && primaryCompanyImageUrl) {
+              const userId = punch.applicantId || punch.userId;
+              if (userId) {
+                if (punch.profileImg.startsWith('http')) {
+                  avatarUrl = punch.profileImg;
+                } else {
+                  avatarUrl = `${primaryCompanyImageUrl}/users/${userId}/photo/${punch.profileImg}`;
+                }
+              }
+            }
+            
+            // Create marker icon (red/orange for clock-out)
+            const markerIcon = createAvatarMarkerIcon(
+              avatarUrl,
+              initials,
+              50,
+              '#ffffff',
+              3,
+              '#EF4444' // Red for clock-out
+            );
+            
+            const clockOutMarker = new google.maps.Marker({
+              position: {
+                lat: punch.clockOutCoordinates.latitude,
+                lng: punch.clockOutCoordinates.longitude,
+              },
+              map,
+              title: `${punch.employeeName} - Clock Out`,
+              icon: markerIcon,
+              zIndex: 40,
+            });
+            
+            // Format clock-in time
+            const clockInTime = new Date(punch.timeIn);
+            const clockInTimeString = clockInTime.toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
+            });
+            
+            // Format clock-out time
+            const clockOutTime = new Date(punch.timeOut);
+            const clockOutTimeString = clockOutTime.toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
+            });
+            
+            // Create info window for clock-out
+            const clockOutInfoWindow = new google.maps.InfoWindow({
+              content: `
+                <div style="padding: 12px; min-width: 200px;">
+                  <h3 style="margin: 0 0 8px 0; color: #EF4444; font-size: 14px; font-weight: 600;">
+                    ${punch.employeeName}
+                  </h3>
+                  <p style="margin: 4px 0; font-size: 12px; color: #666;">
+                    <strong>Clock In:</strong> ${clockInTimeString}
+                  </p>
+                  <p style="margin: 4px 0; font-size: 12px; color: #666;">
+                    <strong>Clock Out:</strong> ${clockOutTimeString}
+                  </p>
+                  ${punch.jobTitle ? `<p style="margin: 4px 0; font-size: 12px; color: #666;"><strong>Job:</strong> ${punch.jobTitle}</p>` : ''}
+                  ${punch.shiftName ? `<p style="margin: 4px 0; font-size: 12px; color: #666;"><strong>Shift:</strong> ${punch.shiftName}</p>` : ''}
+                </div>
+              `,
+            });
+            
+            clockOutMarker.addListener('click', () => {
+              clockOutInfoWindow.open(map, clockOutMarker);
+            });
+          }
+        });
+      }
+
       mapInstance.current = map;
       setIsMapLoaded(true);
       console.log('✅ Map initialization complete');
@@ -284,6 +543,8 @@ export const MapModal = React.memo(function GoogleMapsModal({
     geoFenceRadius,
     graceDistance,
     isWithinGeofence,
+    employeePunches,
+    primaryCompanyImageUrl,
   ]);
 
   // 🔄 Handle modal open/close

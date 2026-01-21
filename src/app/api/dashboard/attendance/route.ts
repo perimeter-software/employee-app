@@ -9,11 +9,11 @@ async function getAttendanceDataHandler(request: AuthenticatedRequest) {
   try {
     const body = (await request.json()) as Pick<
       DashboardParams,
-      'userId' | 'view' | 'startDate' | 'endDate'
+      'userId' | 'view' | 'startDate' | 'endDate' | 'weekStartsOn' | 'selectedEmployeeId'
     >;
     const user = request.user;
 
-    const { userId: requestUserId, view, startDate, endDate } = body;
+    const { userId: requestUserId, view, startDate, endDate, weekStartsOn = 0, selectedEmployeeId } = body;
 
     const userId = user._id || requestUserId;
 
@@ -28,13 +28,27 @@ async function getAttendanceDataHandler(request: AuthenticatedRequest) {
       );
     }
 
+    // Only allow Client users to use employee filter
+    if (selectedEmployeeId && user.userType !== 'Client') {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Employee filter is only available for Client users',
+          error: 'UNAUTHORIZED',
+        },
+        { status: 403 }
+      );
+    }
+
     const { db } = await getTenantAwareConnection(request);
     const attendanceData = await getAttendanceData(
       db,
       userId,
       view,
       startDate,
-      endDate
+      endDate,
+      weekStartsOn,
+      selectedEmployeeId
     );
 
     return NextResponse.json({
