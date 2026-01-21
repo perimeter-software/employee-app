@@ -9,11 +9,11 @@ async function getPerformanceMetricsHandler(request: AuthenticatedRequest) {
   try {
     const body = (await request.json()) as Pick<
       DashboardParams,
-      'userId' | 'startDate' | 'endDate'
+      'userId' | 'startDate' | 'endDate' | 'weekStartsOn' | 'selectedEmployeeId'
     >;
     const user = request.user;
 
-    const { userId: requestUserId, startDate, endDate } = body;
+    const { userId: requestUserId, startDate, endDate, weekStartsOn = 0, selectedEmployeeId } = body;
 
     const userId = user._id || requestUserId;
 
@@ -28,12 +28,26 @@ async function getPerformanceMetricsHandler(request: AuthenticatedRequest) {
       );
     }
 
+    // Only allow Client users to use employee filter
+    if (selectedEmployeeId && user.userType !== 'Client') {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Employee filter is only available for Client users',
+          error: 'UNAUTHORIZED',
+        },
+        { status: 403 }
+      );
+    }
+
     const { db } = await getTenantAwareConnection(request);
     const performanceData = await getPerformanceMetrics(
       db,
       userId,
       startDate,
-      endDate
+      endDate,
+      weekStartsOn,
+      selectedEmployeeId
     );
 
     return NextResponse.json({

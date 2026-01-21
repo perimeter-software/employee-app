@@ -24,6 +24,12 @@ export type CalendarEvent = {
   color: string;
   start: Date;
   end: Date;
+  profileImg?: string | null;
+  firstName?: string;
+  lastName?: string;
+  applicantId?: string;
+  userId?: string;
+  isFuture?: boolean; // Flag to indicate if this is a future event
 };
 
 export const calendarModes = ['day', 'week', 'month'] as const;

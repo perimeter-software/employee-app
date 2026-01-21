@@ -1,20 +1,23 @@
-import { useRef } from 'react';
+import { useRef, useMemo } from 'react';
 import { useCalendarContext } from '../../../Calendar';
 import { startOfWeek, addDays, format } from 'date-fns';
 import CalendarBodyDayContent from '../Day/CalendarBodyDayContent';
 import { useCalendarAutoScroll } from '../../hooks';
 import { getDayNamesFromWeekStartsOn } from '@/lib/utils/date-utils';
 
-// Time hours array
+// Time hours array - moved outside component to prevent recreation on every render
 const hours = Array.from({ length: 24 }, (_, i) => i);
 
 export default function CalendarBodyWeek() {
   const { date, events, weekStartsOn = 0 } = useCalendarContext();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Start week based on company work week settings
-  const weekStart = startOfWeek(date, { weekStartsOn });
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  // Memoize week calculations - only recalculate when date or weekStartsOn changes
+  const weekStart = useMemo(() => startOfWeek(date, { weekStartsOn }), [date, weekStartsOn]);
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+  
+  // Memoize day names - only recalculate when weekStartsOn changes
+  const adjustedDayNames = useMemo(() => getDayNamesFromWeekStartsOn(weekStartsOn), [weekStartsOn]);
 
   // Use the auto-scroll hook for week view
   useCalendarAutoScroll({
@@ -34,13 +37,10 @@ export default function CalendarBodyWeek() {
         {/* Day headers */}
         <div className="flex flex-1 overflow-x-auto">
           {weekDays.map((day, index) => {
-            // Generate day names based on weekStartsOn
-            const adjustedDayNames = getDayNamesFromWeekStartsOn(weekStartsOn);
-
             return (
               <div
                 key={day.toISOString()}
-                className="flex-1 py-2 lg:py-3 px-0.5 sm:px-1 lg:px-2 text-center border-r border-cyan-400 last:border-r-0 min-w-[50px] sm:min-w-[80px] lg:min-w-0"
+                className="flex-1 py-2 lg:py-3 px-0.5 sm:px-1 lg:px-2 text-center border-r border-cyan-400 last:border-r-0 min-w-[50px] sm:min-w-[100px] md:min-w-[120px] lg:min-w-[150px]"
               >
                 <div className="text-xs lg:text-sm font-medium">
                   {/* Show abbreviated day names on very small screens */}
@@ -93,7 +93,7 @@ export default function CalendarBodyWeek() {
               {weekDays.map((day) => (
                 <div
                   key={day.toISOString()}
-                  className="flex-1 border-r border-gray-200 last:border-r-0 min-w-[50px] sm:min-w-[80px] lg:min-w-0"
+                  className="flex-1 border-r border-gray-200 last:border-r-0 min-w-[50px] sm:min-w-[100px] md:min-w-[120px] lg:min-w-[150px]"
                 >
                   <CalendarBodyDayContent date={day} hideHeader={true} />
                 </div>

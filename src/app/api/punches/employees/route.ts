@@ -3,7 +3,7 @@ import { withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
-import { parseISO } from 'date-fns';
+import { parseISO, format } from 'date-fns';
 import { ObjectId } from 'mongodb';
 
 // POST Handler for Finding Employee Punches (for Client role)
@@ -340,6 +340,7 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
             // ERROR-PROOF: Use resolved shift name
             shiftName: '$resolvedShiftName',
             clockInCoordinates: 1,
+            clockOutCoordinates: 1,
             userNote: 1, // ERROR-PROOF: Include userNote field
             managerNote: 1, // ERROR-PROOF: Include managerNote field
             employeeName: {
@@ -355,6 +356,9 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
               $ifNull: ['$applicant.email', '$user.emailAddress', ''],
             },
             phoneNumber: { $ifNull: ['$applicant.phone', ''] },
+            profileImg: {
+              $ifNull: ['$applicant.profileImg', '$user.profileImg', null],
+            },
             jobTitle: { $ifNull: ['$job.title', ''] },
             jobSite: { $ifNull: ['$job.venueName', '$job.title', ''] },
             location: { $ifNull: ['$job.venueName', '$job.location.name', ''] },
@@ -456,12 +460,42 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
     }
 
     // ERROR-PROOF: Post-process to resolve shiftName from job.shifts (following pattern from findAllPunchesByDateRange)
-    const convertedPunches = punches.map((punch) => {
+    // Type for punch data - includes all properties from aggregation pipeline
+    type PunchData = {
+      _id: string;
+      userId: string;
+      applicantId: string;
+      jobId: string;
+      timeIn: string;
+      timeOut: string | null;
+      status?: string;
+      shiftSlug?: string;
+      shiftName: string | null;
+      employeeName?: string;
+      firstName?: string;
+      lastName?: string;
+      employeeEmail?: string;
+      phoneNumber?: string;
+      profileImg?: string | null;
+      jobTitle?: string;
+      jobSite?: string;
+      location?: string;
+      clockInCoordinates?: unknown;
+      clockOutCoordinates?: unknown;
+      userNote?: string;
+      managerNote?: string;
+      [key: string]: unknown;
+    };
+    
+    const convertedPunches: PunchData[] = punches.map((punch) => {
       const converted = convertToJSON(punch);
       const punchData = converted as {
         shiftSlug?: string;
         shiftName?: string;
         jobId?: string;
+        timeIn?: string;
+        timeOut?: string | null;
+        [key: string]: unknown;
       };
 
       // Get jobId as string - handle both ObjectId and string formats
@@ -546,15 +580,393 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
         applicantId: punch.applicantId?.toString() || '',
         jobId: jobIdStr,
         shiftName: resolvedShiftName,
-      };
+        timeIn: punchData.timeIn || punch.timeIn?.toString() || '',
+        timeOut: punchData.timeOut || punch.timeOut?.toString() || null,
+        shiftSlug: punchData.shiftSlug || punch.shiftSlug?.toString() || '',
+      } as PunchData;
     });
+
+    // Generate future punches if date range includes future dates
+    const now = new Date();
+    const hasFutureDates = endDateTime.getTime() > now.getTime();
+    
+    // Future punches use the same type as convertedPunches
+    const futurePunches: PunchData[] = [];
+    
+    // Use jobIds from request if provided, otherwise use uniqueJobIds from actual punches
+    const jobsToProcess = (jobIds && Array.isArray(jobIds) && jobIds.length > 0) 
+      ? jobIds 
+      : uniqueJobIds;
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Employee Punches API] Future punch generation check:', {
+        hasFutureDates,
+        endDateTime: endDateTime.toISOString(),
+        now: now.toISOString(),
+        jobIdsFromRequest: jobIds,
+        uniqueJobIdsFromPunches: uniqueJobIds,
+        jobsToProcess,
+        jobsToProcessCount: jobsToProcess.length,
+      });
+    }
+    
+    if (hasFutureDates && jobsToProcess.length > 0) {
+      try {
+        // Fetch jobs with full shift data (defaultSchedule and shiftRoster)
+        const futureJobObjectIds = jobsToProcess
+          .map((id) => {
+            try {
+              return new ObjectId(id);
+            } catch {
+              return null;
+            }
+          })
+          .filter((id): id is ObjectId => id !== null);
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[Employee Punches API] Fetching jobs for future punch generation:', {
+            jobsToProcessCount: jobsToProcess.length,
+            validObjectIdsCount: futureJobObjectIds.length,
+          });
+        }
+
+        const futureJobs = await db
+          .collection('jobs')
+          .find({
+            _id: { $in: futureJobObjectIds },
+          })
+          .project({
+            _id: 1,
+            title: 1,
+            venueName: 1,
+            venueSlug: 1,
+            location: 1,
+            'shifts.slug': 1,
+            'shifts.shiftName': 1,
+            'shifts.shiftStartDate': 1,
+            'shifts.shiftEndDate': 1,
+            'shifts.defaultSchedule': 1,
+            'shifts.shiftRoster': 1,
+          })
+          .toArray();
+
+        // Generate future punches from shift schedules
+        const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+        const currentDate = new Date(startDateTime);
+        currentDate.setHours(0, 0, 0, 0);
+        const endDateCopy = new Date(endDateTime);
+        endDateCopy.setHours(23, 59, 59, 999);
+
+        const debugInfo: {
+          daysProcessed: number;
+          daysInFuture: number;
+          shiftsChecked: number;
+          shiftsWithSchedule: number;
+          shiftsWithRoster: number;
+          punchesCreated: number;
+          rosterEntriesProcessed: number;
+          rosterEntriesSkipped: number;
+          rosterEntriesWithEmployeeId: number;
+          sampleRosterEntry?: string | { employeeId?: string; date?: string; _id?: string };
+          sampleShiftSlug?: string;
+          sampleDayOfWeek?: string;
+          punchesPerDay?: Record<string, number>;
+        } = {
+          daysProcessed: 0,
+          daysInFuture: 0,
+          shiftsChecked: 0,
+          shiftsWithSchedule: 0,
+          shiftsWithRoster: 0,
+          punchesCreated: 0,
+          rosterEntriesProcessed: 0,
+          rosterEntriesSkipped: 0,
+          rosterEntriesWithEmployeeId: 0,
+          punchesPerDay: {},
+        };
+
+        while (currentDate <= endDateCopy) {
+          const dayOfWeek = daysOfWeek[currentDate.getDay()];
+          const dateKey = format(currentDate, 'yyyy-MM-dd');
+          const dateTime = currentDate.getTime();
+          debugInfo.daysProcessed++;
+
+          // Only generate for future dates
+          if (dateTime > now.getTime()) {
+            debugInfo.daysInFuture++;
+            for (const jobDoc of futureJobs) {
+              const job = convertToJSON(jobDoc) as {
+                _id: string;
+                title?: string;
+                venueName?: string;
+                venueSlug?: string;
+                location?: { locationName?: string };
+                shifts?: Array<{
+                  slug: string;
+                  shiftName?: string;
+                  shiftStartDate: string | Date;
+                  shiftEndDate: string | Date;
+                  defaultSchedule?: {
+                    [key in typeof daysOfWeek[number]]?: {
+                      start: string | Date;
+                      end: string | Date;
+                      roster?: Array<string | { employeeId: string; date?: string } | { _id: string }>;
+                    };
+                  };
+                  shiftRoster?: Array<{
+                    _id: string;
+                    firstName?: string;
+                    lastName?: string;
+                    email?: string;
+                    phone?: string;
+                    profileImg?: string;
+                  }>;
+                }>;
+              };
+
+              if (!job.shifts || job.shifts.length === 0) continue;
+
+              for (const shift of job.shifts) {
+                debugInfo.shiftsChecked++;
+                // Filter by selected shift if specified
+                if (shiftSlug && shiftSlug !== 'all' && shift.slug !== shiftSlug) {
+                  continue;
+                }
+
+                // Check if shift is active for this date
+                const shiftStartDate = new Date(shift.shiftStartDate);
+                shiftStartDate.setHours(0, 0, 0, 0);
+                const shiftEndDate = new Date(shift.shiftEndDate);
+                shiftEndDate.setHours(23, 59, 59, 999);
+                
+                if (currentDate < shiftStartDate || currentDate > shiftEndDate) {
+                  continue;
+                }
+
+                // Get the schedule for this day
+                const daySchedule = shift.defaultSchedule?.[dayOfWeek];
+                if (!daySchedule || !daySchedule.start || !daySchedule.end) {
+                  continue;
+                }
+                debugInfo.shiftsWithSchedule++;
+
+                // Get roster for this day
+                let roster: Array<string | { employeeId: string; date?: string } | { _id: string }> = (daySchedule.roster || []) as Array<string | { employeeId: string; date?: string } | { _id: string }>;
+                
+                // Filter roster entries to only those that match the current date (if they have a date field)
+                // Entries without a date field are used for all dates
+                const dateFilteredRoster = roster.filter((entry) => {
+                  if (typeof entry === 'string') {
+                    return true; // String IDs are used for all dates
+                  }
+                  if (entry && typeof entry === 'object') {
+                    if ('employeeId' in entry) {
+                      const e = entry as { employeeId: string; date?: string };
+                      // If entry has a date, only include if it matches current date
+                      // If no date, include for all dates
+                      return !e.date || e.date === dateKey;
+                    }
+                    if ('_id' in entry) {
+                      return true; // Objects with _id are used for all dates
+                    }
+                  }
+                  return false;
+                });
+                
+                // If no roster entries match this date, try to use shiftRoster as fallback
+                // shiftRoster doesn't have date restrictions, so use it for all future dates
+                if (dateFilteredRoster.length === 0 && shift.shiftRoster && Array.isArray(shift.shiftRoster) && shift.shiftRoster.length > 0) {
+                  roster = shift.shiftRoster.map((emp) => {
+                    if (emp && typeof emp === 'object' && '_id' in emp) {
+                      return { _id: emp._id };
+                    }
+                    return null;
+                  }).filter((item): item is { _id: string } => item !== null);
+                } else {
+                  roster = dateFilteredRoster;
+                }
+                
+                if (roster.length === 0) {
+                  continue;
+                }
+                debugInfo.shiftsWithRoster++;
+                
+                // Store sample roster entry for debugging
+                if (!debugInfo.sampleRosterEntry && roster.length > 0) {
+                  debugInfo.sampleRosterEntry = roster[0];
+                  debugInfo.sampleShiftSlug = shift.slug;
+                  debugInfo.sampleDayOfWeek = dayOfWeek;
+                }
+
+                // Process roster entries
+                for (const rosterEntry of roster) {
+                  debugInfo.rosterEntriesProcessed++;
+                  let employeeId: string | null = null;
+                  let employeeData: {
+                    firstName?: string;
+                    lastName?: string;
+                    email?: string;
+                    phone?: string;
+                    profileImg?: string;
+                  } | null = null;
+
+                  // Handle different roster formats
+                  if (typeof rosterEntry === 'string') {
+                    // String ID - use for all dates
+                    employeeId = rosterEntry;
+                    debugInfo.rosterEntriesWithEmployeeId++;
+                    // Try to find employee data in shiftRoster
+                    if (shift.shiftRoster && Array.isArray(shift.shiftRoster)) {
+                      const rosterApplicant = shift.shiftRoster.find(
+                        (emp) => emp._id === employeeId
+                      );
+                      if (rosterApplicant) {
+                        employeeData = rosterApplicant;
+                      }
+                    }
+                  } else if (rosterEntry && typeof rosterEntry === 'object') {
+                    if ('employeeId' in rosterEntry) {
+                      const entry = rosterEntry as { employeeId: string; date?: string };
+                      // At this point, roster has already been filtered by date, so we can use this entry
+                      employeeId = entry.employeeId;
+                      debugInfo.rosterEntriesWithEmployeeId++;
+                      // Try to find employee data in shiftRoster
+                      if (shift.shiftRoster && Array.isArray(shift.shiftRoster)) {
+                        const rosterApplicant = shift.shiftRoster.find(
+                          (emp) => emp._id === employeeId
+                        );
+                        if (rosterApplicant) {
+                          employeeData = rosterApplicant;
+                        }
+                      }
+                    } else if ('_id' in rosterEntry) {
+                      // Object with _id - use for all dates
+                      employeeId = rosterEntry._id;
+                      debugInfo.rosterEntriesWithEmployeeId++;
+                      // Try to find employee data in shiftRoster
+                      if (shift.shiftRoster && Array.isArray(shift.shiftRoster)) {
+                        const rosterApplicant = shift.shiftRoster.find(
+                          (emp) => emp._id === employeeId
+                        );
+                        if (rosterApplicant) {
+                          employeeData = rosterApplicant;
+                        }
+                      }
+                    } else {
+                      debugInfo.rosterEntriesSkipped++;
+                    }
+                  } else {
+                    debugInfo.rosterEntriesSkipped++;
+                  }
+
+                  if (!employeeId) {
+                    debugInfo.rosterEntriesSkipped++;
+                    continue;
+                  }
+
+                  // For future punches, use just the date (start of day) - no specific time
+                  const timeIn = new Date(currentDate);
+                  timeIn.setHours(0, 0, 0, 0);
+
+                  // Get employee data
+                  const firstName = employeeData?.firstName || '';
+                  const lastName = employeeData?.lastName || '';
+                  const employeeName = `${firstName} ${lastName}`.trim() || 'Unknown Employee';
+                  const email = employeeData?.email || '';
+                  const profileImg = employeeData?.profileImg || null;
+
+                  futurePunches.push({
+                    _id: `future-${job._id}-${shift.slug}-${employeeId}-${dateKey}`,
+                    userId: employeeId,
+                    applicantId: employeeId,
+                    jobId: job._id,
+                    timeIn: timeIn.toISOString(),
+                    timeOut: null, // Future punches have no clock out
+                    status: 'scheduled',
+                    shiftSlug: shift.slug,
+                    shiftName: shift.shiftName || null,
+                    employeeName,
+                    firstName,
+                    lastName,
+                    employeeEmail: email,
+                    phoneNumber: employeeData?.phone || '',
+                    profileImg,
+                    jobTitle: job.title || '',
+                    jobSite: job.venueName || job.title || '',
+                    location: job.location?.locationName || job.venueSlug || '',
+                  });
+                  debugInfo.punchesCreated++;
+                  // Track punches per day
+                  if (!debugInfo.punchesPerDay) {
+                    debugInfo.punchesPerDay = {};
+                  }
+                  debugInfo.punchesPerDay[dateKey] = (debugInfo.punchesPerDay[dateKey] || 0) + 1;
+                }
+              }
+            }
+          }
+
+          // Move to next day
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[Employee Punches API] Future punch generation debug:', debugInfo);
+        }
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[Employee Punches API] Future punch generation result:', {
+            count: futurePunches.length,
+            dateRange: {
+              start: startDateTime.toISOString(),
+              end: endDateTime.toISOString(),
+            },
+            jobsProcessed: futureJobs.length,
+            sampleFuturePunch: futurePunches.length > 0 ? {
+              _id: futurePunches[0]?._id,
+              jobId: futurePunches[0]?.jobId,
+              shiftSlug: futurePunches[0]?.shiftSlug,
+              timeIn: futurePunches[0]?.timeIn,
+            } : null,
+          });
+        }
+      } catch (error) {
+        console.error('[Employee Punches API] Error generating future punches:', error);
+        // Don't fail the request if future punch generation fails
+      }
+    } else if (process.env.NODE_ENV === 'development') {
+      console.log('[Employee Punches API] Skipping future punch generation:', {
+        hasFutureDates,
+        jobsToProcessCount: jobsToProcess.length,
+        reason: !hasFutureDates ? 'No future dates in range' : 'No jobs to process',
+      });
+    }
+
+    // Merge actual punches with future punches
+    // Remove duplicates - prefer actual punches over future punches
+    const allPunches = [...convertedPunches, ...futurePunches];
+    const uniquePunches = new Map<string, typeof convertedPunches[0]>();
+    
+    for (const punch of allPunches) {
+      const key = `${punch.userId || punch.applicantId}-${punch.jobId}-${punch.shiftSlug}-${format(parseISO(punch.timeIn), 'yyyy-MM-dd')}`;
+      if (!uniquePunches.has(key)) {
+        uniquePunches.set(key, punch);
+      } else {
+        // Prefer actual punch over future punch
+        const existing = uniquePunches.get(key);
+        if (punch._id && !punch._id.startsWith('future-') && existing?._id?.startsWith('future-')) {
+          uniquePunches.set(key, punch);
+        }
+      }
+    }
+
+    const finalPunches = Array.from(uniquePunches.values());
 
     return NextResponse.json(
       {
         success: true,
         message: 'Employee punches retrieved successfully',
-        count: convertedPunches.length,
-        data: convertedPunches,
+        count: finalPunches.length,
+        data: finalPunches,
       },
       { status: 200 }
     );
