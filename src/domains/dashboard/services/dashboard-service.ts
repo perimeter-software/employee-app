@@ -125,7 +125,7 @@ export class DashboardApiService {
   static async getAttendanceData(
     params: Pick<
       DashboardParams,
-      'userId' | 'view' | 'startDate' | 'endDate' | 'weekStartsOn'
+      'userId' | 'view' | 'startDate' | 'endDate' | 'weekStartsOn' | 'selectedEmployeeId'
     >
   ): Promise<{
     monthlyAttendance: DashboardData['monthlyAttendance'];
@@ -155,7 +155,7 @@ export class DashboardApiService {
   static async getPerformanceMetrics(
     params: Pick<
       DashboardParams,
-      'userId' | 'startDate' | 'endDate' | 'weekStartsOn'
+      'userId' | 'startDate' | 'endDate' | 'weekStartsOn' | 'selectedEmployeeId'
     >
   ): Promise<{
     performanceMetrics: DashboardData['performanceMetrics'];
@@ -183,7 +183,7 @@ export class DashboardApiService {
    * Get insights and recommendations
    */
   static async getInsights(
-    params: Pick<DashboardParams, 'userId' | 'view'>
+    params: Pick<DashboardParams, 'userId' | 'view' | 'selectedEmployeeId'>
   ): Promise<DashboardData['insights']> {
     try {
       const response = await baseInstance.post<DashboardData['insights']>(

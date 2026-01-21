@@ -65,8 +65,8 @@ async function getDashboardDataHandler(request: AuthenticatedRequest) {
           weekStartsOn,
           selectedEmployeeId
         ),
-        getAttendanceData(db, userId, view, startDate, endDate, weekStartsOn),
-        getPerformanceMetrics(db, userId, startDate, endDate, weekStartsOn),
+        getAttendanceData(db, userId, view, startDate, endDate, weekStartsOn, selectedEmployeeId),
+        getPerformanceMetrics(db, userId, startDate, endDate, weekStartsOn, selectedEmployeeId),
         generateInsights(db, userId, view),
         getTodayAttendanceData(db),
       ]);

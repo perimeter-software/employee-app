@@ -8,7 +8,7 @@ import { DashboardParams } from '../types';
 export const useInsights = (
   params: Pick<
     DashboardParams,
-    'userId' | 'view' | 'startDate' | 'endDate'
+    'userId' | 'view' | 'selectedEmployeeId'
   > | null,
   options?: {
     enabled?: boolean;
@@ -18,16 +18,21 @@ export const useInsights = (
 ) => {
   return useQuery({
     queryKey: params
-      ? dashboardQueryKeys.insights(
+      ? [
+          ...dashboardQueryKeys.all,
+          'insights',
           params.userId,
           params.view,
-          params.startDate,
-          params.endDate
-        )
+          params.selectedEmployeeId || 'all',
+        ]
       : ['dashboard-insights-disabled'],
     queryFn: () => {
       if (!params) throw new Error('No params provided');
-      return DashboardApiService.getInsights(params);
+      return DashboardApiService.getInsights({
+        userId: params.userId,
+        view: params.view,
+        selectedEmployeeId: params.selectedEmployeeId,
+      });
     },
     staleTime: options?.staleTime ?? 15 * 60 * 1000, // 15 minutes
     refetchOnWindowFocus: options?.refetchOnWindowFocus ?? false,

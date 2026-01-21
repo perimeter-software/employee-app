@@ -2,12 +2,15 @@
 
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import Image from 'next/image';
 import { Table } from '@/components/ui/Table';
 import { TableColumn } from '@/components/ui/Table/types';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
+import { Avatar } from '@/components/ui/Avatar';
 import { ChevronLeft, ChevronRight, Pencil, MapPin } from 'lucide-react';
+import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import {
   Select,
@@ -26,6 +29,8 @@ import {
 } from 'date-fns';
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
 import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
+import type { Applicant } from '@/domains/user/types/applicant.types';
+import { clsxm } from '@/lib/utils/class-utils';
 import CalendarProvider from '@/components/ui/Calendar/CalendarProvider';
 import Calendar from '@/components/ui/Calendar/Calendar';
 import type { CalendarEvent, Mode } from '@/components/ui/Calendar';
@@ -49,6 +54,7 @@ interface EmployeePunch extends Record<string, unknown> {
   lastName?: string;
   employeeEmail: string;
   phoneNumber?: string;
+  profileImg?: string | null;
   jobTitle: string;
   jobSite: string;
   location: string;
@@ -104,16 +110,7 @@ async function fetchEmployeePunches(
       ? shiftSlug.trim()
       : undefined;
 
-  // Log for debugging (only in development)
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[Employee Punches Fetch] Request params:', {
-      startDate,
-      endDate,
-      jobIds,
-      shiftSlug: normalizedShiftSlug || 'all',
-      originalShiftSlug: shiftSlug,
-    });
-  }
+  // Removed debug logging to prevent infinite loops
 
   const response = await fetch('/api/punches/employees', {
     method: 'POST',
@@ -130,24 +127,12 @@ async function fetchEmployeePunches(
 
   if (!response.ok) {
     const error = await response.json();
-    console.error('[Employee Punches Fetch] API Error:', error);
     throw new Error(error.message || 'Failed to fetch employee punches');
   }
 
   const data = await response.json();
 
-  // Log for debugging (only in development)
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[Employee Punches Fetch] Response:', {
-      count: data.count,
-      shiftSlug: normalizedShiftSlug || 'all',
-      samplePunches: (data.data || []).slice(0, 3).map((p: EmployeePunch) => ({
-        id: p._id,
-        shiftSlug: p.shiftSlug,
-        timeIn: p.timeIn,
-      })),
-    });
-  }
+  // Removed debug logging to prevent infinite loops
 
   return data.data as EmployeePunch[];
 }
@@ -212,6 +197,7 @@ export function EmployeeTimeAttendanceTable({
   endDate: propEndDate,
 }: EmployeeTimeAttendanceTableProps) {
   const { weekStartsOn, isLoading: companyLoading } = useCompanyWorkWeek();
+  const { data: primaryCompany } = usePrimaryCompany();
 
   // View type state
   const [viewType, setViewType] = useState<'table' | 'month' | 'week' | 'day'>(
@@ -220,7 +206,6 @@ export function EmployeeTimeAttendanceTable({
 
   // Table-only controls (do not affect calendar view toggles)
   const [tableRange, setTableRange] = useState<'day' | 'week' | 'month'>('week');
-  const [includeUpcoming, setIncludeUpcoming] = useState(false);
 
   // Calendar mode state (for calendar views)
   const [calendarMode, setCalendarMode] = useState<Mode>('month');
@@ -396,17 +381,12 @@ export function EmployeeTimeAttendanceTable({
     return null;
   }, [selectedJob, venueLocationData]);
 
-  // Check if selected job already has shifts
-  const selectedJobHasShifts = useMemo(() => {
-    return selectedJob?.shifts && selectedJob.shifts.length > 0;
-  }, [selectedJob]);
-
-  // Fetch shifts for selected job (only if not already in job data)
+  // Fetch shifts for selected job - always fetch to get full shift data with rosters
+  // This is needed for generating future punches even if job already has minimal shift data
   const { data: jobShifts = [], isLoading: shiftsLoading } = useQuery({
     queryKey: ['jobShifts', selectedJobId],
     queryFn: () => fetchJobShifts(selectedJobId),
-    enabled:
-      !companyLoading && selectedJobId !== 'all' && !selectedJobHasShifts, // Only fetch if shifts not in job data
+    enabled: !companyLoading && selectedJobId !== 'all', // Always fetch for selected job to get full shift data
   });
 
   // Get all available shifts for selected job (from fetched shifts or job data)
@@ -620,18 +600,319 @@ export function EmployeeTimeAttendanceTable({
     refetchOnMount: false, // Don't refetch when component remounts (reduces API calls)
   });
 
-  // Upcoming detection + Table-only filtering (does not affect calendar views)
+  // Helper function to generate future punch records from scheduled shifts
+  const generateFuturePunches = useCallback(
+    (
+      jobs: GignologyJob[],
+      startDate: Date,
+      endDate: Date,
+      selectedShiftSlug?: string
+    ): EmployeePunch[] => {
+      const futurePunches: EmployeePunch[] = [];
+      const now = Date.now();
+      const daysOfWeek = [
+        'sunday',
+        'monday',
+        'tuesday',
+        'wednesday',
+        'thursday',
+        'friday',
+        'saturday',
+      ] as const;
+
+      // Iterate through each day in the date range
+      const currentDate = new Date(startDate);
+      // Reset to start of day for accurate comparison
+      currentDate.setHours(0, 0, 0, 0);
+      const endDateCopy = new Date(endDate);
+      endDateCopy.setHours(23, 59, 59, 999);
+
+      while (currentDate <= endDateCopy) {
+        const dayOfWeek = daysOfWeek[currentDate.getDay()];
+        const dateKey = format(currentDate, 'yyyy-MM-dd');
+        const dateTime = currentDate.getTime();
+
+        // Only generate for future dates (dates that haven't started yet)
+        if (dateTime > now) {
+          // Iterate through each job
+          jobs.forEach((job) => {
+            if (!job.shifts || job.shifts.length === 0) return;
+
+            job.shifts.forEach((shift) => {
+              // Filter by selected shift if specified
+              if (selectedShiftSlug && selectedShiftSlug !== 'all' && shift.slug !== selectedShiftSlug) {
+                return;
+              }
+
+              // Check if shift is active for this date
+              const shiftStartDate = new Date(shift.shiftStartDate);
+              shiftStartDate.setHours(0, 0, 0, 0);
+              const shiftEndDate = new Date(shift.shiftEndDate);
+              shiftEndDate.setHours(23, 59, 59, 999);
+              
+              if (currentDate < shiftStartDate || currentDate > shiftEndDate) {
+                return;
+              }
+
+              // Get the schedule for this day
+              const daySchedule = shift.defaultSchedule?.[dayOfWeek];
+              if (!daySchedule || !daySchedule.start || !daySchedule.end) {
+                return;
+              }
+
+              // Get roster for this day (can be array of IDs or array of objects with employeeId and date)
+              // First try daySchedule.roster, then fall back to shift.shiftRoster if available
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              let roster: any[] = (daySchedule.roster || []) as any[];
+              
+              // If no roster in daySchedule, try to use shiftRoster as fallback
+              // This handles cases where roster is stored at the shift level rather than per day
+              if (roster.length === 0 && shift.shiftRoster && Array.isArray(shift.shiftRoster) && shift.shiftRoster.length > 0) {
+                // Use shiftRoster as fallback - create roster entries from shiftRoster
+                roster = shift.shiftRoster.map((emp: unknown) => {
+                  // If it's already an object with _id, use it directly
+                  if (emp && typeof emp === 'object' && '_id' in emp) {
+                    return emp;
+                  }
+                  // If it's a string ID, return it as string
+                  if (typeof emp === 'string') {
+                    return emp;
+                  }
+                  // If it's an object with employeeId, return it
+                  if (emp && typeof emp === 'object' && 'employeeId' in emp) {
+                    return emp;
+                  }
+                  return null;
+                }).filter(Boolean);
+              }
+              
+              if (roster.length === 0) {
+                return;
+              }
+
+              // Removed debug logging to prevent infinite loops
+
+              // Process roster entries
+              roster.forEach((rosterEntry) => {
+                let employeeId: string | null = null;
+                let applicantData: Applicant | null = null;
+
+                // Handle different roster formats
+                if (typeof rosterEntry === 'string') {
+                  // Old format: array of employee IDs
+                  employeeId = rosterEntry;
+                  // Try to find employee data in shiftRoster
+                  if (shift.shiftRoster && Array.isArray(shift.shiftRoster)) {
+                    const rosterApplicant = shift.shiftRoster.find(
+                      (emp) => (emp as Applicant)._id === employeeId || (emp as { _id?: string })?._id === employeeId
+                    );
+                    if (rosterApplicant) {
+                      applicantData = rosterApplicant as Applicant;
+                    }
+                  }
+                } else if (rosterEntry && typeof rosterEntry === 'object') {
+                  // New format: object with employeeId and date
+                  if ('employeeId' in rosterEntry) {
+                    const entry = rosterEntry as { employeeId: string; date?: string };
+                    // Check if date matches (if specified)
+                    if (entry.date && entry.date !== dateKey) {
+                      return; // Skip if date doesn't match
+                    }
+                    employeeId = entry.employeeId;
+                    // Try to find employee data in shiftRoster
+                    if (shift.shiftRoster && Array.isArray(shift.shiftRoster)) {
+                      const rosterApplicant = shift.shiftRoster.find(
+                        (emp) => (emp as Applicant)._id === employeeId || (emp as { _id?: string })?._id === employeeId
+                      );
+                      if (rosterApplicant) {
+                        applicantData = rosterApplicant as Applicant;
+                      }
+                    }
+                  } else if ('_id' in rosterEntry) {
+                    // RosterApplicant format
+                    applicantData = rosterEntry as Applicant;
+                    employeeId = applicantData._id;
+                  }
+                }
+
+                if (!employeeId) return;
+
+                // Always create future punch - deduplication happens in allEmployeePunches
+                {
+                  // Create timeIn by combining date with shift start time
+                  const shiftStartTime = new Date(daySchedule.start);
+                  const timeIn = new Date(currentDate);
+                  timeIn.setHours(
+                    shiftStartTime.getHours(),
+                    shiftStartTime.getMinutes(),
+                    0,
+                    0
+                  );
+
+                  // Create timeOut by combining date with shift end time
+                  const shiftEndTime = new Date(daySchedule.end);
+                  const timeOut = new Date(currentDate);
+                  timeOut.setHours(
+                    shiftEndTime.getHours(),
+                    shiftEndTime.getMinutes(),
+                    0,
+                    0
+                  );
+
+                  // Get employee data from roster or use defaults
+                  const firstName = applicantData?.firstName || '';
+                  const lastName = applicantData?.lastName || '';
+                  const employeeName = `${firstName} ${lastName}`.trim() || 'Unknown Employee';
+                  const email = applicantData?.email || '';
+                  // RosterApplicant may have additional properties, but Applicant type doesn't include them
+                  // Use type assertion for properties that may exist on RosterApplicant
+                  const profileImg = (applicantData as Applicant & { profileImg?: string })?.profileImg || null;
+
+                  futurePunches.push({
+                    _id: `future-${job._id}-${shift.slug}-${employeeId}-${dateKey}`,
+                    userId: employeeId,
+                    applicantId: employeeId,
+                    jobId: job._id,
+                    timeIn: timeIn.toISOString(),
+                    timeOut: null, // Future punches have no clock out
+                    status: 'scheduled',
+                    shiftSlug: shift.slug,
+                    shiftName: shift.shiftName,
+                    employeeName,
+                    firstName,
+                    lastName,
+                    employeeEmail: email,
+                    phoneNumber: (applicantData as Applicant & { phone?: string })?.phone || '',
+                    profileImg,
+                    jobTitle: job.title || '',
+                    jobSite: job.venueSlug || job.title || '',
+                    location: job.location?.locationName || job.venueSlug || '',
+                    isFuture: true, // Mark as future punch
+                  } as EmployeePunch);
+                }
+              });
+            });
+          });
+        }
+
+        // Move to next day
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Removed all debug logging to prevent infinite loops
+
+      return futurePunches;
+    },
+    [] // Remove employeePunches dependency to prevent infinite loop
+  );
+
+  // Create stable key for jobShifts to prevent infinite loops
+  const jobShiftsKey = useMemo(() => {
+    if (!jobShifts || jobShifts.length === 0) return '';
+    return jobShifts.map(s => s.slug).sort().join(',');
+  }, [jobShifts]);
+
+  // Create jobs with full shift data for generating future punches
+  // Use full shift data from jobShifts API which includes defaultSchedule and shiftRoster
+  // Use jobShiftsKey instead of jobShifts directly to prevent infinite loops
+  const jobsWithFullShiftData = useMemo(() => {
+    if (selectedJobId === 'all') {
+      return [];
+    }
+
+    // Get the selected job from availableJobs
+    const job = availableJobs.find((j) => j._id === selectedJobId);
+    if (!job) {
+      return [];
+    }
+
+    // Use full shift data from jobShifts if available, otherwise use job.shifts
+    const fullShifts = jobShifts.length > 0 ? jobShifts : (job.shifts || []);
+
+    // Return job with full shift data
+    return [
+      {
+        ...job,
+        shifts: fullShifts,
+      },
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedJobId, availableJobs, jobShiftsKey, jobShifts.length]);
+
+  // Merge actual punches with future punches
+  const allEmployeePunches = useMemo(() => {
+    const actualPunches = employeePunches || [];
+    const startDate = new Date(dateRange.startDate);
+    const endDate = new Date(dateRange.endDate);
+
+    // Generate future punches from scheduled shifts using jobs with full shift data
+    const futurePunches = generateFuturePunches(
+      jobsWithFullShiftData,
+      startDate,
+      endDate,
+      selectedShiftSlug
+    );
+
+    // TEMPORARY DEBUG: Log to understand what's happening
+    if (process.env.NODE_ENV === 'development' && futurePunches.length === 0 && jobsWithFullShiftData.length > 0) {
+      console.log('[Future Punches Debug]', {
+        jobsCount: jobsWithFullShiftData.length,
+        jobs: jobsWithFullShiftData.map(j => ({
+          id: j._id,
+          title: j.title,
+          shiftsCount: j.shifts?.length || 0,
+          shifts: j.shifts?.map(s => ({
+            slug: s.slug,
+            shiftName: s.shiftName,
+            hasDefaultSchedule: !!s.defaultSchedule,
+            hasShiftRoster: !!s.shiftRoster,
+            shiftRosterLength: s.shiftRoster?.length || 0,
+            defaultScheduleKeys: s.defaultSchedule ? Object.keys(s.defaultSchedule) : [],
+          })) || [],
+        })),
+        dateRange: {
+          start: startDate.toISOString(),
+          end: endDate.toISOString(),
+        },
+        selectedShiftSlug,
+      });
+    }
+
+    // Merge and deduplicate (future punches should not duplicate actual punches)
+    const merged = [...actualPunches, ...futurePunches];
+
+    // Remove duplicates based on employee, job, shift, and date
+    const unique = merged.reduce((acc, punch) => {
+      const key = `${punch.userId || punch.applicantId}-${punch.jobId}-${punch.shiftSlug}-${format(new Date(punch.timeIn), 'yyyy-MM-dd')}`;
+      if (!acc.has(key)) {
+        acc.set(key, punch);
+      } else {
+        // Prefer actual punch over future punch
+        const existing = acc.get(key);
+        if (punch._id && !punch._id.startsWith('future-') && existing?._id?.startsWith('future-')) {
+          acc.set(key, punch);
+        }
+      }
+      return acc;
+    }, new Map<string, EmployeePunch>());
+
+    return Array.from(unique.values());
+  }, [
+    employeePunches,
+    jobsWithFullShiftData,
+    dateRange.startDate,
+    dateRange.endDate,
+    selectedShiftSlug,
+    generateFuturePunches,
+  ]);
+
+  // Table data - always include future events, checkbox controls visibility
   const tableData = useMemo(() => {
-    const punches = employeePunches || [];
+    const punches = allEmployeePunches || [];
     if (viewType !== 'table') return punches;
-    if (includeUpcoming) return punches;
-    const now = Date.now();
-    return punches.filter((p) => {
-      const timeInMs = new Date(p.timeIn).getTime();
-      if (Number.isNaN(timeInMs)) return true; // keep malformed rows rather than hiding unexpectedly
-      return timeInMs <= now;
-    });
-  }, [employeePunches, includeUpcoming, viewType]);
+    // Always show all events (including future)
+    return punches;
+  }, [allEmployeePunches, viewType]);
 
   // Get unique shift slugs from actual punches in the date range
   // ERROR-PROOF: Only show shifts that have data in the current date range
@@ -640,15 +921,15 @@ export function EmployeeTimeAttendanceTable({
   const availableShiftSlugs = useMemo(() => {
     // When "all" shifts is selected, we can extract shift slugs from the current data
     // This avoids making a separate API call just to get shift slugs
-    if (!employeePunches || employeePunches.length === 0) {
+    if (!allEmployeePunches || allEmployeePunches.length === 0) {
       return new Set<string>();
     }
-    // Extract unique shift slugs from punches
-    const shiftSlugs = employeePunches
+    // Extract unique shift slugs from punches (including future punches)
+    const shiftSlugs = allEmployeePunches
       .map((punch) => punch.shiftSlug)
       .filter((slug): slug is string => !!slug && slug !== 'all');
     return new Set(shiftSlugs);
-  }, [employeePunches]);
+  }, [allEmployeePunches]);
 
   // Get all available shifts for the dropdown
   // Always show all shifts from the job, regardless of current filter
@@ -664,6 +945,7 @@ export function EmployeeTimeAttendanceTable({
     const baseShifts = [...allAvailableShifts];
 
     // If we have punches, check for virtual shifts (deleted/missing shifts that appear in punches)
+    // Use employeePunches instead of allEmployeePunches to avoid circular dependency
     if (availableShiftSlugs.size > 0 && employeePunches) {
       // Find shift slugs from punches that don't exist in the job's shifts
       const missingShiftSlugs = Array.from(availableShiftSlugs).filter(
@@ -715,19 +997,7 @@ export function EmployeeTimeAttendanceTable({
       // Combine base shifts with virtual shifts
       const allShifts = [...baseShifts, ...virtualShifts];
 
-      // Log for debugging (only in development)
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[Employee Time Attendance] Available shifts:', {
-          allShifts: allAvailableShifts.map((s) => s.slug),
-          shiftsWithData: Array.from(availableShiftSlugs),
-          missingShiftSlugs,
-          virtualShifts: virtualShifts.map((s) => ({
-            slug: s.slug,
-            shiftName: s.shiftName,
-          })),
-          finalShifts: allShifts.map((s) => s.slug),
-        });
-      }
+      // Removed debug logging to prevent infinite loops
 
       return allShifts;
     }
@@ -735,6 +1005,12 @@ export function EmployeeTimeAttendanceTable({
     // If no punches yet, show all shifts (they might have data we haven't loaded)
     return baseShifts;
   }, [selectedJobId, allAvailableShifts, availableShiftSlugs, employeePunches]);
+
+  // Create stable key for availableShifts to prevent infinite loops
+  const availableShiftsKey = useMemo(() => {
+    if (!availableShifts || availableShifts.length === 0) return '';
+    return availableShifts.map(s => s.slug).sort().join(',');
+  }, [availableShifts]);
 
   // Reset shift when job changes
   // NOTE: This must be AFTER availableShifts is defined
@@ -752,8 +1028,9 @@ export function EmployeeTimeAttendanceTable({
     } else {
       setSelectedShiftSlug('all');
     }
+    // Use stable key instead of array reference to prevent infinite loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedJobId, selectedJob, availableShifts]);
+  }, [selectedJobId, selectedJob?._id, availableShiftsKey, availableShifts.length]);
 
   // Debug employee punches fetch - ERROR-PROOF: Only log when values actually change
   // NOTE: Removed to prevent infinite loops - uncomment only for debugging
@@ -924,11 +1201,11 @@ export function EmployeeTimeAttendanceTable({
   // Convert employee punches to calendar events
   // ERROR-PROOF: Removed console.logs to prevent re-renders
   const calendarEvents = useMemo<CalendarEvent[]>(() => {
-    if (!employeePunches || employeePunches.length === 0) {
+    if (!allEmployeePunches || allEmployeePunches.length === 0) {
       return [];
     }
 
-    const events = employeePunches.map((punch) => {
+    const events = allEmployeePunches.map((punch) => {
       const punchStart = new Date(punch.timeIn);
       const punchEnd = punch.timeOut ? new Date(punch.timeOut) : new Date();
 
@@ -940,17 +1217,44 @@ export function EmployeeTimeAttendanceTable({
         color = 'blue';
       }
 
+      // Check if this is a future event
+      const isFuture = punchStart.getTime() > Date.now();
+      // Use light blue for future events
+      const eventColor = isFuture ? 'blue' : color;
+
+      // Generate avatar URL if available
+      let avatarUrl: string | null = null;
+      if (punch.profileImg && primaryCompany?.imageUrl) {
+        const userId = punch.applicantId || punch.userId;
+        if (userId) {
+          if (punch.profileImg.startsWith('http')) {
+            avatarUrl = punch.profileImg;
+          } else {
+            avatarUrl = `${primaryCompany.imageUrl}/users/${userId}/photo/${punch.profileImg}`;
+          }
+        }
+      }
+
       return {
         id: punch._id,
         title: `${punch.employeeName} - ${punch.jobTitle}${punch.shiftName ? ` (${punch.shiftName})` : ''}`,
-        color,
+        color: eventColor,
         start: punchStart,
         end: punchEnd,
+        profileImg: avatarUrl,
+        firstName: punch.firstName,
+        lastName: punch.lastName,
+        applicantId: punch.applicantId,
+        userId: punch.userId,
+        isFuture: isFuture, // Mark future events
       };
     });
 
     return events;
-  }, [employeePunches]);
+  }, [
+    allEmployeePunches,
+    primaryCompany?.imageUrl, // Use primitive instead of object
+  ]);
 
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedPunch, setSelectedPunch] = useState<EmployeePunch | null>(
@@ -977,7 +1281,7 @@ export function EmployeeTimeAttendanceTable({
             (selectedPunch as unknown as { managerNote?: string }).managerNote;
 
         if (punchChanged) {
-          console.log('🔄 Updating selectedPunch with fresh data');
+          // Removed debug logging to prevent infinite loops
           setSelectedPunch(updatedPunch);
         }
       }
@@ -985,17 +1289,30 @@ export function EmployeeTimeAttendanceTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeePunches, selectedPunch?._id]);
 
-  // Update calendar events when they change
-  // ERROR-PROOF: Only update when events actually change (by length and IDs)
+  // Create stable key from underlying data to prevent infinite loops
+  // This depends on allEmployeePunches directly, not calendarEvents
+  const calendarEventsKey = useMemo(() => {
+    if (!allEmployeePunches || allEmployeePunches.length === 0) return '';
+    return allEmployeePunches
+      .map(p => `${p._id}-${new Date(p.timeIn).getTime()}-${p.timeOut ? new Date(p.timeOut).getTime() : 0}`)
+      .sort()
+      .join(',');
+  }, [allEmployeePunches]);
+
+  // Store calendarEvents in a ref to avoid dependency issues
+  const calendarEventsRef = useRef<CalendarEvent[]>([]);
+  calendarEventsRef.current = calendarEvents;
+
+  // Update calendar events when they actually change (detected by stable key)
+  const prevEventsKeyRef = useRef<string>('');
   useEffect(() => {
-    // Only log in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log('📊 Setting calendar events:', {
-        count: calendarEvents.length,
-      });
+    // Only update if the events actually changed (key is different)
+    if (calendarEventsKey !== prevEventsKeyRef.current) {
+      prevEventsKeyRef.current = calendarEventsKey;
+      setEvents(calendarEventsRef.current);
     }
-    setEvents(calendarEvents);
-  }, [calendarEvents]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calendarEventsKey]); // Only depend on the stable key, not calendarEvents array
 
   // Component that listens to calendar event clicks
   // ERROR-PROOF: Prevent multiple rapid calls that could cause rate limiting
@@ -1011,31 +1328,21 @@ export function EmployeeTimeAttendanceTable({
     });
     const isProcessingRef = useRef(false);
 
-    // Debug: Log when component renders
-    console.log('🎯 CalendarEventHandler rendered');
-
     useEffect(() => {
-      console.log('🔍 CalendarEventHandler effect running:', {
-        hasSelectedEvent: !!selectedEvent,
-        selectedEventId: selectedEvent?.id,
-        manageEventDialogOpen,
-        showPunchModal,
-        employeePunchesCount: employeePunches?.length || 0,
-        isLoading,
-      });
+      // Removed debug logging to prevent infinite loops
+      // Only process if we have a selected event and dialog is open
+      if (!selectedEvent || !manageEventDialogOpen) {
+        return;
+      }
 
       // Early return guards
       // ERROR-PROOF: Don't block if employeePunches is loading - allow the click to work
       if (!selectedEvent || showPunchModal) {
-        console.log(
-          '⏭️ Early return: no selectedEvent or showPunchModal is true'
-        );
         return;
       }
 
       // ERROR-PROOF: If we're processing and modal is already open, we're done
       if (isProcessingRef.current && showPunchModal) {
-        console.log('⏭️ Early return: Already processing and modal is open');
         return;
       }
 
@@ -1046,15 +1353,11 @@ export function EmployeeTimeAttendanceTable({
         if (!showPunchModal) {
           isProcessingRef.current = false;
         }
-        console.log(
-          '⏭️ Early return: manageEventDialogOpen is false and not processing'
-        );
         return;
       }
 
       // If we're already processing (but modal not open yet), continue to open it
       if (isProcessingRef.current) {
-        console.log('⏭️ Already processing, skipping duplicate call');
         return;
       }
 
@@ -1065,7 +1368,6 @@ export function EmployeeTimeAttendanceTable({
           return;
         }
         // If not loading but no punches, close dialog and show error
-        console.warn('No employee punches found for event:', selectedEvent.id);
         setManageEventDialogOpen(false);
         return;
       }
@@ -1081,14 +1383,9 @@ export function EmployeeTimeAttendanceTable({
       }
 
       // Find the corresponding punch
-      console.log('🔍 Looking for punch with eventId:', selectedEvent.id);
       const punch = employeePunches.find((p) => p._id === selectedEvent.id);
 
       if (punch) {
-        console.log('✅ Punch found! Opening modal:', {
-          punchId: punch._id,
-          employeeName: punch.employeeName,
-        });
         // Mark as processing immediately to prevent duplicate calls
         isProcessingRef.current = true;
         lastProcessedRef.current = {
@@ -1113,12 +1410,7 @@ export function EmployeeTimeAttendanceTable({
         // No cleanup needed since we're not using setTimeout for critical state updates
         return;
       } else {
-        // If punch not found, log and close dialog
-        console.warn('❌ Punch not found for event:', {
-          eventId: selectedEvent.id,
-          eventTitle: selectedEvent.title,
-          availablePunchIds: employeePunches.map((p) => p._id),
-        });
+        // If punch not found, close dialog
         setManageEventDialogOpen(false);
       }
       // ERROR-PROOF: Only depend on primitive values to prevent infinite loops
@@ -1152,11 +1444,50 @@ export function EmployeeTimeAttendanceTable({
     return null;
   };
 
+  // Helper to check if a punch is in the future
+  const isFutureEvent = useCallback((punch: EmployeePunch): boolean => {
+    const timeInMs = new Date(punch.timeIn).getTime();
+    if (Number.isNaN(timeInMs)) return false;
+    return timeInMs > Date.now();
+  }, []);
+
   // Handler to open modal for a punch
   const handleOpenPunchModal = useCallback((punch: EmployeePunch) => {
+    // Don't allow editing future punches (scheduled shifts)
+    const isFuture = isFutureEvent(punch) || punch._id?.startsWith('future-');
+    if (isFuture) {
+      // Future punches are read-only, don't open modal
+      return;
+    }
     setSelectedPunch(punch);
     setShowPunchModal(true);
-  }, []);
+  }, [isFutureEvent]);
+
+  // Helper to get avatar URL
+  const getAvatarUrl = useCallback(
+    (punch: EmployeePunch): string | null => {
+      if (!punch.profileImg || !primaryCompany?.imageUrl) return null;
+      // Use applicantId if available, otherwise userId
+      const userId = punch.applicantId || punch.userId;
+      if (!userId) return null;
+      // Check if it's already a full URL
+      if (punch.profileImg.startsWith('http')) {
+        return punch.profileImg;
+      }
+      return `${primaryCompany.imageUrl}/users/${userId}/photo/${punch.profileImg}`;
+    },
+    [primaryCompany]
+  );
+
+  // Filter employee punches for the selected job that have location data
+  const jobEmployeePunches = useMemo(() => {
+    if (selectedJobId === 'all' || !allEmployeePunches) return [];
+    return allEmployeePunches.filter(
+      (punch) =>
+        punch.jobId === selectedJobId &&
+        (punch.clockInCoordinates || punch.clockOutCoordinates)
+    );
+  }, [selectedJobId, allEmployeePunches]);
 
   const columns: TableColumn<EmployeePunch>[] = useMemo(
     () => [
@@ -1189,16 +1520,37 @@ export function EmployeeTimeAttendanceTable({
       {
         key: 'firstName',
         header: 'FIRST NAME',
-        render: (_, row) => (
-          <div>
-            <div className="font-medium">
-              {row.firstName?.trim() || 'N/A'}
+        render: (_, row) => {
+          const avatarUrl = getAvatarUrl(row);
+          const initials = `${row.firstName?.[0] || ''}${row.lastName?.[0] || ''}`.toUpperCase();
+          return (
+            <div className="flex items-center gap-3">
+              <Avatar className="h-8 w-8 flex-shrink-0">
+                {avatarUrl ? (
+                  <Image
+                    src={avatarUrl}
+                    alt={`${row.firstName} ${row.lastName}`}
+                    width={32}
+                    height={32}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="h-full w-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-medium">
+                    {initials || 'N/A'}
+                  </div>
+                )}
+              </Avatar>
+              <div>
+                <div className="font-medium">
+                  {row.firstName?.trim() || 'N/A'}
+                </div>
+                {row.employeeEmail && (
+                  <div className="text-xs text-gray-500">{row.employeeEmail}</div>
+                )}
+              </div>
             </div>
-            {row.employeeEmail && (
-              <div className="text-xs text-gray-500">{row.employeeEmail}</div>
-            )}
-          </div>
-        ),
+          );
+        },
       },
       {
         key: 'jobSite',
@@ -1217,12 +1569,18 @@ export function EmployeeTimeAttendanceTable({
       {
         key: 'timeRange',
         header: 'START - END TIME',
-        render: (_, row) => (
-          <div>
-            {formatTime24(row.timeIn)} -{' '}
-            {row.timeOut ? formatTime24(row.timeOut) : '----'}
-          </div>
-        ),
+        render: (_, row) => {
+          const isFuture = isFutureEvent(row);
+          if (isFuture) {
+            return <div className="text-gray-400">---- - ----</div>;
+          }
+          return (
+            <div>
+              {formatTime24(row.timeIn)} -{' '}
+              {row.timeOut ? formatTime24(row.timeOut) : '----'}
+            </div>
+          );
+        },
         sortFn: (a, b) => {
           const timeA = new Date(a.timeIn).getTime();
           const timeB = new Date(b.timeIn).getTime();
@@ -1233,6 +1591,10 @@ export function EmployeeTimeAttendanceTable({
         key: 'totalHours',
         header: 'TOTAL HOURS',
         render: (_, row) => {
+          const isFuture = isFutureEvent(row);
+          if (isFuture) {
+            return <div className="font-medium text-gray-400">0 hrs</div>;
+          }
           const hours = calculateTotalHours(row.timeIn, row.timeOut);
           return <div className="font-medium">{hours} hrs</div>;
         },
@@ -1280,22 +1642,32 @@ export function EmployeeTimeAttendanceTable({
       {
         key: 'actions',
         header: 'ACTIONS',
-        render: (_, row) => (
-          <button
-            onClick={(e) => {
-              e.stopPropagation(); // Prevent row click from firing
-              handleOpenPunchModal(row);
-            }}
-            className="flex items-center justify-center p-2 text-gray-600 hover:text-teal-600 hover:bg-teal-50 rounded-md transition-colors"
-            title="Edit punch details"
-          >
-            <Pencil className="h-4 w-4" />
-          </button>
-        ),
+        render: (_, row) => {
+          const isFuture = isFutureEvent(row) || row._id?.startsWith('future-');
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent row click from firing
+                handleOpenPunchModal(row);
+              }}
+              disabled={isFuture}
+              className={clsxm(
+                "flex items-center justify-center p-2 rounded-md transition-colors",
+                isFuture
+                  ? "text-gray-300 cursor-not-allowed"
+                  : "text-gray-600 hover:text-teal-600 hover:bg-teal-50"
+              )}
+              title={isFuture ? "Future scheduled shift (not editable)" : "Edit punch details"}
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+          );
+        },
         className: 'w-16 text-center',
       },
     ],
-    [handleOpenPunchModal]
+    [handleOpenPunchModal, getAvatarUrl, isFutureEvent]
   );
 
   // Show loading state only when actually loading
@@ -1630,18 +2002,6 @@ export function EmployeeTimeAttendanceTable({
                   </Select>
                 </div>
 
-                {/* Upcoming Shifts */}
-                <label className="flex items-center gap-2 h-8 px-3 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 select-none w-full sm:w-auto md:w-auto sm:min-w-max whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={includeUpcoming}
-                    onChange={(e) => setIncludeUpcoming(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 accent-blue-600"
-                    aria-label="Include upcoming shifts"
-                    title="Include upcoming shifts"
-                  />
-                  <span className="whitespace-nowrap">Upcoming Shifts</span>
-                </label>
               </div>
             )}
 
@@ -1704,10 +2064,13 @@ export function EmployeeTimeAttendanceTable({
             className="w-full"
             emptyMessage="No employee time and attendance records found for the selected date range."
             getRowClassName={(row) => {
+              // Check if this is a future punch by ID or time
+              const isFutureById = row._id?.startsWith('future-');
               const timeInMs = new Date(row.timeIn).getTime();
-              if (Number.isNaN(timeInMs)) return '';
-              if (timeInMs > Date.now()) {
-                // Slightly different background to indicate upcoming shifts
+              const isFutureByTime = !Number.isNaN(timeInMs) && timeInMs > Date.now();
+              
+              if (isFutureById || isFutureByTime) {
+                // Light blue background to indicate upcoming shifts
                 return 'bg-blue-50 hover:bg-blue-100';
               }
               return '';
@@ -1769,6 +2132,8 @@ export function EmployeeTimeAttendanceTable({
           geoFenceRadius={geofenceLocationData.geoFenceRadius}
           graceDistance={geofenceLocationData.graceDistance}
           title={`Geofence: ${geofenceLocationData.name}`}
+          employeePunches={jobEmployeePunches}
+          primaryCompanyImageUrl={primaryCompany?.imageUrl}
         />
       )}
     </div>

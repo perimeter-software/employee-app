@@ -8,7 +8,7 @@ import { DashboardParams } from '../types';
 export const useAttendanceData = (
   params: Pick<
     DashboardParams,
-    'userId' | 'view' | 'startDate' | 'endDate' | 'weekStartsOn'
+    'userId' | 'view' | 'startDate' | 'endDate' | 'weekStartsOn' | 'selectedEmployeeId'
   > | null,
   options?: {
     enabled?: boolean;
@@ -18,16 +18,26 @@ export const useAttendanceData = (
 ) => {
   return useQuery({
     queryKey: params
-      ? dashboardQueryKeys.attendance(
+      ? [
+          ...dashboardQueryKeys.all,
+          'attendance',
           params.userId,
           params.view,
           params.startDate,
-          params.endDate
-        )
+          params.endDate,
+          params.selectedEmployeeId || 'all',
+        ]
       : ['dashboard-attendance-disabled'],
     queryFn: () => {
       if (!params) throw new Error('No params provided');
-      return DashboardApiService.getAttendanceData(params);
+      return DashboardApiService.getAttendanceData({
+        userId: params.userId,
+        view: params.view,
+        startDate: params.startDate,
+        endDate: params.endDate,
+        weekStartsOn: params.weekStartsOn,
+        selectedEmployeeId: params.selectedEmployeeId,
+      });
     },
     staleTime: options?.staleTime ?? 10 * 60 * 1000, // 10 minutes
     refetchOnWindowFocus: options?.refetchOnWindowFocus ?? false,

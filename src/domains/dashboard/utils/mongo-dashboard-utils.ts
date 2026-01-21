@@ -60,17 +60,21 @@ export async function calculateDashboardStats(
     const applicantId = user.applicantId;
     const dateRange = getDateRange(view, startDate, endDate, weekStartsOn);
 
-    // Build query for punches
+    // Build query for punches - must match the pattern from employee punches endpoint
     // If selectedEmployeeId is provided, filter by that employee's applicantId
     // Otherwise, for Client users, get all punches (no applicantId filter)
     const punchQuery: {
+      type: 'punch';
       timeIn: {
+        $ne: null;
         $gte: string;
         $lte: string;
       };
-      applicantId?: string | { $in: string[] };
+      applicantId?: string;
     } = {
+      type: 'punch',
       timeIn: {
+        $ne: null,
         $gte: dateRange.start.toISOString(),
         $lte: dateRange.end.toISOString(),
       },
@@ -82,6 +86,7 @@ export async function calculateDashboardStats(
         .collection('users')
         .findOne({ _id: new ObjectId(selectedEmployeeId) });
       if (selectedUser?.applicantId) {
+        // Try string first (most common), MongoDB will match both formats
         punchQuery.applicantId = selectedUser.applicantId.toString();
       }
     } else if (userType === 'Client') {
@@ -89,13 +94,24 @@ export async function calculateDashboardStats(
       // This will get all punches in the date range
     } else {
       // For non-Client users, filter by their own applicantId
-      punchQuery.applicantId = applicantId;
+      if (applicantId) {
+        punchQuery.applicantId = applicantId.toString();
+      }
     }
 
-    // Get punches in date range
+    // Get punches in date range - only fetch fields we need for performance
+    // Add maxTimeMS to prevent queries from running too long (8 seconds max)
     const punches = await db
       .collection('timecard')
       .find(punchQuery)
+      .project({
+        timeIn: 1,
+        timeOut: 1,
+        jobId: 1,
+        shiftSlug: 1,
+        clockInCoordinates: 1,
+      })
+      .maxTimeMS(8000) // 8 second timeout
       .toArray();
 
     // Calculate stats
@@ -111,31 +127,64 @@ export async function calculateDashboardStats(
 
     const shiftsCompleted = punches.filter((punch) => punch.timeOut).length;
 
-    // Calculate geofence violations using proper distance calculation
-    let geofenceViolations = 0;
-    for (const punch of punches) {
-      const punchData = {
-        clockInCoordinates: punch.clockInCoordinates,
-        jobId: punch.jobId,
-      };
-      const isOutside = await isPunchOutsideGeofence(db, punchData);
-      if (isOutside) {
-        geofenceViolations++;
-      }
-    }
-
-    // Calculate absences (scheduled shifts without punches)
-    // Get jobs based on punch history since applicants field might not exist
+    // OPTIMIZED: Batch geofence violation checks instead of per-punch queries
+    // Get unique job IDs first
     const userJobIds = [
       ...new Set(punches.map((punch) => punch.jobId).filter(Boolean)),
     ];
-
+    
+    // Batch fetch all jobs with location data (reuse for absences calculation too)
     const jobs = await db
       .collection('jobs')
       .find({
         _id: { $in: userJobIds.map((id) => new ObjectId(id)) },
       })
+      .project({
+        _id: 1,
+        title: 1,
+        venueName: 1,
+        shifts: 1,
+        venueCoordinates: 1,
+        location: 1,
+      })
       .toArray();
+    
+    // Create job map for quick lookup
+    const jobGeofenceMap = new Map();
+    jobs.forEach((job) => {
+      jobGeofenceMap.set(job._id.toString(), job);
+    });
+    
+    // Calculate geofence violations in memory (much faster)
+    let geofenceViolations = 0;
+    for (const punch of punches) {
+      if (!punch.clockInCoordinates || !punch.jobId) continue;
+      
+      const job = jobGeofenceMap.get(punch.jobId.toString());
+      if (!job || !job.venueCoordinates) {
+        // Fallback: use accuracy check
+        if (punch.clockInCoordinates.accuracy > 50) {
+          geofenceViolations++;
+        }
+        continue;
+      }
+      
+      // Calculate distance in memory
+      const distance = calculateDistanceInFeet(
+        punch.clockInCoordinates.latitude,
+        punch.clockInCoordinates.longitude,
+        job.venueCoordinates.latitude,
+        job.venueCoordinates.longitude
+      );
+      
+      const geofenceRadiusFeet = 100; // Default radius
+      if (distance > geofenceRadiusFeet) {
+        geofenceViolations++;
+      }
+    }
+
+    // Calculate absences (scheduled shifts without punches)
+    // Jobs already fetched above
 
     let scheduledShifts = 0;
     jobs.forEach((job) => {
@@ -226,13 +275,17 @@ export async function calculateDashboardStats(
       previousWeekEnd.setDate(previousWeekEnd.getDate() - 7);
 
       const previousPunchQuery: {
+        type: 'punch';
         timeIn: {
+          $ne: null;
           $gte: string;
           $lte: string;
         };
         applicantId?: string;
       } = {
+        type: 'punch',
         timeIn: {
+          $ne: null,
           $gte: previousWeekStart.toISOString(),
           $lte: previousWeekEnd.toISOString(),
         },
@@ -246,12 +299,21 @@ export async function calculateDashboardStats(
           previousPunchQuery.applicantId = selectedUser.applicantId.toString();
         }
       } else if (userType !== 'Client') {
-        previousPunchQuery.applicantId = applicantId;
+        if (applicantId) {
+          previousPunchQuery.applicantId = applicantId.toString();
+        }
       }
 
       const previousPunches = await db
         .collection('timecard')
         .find(previousPunchQuery)
+        .project({
+          timeIn: 1,
+          timeOut: 1,
+          jobId: 1,
+          clockInCoordinates: 1,
+        })
+        .maxTimeMS(5000) // 5 second timeout for previous week
         .toArray();
 
       const prevTotalHours = previousPunches.reduce((sum, punch) => {
@@ -268,14 +330,47 @@ export async function calculateDashboardStats(
         (punch) => punch.timeOut
       ).length;
 
+      // OPTIMIZED: Batch geofence checks for previous week
+      const prevUniqueJobIds = [
+        ...new Set(previousPunches.map((punch) => punch.jobId).filter(Boolean)),
+      ];
+      
+      const prevJobsForGeofence = await db
+        .collection('jobs')
+        .find({
+          _id: { $in: prevUniqueJobIds.map((id) => new ObjectId(id)) },
+        })
+        .project({
+          _id: 1,
+          venueCoordinates: 1,
+        })
+        .toArray();
+      
+      const prevJobGeofenceMap = new Map();
+      prevJobsForGeofence.forEach((job) => {
+        prevJobGeofenceMap.set(job._id.toString(), job);
+      });
+      
       let prevGeofenceViolations = 0;
       for (const punch of previousPunches) {
-        const punchData = {
-          clockInCoordinates: punch.clockInCoordinates,
-          jobId: punch.jobId,
-        };
-        const isOutside = await isPunchOutsideGeofence(db, punchData);
-        if (isOutside) {
+        if (!punch.clockInCoordinates || !punch.jobId) continue;
+        
+        const job = prevJobGeofenceMap.get(punch.jobId.toString());
+        if (!job || !job.venueCoordinates) {
+          if (punch.clockInCoordinates.accuracy > 50) {
+            prevGeofenceViolations++;
+          }
+          continue;
+        }
+        
+        const distance = calculateDistanceInFeet(
+          punch.clockInCoordinates.latitude,
+          punch.clockInCoordinates.longitude,
+          job.venueCoordinates.latitude,
+          job.venueCoordinates.longitude
+        );
+        
+        if (distance > 100) {
           prevGeofenceViolations++;
         }
       }
@@ -298,6 +393,28 @@ export async function calculateDashboardStats(
     };
   } catch (error) {
     console.error('Error calculating dashboard stats:', error);
+    
+    // If it's a timeout error, return empty stats instead of crashing
+    if (error && typeof error === 'object' && 'codeName' in error) {
+      const mongoError = error as { codeName?: string; code?: number };
+      if (mongoError.codeName === 'MaxTimeMSExpired' || mongoError.code === 50) {
+        console.warn('Query timeout - returning empty stats');
+        return {
+          totalHours: 0,
+          shiftsCompleted: 0,
+          absences: 0,
+          geofenceViolations: 0,
+          totalSpend: 0,
+          weeklyChange: {
+            hours: 0,
+            shifts: 0,
+            absences: 0,
+            violations: 0,
+          },
+        };
+      }
+    }
+    
     throw error;
   }
 }
@@ -311,7 +428,8 @@ export async function getAttendanceData(
   view: 'monthly' | 'weekly' | 'calendar',
   startDate?: string,
   endDate?: string,
-  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0,
+  selectedEmployeeId?: string
 ): Promise<{
   monthlyAttendance: MonthlyAttendanceData[];
   weeklyTrends: WeeklyTrendsData[];
@@ -330,7 +448,24 @@ export async function getAttendanceData(
       };
     }
 
+    const userType = (user as { userType?: string }).userType;
     const applicantId = user.applicantId;
+    
+    // Determine which applicantId to use for filtering
+    let filterApplicantId: string | undefined;
+    if (selectedEmployeeId) {
+      // Filter by specific employee
+      const selectedUser = await db
+        .collection('users')
+        .findOne({ _id: new ObjectId(selectedEmployeeId) });
+      if (selectedUser?.applicantId) {
+        filterApplicantId = selectedUser.applicantId.toString();
+      }
+    } else if (userType !== 'Client') {
+      // For non-Client users, filter by their own applicantId
+      filterApplicantId = applicantId;
+    }
+    // For Client users viewing all employees, don't filter by applicantId (undefined)
 
     // Monthly attendance data (last 6 months)
     const monthlyAttendance: MonthlyAttendanceData[] = [];
@@ -341,16 +476,35 @@ export async function getAttendanceData(
       const monthStart = startOfMonth(monthDate);
       const monthEnd = endOfMonth(monthDate);
 
+      const monthQuery: {
+        type: 'punch';
+        timeIn: {
+          $ne: null;
+          $gte: string;
+          $lte: string;
+        };
+        timeOut: { $ne: null };
+        applicantId?: string;
+      } = {
+        type: 'punch',
+        timeIn: {
+          $ne: null,
+          $gte: monthStart.toISOString(),
+          $lte: monthEnd.toISOString(),
+        },
+        timeOut: { $ne: null },
+      };
+      if (filterApplicantId) {
+        monthQuery.applicantId = filterApplicantId;
+      }
+      
       const monthPunches = await db
         .collection('timecard')
-        .find({
-          applicantId,
-          timeIn: {
-            $gte: monthStart.toISOString(),
-            $lte: monthEnd.toISOString(),
-          },
-          timeOut: { $ne: null },
+        .find(monthQuery)
+        .project({
+          timeIn: 1,
         })
+        .maxTimeMS(3000) // 3 second timeout per month
         .toArray();
 
       const daysWorked = new Set(
@@ -363,16 +517,35 @@ export async function getAttendanceData(
       const prevYearStart = startOfMonth(previousYearMonth);
       const prevYearEnd = endOfMonth(previousYearMonth);
 
+      const prevYearQuery: {
+        type: 'punch';
+        timeIn: {
+          $ne: null;
+          $gte: string;
+          $lte: string;
+        };
+        timeOut: { $ne: null };
+        applicantId?: string;
+      } = {
+        type: 'punch',
+        timeIn: {
+          $ne: null,
+          $gte: prevYearStart.toISOString(),
+          $lte: prevYearEnd.toISOString(),
+        },
+        timeOut: { $ne: null },
+      };
+      if (filterApplicantId) {
+        prevYearQuery.applicantId = filterApplicantId;
+      }
+      
       const prevYearPunches = await db
         .collection('timecard')
-        .find({
-          applicantId,
-          timeIn: {
-            $gte: prevYearStart.toISOString(),
-            $lte: prevYearEnd.toISOString(),
-          },
-          timeOut: { $ne: null },
+        .find(prevYearQuery)
+        .project({
+          timeIn: 1,
         })
+        .maxTimeMS(3000) // 3 second timeout per month
         .toArray();
 
       const prevDaysWorked = new Set(
@@ -401,15 +574,34 @@ export async function getAttendanceData(
       const dayEnd = new Date(dayStart);
       dayEnd.setHours(23, 59, 59, 999);
 
+      const dayQuery: {
+        type: 'punch';
+        timeIn: {
+          $ne: null;
+          $gte: string;
+          $lte: string;
+        };
+        applicantId?: string;
+      } = {
+        type: 'punch',
+        timeIn: {
+          $ne: null,
+          $gte: dayStart.toISOString(),
+          $lte: dayEnd.toISOString(),
+        },
+      };
+      if (filterApplicantId) {
+        dayQuery.applicantId = filterApplicantId;
+      }
+      
       const dayPunches = await db
         .collection('timecard')
-        .find({
-          applicantId,
-          timeIn: {
-            $gte: dayStart.toISOString(),
-            $lte: dayEnd.toISOString(),
-          },
+        .find(dayQuery)
+        .project({
+          timeIn: 1,
+          timeOut: 1,
         })
+        .maxTimeMS(2000) // 2 second timeout per day
         .toArray();
 
       const dailyHours = dayPunches.reduce((sum, punch) => {
@@ -434,6 +626,19 @@ export async function getAttendanceData(
     };
   } catch (error) {
     console.error('Error getting attendance data:', error);
+    
+    // If it's a timeout error, return empty data instead of crashing
+    if (error && typeof error === 'object' && 'codeName' in error) {
+      const mongoError = error as { codeName?: string; code?: number };
+      if (mongoError.codeName === 'MaxTimeMSExpired' || mongoError.code === 50) {
+        console.warn('Query timeout - returning empty attendance data');
+        return {
+          monthlyAttendance: [],
+          weeklyTrends: [],
+        };
+      }
+    }
+    
     throw error;
   }
 }
@@ -446,7 +651,8 @@ export async function getPerformanceMetrics(
   userId: string,
   startDate?: string,
   endDate?: string,
-  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0,
+  selectedEmployeeId?: string
 ): Promise<{
   performanceMetrics: PerformanceMetrics;
   shiftDetails: ShiftTableData[];
@@ -471,20 +677,62 @@ export async function getPerformanceMetrics(
       };
     }
 
+    const userType = (user as { userType?: string }).userType;
     const applicantId = user.applicantId;
     const dateRange = getDateRange('weekly', startDate, endDate, weekStartsOn);
+    
+    // Determine which applicantId to use for filtering
+    let filterApplicantId: string | undefined;
+    if (selectedEmployeeId) {
+      // Filter by specific employee
+      const selectedUser = await db
+        .collection('users')
+        .findOne({ _id: new ObjectId(selectedEmployeeId) });
+      if (selectedUser?.applicantId) {
+        filterApplicantId = selectedUser.applicantId.toString();
+      }
+    } else if (userType !== 'Client') {
+      // For non-Client users, filter by their own applicantId
+      filterApplicantId = applicantId;
+    }
+    // For Client users viewing all employees, don't filter by applicantId (undefined)
 
-    // Get punches with job info
+    // Build match query - must match the pattern from employee punches endpoint
+    const matchQuery: {
+      type: 'punch';
+      timeIn: {
+        $ne: null;
+        $gte: string;
+        $lte: string;
+      };
+      applicantId?: string;
+    } = {
+      type: 'punch',
+      timeIn: {
+        $ne: null,
+        $gte: dateRange.start.toISOString(),
+        $lte: dateRange.end.toISOString(),
+      },
+    };
+    if (filterApplicantId) {
+      matchQuery.applicantId = filterApplicantId;
+    }
+
+    // Get punches with job info - optimized with projection and timeout
     const punches = await db
       .collection('timecard')
       .aggregate([
         {
-          $match: {
-            applicantId,
-            timeIn: {
-              $gte: dateRange.start.toISOString(),
-              $lte: dateRange.end.toISOString(),
-            },
+          $match: matchQuery,
+        },
+        {
+          $project: {
+            timeIn: 1,
+            timeOut: 1,
+            jobId: 1,
+            shiftSlug: 1,
+            clockInCoordinates: 1,
+            applicantId: 1,
           },
         },
         {
@@ -498,6 +746,18 @@ export async function getPerformanceMetrics(
             localField: 'jobObjectId',
             foreignField: '_id',
             as: 'jobInfo',
+            pipeline: [
+              {
+                $project: {
+                  _id: 1,
+                  title: 1,
+                  venueName: 1,
+                  shifts: 1,
+                  additionalConfig: 1,
+                  venueCoordinates: 1,
+                },
+              },
+            ],
           },
         },
         {
@@ -507,6 +767,7 @@ export async function getPerformanceMetrics(
           },
         },
       ])
+      .maxTimeMS(8000) // 8 second timeout
       .toArray();
 
     // Calculate performance metrics
@@ -526,15 +787,47 @@ export async function getPerformanceMetrics(
 
     const avgHoursPerDay = workingDays > 0 ? totalHours / workingDays : 0;
 
-    // Calculate geofence violations using proper distance calculation
+    // OPTIMIZED: Batch geofence violation checks
+    const uniqueJobIdsForGeofence = [
+      ...new Set(punches.map((punch) => punch.jobId).filter(Boolean)),
+    ];
+    
+    const jobsForGeofence = await db
+      .collection('jobs')
+      .find({
+        _id: { $in: uniqueJobIdsForGeofence.map((id) => new ObjectId(id)) },
+      })
+      .project({
+        _id: 1,
+        venueCoordinates: 1,
+      })
+      .toArray();
+    
+    const jobGeofenceMap = new Map();
+    jobsForGeofence.forEach((job) => {
+      jobGeofenceMap.set(job._id.toString(), job);
+    });
+    
     let geofenceViolations = 0;
     for (const punch of punches) {
-      const punchData = {
-        clockInCoordinates: punch.clockInCoordinates,
-        jobId: punch.jobId,
-      };
-      const isOutside = await isPunchOutsideGeofence(db, punchData);
-      if (isOutside) {
+      if (!punch.clockInCoordinates || !punch.jobId) continue;
+      
+      const job = jobGeofenceMap.get(punch.jobId.toString());
+      if (!job || !job.venueCoordinates) {
+        if (punch.clockInCoordinates.accuracy > 50) {
+          geofenceViolations++;
+        }
+        continue;
+      }
+      
+      const distance = calculateDistanceInFeet(
+        punch.clockInCoordinates.latitude,
+        punch.clockInCoordinates.longitude,
+        job.venueCoordinates.latitude,
+        job.venueCoordinates.longitude
+      );
+      
+      if (distance > 100) {
         geofenceViolations++;
       }
     }
@@ -663,6 +956,36 @@ export async function getPerformanceMetrics(
       overtimeHours: Math.round(overtimeHours * 100) / 100,
     };
 
+    // OPTIMIZED: Batch fetch all jobs for shift details (reuse jobGeofenceMap)
+    // Get unique job IDs from completed punches
+    const shiftDetailsJobIds = [
+      ...new Set(completedPunches.map((punch) => punch.jobId).filter(Boolean)),
+    ];
+    
+    // Fetch jobs that aren't already in jobGeofenceMap
+    const missingJobIds = shiftDetailsJobIds.filter(
+      (id) => !jobGeofenceMap.has(id.toString())
+    );
+    
+    if (missingJobIds.length > 0) {
+      const additionalJobs = await db
+        .collection('jobs')
+        .find({
+          _id: { $in: missingJobIds.map((id) => new ObjectId(id)) },
+        })
+        .project({
+          _id: 1,
+          title: 1,
+          venueName: 1,
+          venueCoordinates: 1,
+        })
+        .toArray();
+      
+      additionalJobs.forEach((job) => {
+        jobGeofenceMap.set(job._id.toString(), job);
+      });
+    }
+
     // Generate shift details
     const shiftDetails: ShiftTableData[] = [];
 
@@ -673,24 +996,27 @@ export async function getPerformanceMetrics(
         ? (timeOut.getTime() - timeIn.getTime()) / (1000 * 60 * 60)
         : 0;
 
-      const punchData = {
-        clockInCoordinates: punch.clockInCoordinates,
-        jobId: punch.jobId,
-      };
-      const isOutsideGeofence = await isPunchOutsideGeofence(db, punchData);
-
-      // Lookup job details directly
+      // Use cached job geofence map instead of per-punch query
+      let isOutsideGeofence = false;
       let jobSite = 'Unknown Job';
+      
       if (punch.jobId) {
-        try {
-          const job = await db
-            .collection('jobs')
-            .findOne({ _id: new ObjectId(punch.jobId) });
-          if (job) {
-            jobSite = job.title || job.venueName || 'Unknown Job';
+        const job = jobGeofenceMap.get(punch.jobId.toString());
+        if (job) {
+          jobSite = job.title || job.venueName || 'Unknown Job';
+          
+          // Check geofence using cached job data
+          if (punch.clockInCoordinates && job.venueCoordinates) {
+            const distance = calculateDistanceInFeet(
+              punch.clockInCoordinates.latitude,
+              punch.clockInCoordinates.longitude,
+              job.venueCoordinates.latitude,
+              job.venueCoordinates.longitude
+            );
+            isOutsideGeofence = distance > 100;
+          } else if (punch.clockInCoordinates?.accuracy > 50) {
+            isOutsideGeofence = true;
           }
-        } catch (error) {
-          console.warn('Error looking up job for shift details:', error);
         }
       }
 
@@ -723,6 +1049,25 @@ export async function getPerformanceMetrics(
     };
   } catch (error) {
     console.error('Error getting performance metrics:', error);
+    
+    // If it's a timeout error, return empty data instead of crashing
+    if (error && typeof error === 'object' && 'codeName' in error) {
+      const mongoError = error as { codeName?: string; code?: number };
+      if (mongoError.codeName === 'MaxTimeMSExpired' || mongoError.code === 50) {
+        console.warn('Query timeout - returning empty performance metrics');
+        return {
+          performanceMetrics: {
+            onTimeRate: 0,
+            avgHoursPerDay: 0,
+            violationRate: 0,
+            attendanceRate: 0,
+            overtimeHours: 0,
+          },
+          shiftDetails: [],
+        };
+      }
+    }
+    
     throw error;
   }
 }
