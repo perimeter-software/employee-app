@@ -799,6 +799,8 @@ export async function getPerformanceMetrics(
       })
       .project({
         _id: 1,
+        title: 1,
+        venueName: 1,
         venueCoordinates: 1,
       })
       .toArray();
@@ -806,6 +808,33 @@ export async function getPerformanceMetrics(
     const jobGeofenceMap = new Map();
     jobsForGeofence.forEach((job) => {
       jobGeofenceMap.set(job._id.toString(), job);
+    });
+    
+    // Also populate map from aggregation result's jobInfo if available
+    punches.forEach((punch) => {
+      if (punch.jobInfo && punch.jobInfo._id) {
+        const jobId = punch.jobInfo._id.toString();
+        if (!jobGeofenceMap.has(jobId)) {
+          jobGeofenceMap.set(jobId, {
+            _id: punch.jobInfo._id,
+            title: punch.jobInfo.title,
+            venueName: punch.jobInfo.venueName,
+            venueCoordinates: punch.jobInfo.venueCoordinates,
+          });
+        } else {
+          // Update existing entry with title/venueName if missing
+          const existing = jobGeofenceMap.get(jobId);
+          if (!existing.title && punch.jobInfo.title) {
+            existing.title = punch.jobInfo.title;
+          }
+          if (!existing.venueName && punch.jobInfo.venueName) {
+            existing.venueName = punch.jobInfo.venueName;
+          }
+          if (!existing.venueCoordinates && punch.jobInfo.venueCoordinates) {
+            existing.venueCoordinates = punch.jobInfo.venueCoordinates;
+          }
+        }
+      }
     });
     
     let geofenceViolations = 0;
@@ -996,27 +1025,40 @@ export async function getPerformanceMetrics(
         ? (timeOut.getTime() - timeIn.getTime()) / (1000 * 60 * 60)
         : 0;
 
-      // Use cached job geofence map instead of per-punch query
+      // Use jobInfo from aggregation result first, then fall back to jobGeofenceMap
       let isOutsideGeofence = false;
       let jobSite = 'Unknown Job';
       
-      if (punch.jobId) {
-        const job = jobGeofenceMap.get(punch.jobId.toString());
-        if (job) {
-          jobSite = job.title || job.venueName || 'Unknown Job';
-          
-          // Check geofence using cached job data
-          if (punch.clockInCoordinates && job.venueCoordinates) {
-            const distance = calculateDistanceInFeet(
-              punch.clockInCoordinates.latitude,
-              punch.clockInCoordinates.longitude,
-              job.venueCoordinates.latitude,
-              job.venueCoordinates.longitude
-            );
-            isOutsideGeofence = distance > 100;
-          } else if (punch.clockInCoordinates?.accuracy > 50) {
-            isOutsideGeofence = true;
-          }
+      // Try to get job info from aggregation result first (has title/venueName)
+      let job = null;
+      if (punch.jobInfo && punch.jobInfo._id) {
+        // Use jobInfo from aggregation (already has title/venueName)
+        job = punch.jobInfo;
+      } else if (punch.jobId) {
+        // Fall back to jobGeofenceMap - handle both ObjectId and string
+        const jobIdStr = typeof punch.jobId === 'string' 
+          ? punch.jobId 
+          : punch.jobId?.toString() || '';
+        if (jobIdStr) {
+          job = jobGeofenceMap.get(jobIdStr);
+        }
+      }
+      
+      if (job) {
+        // Get job name - prefer title, then venueName
+        jobSite = (job.title || job.venueName || 'Unknown Job').toString();
+        
+        // Check geofence using job data
+        if (punch.clockInCoordinates && job.venueCoordinates) {
+          const distance = calculateDistanceInFeet(
+            punch.clockInCoordinates.latitude,
+            punch.clockInCoordinates.longitude,
+            job.venueCoordinates.latitude,
+            job.venueCoordinates.longitude
+          );
+          isOutsideGeofence = distance > 100;
+        } else if (punch.clockInCoordinates?.accuracy > 50) {
+          isOutsideGeofence = true;
         }
       }
 
