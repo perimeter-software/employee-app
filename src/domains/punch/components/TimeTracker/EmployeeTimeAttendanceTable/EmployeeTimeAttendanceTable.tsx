@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import { Table } from '@/components/ui/Table';
@@ -9,7 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
-import { ChevronLeft, ChevronRight, Pencil, MapPin } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pencil, MapPin, Search } from 'lucide-react';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import {
@@ -19,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/Select';
+import { Input } from '@/components/ui/Input';
 import {
   startOfWeek,
   endOfWeek,
@@ -225,6 +227,12 @@ export function EmployeeTimeAttendanceTable({
 
   // Selected shift state
   const [selectedShiftSlug, setSelectedShiftSlug] = useState<string>('all');
+
+  // Employee search state
+  const [employeeSearchQuery, setEmployeeSearchQuery] = useState<string>('');
+
+  // Future timecards visibility state
+  const [showFutureTimecards, setShowFutureTimecards] = useState<boolean>(true);
 
   // Geofence modal state
   const [showGeofenceModal, setShowGeofenceModal] = useState(false);
@@ -906,13 +914,43 @@ export function EmployeeTimeAttendanceTable({
     generateFuturePunches,
   ]);
 
-  // Table data - always include future events, checkbox controls visibility
+  // Table data - filtered by search query and future timecards visibility
   const tableData = useMemo(() => {
     const punches = allEmployeePunches || [];
     if (viewType !== 'table') return punches;
-    // Always show all events (including future)
-    return punches;
-  }, [allEmployeePunches, viewType]);
+    
+    let filtered = punches;
+
+    // Filter by employee search query (first name, last name, email)
+    if (employeeSearchQuery.trim()) {
+      const searchLower = employeeSearchQuery.toLowerCase().trim();
+      filtered = filtered.filter((punch) => {
+        const firstName = (punch.firstName || '').toLowerCase();
+        const lastName = (punch.lastName || '').toLowerCase();
+        const employeeName = (punch.employeeName || '').toLowerCase();
+        const email = (punch.employeeEmail || '').toLowerCase();
+        
+        return (
+          firstName.includes(searchLower) ||
+          lastName.includes(searchLower) ||
+          employeeName.includes(searchLower) ||
+          email.includes(searchLower)
+        );
+      });
+    }
+
+    // Filter by future timecards visibility
+    if (!showFutureTimecards) {
+      filtered = filtered.filter((punch) => {
+        const isFutureById = punch._id?.startsWith('future-');
+        const timeInMs = new Date(punch.timeIn).getTime();
+        const isFutureByTime = !Number.isNaN(timeInMs) && timeInMs > Date.now();
+        return !isFutureById && !isFutureByTime;
+      });
+    }
+
+    return filtered;
+  }, [allEmployeePunches, viewType, employeeSearchQuery, showFutureTimecards]);
 
   // Get unique shift slugs from actual punches in the date range
   // ERROR-PROOF: Only show shifts that have data in the current date range
@@ -1256,11 +1294,29 @@ export function EmployeeTimeAttendanceTable({
     primaryCompany?.imageUrl, // Use primitive instead of object
   ]);
 
+  // Filter out future events if showFutureTimecards is false
+  const filteredCalendarEvents = useMemo(() => {
+    if (showFutureTimecards) return calendarEvents;
+    const now = Date.now();
+    return calendarEvents.filter((event) => {
+      const eventStart = new Date(event.start).getTime();
+      return eventStart <= now;
+    });
+  }, [calendarEvents, showFutureTimecards]);
+
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedPunch, setSelectedPunch] = useState<EmployeePunch | null>(
     null
   );
   const [showPunchModal, setShowPunchModal] = useState(false);
+  const [overflowDropdownOpen, setOverflowDropdownOpen] = useState(false);
+  const [overflowEvents, setOverflowEvents] = useState<CalendarEvent[]>([]);
+  const [overflowDropdownPosition, setOverflowDropdownPosition] = useState<{ x: number; y: number; maxHeight: number } | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // ERROR-PROOF: Update selectedPunch when employeePunches data changes (after save/refetch)
   // This ensures the modal shows the latest data when reopened
@@ -1299,20 +1355,21 @@ export function EmployeeTimeAttendanceTable({
       .join(',');
   }, [allEmployeePunches]);
 
-  // Store calendarEvents in a ref to avoid dependency issues
-  const calendarEventsRef = useRef<CalendarEvent[]>([]);
-  calendarEventsRef.current = calendarEvents;
-
-  // Update calendar events when they actually change (detected by stable key)
+  // Update calendar events when they actually change (detected by stable key or filter change)
   const prevEventsKeyRef = useRef<string>('');
+  const prevFilterRef = useRef<boolean>(showFutureTimecards);
   useEffect(() => {
-    // Only update if the events actually changed (key is different)
-    if (calendarEventsKey !== prevEventsKeyRef.current) {
+    // Update events when key changes or filter changes
+    const keyChanged = calendarEventsKey !== prevEventsKeyRef.current;
+    const filterChanged = showFutureTimecards !== prevFilterRef.current;
+    
+    if (keyChanged || filterChanged) {
       prevEventsKeyRef.current = calendarEventsKey;
-      setEvents(calendarEventsRef.current);
+      prevFilterRef.current = showFutureTimecards;
+      setEvents(filteredCalendarEvents);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarEventsKey]); // Only depend on the stable key, not calendarEvents array
+  }, [calendarEventsKey, filteredCalendarEvents, showFutureTimecards]);
 
   // Component that listens to calendar event clicks
   // ERROR-PROOF: Prevent multiple rapid calls that could cause rate limiting
@@ -1463,6 +1520,14 @@ export function EmployeeTimeAttendanceTable({
     setShowPunchModal(true);
   }, [isFutureEvent]);
 
+  // Get shift data for the selected punch
+  const selectedShift = useMemo(() => {
+    if (!selectedPunch || !selectedJob) return undefined;
+    const shiftSlug = selectedPunch.shiftSlug;
+    if (!shiftSlug || !selectedJob.shifts) return undefined;
+    return selectedJob.shifts.find((s) => s.slug === shiftSlug);
+  }, [selectedPunch, selectedJob]);
+
   // Helper to get avatar URL
   const getAvatarUrl = useCallback(
     (punch: EmployeePunch): string | null => {
@@ -1477,6 +1542,60 @@ export function EmployeeTimeAttendanceTable({
       return `${primaryCompany.imageUrl}/users/${userId}/photo/${punch.profileImg}`;
     },
     [primaryCompany]
+  );
+
+  // Handler for overflow click - shows dropdown with all employees
+  const handleOverflowClick = useCallback(
+    (event: CalendarEvent, allEvents: CalendarEvent[], clickEvent?: MouseEvent) => {
+      // Set overflow events and position
+      setOverflowEvents(allEvents);
+      if (clickEvent) {
+        const dropdownWidth = 320; // w-80 = 320px
+        const preferredMaxHeight = 400;
+        const padding = 16; // Space from edges
+        const offset = 10; // Offset from click point
+        
+        // Calculate horizontal position - ensure it doesn't go off screen
+        let x = clickEvent.clientX;
+        if (x + dropdownWidth > window.innerWidth - padding) {
+          // Position to the left of click if it would go off right edge
+          x = Math.max(padding, window.innerWidth - dropdownWidth - padding);
+        } else if (x < padding) {
+          x = padding;
+        }
+        
+        // Calculate vertical position - prefer below, but position above if not enough space
+        let y = clickEvent.clientY;
+        const spaceBelow = window.innerHeight - y - padding - offset;
+        const spaceAbove = y - padding - offset;
+        
+        let maxHeight: number;
+        if (spaceBelow >= preferredMaxHeight) {
+          // Enough space below - position below click
+          y = y + offset;
+          maxHeight = Math.min(preferredMaxHeight, spaceBelow);
+        } else if (spaceAbove > spaceBelow) {
+          // More space above - position above click
+          y = y - Math.min(preferredMaxHeight, spaceAbove) - offset;
+          maxHeight = Math.min(preferredMaxHeight, spaceAbove);
+        } else {
+          // Use available space below
+          y = y + offset;
+          maxHeight = Math.max(200, spaceBelow); // Minimum 200px height
+        }
+        
+        setOverflowDropdownPosition({ x, y, maxHeight });
+      } else {
+        // Fallback to center of screen
+        setOverflowDropdownPosition({ 
+          x: (window.innerWidth - 320) / 2, 
+          y: (window.innerHeight - 400) / 2,
+          maxHeight: 400
+        });
+      }
+      setOverflowDropdownOpen(true);
+    },
+    []
   );
 
   // Filter employee punches for the selected job that have location data
@@ -1916,97 +2035,81 @@ export function EmployeeTimeAttendanceTable({
           </div>
         </div>
 
-        {/* View Toggle Buttons and Date Navigation */}
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <ToggleGroup
-            type="single"
-            value={viewType}
-            onValueChange={(value) => {
-              if (value) {
-                setViewType(value as 'table' | 'month' | 'week' | 'day');
-              }
-            }}
-            className="inline-flex w-full flex-wrap rounded-lg border border-gray-300 p-1 md:w-auto"
-          >
-            <ToggleGroupItem
-              value="table"
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                viewType === 'table'
-                  ? 'bg-blue-500 text-white shadow-md'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
+        {/* View Toggle Buttons and Controls */}
+        <div className="flex flex-col gap-4">
+          {/* First Row: View Type and Date Navigation */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            {/* View Type Toggle */}
+            <ToggleGroup
+              type="single"
+              value={viewType}
+              onValueChange={(value) => {
+                if (value) {
+                  setViewType(value as 'table' | 'month' | 'week' | 'day');
+                }
+              }}
+              className="inline-flex rounded-lg border border-gray-300 p-1"
             >
-              Table
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="month"
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                viewType === 'month'
-                  ? 'bg-blue-500 text-white shadow-md'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-            >
-              Month
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="week"
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                viewType === 'week'
-                  ? 'bg-blue-500 text-white shadow-md'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-            >
-              Week
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="day"
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                viewType === 'day'
-                  ? 'bg-blue-500 text-white shadow-md'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-            >
-              Day
-            </ToggleGroupItem>
-          </ToggleGroup>
+              <ToggleGroupItem
+                value="table"
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                  viewType === 'table'
+                    ? 'bg-blue-500 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                Table
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="month"
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                  viewType === 'month'
+                    ? 'bg-blue-500 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                Month
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="week"
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                  viewType === 'week'
+                    ? 'bg-blue-500 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                Week
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="day"
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                  viewType === 'day'
+                    ? 'bg-blue-500 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                Day
+              </ToggleGroupItem>
+            </ToggleGroup>
 
-          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:flex-nowrap md:items-center md:justify-end md:gap-4">
-            {/* Table-only filters (do not affect calendar view toggles) */}
-            {viewType === 'table' && (
-              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-start md:w-auto md:flex-row md:flex-nowrap md:items-center md:gap-3">
-                {/* Table Range */}
-                <div className="w-full sm:w-36 md:w-36">
-                  <Select
-                    value={tableRange}
-                    onValueChange={(value) =>
-                      setTableRange(value as 'day' | 'week' | 'month')
-                    }
-                  >
-                    <SelectTrigger className="w-full h-8">
-                      <SelectValue
-                        placeholder="Range"
-                        displayText={
-                          tableRange === 'day'
-                            ? 'Day'
-                            : tableRange === 'month'
-                              ? 'Month'
-                              : 'Week'
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="day">Day</SelectItem>
-                      <SelectItem value="week">Week</SelectItem>
-                      <SelectItem value="month">Month</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
+            {/* Future Timecards Checkbox - Show for calendar views */}
+            {(viewType === 'month' || viewType === 'week' || viewType === 'day') && (
+              <div className="flex items-center gap-2 whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  id="show-future-timecards-calendar"
+                  checked={showFutureTimecards}
+                  onChange={(e) => setShowFutureTimecards(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="show-future-timecards-calendar" className="text-sm font-medium text-gray-700 cursor-pointer">
+                  Include Future Timecards
+                </label>
               </div>
             )}
 
             {/* Date Navigation */}
-            <div className="flex w-full items-center justify-between gap-2 md:w-auto md:justify-end">
+            <div className="flex items-center justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -2019,7 +2122,7 @@ export function EmployeeTimeAttendanceTable({
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="text-center font-medium text-sm px-2 flex-1 md:flex-none md:min-w-[180px]">
+              <span className="text-center font-medium text-sm px-2 min-w-[180px]">
                 {dateRange.displayRange}
               </span>
               <Button
@@ -2041,15 +2144,81 @@ export function EmployeeTimeAttendanceTable({
 
       {/* Weekly Shift Details Section */}
       <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          {viewType === 'table'
-            ? 'Weekly Shift Details'
-            : viewType === 'month'
-              ? 'Monthly Shift Details'
-              : viewType === 'week'
+        <div className="flex flex-col gap-3 mb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {viewType === 'table'
                 ? 'Weekly Shift Details'
-                : 'Daily Shift Details'}
-        </h2>
+                : viewType === 'month'
+                  ? 'Monthly Shift Details'
+                  : viewType === 'week'
+                    ? 'Weekly Shift Details'
+                    : 'Daily Shift Details'}
+            </h2>
+          </div>
+
+          {/* Table Controls - Only show in table view */}
+          {viewType === 'table' && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+              {/* Table Range */}
+              <div className="w-full sm:w-36">
+                <Select
+                  value={tableRange}
+                  onValueChange={(value) =>
+                    setTableRange(value as 'day' | 'week' | 'month')
+                  }
+                >
+                  <SelectTrigger className="w-full h-8">
+                    <SelectValue
+                      placeholder="Range"
+                      displayText={
+                        tableRange === 'day'
+                          ? 'Day'
+                          : tableRange === 'month'
+                            ? 'Month'
+                            : 'Week'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="day">Day</SelectItem>
+                    <SelectItem value="week">Week</SelectItem>
+                    <SelectItem value="month">Month</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Employee Search */}
+              <div className="relative w-full sm:w-[400px] md:w-[500px]">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 z-10 pointer-events-none" />
+                <Input
+                  type="text"
+                  placeholder="Search employees..."
+                  value={employeeSearchQuery}
+                  onChange={(e) => setEmployeeSearchQuery(e.target.value)}
+                  className="pl-10 h-8 text-sm w-full"
+                />
+              </div>
+
+              {/* Future Timecards Checkbox */}
+              <div className="flex items-center gap-2 whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  id="show-future-timecards"
+                  checked={showFutureTimecards}
+                  onChange={(e) => setShowFutureTimecards(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label
+                  htmlFor="show-future-timecards"
+                  className="text-sm font-medium text-gray-700 cursor-pointer"
+                >
+                  Include Future Timecards
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Conditional rendering: Calendar or Table */}
         {viewType === 'table' ? (
@@ -2091,6 +2260,7 @@ export function EmployeeTimeAttendanceTable({
             setDate={setCalendarDate}
             calendarIconIsToday={false}
             weekStartsOn={weekStartsOn || 0}
+            onOverflowClick={handleOverflowClick}
           >
             <CalendarEventHandler />
             <div className="space-y-4">
@@ -2112,11 +2282,108 @@ export function EmployeeTimeAttendanceTable({
           setSelectedPunch(null);
         }}
         punch={selectedPunch}
+        shift={selectedShift}
+        job={selectedJob ? {
+          additionalConfig: selectedJob.additionalConfig
+        } : undefined}
         onSuccess={() => {
           // Refetch data after successful update will be handled by queryClient
           // The modal component will handle the refetch
         }}
       />
+
+      {/* Overflow Dropdown - Custom positioned */}
+      {isMounted &&
+        overflowDropdownOpen &&
+        overflowEvents.length > 0 &&
+        overflowDropdownPosition &&
+        createPortal(
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0"
+              style={{ zIndex: 20000 }}
+              onClick={() => setOverflowDropdownOpen(false)}
+            />
+
+            {/* Dropdown Content */}
+            <div
+              className="fixed bg-white border border-gray-200 rounded-lg shadow-lg w-80 flex flex-col"
+              style={{
+                left: `${overflowDropdownPosition.x}px`,
+                top: `${overflowDropdownPosition.y}px`,
+                maxHeight: `${overflowDropdownPosition.maxHeight}px`,
+                zIndex: 20001,
+              }}
+            >
+              <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 border-b sticky top-0 bg-white z-10 flex-shrink-0">
+                {overflowEvents.length} Employee
+                {overflowEvents.length !== 1 ? 's' : ''}
+              </div>
+              <div
+                className="py-1 overflow-y-auto flex-1 min-h-0"
+                style={{ scrollbarWidth: 'thin' }}
+              >
+                {overflowEvents.map((event) => {
+                  // Find the matching punch
+                  const punch = allEmployeePunches.find((p) => p._id === event.id);
+                  if (!punch) return null;
+
+                  const avatarUrl = getAvatarUrl(punch);
+                  const initials = `${punch.firstName?.[0] || ''}${punch.lastName?.[0] || ''}`.toUpperCase();
+                  const isFuture =
+                    isFutureEvent(punch) || punch._id?.startsWith('future-');
+
+                  return (
+                    <button
+                      key={event.id}
+                      type="button"
+                      onClick={() => {
+                        if (!isFuture) {
+                          handleOpenPunchModal(punch);
+                        }
+                        setOverflowDropdownOpen(false);
+                      }}
+                      disabled={isFuture}
+                      className={clsxm(
+                        'w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 transition-colors',
+                        isFuture && 'opacity-50 cursor-not-allowed'
+                      )}
+                    >
+                      {avatarUrl ? (
+                        <Image
+                          src={avatarUrl}
+                          alt={punch.employeeName}
+                          width={32}
+                          height={32}
+                          className="h-8 w-8 rounded-full object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs font-medium flex-shrink-0">
+                          {initials || 'N/A'}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">
+                          {punch.employeeName}
+                        </div>
+                        <div className="text-xs text-gray-500 truncate">
+                          {punch.jobTitle}
+                          {punch.shiftName && ` • ${punch.shiftName}`}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          {formatTime24(punch.timeIn)} -{' '}
+                          {punch.timeOut ? formatTime24(punch.timeOut) : '----'}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
 
       {/* Geofence Map Modal */}
       {selectedJob && geofenceLocationData && (

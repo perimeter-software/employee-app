@@ -17,6 +17,7 @@ export type CalendarContextType = CalendarProps & {
   setManageEventDialogOpen: (open: boolean) => void;
   selectedEvent: CalendarEvent | null;
   setSelectedEvent: (event: CalendarEvent | null) => void;
+  onOverflowClick?: (event: CalendarEvent, allEvents: CalendarEvent[], clickEvent?: MouseEvent) => void;
 };
 export type CalendarEvent = {
   id: string;

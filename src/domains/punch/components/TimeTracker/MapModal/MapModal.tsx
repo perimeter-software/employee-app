@@ -90,10 +90,104 @@ function createAvatarMarkerIcon(
   borderWidth: number = 3,
   backgroundColor: string = '#6B7280'
 ): google.maps.Icon | google.maps.Symbol {
-  // If we have an avatar URL, use it directly
+  // If we have an avatar URL, create a circular avatar
   if (avatarUrl) {
+    // For Google Maps, we need to create a circular avatar synchronously
+    // We'll use a Promise-based approach that the caller can await
+    // But for immediate use, we'll return a placeholder and update it
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      // Fallback to default marker - returns Symbol type
+      return {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: size / 2,
+        fillColor: backgroundColor,
+        fillOpacity: 1,
+        strokeColor: borderColor,
+        strokeWeight: borderWidth,
+      } as google.maps.Symbol;
+    }
+    
+    // Draw circular border first
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2 - borderWidth / 2, 0, 2 * Math.PI);
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = borderWidth;
+    ctx.stroke();
+    
+    // Draw circular background as fallback
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2 - borderWidth, 0, 2 * Math.PI);
+    ctx.fillStyle = backgroundColor;
+    ctx.fill();
+    
+    // Load image and draw it in a circle
+    // Note: Since image loading is async, we'll return a placeholder
+    // The actual circular avatar will be created when the image loads
+    // and the marker icon will be updated via setIcon() in the marker creation code
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    // Create a function to draw the circular image and return updated data URL
+    const drawCircularImage = (): string => {
+      if (!ctx) return canvas.toDataURL();
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, size, size);
+      
+      // Draw circular border
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - borderWidth / 2, 0, 2 * Math.PI);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = borderWidth;
+      ctx.stroke();
+      
+      // Create circular clipping path
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - borderWidth, 0, 2 * Math.PI);
+      ctx.clip();
+      
+      // Draw the image (it should be loaded by now)
+      ctx.drawImage(img, 0, 0, size, size);
+      ctx.restore();
+      
+      return canvas.toDataURL();
+    };
+    
+    img.onload = () => {
+      // Image loaded - the marker icon will be updated via setIcon() in marker creation
+      drawCircularImage();
+    };
+    img.onerror = () => {
+      // If image fails, draw initials
+      if (!ctx) return;
+      ctx.clearRect(0, 0, size, size);
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - borderWidth / 2, 0, 2 * Math.PI);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = borderWidth;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - borderWidth, 0, 2 * Math.PI);
+      ctx.fillStyle = backgroundColor;
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${size * 0.4}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(initials.toUpperCase(), size / 2, size / 2);
+    };
+    
+    img.src = avatarUrl;
+    
+    // Return placeholder (will be updated when image loads via setIcon)
     return {
-      url: avatarUrl,
+      url: canvas.toDataURL(),
       scaledSize: new google.maps.Size(size, size),
       anchor: new google.maps.Point(size / 2, size / 2),
     };
@@ -395,6 +489,63 @@ export const MapModal = React.memo(function GoogleMapsModal({
               zIndex: isActive ? 100 : 50, // Active punches on top
             });
             
+            // Update marker icon when avatar image loads (for circular avatar)
+            if (avatarUrl) {
+              const updateIcon = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = markerSize;
+                canvas.height = markerSize;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+                
+                // Draw circular border
+                ctx.beginPath();
+                ctx.arc(markerSize / 2, markerSize / 2, markerSize / 2 - 1.5, 0, 2 * Math.PI);
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                
+                // Create circular clipping path
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(markerSize / 2, markerSize / 2, markerSize / 2 - 3, 0, 2 * Math.PI);
+                ctx.clip();
+                
+                // Draw the image
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                  ctx.drawImage(img, 0, 0, markerSize, markerSize);
+                  ctx.restore();
+                  clockInMarker.setIcon({
+                    url: canvas.toDataURL(),
+                    scaledSize: new google.maps.Size(markerSize, markerSize),
+                    anchor: new google.maps.Point(markerSize / 2, markerSize / 2),
+                  });
+                };
+                img.onerror = () => {
+                  ctx.restore();
+                  // Fallback to initials
+                  ctx.beginPath();
+                  ctx.arc(markerSize / 2, markerSize / 2, markerSize / 2 - 3, 0, 2 * Math.PI);
+                  ctx.fillStyle = markerColor;
+                  ctx.fill();
+                  ctx.fillStyle = '#ffffff';
+                  ctx.font = `bold ${markerSize * 0.4}px Arial`;
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'middle';
+                  ctx.fillText(initials, markerSize / 2, markerSize / 2);
+                  clockInMarker.setIcon({
+                    url: canvas.toDataURL(),
+                    scaledSize: new google.maps.Size(markerSize, markerSize),
+                    anchor: new google.maps.Point(markerSize / 2, markerSize / 2),
+                  });
+                };
+                img.src = avatarUrl;
+              };
+              updateIcon();
+            }
+            
             // Format clock-in time
             const clockInTime = new Date(punch.timeIn);
             const clockInTimeString = clockInTime.toLocaleString('en-US', {
@@ -480,6 +631,63 @@ export const MapModal = React.memo(function GoogleMapsModal({
               icon: markerIcon,
               zIndex: 40,
             });
+            
+            // Update marker icon when avatar image loads (for circular avatar)
+            if (avatarUrl) {
+              const updateIcon = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 50;
+                canvas.height = 50;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+                
+                // Draw circular border
+                ctx.beginPath();
+                ctx.arc(25, 25, 25 - 1.5, 0, 2 * Math.PI);
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                
+                // Create circular clipping path
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(25, 25, 25 - 3, 0, 2 * Math.PI);
+                ctx.clip();
+                
+                // Draw the image
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                  ctx.drawImage(img, 0, 0, 50, 50);
+                  ctx.restore();
+                  clockOutMarker.setIcon({
+                    url: canvas.toDataURL(),
+                    scaledSize: new google.maps.Size(50, 50),
+                    anchor: new google.maps.Point(25, 25),
+                  });
+                };
+                img.onerror = () => {
+                  ctx.restore();
+                  // Fallback to initials
+                  ctx.beginPath();
+                  ctx.arc(25, 25, 25 - 3, 0, 2 * Math.PI);
+                  ctx.fillStyle = '#EF4444';
+                  ctx.fill();
+                  ctx.fillStyle = '#ffffff';
+                  ctx.font = `bold 20px Arial`;
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'middle';
+                  ctx.fillText(initials, 25, 25);
+                  clockOutMarker.setIcon({
+                    url: canvas.toDataURL(),
+                    scaledSize: new google.maps.Size(50, 50),
+                    anchor: new google.maps.Point(25, 25),
+                  });
+                };
+                img.src = avatarUrl;
+              };
+              updateIcon();
+            }
             
             // Format clock-in time
             const clockInTime = new Date(punch.timeIn);
@@ -751,36 +959,6 @@ export const MapModal = React.memo(function GoogleMapsModal({
             </div>
           )}
 
-          {/* Debug Info */}
-          <details className="text-xs">
-            <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
-              🔧 Debug Information
-            </summary>
-            <div className="mt-2 p-3 bg-gray-50 rounded border space-y-1">
-              <div>
-                <strong>Map Loaded:</strong> {isMapLoaded ? 'Yes' : 'No'}
-              </div>
-              <div>
-                <strong>Map Error:</strong> {mapError || 'None'}
-              </div>
-              <div>
-                <strong>User Location:</strong>{' '}
-                {userLocation
-                  ? `${userLocation.latitude.toFixed(6)}, ${userLocation.longitude.toFixed(6)}`
-                  : 'None'}
-              </div>
-              <div>
-                <strong>Job Location:</strong>{' '}
-                {jobLocation
-                  ? `${jobLocation.latitude.toFixed(6)}, ${jobLocation.longitude.toFixed(6)}`
-                  : 'None'}
-              </div>
-              <div>
-                <strong>Distance:</strong>{' '}
-                {distance ? `${distance.toFixed(2)}m` : 'N/A'}
-              </div>
-            </div>
-          </details>
         </div>
       </DialogContent>
     </Dialog>

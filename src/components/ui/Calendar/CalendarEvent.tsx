@@ -17,18 +17,49 @@ interface EventPosition {
   overflowCount?: number;
 }
 
+// Check if two events overlap in time and are on the same day
+function eventsOverlap(event1: CalendarEventType, event2: CalendarEventType): boolean {
+  if (event1.id === event2.id) return false;
+  
+  // Check if events are on the same day
+  if (!isSameDay(event1.start, event2.start)) return false;
+  
+  // Check if events overlap in time
+  // Two events overlap if: event1.start < event2.end AND event1.end > event2.start
+  return (
+    event1.start < event2.end &&
+    event1.end > event2.start
+  );
+}
+
+// Find all events that overlap with the current event, including transitive overlaps
+// This ensures that if A overlaps B, and B overlaps C, then A, B, and C are all grouped together
 function getOverlappingEvents(
   currentEvent: CalendarEventType,
   events: CalendarEventType[]
 ): CalendarEventType[] {
-  return events.filter((event) => {
-    if (event.id === currentEvent.id) return false;
-    return (
-      currentEvent.start < event.end &&
-      currentEvent.end > event.start &&
-      isSameDay(currentEvent.start, event.start)
-    );
-  });
+  const result: CalendarEventType[] = [];
+  const visited = new Set<string>();
+  const queue: CalendarEventType[] = [currentEvent];
+  visited.add(currentEvent.id);
+  
+  // Use BFS to find all connected overlapping events
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    
+    // Check all events to find ones that overlap with current
+    for (const event of events) {
+      if (visited.has(event.id)) continue;
+      
+      if (eventsOverlap(current, event)) {
+        result.push(event);
+        visited.add(event.id);
+        queue.push(event); // Add to queue to find events that overlap with this one
+      }
+    }
+  }
+  
+  return result;
 }
 
 function calculateEventPosition(
@@ -51,11 +82,13 @@ function calculateEventPosition(
   let overflowCount: number | undefined;
 
   // When many events overlap, use a column-based layout instead of cramped stacking
-  // Week view has narrower columns, so prioritize readability over showing many columns
-  const MAX_VISIBLE_COLUMNS = isWeekView ? 2 : 4; // Only 2 columns in week view for better readability
-  const COLUMN_GAP_PERCENT = isWeekView ? 0.3 : 1; // Minimal gap in week view
-  const BASE_LEFT_PERCENT = isWeekView ? 0.3 : 2; // Minimal margin in week view
-  const MIN_COLUMN_WIDTH_PERCENT = isWeekView ? 48 : 20; // Very high minimum in week view (48% per column) to ensure readability
+  // Show a few visible events, then use overflow dropdown for the rest
+  // Week view: 2 columns for readability
+  // Day view: 3 columns, then overflow dropdown for the rest
+  const MAX_VISIBLE_COLUMNS = isWeekView ? 2 : 3; // Show 2-3 visible events, rest in dropdown
+  const COLUMN_GAP_PERCENT = isWeekView ? 1.5 : 1; // Gap between columns
+  const BASE_LEFT_PERCENT = isWeekView ? 0.5 : 1; // Minimal margin
+  const MIN_COLUMN_WIDTH_PERCENT = isWeekView ? 48 : 30; // Reasonable width for day view events
 
   if (totalEvents === 1) {
     // Single event takes full width
@@ -93,7 +126,9 @@ function calculateEventPosition(
     
     zIndex = MAX_VISIBLE_COLUMNS - visiblePosition; // Higher z-index for leftmost columns
 
+    // Calculate overflow count: total events minus visible columns
     const hiddenCount = Math.max(0, totalEvents - MAX_VISIBLE_COLUMNS);
+    // Show overflow badge on the first visible event (position 0) if there are hidden events
     if (hiddenCount > 0 && position === 0) {
       overflowCount = hiddenCount;
     }
@@ -112,7 +147,9 @@ function calculateEventPosition(
 
   const topPosition = startHour * 128 + (startMinutes / 60) * 128;
   const duration = endHour * 60 + endMinutes - (startHour * 60 + startMinutes);
-  const height = Math.max((duration / 60) * 128, 40); // Minimum height of 40px
+  // For week view, ensure minimum height for readability (at least 50px for text and time)
+  const minHeight = isWeekView ? 50 : 40;
+  const height = Math.max((duration / 60) * 128, minHeight);
 
   return {
     left,
@@ -199,7 +236,7 @@ const CalendarEvent = memo(function CalendarEvent({
   month?: boolean;
   className?: string;
 }) {
-  const { events, setSelectedEvent, setManageEventDialogOpen, date, mode } =
+  const { events, setSelectedEvent, setManageEventDialogOpen, date, mode, onOverflowClick } =
     useCalendarContext();
   const isWeekView = mode === 'week';
   
@@ -207,6 +244,14 @@ const CalendarEvent = memo(function CalendarEvent({
   const style = useMemo(() => {
     return month ? { zIndex: 1 } : calculateEventPosition(event, events, isWeekView);
   }, [month, event, events, isWeekView]);
+
+  // Get all overlapping events for overflow dropdown (including hidden ones)
+  // Use the same transitive grouping logic to ensure all connected events are included
+  const allOverlappingEvents = useMemo(() => {
+    if (month) return [];
+    // Use the same getOverlappingEvents function to ensure consistency
+    return getOverlappingEvents(event, events);
+  }, [month, event, events]);
   
   const eventStyles = useMemo(() => getEventStyles(event.color, month), [event.color, month]);
   
@@ -321,19 +366,19 @@ const CalendarEvent = memo(function CalendarEvent({
           <motion.div
             className={clsxm(
               weekViewContext 
-                ? 'px-2.5 py-2 rounded-lg cursor-pointer transition-all duration-200 border border-l-4'
+                ? 'px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-200 border border-l-4'
                 : 'px-2 sm:px-2.5 lg:px-3 py-1.5 lg:py-2 rounded-lg cursor-pointer transition-all duration-200 border border-l-4',
               futureStyles ? futureStyles.bg : eventStyles.bg,
               futureStyles ? futureStyles.border : eventStyles.border,
               futureStyles ? futureStyles.text : eventStyles.text,
               futureStyles ? futureStyles.shadow : eventStyles.shadow,
               'hover:shadow-md hover:scale-[1.01] hover:brightness-105',
-              'absolute overflow-hidden backdrop-blur-sm min-w-0',
+              'absolute overflow-visible backdrop-blur-sm',
               className
             )}
           style={{
             ...style,
-            zIndex: style.zIndex,
+            zIndex: style.zIndex, // Calendar events have z-index 1-4, dropdown will be 9999
           }}
           onClick={(e) => {
             e.stopPropagation();
@@ -378,21 +423,36 @@ const CalendarEvent = memo(function CalendarEvent({
           layoutId={`event-${animationKey}-day`}
         >
           <motion.div
-            className={`flex flex-col w-full h-full min-w-0 relative ${weekViewContext ? 'px-2.5 py-1.5 gap-1.5' : 'px-2 py-1 gap-1'} ${!!(style as EventPosition).overflowCount ? 'pt-4' : ''}`}
+            className={`flex flex-col w-full h-full min-w-0 relative ${weekViewContext ? 'gap-0.5' : 'px-2 py-1 gap-1'} ${!!(style as EventPosition).overflowCount ? 'pt-4' : ''}`}
             layout="position"
           >
             {/* Overflow badge when many overlapping events exist - positioned at top-right, outside content flow */}
             {!!(style as EventPosition).overflowCount && (
-              <span className="absolute top-0 right-0 text-[9px] leading-tight px-1.5 py-0.5 rounded-full bg-black/40 backdrop-blur-sm text-white font-semibold z-10 pointer-events-none shadow-sm">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onOverflowClick) {
+                    // Include the current event and all overlapping events
+                    // Sort by start time for consistent ordering
+                    const allEvents = [event, ...allOverlappingEvents].sort(
+                      (a, b) => a.start.getTime() - b.start.getTime()
+                    );
+                    onOverflowClick(event, allEvents, e.nativeEvent);
+                  }
+                }}
+                className="absolute top-0 right-0 text-[9px] leading-tight px-1.5 py-0.5 rounded-full bg-black/40 backdrop-blur-sm text-white font-semibold z-[9997] shadow-sm hover:bg-black/60 transition-colors cursor-pointer"
+                style={{ zIndex: 9997 }}
+              >
                 +{(style as EventPosition).overflowCount}
-              </span>
+              </button>
             )}
 
             {/* Event content with avatar */}
-            <div className="flex items-center gap-1.5 min-w-0">
+            <div className={`flex items-start gap-1.5 w-full min-w-0 ${weekViewContext ? 'flex-row' : 'flex-row'}`}>
               {/* Avatar */}
               {event.profileImg && (
-                <Avatar className={`${weekViewContext ? 'h-6 w-6' : 'h-5 w-5 sm:h-6 sm:w-6'} flex-shrink-0`}>
+                <Avatar className={`${weekViewContext ? 'h-5 w-5 flex-shrink-0' : 'h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0'}`}>
                   <Image
                     src={event.profileImg}
                     alt={event.title}
@@ -403,25 +463,27 @@ const CalendarEvent = memo(function CalendarEvent({
                 </Avatar>
               )}
               {!event.profileImg && event.firstName && event.lastName && (
-                <Avatar className={`${weekViewContext ? 'h-6 w-6' : 'h-5 w-5 sm:h-6 sm:w-6'} flex-shrink-0`}>
-                  <div className={`h-full w-full bg-gray-200 flex items-center justify-center text-gray-500 ${weekViewContext ? 'text-xs' : 'text-[10px] sm:text-xs'} font-medium`}>
+                <Avatar className={`${weekViewContext ? 'h-5 w-5 flex-shrink-0' : 'h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0'}`}>
+                  <div className={`h-full w-full bg-gray-200 flex items-center justify-center text-gray-500 ${weekViewContext ? 'text-[10px]' : 'text-[10px] sm:text-xs'} font-medium`}>
                     {event.firstName[0]}
                     {event.lastName[0]}
                   </div>
                 </Avatar>
               )}
-              {/* Title and time */}
-              <div className="flex-1 min-w-0">
-                {/* Title with smart responsive display */}
+              
+              {/* Name and time - stacked vertically in week view for better space usage */}
+              <div className={`flex flex-col min-w-0 flex-1 ${weekViewContext ? 'gap-0' : 'gap-0.5'}`}>
+                {/* Title - allow wrapping in week view */}
                 <span
-                  className={`font-semibold truncate ${weekViewContext ? 'text-sm leading-snug' : 'text-xs sm:text-sm leading-tight'} block`}
-                  title={safeTitle} // Show full title on hover
+                  className={`font-semibold ${weekViewContext ? 'text-xs leading-tight break-words' : 'text-xs sm:text-sm leading-tight truncate'} block min-w-0`}
+                  title={safeTitle}
+                  style={weekViewContext ? { wordBreak: 'break-word', overflowWrap: 'break-word' } : {}}
                 >
                   {safeTitle}
                 </span>
 
-                {/* Time display - responsive, always visible */}
-                <span className={`${weekViewContext ? 'text-xs leading-snug' : 'text-[10px] sm:text-xs leading-tight'} opacity-90 font-medium`}>
+                {/* Time display - smaller and on separate line */}
+                <span className={`${weekViewContext ? 'text-[9px] leading-tight' : 'text-[10px] sm:text-xs leading-tight'} opacity-90 font-medium`}>
                   {format(safeStart, 'h:mm a')} - {format(safeEnd, 'h:mm a')}
                 </span>
               </div>

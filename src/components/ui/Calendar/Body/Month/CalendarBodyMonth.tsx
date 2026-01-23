@@ -15,13 +15,19 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { CalendarEvent as CalendarEventType } from '../../../Calendar/types';
 import CalendarEvent from '../../CalendarEvent';
 import { getDayNamesFromWeekStartsOn } from '@/lib/utils/date-utils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/DropdownMenu/DropdownMenu';
 
 export default function CalendarBodyMonth({
   hideTotalColumn = false,
 }: {
   hideTotalColumn?: boolean;
 }) {
-  const { date, events, setDate, setMode } = useCalendarContext();
+  const { date, events, setDate, setMode, onOverflowClick } = useCalendarContext();
 
   // Get weekStartsOn from context, default to Sunday
   const { weekStartsOn = 0 } = useCalendarContext();
@@ -59,20 +65,7 @@ export default function CalendarBodyMonth({
     return startsInRange || endsInRange || spansRange;
   });
 
-  const calculateDayHours = (day: Date) => {
-    const dayEvents = visibleEvents.filter((event: CalendarEventType) =>
-      isSameDay(event.start, day)
-    );
-    return dayEvents.reduce((total, event) => {
-      const hours =
-        (event.end.getTime() - event.start.getTime()) / (1000 * 60 * 60);
-      return total + hours;
-    }, 0);
-  };
-
-  const calculateWeekHours = (weekDays: Date[]) => {
-    return weekDays.reduce((total, day) => total + calculateDayHours(day), 0);
-  };
+  // Removed calculateDayHours and calculateWeekHours - totals are no longer displayed
 
   const weeks = [];
   for (let i = 0; i < calendarDays.length; i += 7) {
@@ -83,10 +76,7 @@ export default function CalendarBodyMonth({
     <div className="flex flex-col">
       {/* Week days header - sticky below calendar header */}
       <div
-        className={clsxm(
-          hideTotalColumn ? 'grid-cols-7' : 'grid-cols-7 lg:grid-cols-8',
-          'grid bg-appPrimary text-white sticky top-[135px] z-40 shadow-md border-b border-cyan-400'
-        )}
+        className="grid grid-cols-7 bg-appPrimary text-white sticky top-[135px] z-40 shadow-md border-b border-cyan-400"
       >
         {getDayNamesFromWeekStartsOn(weekStartsOn).map((day) => (
           <div
@@ -96,11 +86,6 @@ export default function CalendarBodyMonth({
             {day}
           </div>
         ))}
-        {!hideTotalColumn && (
-          <div className="py-2 lg:py-3 text-center text-xs lg:text-sm font-medium bg-appPrimary hidden lg:block">
-            Total
-          </div>
-        )}
       </div>
 
       {/* Month content */}
@@ -120,12 +105,7 @@ export default function CalendarBodyMonth({
             {weeks.map((week, weekIndex) => (
               <div
                 key={weekIndex}
-                className={clsxm(
-                  hideTotalColumn
-                    ? 'grid-cols-7'
-                    : 'grid-cols-7 lg:grid-cols-8',
-                  'grid border-b border-gray-200'
-                )}
+                className="grid grid-cols-7 border-b border-gray-200"
               >
                 {week.map((day) => {
                   const dayEvents = visibleEvents.filter(
@@ -133,7 +113,6 @@ export default function CalendarBodyMonth({
                   );
                   const isToday = isSameDay(day, today);
                   const isCurrentMonth = isSameMonth(day, date);
-                  const totalHours = calculateDayHours(day);
 
                   return (
                     <div
@@ -182,8 +161,14 @@ export default function CalendarBodyMonth({
                               className="text-[10px] lg:text-xs text-muted-foreground cursor-pointer hover:text-appPrimary"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setDate(day);
-                                setMode('day');
+                                // If onOverflowClick is provided, use it; otherwise navigate to day view
+                                if (onOverflowClick && dayEvents.length > 2) {
+                                  const firstEvent = dayEvents[0];
+                                  onOverflowClick(firstEvent, dayEvents, e.nativeEvent);
+                                } else {
+                                  setDate(day);
+                                  setMode('day');
+                                }
                               }}
                             >
                               +{dayEvents.length - 2} more
@@ -191,27 +176,10 @@ export default function CalendarBodyMonth({
                           )}
                         </div>
                       </AnimatePresence>
-                      {totalHours > 0 && (
-                        <div className="text-right text-[10px] lg:text-xs text-appPrimary mt-0.5 lg:mt-1 font-medium">
-                          {Math.round(totalHours)} hrs
-                        </div>
-                      )}
                     </div>
                   );
                 })}
 
-                {!hideTotalColumn && (
-                  <div
-                    className={clsxm(
-                      'border-r border-gray-200 p-1 lg:p-2 min-h-[80px] lg:min-h-[120px] bg-gray-50 items-center',
-                      'hidden lg:flex flex-col justify-center'
-                    )}
-                  >
-                    <div className="text-xs lg:text-sm font-bold text-appPrimary">
-                      {Math.round(calculateWeekHours(week))} hrs
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
           </motion.div>

@@ -961,6 +961,60 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
 
     const finalPunches = Array.from(uniquePunches.values());
 
+    // Check which timecards are in submitted payroll batches
+    try {
+      const PayrollBatches = db.collection('payroll-batches');
+      
+      // Find all submitted payroll batches in the date range
+      const submittedBatches = await PayrollBatches.find({
+        payrollStatus: 'Submitted',
+        $or: [
+          {
+            startDate: { $lte: endDateISO },
+            endDate: { $gte: startDateISO },
+          },
+        ],
+      }).toArray();
+
+      // Create a Set of timecardId+applicantId combinations that are completed
+      const completedTimecards = new Set<string>();
+      
+      submittedBatches.forEach((batch) => {
+        if (batch.submittedJobTimecards && Array.isArray(batch.submittedJobTimecards)) {
+          batch.submittedJobTimecards.forEach((timecard) => {
+            if (timecard._id && timecard.applicantId) {
+              // Use timecardId + applicantId as the key
+              const timecardId = timecard._id.toString();
+              const applicantId = timecard.applicantId.toString();
+              const key = `${timecardId}_${applicantId}`;
+              completedTimecards.add(key);
+            }
+          });
+        }
+      });
+
+      // Update status to "completed" for timecards in submitted batches
+      finalPunches.forEach((punch) => {
+        if (punch._id && punch.applicantId) {
+          const key = `${punch._id}_${punch.applicantId}`;
+          if (completedTimecards.has(key)) {
+            punch.status = 'completed';
+          }
+        }
+      });
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Employee Punches API] Payroll batch status check:', {
+          submittedBatchesCount: submittedBatches.length,
+          completedTimecardsCount: completedTimecards.size,
+          punchesUpdated: finalPunches.filter(p => p.status === 'completed').length,
+        });
+      }
+    } catch (error) {
+      console.error('[Employee Punches API] Error checking payroll batch status:', error);
+      // Don't fail the request if payroll batch check fails
+    }
+
     return NextResponse.json(
       {
         success: true,

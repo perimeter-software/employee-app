@@ -3,6 +3,7 @@ import { Formik, Form, Field, FieldInputProps } from 'formik';
 import * as Yup from 'yup';
 import { Save, MapPin } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { MapModal } from '../MapModal';
 import { toast } from 'sonner';
 import type { EmployeePunch } from './types';
+import type { Shift } from '@/domains/job/types/job.types';
 import { formatPhoneNumber } from '@/lib/utils';
 
 interface EmployeePunchDetailsModalProps {
@@ -23,42 +25,205 @@ interface EmployeePunchDetailsModalProps {
   onClose: () => void;
   punch: EmployeePunch | null;
   onSuccess?: () => void;
+  shift?: Shift; // Optional shift data for validation
+  job?: { additionalConfig?: { earlyClockInMinutes?: number } }; // Optional job data for early clock-in config
 }
 
-// Validation schema
-const punchValidationSchema = Yup.object({
-  timeIn: Yup.string().required('Time in is required'),
-  timeOut: Yup.string()
-    .nullable()
-    .test(
-      'timeOut-after-timeIn',
-      'Time out must be after time in',
-      function (value) {
-        const { timeIn } = this.parent;
-        if (value && timeIn) {
-          const timeInDate = new Date(timeIn);
-          const timeOutDate = new Date(value);
-          if (timeOutDate <= timeInDate) {
+// Helper to get shift schedule for a specific day
+const getShiftScheduleForDay = (shift: Shift, date: Date) => {
+  if (!shift?.defaultSchedule) return null;
+  
+  const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+  const dayName = daysOfWeek[date.getDay()];
+  const daySchedule = shift.defaultSchedule[dayName];
+  
+  if (!daySchedule?.start || !daySchedule?.end) return null;
+  
+  return {
+    start: new Date(daySchedule.start),
+    end: new Date(daySchedule.end),
+  };
+};
+
+// Helper to combine date with time from another date (similar to shift-job-utils)
+const combineDateWithTime = (date: Date, timeSource: Date): Date => {
+  const combined = new Date(date);
+  combined.setHours(timeSource.getHours(), timeSource.getMinutes(), timeSource.getSeconds(), timeSource.getMilliseconds());
+  return combined;
+};
+
+// Create validation schema function that can access shift data
+const createValidationSchema = (shift?: Shift, punch?: EmployeePunch | null, job?: { additionalConfig?: { earlyClockInMinutes?: number } }) => {
+  return Yup.object({
+    timeIn: Yup.string()
+      .required('Time in is required')
+      .test(
+        'timeIn-within-shift',
+        'Time in must be within the shift time range',
+        function (value) {
+          if (!value || !shift || !punch) return true; // Skip validation if no shift/punch data
+          
+          const timeInDate = new Date(value);
+          const daySchedule = getShiftScheduleForDay(shift, timeInDate);
+          
+          if (!daySchedule) return true; // No schedule for this day, skip validation
+          
+          // Get early clock-in minutes from job config (default to 0)
+          const earlyClockInMinutes = job?.additionalConfig?.earlyClockInMinutes ?? 0;
+          
+          // Combine the punch date with the shift schedule times
+          const shiftStartTime = combineDateWithTime(timeInDate, daySchedule.start);
+          const shiftEndTime = combineDateWithTime(timeInDate, daySchedule.end);
+          
+          // Check if shift is overnight (end time is before start time)
+          const isOvernightShift = 
+            daySchedule.start.getHours() > daySchedule.end.getHours() ||
+            (daySchedule.start.getHours() === daySchedule.end.getHours() &&
+             daySchedule.start.getMinutes() > daySchedule.end.getMinutes());
+          
+          if (isOvernightShift) {
+            // For overnight shifts, end time is on next day
+            shiftEndTime.setDate(shiftEndTime.getDate() + 1);
+          }
+          
+          // Calculate earliest allowed clock-in time (with early clock-in buffer)
+          const earliestClockIn = new Date(shiftStartTime.getTime() - earlyClockInMinutes * 60000);
+          
+          // Check if timeIn is within the allowed window
+          const isValid = timeInDate >= earliestClockIn && timeInDate <= shiftEndTime;
+          
+          if (!isValid) {
+            const startTimeStr = format(daySchedule.start, 'h:mm a');
+            const endTimeStr = format(daySchedule.end, 'h:mm a');
+            const bufferText = earlyClockInMinutes > 0 ? ` (allows ${earlyClockInMinutes} min early clock-in)` : '';
             return this.createError({
-              message: 'Time out must be after time in',
+              message: `Time in must be between ${startTimeStr} and ${endTimeStr}${bufferText}`,
             });
           }
+          
+          return true;
         }
-        return true;
-      }
+      ),
+    timeOut: Yup.string()
+      .nullable()
+      .test(
+        'timeOut-validation',
+        'Time out validation',
+        function (value) {
+          const { timeIn } = this.parent;
+          
+          // Validate timeOut > timeIn
+          if (value && timeIn) {
+            const timeInDate = new Date(timeIn);
+            const timeOutDate = new Date(value);
+            const diffMs = timeOutDate.getTime() - timeInDate.getTime();
+            
+            // Check if this is an overnight shift (different calendar days)
+            const timeInDay = timeInDate.toDateString();
+            const timeOutDay = timeOutDate.toDateString();
+            const isOvernight = timeInDay !== timeOutDay;
+            
+            if (isOvernight) {
+              // Overnight shift: timeOut is on a different day than timeIn
+              // Validate that timeOut date is after timeIn date
+              if (timeOutDate < timeInDate) {
+                return this.createError({
+                  message: 'Time out date must be on or after time in date. For overnight shifts, time out should be on the next day.',
+                });
+              }
+              
+              // Calculate actual duration (accounting for overnight)
+              // For overnight shifts, duration should be reasonable (0-24 hours)
+              if (diffMs < 0) {
+                // This shouldn't happen if dates are correct, but handle it
+                const overnightDuration = (24 * 60 * 60 * 1000) + diffMs;
+                if (overnightDuration < 0 || overnightDuration > 24 * 60 * 60 * 1000) {
+                  return this.createError({
+                    message: 'Time out must be after time in. For overnight shifts, ensure the duration is reasonable (0-24 hours).',
+                  });
+                }
+              } else if (diffMs > 24 * 60 * 60 * 1000) {
+                return this.createError({
+                  message: 'Time out cannot be more than 24 hours after time in',
+                });
+              }
+            } else {
+              // Same day: timeOut must be after timeIn
+              if (diffMs <= 0) {
+                return this.createError({
+                  message: 'Time out must be after time in on the same day.',
+                });
+              }
+              
+              // Same day shifts shouldn't be more than 24 hours
+              if (diffMs > 24 * 60 * 60 * 1000) {
+                return this.createError({
+                  message: 'Time out cannot be more than 24 hours after time in',
+                });
+              }
+            }
+            
+            // Validate timeOut is within shift time range if shift data is available
+            if (shift && punch) {
+              const timeInDate = new Date(timeIn);
+              const daySchedule = getShiftScheduleForDay(shift, timeInDate);
+              
+              if (daySchedule) {
+                // Combine the punch date with the shift schedule times
+                const shiftStartTime = combineDateWithTime(timeInDate, daySchedule.start);
+                const shiftEndTimeBase = combineDateWithTime(timeInDate, daySchedule.end);
+                
+                // Check if shift is overnight (end time is before start time)
+                const shiftIsOvernight = 
+                  daySchedule.start.getHours() > daySchedule.end.getHours() ||
+                  (daySchedule.start.getHours() === daySchedule.end.getHours() &&
+                   daySchedule.start.getMinutes() > daySchedule.end.getMinutes());
+                
+                // For overnight shifts, end time is on next day
+                const shiftEndTime = shiftIsOvernight 
+                  ? (() => {
+                      const nextDay = new Date(shiftEndTimeBase);
+                      nextDay.setDate(nextDay.getDate() + 1);
+                      return nextDay;
+                    })()
+                  : shiftEndTimeBase;
+                
+                // Allow late clock-out (up to 30 minutes after shift end)
+                const lateClockOutBuffer = 30; // minutes
+                const latestClockOut = new Date(shiftEndTime.getTime() + lateClockOutBuffer * 60000);
+                
+                // Check if timeOut is within the allowed window
+                const isValid = timeOutDate >= shiftStartTime && timeOutDate <= latestClockOut;
+                
+                if (!isValid) {
+                  const startTimeStr = format(daySchedule.start, 'h:mm a');
+                  const endTimeStr = format(daySchedule.end, 'h:mm a');
+                  return this.createError({
+                    message: `Time out must be between ${startTimeStr} and ${endTimeStr} (allows ${lateClockOutBuffer} min late clock-out)`,
+                  });
+                }
+              }
+            }
+          }
+          
+          return true;
+        }
+      ),
+    userNote: Yup.string().max(500, 'Note cannot exceed 500 characters'),
+    managerNote: Yup.string().max(
+      500,
+      'Manager note cannot exceed 500 characters'
     ),
-  userNote: Yup.string().max(500, 'Note cannot exceed 500 characters'),
-  managerNote: Yup.string().max(
-    500,
-    'Manager note cannot exceed 500 characters'
-  ),
-});
+  });
+};
 
 export function EmployeePunchDetailsModal({
   isOpen,
   onClose,
   punch,
   onSuccess,
+  shift,
+  job,
 }: EmployeePunchDetailsModalProps) {
   // ERROR-PROOF: All hooks must be called before any conditional returns
   // This ensures hooks are always called in the same order
@@ -121,6 +286,16 @@ export function EmployeePunchDetailsModal({
     if (!punch) return 100;
     return (punch as unknown as { geoFenceRadius?: number }).geoFenceRadius || 100;
   }, [punch]);
+
+  // Check if this is an overnight shift (timeOut is on a different day than timeIn)
+  // ERROR-PROOF: Must be called before any early returns to maintain hook order
+  const isOvernightShift = useMemo(() => {
+    if (!punch?.timeIn || !punch?.timeOut) return false;
+    const timeInDate = new Date(punch.timeIn);
+    const timeOutDate = new Date(punch.timeOut);
+    // Check if they're on different calendar days
+    return timeInDate.toDateString() !== timeOutDate.toDateString();
+  }, [punch?.timeIn, punch?.timeOut]);
 
   // ERROR-PROOF: Early return AFTER all hooks are called
   // This ensures hooks are always called in the same order
@@ -194,15 +369,34 @@ export function EmployeePunchDetailsModal({
     }
   };
 
+  // Parse datetime for datetime-local input, handling timezone correctly
+  // For overnight shifts, ensure we display the correct date
   const parseDateTime = (value: string) => {
     if (!value) return '';
-    const date = new Date(value);
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
+    
+    try {
+      const date = new Date(value);
+      
+      // Validate the date
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date value:', value);
+        return '';
+      }
+      
+      // Use local time components to display in user's timezone
+      // This ensures the date shown matches what the user expects
+      const year = date.getFullYear();
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const day = date.getDate().toString().padStart(2, '0');
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      
+      // Return in format: YYYY-MM-DDTHH:mm (required by datetime-local input)
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
+    } catch (error) {
+      console.error('Error parsing date:', value, error);
+      return '';
+    }
   };
 
   return (
@@ -259,12 +453,12 @@ export function EmployeePunchDetailsModal({
           {/* Form Content */}
           <Formik
             initialValues={initialValues}
-            validationSchema={punchValidationSchema}
+            validationSchema={createValidationSchema(shift, punch, job)}
             onSubmit={handleSave}
             enableReinitialize={true}
             key={punch._id}
           >
-            {({ errors, touched, setFieldValue }) => (
+            {({ errors, touched, setFieldValue, values }) => (
               <Form className="space-y-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-gray-900">
@@ -295,27 +489,84 @@ export function EmployeePunchDetailsModal({
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-gray-900">
                     Time Out
+                    {isOvernightShift && (
+                      <span className="ml-2 text-xs text-gray-500 font-normal">
+                        (Overnight shift - next day)
+                      </span>
+                    )}
                   </Label>
                   <Field name="timeOut">
-                    {({ field }: { field: FieldInputProps<string> }) => (
-                      <Input
-                        type="datetime-local"
-                        value={field.value ? parseDateTime(field.value) : ''}
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            const newDate = new Date(e.target.value);
-                            setFieldValue('timeOut', newDate.toISOString());
-                          } else {
-                            setFieldValue('timeOut', '');
-                          }
-                        }}
-                        className={`h-11 ${
-                          errors.timeOut && touched.timeOut
-                            ? 'border-red-300'
-                            : ''
-                        }`}
-                      />
-                    )}
+                    {({ field }: { field: FieldInputProps<string> }) => {
+                      // Check if current values indicate overnight shift
+                      const currentTimeIn = values.timeIn ? new Date(values.timeIn) : null;
+                      const currentTimeOut = field.value ? new Date(field.value) : null;
+                      const isCurrentlyOvernight = currentTimeIn && currentTimeOut && 
+                        currentTimeIn.toDateString() !== currentTimeOut.toDateString();
+                      
+                      return (
+                        <>
+                          <Input
+                            type="datetime-local"
+                            value={field.value ? parseDateTime(field.value) : ''}
+                            onChange={(e) => {
+                              if (!e.target.value) {
+                                setFieldValue('timeOut', '');
+                                return;
+                              }
+
+                              const newTimeOutDate = new Date(e.target.value);
+                              const timeInDate = values.timeIn ? new Date(values.timeIn) : null;
+                              
+                              // Validate the date
+                              if (isNaN(newTimeOutDate.getTime())) {
+                                setFieldValue('timeOut', '');
+                                return;
+                              }
+                              
+                              // Handle overnight shift: if timeOut appears before or equal to timeIn,
+                              // automatically adjust to next day (assuming overnight shift)
+                              if (timeInDate) {
+                                const timeInTime = timeInDate.getTime();
+                                const timeOutTime = newTimeOutDate.getTime();
+                                
+                                // If timeOut is before or equal to timeIn, it's likely an overnight shift
+                                // Check if they're on the same day first
+                                const sameDay = timeInDate.toDateString() === newTimeOutDate.toDateString();
+                                
+                                if (sameDay && timeOutTime <= timeInTime) {
+                                  // Same day but timeOut is before/equal to timeIn - adjust to next day
+                                  newTimeOutDate.setDate(newTimeOutDate.getDate() + 1);
+                                } else if (!sameDay) {
+                                  // Different days - check if timeOut is actually before timeIn
+                                  // (e.g., timeIn is 11 PM on day 1, timeOut is 1 AM on day 2)
+                                  // In this case, if timeOut date is before timeIn date, it's wrong
+                                  if (newTimeOutDate < timeInDate) {
+                                    // This shouldn't happen normally, but if it does, adjust to next day after timeIn
+                                    const adjustedDate = new Date(timeInDate);
+                                    adjustedDate.setDate(adjustedDate.getDate() + 1);
+                                    adjustedDate.setHours(newTimeOutDate.getHours(), newTimeOutDate.getMinutes(), 0, 0);
+                                    setFieldValue('timeOut', adjustedDate.toISOString());
+                                    return;
+                                  }
+                                }
+                              }
+                              
+                              setFieldValue('timeOut', newTimeOutDate.toISOString());
+                            }}
+                            className={`h-11 ${
+                              errors.timeOut && touched.timeOut
+                                ? 'border-red-300'
+                                : ''
+                            }`}
+                          />
+                          {(isOvernightShift || isCurrentlyOvernight) && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              This shift spans midnight. Time out is on the next day.
+                            </p>
+                          )}
+                        </>
+                      );
+                    }}
                   </Field>
                   {touched.timeOut && errors.timeOut && (
                     <p className="text-sm text-red-600">{errors.timeOut}</p>
