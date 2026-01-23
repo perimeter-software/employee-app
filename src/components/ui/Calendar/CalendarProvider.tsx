@@ -11,6 +11,7 @@ export default function CalendarProvider({
   setDate,
   calendarIconIsToday = true,
   weekStartsOn = 0,
+  onOverflowClick,
   children,
 }: {
   events: CalendarEvent[];
@@ -21,6 +22,7 @@ export default function CalendarProvider({
   setDate: (date: Date) => void;
   calendarIconIsToday: boolean;
   weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  onOverflowClick?: (event: CalendarEvent, allEvents: CalendarEvent[]) => void;
   children: React.ReactNode;
 }) {
   const [newEventDialogOpen, setNewEventDialogOpen] = useState(false);
@@ -46,6 +48,7 @@ export default function CalendarProvider({
         setManageEventDialogOpen,
         selectedEvent,
         setSelectedEvent,
+        onOverflowClick,
       }}
     >
       {children}

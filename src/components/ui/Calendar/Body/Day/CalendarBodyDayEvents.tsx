@@ -1,13 +1,44 @@
+import { useMemo } from "react";
 import { useCalendarContext } from "../../../Calendar";
-import { isSameDay } from "date-fns";
 import type { CalendarEvent } from "@/components/ui/Calendar/types";
 
 export default function CalendarBodyDayEvents() {
-  const { events, date, setManageEventDialogOpen, setSelectedEvent } =
+  const { events, date, setManageEventDialogOpen, setSelectedEvent, mode } =
     useCalendarContext();
-  const dayEvents = events.filter((event: CalendarEvent) =>
-    isSameDay(event.start, date)
-  );
+  
+  // Use the same filtering logic as CalendarBodyDayContent for consistency
+  // Filter events for this day - show events that start, end, or span this day
+  const dayEvents = useMemo(() => {
+    // Normalize target day once
+    const targetDay = new Date(date);
+    targetDay.setHours(0, 0, 0, 0);
+    const targetDayTime = targetDay.getTime();
+    
+    return events.filter((event: CalendarEvent) => {
+      // Normalize dates to start of day for comparison
+      const eventStartDay = new Date(event.start);
+      eventStartDay.setHours(0, 0, 0, 0);
+      const eventEndDay = new Date(event.end);
+      eventEndDay.setHours(0, 0, 0, 0);
+      
+      // Primary check: Event starts on this day
+      const startsOnDay = eventStartDay.getTime() === targetDayTime;
+      
+      // For week view: ONLY show events that start on this day (prevents duplication)
+      if (mode === 'week') {
+        return startsOnDay;
+      }
+      
+      // For day view: Show events that start, end, or span this day
+      const endsOnDay = eventEndDay.getTime() === targetDayTime;
+      
+      // Event spans this day if it starts before this day AND ends after this day
+      const spansDay = eventStartDay.getTime() < targetDayTime && 
+                        eventEndDay.getTime() > targetDayTime;
+      
+      return startsOnDay || endsOnDay || spansDay;
+    });
+  }, [events, date, mode]);
 
   return !!dayEvents.length ? (
     <div className="flex flex-col gap-2">

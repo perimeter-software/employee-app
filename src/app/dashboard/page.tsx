@@ -407,7 +407,7 @@ const StatsCards = ({
           <div>
             <div className="flex items-center gap-2 mb-1">
               <AlertTriangle className="w-4 h-4 text-red-500" />
-              <p className="text-sm text-gray-600">Geofence Violation</p>
+              <p className="text-sm text-gray-600">Shifts Pending</p>
             </div>
             <p className="text-3xl font-bold text-red-600">
               {statsData?.geofenceViolations || 0}
@@ -1353,10 +1353,12 @@ const DashboardPage: NextPage = () => {
             </div>
 
             {/* Weekly Shift Details Table */}
+            {!isClient && (
             <WeeklyShiftTable
-              shiftData={performanceData?.shiftDetails}
-              isLoading={performanceLoading}
-            />
+                shiftData={performanceData?.shiftDetails}
+                isLoading={performanceLoading}
+              />
+            )}
 
             {/* Monthly Insights & Recommendations */}
             <InsightsRecommendations
@@ -1444,10 +1446,12 @@ const DashboardPage: NextPage = () => {
             </div>
 
             {/* Weekly Shift Details Table */}
+            {!isClient && (
             <WeeklyShiftTable
-              shiftData={performanceData?.shiftDetails}
-              isLoading={performanceLoading}
-            />
+                shiftData={performanceData?.shiftDetails}
+                isLoading={performanceLoading}
+              />
+            )}
 
             {/* Weekly Insights & Recommendations */}
             <InsightsRecommendations
@@ -1557,6 +1561,64 @@ const DashboardPage: NextPage = () => {
               />
             </div>
 
+            {/* Weekly Shift Details - Commented out for Client Login users */}
+            {!isClient && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Weekly Shift Details</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {companyLoading ? (
+                    <div className="flex items-center justify-center min-h-[500px]">
+                      <div className="text-gray-500">Loading calendar...</div>
+                    </div>
+                  ) : (
+                    <div className="border rounded-lg overflow-hidden">
+                      <CalendarProvider
+                        events={events}
+                        setEvents={setEvents}
+                        mode={mode}
+                        setMode={setMode}
+                        date={currentDate}
+                        setDate={setCurrentDate}
+                        calendarIconIsToday={false}
+                        weekStartsOn={weekStartsOn || 0}
+                      >
+                        {/* Complete Calendar Component with sticky headers */}
+                        <Calendar hideTotalColumn={true} />
+
+                        {/* Custom event handler - listen to calendar context */}
+                        <DashboardCalendarEventHandler
+                          shiftEvents={shiftEvents}
+                          onShiftClick={handleShiftClick}
+                        />
+                      </CalendarProvider>
+                    </div>
+                  )}
+
+                  {/* Calendar Legend */}
+                  <div className="flex items-center gap-4 mt-4 text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-green-500 rounded"></div>
+                      <span>Work Day</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-yellow-500 rounded"></div>
+                      <span>Partial Day</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-red-500 rounded"></div>
+                      <span>Vacation Day</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 bg-gray-300 rounded"></div>
+                      <span>Off Day</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {/* 
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Weekly Shift Details</CardTitle>
@@ -1578,10 +1640,8 @@ const DashboardPage: NextPage = () => {
                       calendarIconIsToday={false}
                       weekStartsOn={weekStartsOn || 0}
                     >
-                      {/* Complete Calendar Component with sticky headers */}
                       <Calendar hideTotalColumn={true} />
 
-                      {/* Custom event handler - listen to calendar context */}
                       <DashboardCalendarEventHandler
                         shiftEvents={shiftEvents}
                         onShiftClick={handleShiftClick}
@@ -1590,7 +1650,6 @@ const DashboardPage: NextPage = () => {
                   </div>
                 )}
 
-                {/* Calendar Legend */}
                 <div className="flex items-center gap-4 mt-4 text-xs">
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 bg-green-500 rounded"></div>
@@ -1611,6 +1670,7 @@ const DashboardPage: NextPage = () => {
                 </div>
               </CardContent>
             </Card>
+            */}
 
             {/* Insights & Recommendations */}
             <InsightsRecommendations
