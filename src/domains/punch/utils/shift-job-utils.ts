@@ -370,10 +370,12 @@ export const getUserShiftForToday = (
       (rosterEntry) => rosterEntry._id === applicantId
     );
 
-    // Check if the applicant is in today's roster (if specified)
+    // Check if the applicant is in today's roster (if specified).
+    // Only allow when user is in that day's roster list; null/undefined or empty roster = not in roster.
     const isUserInTodayRoster =
-      !todaySchedule?.roster?.length || // no roster array or empty ⇒ allow
-      isUserInRoster(todaySchedule.roster, applicantId, currentTime);
+      todaySchedule?.roster == null || todaySchedule.roster.length === 0
+        ? false
+        : isUserInRoster(todaySchedule.roster, applicantId, currentTime);
 
     console.log('🔍 getUserShiftForToday - Checking shift:', shift.shiftName);
     console.log('  - Current day:', currentDay);
@@ -446,14 +448,17 @@ export const getUserShiftForToday = (
       (rosterEntry) => rosterEntry._id === applicantId
     );
 
-    // Check if the applicant is in previous day's roster (for overnight shifts)
+    // Check if the applicant is in previous day's roster (for overnight shifts).
+    // Only allow when user is in that day's roster list; null/undefined or empty roster = not in roster.
     const isUserInPreviousDayRoster =
-      !previousDaySchedule?.roster?.length || // no roster array or empty ⇒ allow
-      isUserInRoster(
-        previousDaySchedule.roster,
-        applicantId,
-        previousDay.toISOString()
-      );
+      previousDaySchedule?.roster == null ||
+      previousDaySchedule.roster.length === 0
+        ? false
+        : isUserInRoster(
+            previousDaySchedule.roster,
+            applicantId,
+            previousDay.toISOString()
+          );
 
     if (
       isWithinShiftDates &&
@@ -987,10 +992,16 @@ export function isShiftWithinRange(
     return false;
   }
 
-  // Check if user is in the roster for this specific day
-  const isInTodayRoster = todaySchedule.roster
-    ? isUserInRoster(todaySchedule.roster, applicantId, shiftDate.toISOString())
-    : true; // If no roster specified for today, consider it valid
+  // Check if user is in the roster for this specific day.
+  // Only allow when user is in that day's roster list; null/undefined or empty roster = not in roster.
+  const isInTodayRoster =
+    todaySchedule.roster != null && todaySchedule.roster.length > 0
+      ? isUserInRoster(
+          todaySchedule.roster,
+          applicantId,
+          shiftDate.toISOString()
+        )
+      : false;
 
   if (!isInTodayRoster) {
     return false;

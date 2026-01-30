@@ -259,51 +259,57 @@ export function ShiftsTable({
                 dayOfWeek as keyof typeof shift.defaultSchedule
               ];
 
-            // Check if user is in roster for this specific day
-            isInDayRoster =
-              !daySchedule?.roster?.length ||
-              isUserInRoster(
+            // Check if user is in roster for this specific day.
+            // Only show shift when user is in that day's roster list; null/undefined or empty roster = not in roster.
+            if (
+              daySchedule?.roster == null ||
+              daySchedule.roster.length === 0
+            ) {
+              isInDayRoster = false;
+            } else {
+              isInDayRoster = isUserInRoster(
                 daySchedule.roster,
                 userData.applicantId,
                 currentDate.toISOString()
               );
 
-            // FIXED: For overnight shifts, also check the previous day's schedule
-            if (!daySchedule?.start || !isInDayRoster) {
-              const previousDay = new Date(currentDate);
-              previousDay.setDate(previousDay.getDate() - 1);
-              const previousDayOfWeek = [
-                'sunday',
-                'monday',
-                'tuesday',
-                'wednesday',
-                'thursday',
-                'friday',
-                'saturday',
-              ][previousDay.getDay()];
+              // FIXED: For overnight shifts, also check the previous day's schedule
+              if (!daySchedule?.start || !isInDayRoster) {
+                const previousDay = new Date(currentDate);
+                previousDay.setDate(previousDay.getDate() - 1);
+                const previousDayOfWeek = [
+                  'sunday',
+                  'monday',
+                  'tuesday',
+                  'wednesday',
+                  'thursday',
+                  'friday',
+                  'saturday',
+                ][previousDay.getDay()];
 
-              const previousDaySchedule =
-                shift.defaultSchedule?.[
-                  previousDayOfWeek as keyof typeof shift.defaultSchedule
-                ];
+                const previousDaySchedule =
+                  shift.defaultSchedule?.[
+                    previousDayOfWeek as keyof typeof shift.defaultSchedule
+                  ];
 
-              if (previousDaySchedule?.start && previousDaySchedule?.end) {
-                const prevStartTime = new Date(previousDaySchedule.start);
-                const prevEndTime = new Date(previousDaySchedule.end);
+                if (previousDaySchedule?.start && previousDaySchedule?.end) {
+                  const prevStartTime = new Date(previousDaySchedule.start);
+                  const prevEndTime = new Date(previousDaySchedule.end);
 
-                // Check if this is an overnight shift (end time is before start time)
-                if (prevEndTime.getHours() < prevStartTime.getHours()) {
-                  isOvernightShift = true;
-                  daySchedule = previousDaySchedule;
+                  // Check if this is an overnight shift (end time is before start time)
+                  if (prevEndTime.getHours() < prevStartTime.getHours()) {
+                    isOvernightShift = true;
+                    daySchedule = previousDaySchedule;
 
-                  // Check if user is in roster for the previous day (which covers today's overnight shift)
-                  isInDayRoster =
-                    !daySchedule?.roster?.length ||
-                    isUserInRoster(
-                      daySchedule.roster,
-                      userData.applicantId,
-                      previousDay.toISOString()
-                    );
+                    // Check if user is in roster for the previous day (which covers today's overnight shift)
+                    isInDayRoster =
+                      !daySchedule?.roster?.length ||
+                      isUserInRoster(
+                        daySchedule.roster,
+                        userData.applicantId,
+                        previousDay.toISOString()
+                      );
+                  }
                 }
               }
             }
