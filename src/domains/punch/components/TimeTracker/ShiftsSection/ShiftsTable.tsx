@@ -259,14 +259,17 @@ export function ShiftsTable({
                 dayOfWeek as keyof typeof shift.defaultSchedule
               ];
 
-            // Check if user is in roster for this specific day
-            isInDayRoster =
-              !daySchedule?.roster?.length ||
-              isUserInRoster(
+            // Check if user is in roster for this specific day.
+            // Only show shift when user is in that day's roster list; null/undefined or empty roster = not in roster.
+            if (daySchedule?.roster == null || daySchedule.roster.length === 0) {
+              isInDayRoster = false;
+            } else {
+              isInDayRoster = isUserInRoster(
                 daySchedule.roster,
                 userData.applicantId,
                 currentDate.toISOString()
               );
+            }
 
             // FIXED: For overnight shifts, also check the previous day's schedule
             if (!daySchedule?.start || !isInDayRoster) {
