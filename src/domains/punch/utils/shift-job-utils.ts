@@ -470,11 +470,14 @@ export const getUserShiftForToday = (
       const startTime = new Date(previousDaySchedule.start);
       const endTime = new Date(previousDaySchedule.end);
 
-      // CRITICAL FIX: Proper overnight shift detection
-      // Overnight shift: start time is late evening/night (after 18:00) AND end time is early morning (before 12:00)
+      // Overnight shift: end time is earlier in the day than start time (in 24h)
       const startHour = startTime.getHours();
+      const startMin = startTime.getMinutes();
       const endHour = endTime.getHours();
-      const isOvernightShift = startHour >= 18 && endHour < 12;
+      const endMin = endTime.getMinutes();
+      const isOvernightShift =
+        endHour < startHour ||
+        (endHour === startHour && endMin < startMin);
 
       if (isOvernightShift) {
         // This is an overnight shift, so it continues into today
@@ -905,11 +908,14 @@ export function isToday(date: Date, shift?: Shift): boolean {
   const startTime = new Date(schedule.start);
   const endTime = new Date(schedule.end);
 
-  // CRITICAL FIX: Proper overnight shift detection
-  // Overnight shift: start time is late evening/night (after 18:00) AND end time is early morning (before 12:00)
+  // Overnight shift: end time is earlier in the day than start time (in 24h)
   const startHour = startTime.getHours();
+  const startMin = startTime.getMinutes();
   const endHour = endTime.getHours();
-  const isOvernight = startHour >= 18 && endHour < 12;
+  const endMin = endTime.getMinutes();
+  const isOvernight =
+    endHour < startHour ||
+    (endHour === startHour && endMin < startMin);
 
   if (isOvernight) {
     // For overnight shifts, also return true if:
@@ -1222,14 +1228,16 @@ export function combineCurrentDateWithTimeFromDateObject(
       compareDateObj.getMilliseconds()
     );
 
-    // CRITICAL FIX: Only treat as overnight if end time is actually before start time
-    // Example: 11:00 PM (23:00) to 6:00 AM (06:00) = overnight
-    // Example: 3:05 AM (03:05) to 6:05 AM (06:05) = NOT overnight (regular early morning shift)
+    // Overnight shift: end time is earlier in the day than start time (in 24h).
+    // E.g. 5:00 PM (17:00) to 12:00 AM (00:00) = overnight; 11:00 PM to 6:00 AM = overnight.
+    // E.g. 3:05 AM to 6:05 AM = NOT overnight (end after start).
     const startHour = compareDateObj.getHours();
+    const startMin = compareDateObj.getMinutes();
     const endHour = timeObj.getHours();
-
-    // Overnight shift: start time is late evening/night (after 18:00) AND end time is early morning (before 12:00)
-    const isOvernightShift = startHour >= 18 && endHour < 12;
+    const endMin = timeObj.getMinutes();
+    const isOvernightShift =
+      endHour < startHour ||
+      (endHour === startHour && endMin < startMin);
 
     if (isOvernightShift) {
       result.setDate(result.getDate() + 1);
