@@ -299,14 +299,17 @@ export function ShiftsTable({
                   isOvernightShift = true;
                   daySchedule = previousDaySchedule;
 
-                  // Check if user is in roster for the previous day (which covers today's overnight shift)
-                  isInDayRoster =
-                    !daySchedule?.roster?.length ||
-                    isUserInRoster(
+                  // Check if user is in roster for the previous day (which covers today's overnight shift).
+                  // Only allow when user is in that day's roster list; null/undefined or empty roster = not in roster.
+                  if (daySchedule?.roster == null || daySchedule.roster.length === 0) {
+                    isInDayRoster = false;
+                  } else {
+                    isInDayRoster = isUserInRoster(
                       daySchedule.roster,
                       userData.applicantId,
                       previousDay.toISOString()
                     );
+                  }
                 }
               }
             }
