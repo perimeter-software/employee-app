@@ -832,7 +832,6 @@ const DashboardPage: NextPage = () => {
       firstName: string;
       lastName: string;
       email: string;
-      fullName: string;
     }>
   >({
     queryKey: ['employeesList'],
@@ -1072,13 +1071,20 @@ const DashboardPage: NextPage = () => {
                   <ReactSelect
                     value={
                       selectedEmployeeId
-                        ? {
-                            value: selectedEmployeeId,
-                            label:
-                              employeesList.find(
-                                (e) => e._id === selectedEmployeeId
-                              )?.fullName || 'Employee',
-                          }
+                        ? (() => {
+                            const e = employeesList.find(
+                              (emp) => emp._id === selectedEmployeeId
+                            );
+                            const label = e
+                              ? `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim() ||
+                                e.email ||
+                                'Employee'
+                              : 'Employee';
+                            return {
+                              value: selectedEmployeeId,
+                              label,
+                            };
+                          })()
                         : { value: 'all', label: 'All Employees' }
                     }
                     onChange={(option) => {
@@ -1090,7 +1096,10 @@ const DashboardPage: NextPage = () => {
                       { value: 'all', label: 'All Employees' },
                       ...employeesList.map((employee) => ({
                         value: employee._id,
-                        label: employee.fullName,
+                        label:
+                          `${employee.firstName ?? ''} ${employee.lastName ?? ''}`.trim() ||
+                          employee.email ||
+                          'Employee',
                       })),
                     ]}
                     isSearchable
