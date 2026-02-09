@@ -199,12 +199,29 @@ async function exportHandler(
 
   if (format === 'pdf') {
     try {
-      // Load from node_modules at runtime so font paths resolve (avoid Next bundling pdfkit)
-      const requireFromProject = createRequire(
-        path.join(process.cwd(), 'package.json')
-      );
-      const PDFDocument = requireFromProject('pdfkit');
-      const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
+      // Load pdfkit at runtime: createRequire works in dev; in prod bundle it may be undefined, so fallback to dynamic import
+      let PDFDocument: unknown;
+      if (typeof createRequire === 'function') {
+        const requireFromProject = createRequire(
+          path.join(process.cwd(), 'package.json')
+        );
+        PDFDocument = requireFromProject('pdfkit');
+      } else {
+        const mod = await import('pdfkit');
+        PDFDocument = mod.default ?? mod;
+      }
+      if (typeof PDFDocument !== 'function') {
+        throw new Error('PDF library (pdfkit) could not be loaded');
+      }
+      type PDFDoc = {
+        on(e: string, fn: (chunk: Buffer) => void): void;
+        end(): void;
+        fontSize(n: number): PDFDoc;
+        text(s: string, opts?: object): PDFDoc;
+        moveDown(n?: number): PDFDoc;
+      };
+      const DocCtor = PDFDocument as new (opts?: { size?: string; margin?: number }) => PDFDoc;
+      const doc = new DocCtor({ size: 'LETTER', margin: 50 });
       const chunks: Buffer[] = [];
       doc.on('data', (chunk: Buffer) => chunks.push(chunk));
       const body = await new Promise<Buffer>((resolve, reject) => {
