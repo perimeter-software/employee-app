@@ -109,4 +109,5 @@ jobs:
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AWS_REGION,Value=${{ vars.AWS_REGION }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AWS_ACCESS_KEY_ID,Value=${{ secrets.AWS_ACCESS_KEY_ID }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AWS_SECRET_ACCESS_KEY,Value=${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SES_FROM_EMAIL,Value=${{ vars.SES_FROM_EMAIL }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SES_SEND_IN_DEV,Value=${{ vars.SES_SEND_IN_DEV }}"
