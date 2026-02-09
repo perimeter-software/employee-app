@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Layout from '@/components/layout/Layout';
 import { usePageAuth } from '@/domains/shared/hooks/use-page-auth';
 import {
@@ -12,7 +13,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
   startOfDay,
-  endOfDay,
   startOfWeek,
   endOfWeek,
   startOfMonth,
@@ -21,6 +21,7 @@ import {
   addDays,
   addWeeks,
   addMonths,
+  type Day,
 } from 'date-fns';
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
 import { useInvoicesList } from '@/domains/invoice/hooks/use-invoices-list';
@@ -48,7 +49,13 @@ import type { InvoiceListItem } from '@/domains/invoice/types';
 
 type DateMode = 'day' | 'week' | 'month' | 'custom';
 
-function getRange(mode: DateMode, base: Date, customStart: string, customEnd: string, weekStartsOn: number) {
+function getRange(
+  mode: DateMode,
+  base: Date,
+  customStart: string,
+  customEnd: string,
+  weekStartsOn: number
+) {
   if (mode === 'custom' && customStart && customEnd) {
     return { start: customStart, end: customEnd };
   }
@@ -57,8 +64,9 @@ function getRange(mode: DateMode, base: Date, customStart: string, customEnd: st
     return { start: format(s, 'yyyy-MM-dd'), end: format(s, 'yyyy-MM-dd') };
   }
   if (mode === 'week') {
-    const s = startOfWeek(base, { weekStartsOn });
-    const e = endOfWeek(base, { weekStartsOn });
+    const day = weekStartsOn as Day;
+    const s = startOfWeek(base, { weekStartsOn: day });
+    const e = endOfWeek(base, { weekStartsOn: day });
     return { start: format(s, 'yyyy-MM-dd'), end: format(e, 'yyyy-MM-dd') };
   }
   const s = startOfMonth(base);
@@ -69,8 +77,9 @@ function getRange(mode: DateMode, base: Date, customStart: string, customEnd: st
 function rangeLabel(mode: DateMode, base: Date, weekStartsOn: number) {
   if (mode === 'day') return format(base, 'MMM d, yyyy');
   if (mode === 'week') {
-    const s = startOfWeek(base, { weekStartsOn });
-    const e = endOfWeek(base, { weekStartsOn });
+    const day = weekStartsOn as Day;
+    const s = startOfWeek(base, { weekStartsOn: day });
+    const e = endOfWeek(base, { weekStartsOn: day });
     return `${format(s, 'MMM d')} – ${format(e, 'MMM d, yyyy')}`;
   }
   return format(base, 'MMMM yyyy');
@@ -107,7 +116,13 @@ export default function InvoicesPage() {
     [dateMode, baseDate, customStart, customEnd, weekStartsOn]
   );
 
-  const { data, isLoading } = useInvoicesList(start, end, page, limit, !!isClient && shouldShowContent);
+  const { data, isLoading } = useInvoicesList(
+    start,
+    end,
+    page,
+    limit,
+    !!isClient && shouldShowContent
+  );
 
   const handlePrev = () => {
     if (dateMode === 'day') setBaseDate((d) => addDays(d, -1));
@@ -138,7 +153,10 @@ export default function InvoicesPage() {
   };
 
   const sendEmail = async () => {
-    const toEmails = emailTo.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean);
+    const toEmails = emailTo
+      .split(/[\s,;]+/)
+      .map((e) => e.trim())
+      .filter(Boolean);
     if (!toEmails.length) return;
     setEmailSending(true);
     try {
@@ -165,12 +183,23 @@ export default function InvoicesPage() {
     }
   };
 
-  const downloadInvoice = (invoiceId: string, format: 'xlsx' | 'csv' | 'pdf') => {
+  const downloadInvoice = (
+    invoiceId: string,
+    format: 'xlsx' | 'csv' | 'pdf'
+  ) => {
     window.open(`/api/invoices/${invoiceId}/export?format=${format}`, '_blank');
   };
 
-  const downloadReport = (reportType: 'summary' | 'detail', format: 'xlsx' | 'csv') => {
-    const body = JSON.stringify({ startDate: start, endDate: end, reportType, format });
+  const downloadReport = (
+    reportType: 'summary' | 'detail',
+    format: 'xlsx' | 'csv'
+  ) => {
+    const body = JSON.stringify({
+      startDate: start,
+      endDate: end,
+      reportType,
+      format,
+    });
     fetch('/api/invoices/export-report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -195,10 +224,13 @@ export default function InvoicesPage() {
       sortable: false,
       render: (_v, row) =>
         row.logoUrl ? (
-          <img
+          <Image
             src={row.logoUrl}
             alt=""
+            width={32}
+            height={32}
             className="h-8 w-8 object-contain rounded"
+            unoptimized
           />
         ) : (
           <span className="text-gray-400 text-xs">–</span>
@@ -208,7 +240,10 @@ export default function InvoicesPage() {
       key: 'venueSlug',
       header: 'Venue',
       sortable: true,
-      render: (_v, row) => row.venueName || (row.venueSlug ? String(row.venueSlug).toUpperCase() : '') || '–',
+      render: (_v, row) =>
+        row.venueName ||
+        (row.venueSlug ? String(row.venueSlug).toUpperCase() : '') ||
+        '–',
     },
     {
       key: 'eventName',
@@ -236,21 +271,28 @@ export default function InvoicesPage() {
         }
       },
     },
-    { key: 'status', header: 'Status', sortable: true, render: (_v, row) => row.status ?? '–' },
+    {
+      key: 'status',
+      header: 'Status',
+      sortable: true,
+      render: (_v, row) => row.status ?? '–',
+    },
     {
       key: 'invoiceNumber',
       header: 'Invoice #',
       sortable: true,
-      render: (_v, row) => (row.invoiceNumber ?? '').toString().padStart(8, '0'),
+      render: (_v, row) =>
+        (row.invoiceNumber ?? '').toString().padStart(8, '0'),
     },
     {
       key: 'totalAmount',
       header: 'Amount',
       sortable: true,
       render: (_v, row) =>
-        new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
-          Number(row.totalAmount ?? 0)
-        ),
+        new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+        }).format(Number(row.totalAmount ?? 0)),
     },
     {
       key: 'actions',
@@ -285,7 +327,12 @@ export default function InvoicesPage() {
   ];
 
   const tableData = data?.data ?? [];
-  const pagination = data?.pagination ?? { page: 1, limit: 10, totalPages: 0, total: 0 };
+  const pagination = data?.pagination ?? {
+    page: 1,
+    limit: 10,
+    totalPages: 0,
+    total: 0,
+  };
 
   if (authLoading) return <AuthLoadingState />;
   if (authError) return <AuthErrorState error={authError.message} />;
@@ -296,14 +343,29 @@ export default function InvoicesPage() {
     <Layout title="Invoices">
       <div className="p-4 md:p-6 space-y-4">
         <h1 className="text-xl font-semibold text-gray-900">Invoices</h1>
-        <p className="text-sm text-gray-600">View and download invoices for your venues. Read-only.</p>
+        <p className="text-sm text-gray-600">
+          View and download invoices for your venues. Read-only.
+        </p>
 
         {/* Period selector: filter by pay period (same concept as sp1-api / stadium-people) */}
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm font-medium text-gray-700">Period:</span>
-          <Select value={dateMode} onValueChange={(v) => { setDateMode(v as DateMode); setPage(1); }}>
+          <Select
+            value={dateMode}
+            onValueChange={(v) => {
+              setDateMode(v as DateMode);
+              setPage(1);
+            }}
+          >
             <SelectTrigger className="w-[120px]">
-              <SelectValue placeholder="Period" displayText={dateMode === 'custom' ? 'Custom' : dateMode.charAt(0).toUpperCase() + dateMode.slice(1)} />
+              <SelectValue
+                placeholder="Period"
+                displayText={
+                  dateMode === 'custom'
+                    ? 'Custom'
+                    : dateMode.charAt(0).toUpperCase() + dateMode.slice(1)
+                }
+              />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="day">Day</SelectItem>
@@ -332,11 +394,15 @@ export default function InvoicesPage() {
             </div>
           ) : (
             <>
-              <Button variant="outline" size="sm" onClick={handlePrev}><ChevronLeft className="h-4 w-4" /></Button>
+              <Button variant="outline" size="sm" onClick={handlePrev}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
               <span className="min-w-[200px] text-center font-medium text-gray-700">
                 {rangeLabel(dateMode, baseDate, weekStartsOn)}
               </span>
-              <Button variant="outline" size="sm" onClick={handleNext}><ChevronRight className="h-4 w-4" /></Button>
+              <Button variant="outline" size="sm" onClick={handleNext}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </>
           )}
         </div>
@@ -344,20 +410,33 @@ export default function InvoicesPage() {
         {/* Report export: Summary / Detail, Excel / CSV */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-gray-600">Export report:</span>
-          <Select value={reportType} onValueChange={(v) => setReportType(v as 'summary' | 'detail')}>
+          <Select
+            value={reportType}
+            onValueChange={(v) => setReportType(v as 'summary' | 'detail')}
+          >
             <SelectTrigger className="w-[100px]">
-              <SelectValue displayText={reportType === 'summary' ? 'Summary' : 'Detail'} />
+              <SelectValue
+                displayText={reportType === 'summary' ? 'Summary' : 'Detail'}
+              />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="summary">Summary</SelectItem>
               <SelectItem value="detail">Detail</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={() => downloadReport(reportType, 'xlsx')}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => downloadReport(reportType, 'xlsx')}
+          >
             <Download className="h-4 w-4 mr-1" />
             Excel
           </Button>
-          <Button variant="outline" size="sm" onClick={() => downloadReport(reportType, 'csv')}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => downloadReport(reportType, 'csv')}
+          >
             <Download className="h-4 w-4 mr-1" />
             CSV
           </Button>
@@ -386,10 +465,20 @@ export default function InvoicesPage() {
               Page {page} of {pagination.totalPages} ({pagination.total} total)
             </span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+              >
                 Previous
               </Button>
-              <Button variant="outline" size="sm" disabled={page >= pagination.totalPages} onClick={() => setPage((p) => p + 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= pagination.totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
                 Next
               </Button>
             </div>
@@ -401,7 +490,9 @@ export default function InvoicesPage() {
       <Dialog open={emailModalOpen} onOpenChange={setEmailModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Email invoice{emailInvoiceIds.length > 1 ? 's' : ''}</DialogTitle>
+            <DialogTitle>
+              Email invoice{emailInvoiceIds.length > 1 ? 's' : ''}
+            </DialogTitle>
           </DialogHeader>
           {emailSent ? (
             <p className="text-green-600">Sent successfully.</p>
@@ -428,8 +519,16 @@ export default function InvoicesPage() {
           )}
           {!emailSent && (
             <DialogFooter>
-              <Button variant="outline" onClick={() => setEmailModalOpen(false)}>Cancel</Button>
-              <Button onClick={sendEmail} disabled={emailSending || !emailTo.trim()}>
+              <Button
+                variant="outline"
+                onClick={() => setEmailModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={sendEmail}
+                disabled={emailSending || !emailTo.trim()}
+              >
                 {emailSending ? 'Sending…' : 'Send'}
               </Button>
             </DialogFooter>
