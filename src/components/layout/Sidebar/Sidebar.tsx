@@ -9,6 +9,7 @@ import Image from 'next/image';
 import {
   Clock,
   FileText,
+  FileSpreadsheet,
   LayoutGrid,
   CalendarClock,
   MessageCircleQuestion,
@@ -98,6 +99,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
         current:
           pathname === '/paycheck-stubs' ||
           pathname.startsWith('/paycheck-stubs'),
+      });
+    }
+
+    // Add Invoices link for Client users only
+    if (isClient) {
+      baseNavigation.push({
+        name: 'Invoices',
+        href: '/invoices',
+        icon: FileSpreadsheet,
+        current:
+          pathname === '/invoices' || pathname.startsWith('/invoices'),
       });
     }
 
