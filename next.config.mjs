@@ -137,6 +137,8 @@ const nextConfig = {
 
   // Add experimental features for better compatibility
   experimental: {
+    // Don't bundle pdfkit so it can load font files from node_modules at runtime
+    serverComponentsExternalPackages: ['pdfkit'],
     // Enable SWC minifier for better performance (already default in Next.js 14)
     swcMinify: true,
     // Optimize package imports - tree-shake unused exports
