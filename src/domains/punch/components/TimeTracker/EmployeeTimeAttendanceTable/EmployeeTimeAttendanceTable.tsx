@@ -36,6 +36,7 @@ import {
   isBefore,
 } from 'date-fns';
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
+import { useJobsWithShifts } from '@/domains/job/hooks';
 import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
 import type { Applicant } from '@/domains/user/types/applicant.types';
 import { clsxm } from '@/lib/utils/class-utils';
@@ -166,23 +167,6 @@ async function fetchActiveEmployeeCount(jobIds?: string[], shiftSlug?: string) {
   return data.data.count as number;
 }
 
-async function fetchJobsWithShifts() {
-  const response = await fetch('/api/jobs/with-shifts', {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to fetch jobs with shifts');
-  }
-
-  const data = await response.json();
-  return data.data as GignologyJob[];
-}
-
 async function fetchJobShifts(jobId: string): Promise<Shift[]> {
   const response = await fetch(`/api/jobs/${jobId}/shifts`, {
     method: 'GET',
@@ -240,6 +224,9 @@ export function EmployeeTimeAttendanceTable({
   // Shift list filter: All | Today | Upcoming | Past (for narrowing the dropdown)
   const [shiftFilter, setShiftFilter] = useState<'all' | 'today' | 'upcoming' | 'past'>('all');
 
+  // Include jobs where hideThisJob is 'Yes' in the job selector (default: false = don't show them)
+  const [includeHiddenJobs, setIncludeHiddenJobs] = useState<boolean>(false);
+
   // Employee search state
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState<string>('');
 
@@ -261,22 +248,25 @@ export function EmployeeTimeAttendanceTable({
     }
   });
 
-  // Fetch all jobs with shifts
-  const { data: availableJobs = [], isLoading: jobsLoading, error: jobsError } = useQuery<
-    GignologyJob[]
-  >({
-    queryKey: ['jobsWithShifts'],
-    queryFn: fetchJobsWithShifts,
-    enabled: !companyLoading,
-    staleTime: 300000, // Consider data fresh for 5 minutes (jobs don't change often)
-  });
+  // Fetch jobs with shifts via job domain hook (API filters by hideThisJob when includeHiddenJobs is false)
+  const {
+    data: availableJobs = [],
+    isLoading: jobsLoading,
+    error: jobsError,
+  } = useJobsWithShifts(
+    { includeHiddenJobs },
+    {
+      enabled: !companyLoading,
+      staleTime: 300000, // 5 minutes
+    }
+  );
 
   // Get selected job
   const selectedJob = useMemo(() => {
     if (selectedJobId === 'all') {
       return null;
     }
-    return availableJobs.find((job) => job._id === selectedJobId);
+    return availableJobs.find((job) => job._id === selectedJobId) ?? null;
   }, [selectedJobId, availableJobs]);
 
   // Fetch venue location data if job doesn't have location
@@ -1255,6 +1245,13 @@ export function EmployeeTimeAttendanceTable({
     setShiftFilter('all');
   }, [selectedJobId]);
 
+  // Clear job selection when selected job is not in the list (e.g. after unchecking "Include hidden jobs" and API returns fewer jobs)
+  useEffect(() => {
+    if (selectedJobId === 'all') return;
+    const inList = availableJobs.some((j) => j._id === selectedJobId);
+    if (!inList) setSelectedJobId('all');
+  }, [selectedJobId, availableJobs]);
+
   // Clear job selection when selected job is not in the current filter (e.g. filter "Past" but selection was "Today")
   useEffect(() => {
     if (selectedJobId === 'all') return;
@@ -1582,7 +1579,7 @@ export function EmployeeTimeAttendanceTable({
   const prevEventsKeyRef = useRef<string>('');
   const prevFilterRef = useRef<boolean>(showFutureTimecards);
   useEffect(() => {
-    // Update events when key changes or filter changes
+    // Update events when key changes or filter changes (filteredCalendarEvents from closure is latest for this run)
     const keyChanged = calendarEventsKey !== prevEventsKeyRef.current;
     const filterChanged = showFutureTimecards !== prevFilterRef.current;
     
@@ -1591,8 +1588,9 @@ export function EmployeeTimeAttendanceTable({
       prevFilterRef.current = showFutureTimecards;
       setEvents(filteredCalendarEvents);
     }
+    // Only depend on key and filter; filteredCalendarEvents is read from closure when we need it (when key/filter change)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarEventsKey, filteredCalendarEvents, showFutureTimecards]);
+  }, [calendarEventsKey, showFutureTimecards]);
 
   // Component that listens to calendar event clicks
   // ERROR-PROOF: Prevent multiple rapid calls that could cause rate limiting
@@ -2103,7 +2101,7 @@ export function EmployeeTimeAttendanceTable({
         <div className="flex flex-wrap gap-4 mb-3">
           {/* Job Selector */}
           <div className="w-full min-w-0 sm:flex-1 sm:max-w-md">
-            <div className="flex flex-wrap items-center gap-2 mb-1">
+            <div className="flex flex-wrap items-center gap-4 mb-1">
               <label className="text-sm font-medium text-gray-700 shrink-0">
                 Select Job
               </label>
@@ -2126,6 +2124,16 @@ export function EmployeeTimeAttendanceTable({
                   Past
                 </ToggleGroupItem>
               </ToggleGroup>
+              <label className="flex items-center gap-1.5 shrink-0 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeHiddenJobs}
+                  onChange={(e) => setIncludeHiddenJobs(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  aria-label="Include hidden jobs"
+                />
+                <span className="text-sm text-gray-600">Hidden jobs</span>
+              </label>
             </div>
             <Select value={selectedJobId} onValueChange={setSelectedJobId}>
               <SelectTrigger className="w-full">
@@ -2259,7 +2267,7 @@ export function EmployeeTimeAttendanceTable({
           {/* Shift Selector - Only show when a job is selected */}
           {selectedJobId !== 'all' && (
             <div className="w-full min-w-0 sm:flex-1 sm:max-w-md">
-              <div className="flex flex-wrap items-center gap-2 mb-1">
+              <div className="flex flex-wrap items-center gap-4 mb-1">
                 <label className="text-sm font-medium text-gray-700 shrink-0">
                   Select Shift
                 </label>
@@ -2498,7 +2506,7 @@ export function EmployeeTimeAttendanceTable({
           {/* First Row: View Type and Date Navigation */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             {/* View Type: Table | Calendar — same Day | Week | Month toggle for both (range for Table, view for Calendar) */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-4">
               <ToggleGroup
                 type="single"
                 value={viewType === 'table' ? 'table' : 'calendar'}

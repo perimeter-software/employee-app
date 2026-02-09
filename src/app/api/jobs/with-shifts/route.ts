@@ -33,7 +33,13 @@ function extractClientOrgSlugs(clientOrgs: ClientOrg[] | undefined): string[] {
     .filter((slug): slug is string => typeof slug === 'string' && slug.trim() !== '');
 }
 
-// GET Handler for Getting All Jobs with Shifts (for Client role)
+/**
+ * GET /api/jobs/with-shifts (Client role only)
+ *
+ * Query params:
+ * - includeHiddenJobs: when "true", includes jobs where hideThisJob === 'Yes'.
+ *   When omitted or not "true", excludes those jobs (default).
+ */
 async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
   try {
     const user = request.user;
@@ -154,9 +160,12 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
       );
     }
 
+    // Include jobs where hideThisJob is 'Yes' only when client requests it (default: exclude)
+    const includeHiddenJobs = request.nextUrl.searchParams.get('includeHiddenJobs') === 'true';
+
     // OPTIMIZATION: Fetch only active jobs with shifts, limit results, and optimize projection
     // Filter by status to avoid fetching inactive/old jobs (case-insensitive)
-    const query = {
+    const query: Record<string, unknown> = {
       $or: [{ shiftJob: 'Yes' }, { shiftJob: true }],
       shifts: { $exists: true, $ne: [] },
       // Only fetch active jobs to reduce dataset size (exclude deleted/inactive)
@@ -164,6 +173,10 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
       // ALWAYS filter by clientOrgs for Client users
       venueSlug: { $in: clientOrgSlugs },
     };
+
+    if (!includeHiddenJobs) {
+      query.hideThisJob = { $ne: 'Yes' };
+    }
 
     // OPTIMIZATION: Limit shifts projection to only essential fields (slug and shiftName)
     // This dramatically reduces data transfer for jobs with many shifts
@@ -176,6 +189,7 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
         jobSlug: 1,
         venueName: 1,
         venueSlug: 1, // Need venueSlug to fetch venue location if job location is missing
+        hideThisJob: 1,
         // OPTIMIZATION: Only fetch minimal location data needed for geofence
         'location.latitude': 1,
         'location.longitude': 1,
