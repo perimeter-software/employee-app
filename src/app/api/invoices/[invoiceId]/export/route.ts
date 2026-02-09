@@ -100,8 +100,7 @@ async function exportHandler(
       { status: 404 }
     );
   }
-  // TEMP: allow 'gastate' for testing until current venue has invoices
-  const allowed = inv.venueSlug && (clientOrgSlugs.includes(inv.venueSlug) || inv.venueSlug === 'gastate');
+  const allowed = inv.venueSlug && clientOrgSlugs.includes(inv.venueSlug);
   if (!allowed) {
     return NextResponse.json(
       { success: false, message: 'Access denied to this invoice' },
@@ -201,7 +200,9 @@ async function exportHandler(
   if (format === 'pdf') {
     try {
       // Load from node_modules at runtime so font paths resolve (avoid Next bundling pdfkit)
-      const requireFromProject = createRequire(path.join(process.cwd(), 'package.json'));
+      const requireFromProject = createRequire(
+        path.join(process.cwd(), 'package.json')
+      );
       const PDFDocument = requireFromProject('pdfkit');
       const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
       const chunks: Buffer[] = [];
@@ -212,13 +213,27 @@ async function exportHandler(
         const pad = (s: string, n: number) => s.slice(0, n).padEnd(n, ' ');
         const r2 = (n: number) => Number(n.toFixed(2)).toFixed(2);
 
-        doc.fontSize(14).text(`Invoice # ${invoiceNumber}`, { continued: false });
-        doc.fontSize(11).text(`Event/Job: ${inv.jobSlug ? inv.jobName : inv.eventName ?? ''}`, { continued: false });
+        doc
+          .fontSize(14)
+          .text(`Invoice # ${invoiceNumber}`, { continued: false });
+        doc
+          .fontSize(11)
+          .text(
+            `Event/Job: ${inv.jobSlug ? inv.jobName : (inv.eventName ?? '')}`,
+            { continued: false }
+          );
         doc.text(`Start Date: ${inv.startDate ?? ''}`, { continued: false });
         doc.moveDown();
 
         doc.fontSize(10);
-        doc.text(pad('Position', 24) + pad('Hours', 10) + pad('OT', 8) + pad('Bill Rate', 12) + 'Line Total', { continued: false });
+        doc.text(
+          pad('Position', 24) +
+            pad('Hours', 10) +
+            pad('OT', 8) +
+            pad('Bill Rate', 12) +
+            'Line Total',
+          { continued: false }
+        );
         doc.moveDown(0.5);
 
         details.forEach((d) => {
@@ -228,17 +243,23 @@ async function exportHandler(
           const lineTotal = hours * rate + ot * rate * 1.5;
           const positionStr = String(d?.position ?? '').trim() || '—';
           doc.text(
-            pad(positionStr, 24) + pad(r2(hours), 10) + pad(r2(ot), 8) + pad(r2(rate), 12) + r2(lineTotal),
+            pad(positionStr, 24) +
+              pad(r2(hours), 10) +
+              pad(r2(ot), 8) +
+              pad(r2(rate), 12) +
+              r2(lineTotal),
             { continued: false }
           );
         });
 
         doc.moveDown();
-        doc.fontSize(12).text(`Total: $${r2(totalAmount)}`, { continued: false });
+        doc
+          .fontSize(12)
+          .text(`Total: $${r2(totalAmount)}`, { continued: false });
         doc.end();
       });
       const filename = buildFilename(inv, 'pdf');
-      return new NextResponse(body, {
+      return new NextResponse(body as unknown as BodyInit, {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `attachment; filename="${filename}"`,
@@ -248,7 +269,10 @@ async function exportHandler(
     } catch (err) {
       console.error('PDF export error:', err);
       return NextResponse.json(
-        { success: false, message: (err as Error).message || 'Failed to generate PDF' },
+        {
+          success: false,
+          message: (err as Error).message || 'Failed to generate PDF',
+        },
         { status: 500 }
       );
     }
