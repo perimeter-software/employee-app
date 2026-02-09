@@ -115,7 +115,7 @@ async function exportReportHandler(request: AuthenticatedRequest) {
     ];
   });
 
-  const detailRows: unknown[] = [];
+  const detailRows: (string | number)[][] = [];
   for (const inv of invoices as Array<Record<string, unknown>>) {
     const details =
       (inv.details as Array<{
@@ -153,12 +153,12 @@ async function exportReportHandler(request: AuthenticatedRequest) {
 
   const header = reportType === 'summary' ? summaryHeader : detailHeader;
   const rows = reportType === 'summary' ? summaryRows : detailRows;
-  const data = [header, ...rows];
+  const data: (string | number)[][] = [header, ...rows];
 
   if (format === 'csv') {
     const csv = data
-      .map((row) =>
-        row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')
+      .map((row: (string | number)[]) =>
+        row.map((c: string | number) => `"${String(c).replace(/"/g, '""')}"`).join(',')
       )
       .join('\r\n');
     const filename = `invoice-report-${startDate}-${endDate}-${reportType}.csv`;
