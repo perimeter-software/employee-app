@@ -1,14 +1,17 @@
 'use client';
 
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/Button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/DropdownMenu';
 import { ChevronDown } from 'lucide-react';
+import { format, parseISO, startOfDay, isWithinInterval, isAfter, isBefore } from 'date-fns';
 import { GignologyJob, Shift } from '@/domains/job/types/job.types';
 import { GignologyUser } from '@/domains/user/types';
 import {
@@ -46,7 +49,7 @@ export function JobShiftSelector({
     if (!userData?.jobs) return { job: null, shift: null };
 
     const now = new Date();
-    const currentTime = now.toISOString();
+    const currentTime = format(now, "yyyy-MM-dd'T'HH:mm:ss.SSS");
 
     // Look through all jobs and shifts to find what's active now
     for (const job of userData.jobs) {
@@ -103,7 +106,7 @@ export function JobShiftSelector({
     if (!userData?.jobs) return { job: null, shift: null };
 
     const now = new Date();
-    const currentTime = now.toISOString();
+    const currentTime = format(now, "yyyy-MM-dd'T'HH:mm:ss.SSS");
     let closestShift: {
       job: GignologyJob;
       shift: Shift;
@@ -150,6 +153,273 @@ export function JobShiftSelector({
       ? { job: closestShift.job, shift: closestShift.shift }
       : { job: null, shift: null };
   }, [userData]);
+
+  // Group jobs/shifts by time context (Today / Upcoming / Past) for grouped dropdown
+  const todayDateKey = format(new Date(), 'yyyy-MM-dd');
+  const todayStart = useMemo(
+    () => startOfDay(new Date()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [todayDateKey]
+  );
+
+  const groupedJobs = useMemo(() => {
+    const today: GignologyJob[] = [];
+    const upcomingOnly: GignologyJob[] = [];
+    const past: GignologyJob[] = [];
+    const jobs = userData?.jobs ?? [];
+    const applicantId = userData?.applicantId ?? '';
+    const currentTime = format(new Date(), "yyyy-MM-dd'T'HH:mm:ss.SSS");
+
+    for (const job of jobs) {
+      const shifts = job.shifts || [];
+      if (shifts.length === 0) {
+        past.push(job);
+        continue;
+      }
+      // Today = at least one shift actually runs today for this employee (defaultSchedule + roster for today)
+      // Upcoming = employee is assigned to a shift that hasn't started yet (shift start > today)
+      let hasToday = false;
+      let hasUpcomingForEmployee = false;
+      let latestEnd: Date | null = null;
+
+      for (const shift of shifts) {
+        const startStr = shift.shiftStartDate;
+        const endStr = shift.shiftEndDate;
+        if (!startStr || !endStr) continue;
+        try {
+          const shiftStartDay = startOfDay(parseISO(startStr));
+          const shiftEndDay = startOfDay(parseISO(endStr));
+          // Only count as "today" if this shift actually occurs today for this employee
+          if (applicantId) {
+            const result = getUserShiftForToday(job, applicantId, currentTime, shift);
+            if (result?.start && result?.end) {
+              hasToday = true;
+            }
+            const isInRoster = shift.shiftRoster?.some(
+              (rosterEntry) => rosterEntry._id === applicantId
+            );
+            // Upcoming = employee is in roster AND (shift starts after today OR has a roster assignment on a future date)
+            if (isInRoster) {
+              if (isAfter(shiftStartDay, todayStart)) {
+                hasUpcomingForEmployee = true;
+              }
+              const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+              for (const day of days) {
+                const scheduleEntry = shift.defaultSchedule?.[day];
+                const roster = scheduleEntry?.roster;
+                if (!Array.isArray(roster)) continue;
+                for (const entry of roster) {
+                  if (entry && typeof entry === 'object' && 'employeeId' in entry && 'date' in entry) {
+                    const empId = (entry as { employeeId: string; date: string }).employeeId;
+                    const dateStr = (entry as { employeeId: string; date: string }).date;
+                    if (empId === applicantId && dateStr) {
+                      try {
+                        const rosterDay = startOfDay(parseISO(dateStr));
+                        if (isAfter(rosterDay, todayStart)) {
+                          hasUpcomingForEmployee = true;
+                          break;
+                        }
+                      } catch {
+                        // skip invalid date
+                      }
+                    }
+                  }
+                }
+                if (hasUpcomingForEmployee) break;
+              }
+            }
+          }
+          if (!latestEnd || isAfter(shiftEndDay, latestEnd)) {
+            latestEnd = shiftEndDay;
+          }
+        } catch {
+          // skip
+        }
+      }
+
+      const hasFuture = latestEnd !== null && !isBefore(latestEnd, todayStart);
+      if (hasFuture) {
+        if (hasToday) {
+          today.push(job);
+        } else if (hasUpcomingForEmployee) {
+          // Employee has an assigned shift that hasn't started yet → Upcoming
+          upcomingOnly.push(job);
+        } else {
+          // Job has future shift end but employee has no shift today and no shift starting in future → Past
+          past.push(job);
+        }
+      } else {
+        past.push(job);
+      }
+    }
+
+    const getEarliestShiftStart = (j: GignologyJob): Date | null => {
+      let earliest: Date | null = null;
+      for (const s of j.shifts || []) {
+        if (!s.shiftStartDate) continue;
+        try {
+          const d = parseISO(s.shiftStartDate);
+          if (!earliest || isBefore(d, earliest)) earliest = d;
+        } catch {
+          // skip
+        }
+      }
+      return earliest;
+    };
+    const getLatestShiftEnd = (j: GignologyJob): Date | null => {
+      let latest: Date | null = null;
+      for (const s of j.shifts || []) {
+        if (!s.shiftEndDate) continue;
+        try {
+          const d = parseISO(s.shiftEndDate);
+          if (!latest || isAfter(d, latest)) latest = d;
+        } catch {
+          // skip
+        }
+      }
+      return latest;
+    };
+    upcomingOnly.sort((a, b) => {
+      const aStart = getEarliestShiftStart(a);
+      const bStart = getEarliestShiftStart(b);
+      if (!aStart || !bStart) return 0;
+      return isBefore(aStart, bStart) ? -1 : 1;
+    });
+    past.sort((a, b) => {
+      const aEnd = getLatestShiftEnd(a);
+      const bEnd = getLatestShiftEnd(b);
+      if (!aEnd || !bEnd) return 0;
+      return isAfter(aEnd, bEnd) ? -1 : 1;
+    });
+    return { today, upcomingOnly, past };
+  }, [userData?.jobs, userData?.applicantId, todayStart]);
+
+  const groupedShifts = useMemo(() => {
+    const today: Shift[] = [];
+    const upcomingOnly: Shift[] = [];
+    const past: Shift[] = [];
+    const applicantId = userData?.applicantId ?? '';
+    const currentTime = format(new Date(), "yyyy-MM-dd'T'HH:mm:ss.SSS");
+    const job = selectedJob ?? null;
+
+    for (const shift of availableShifts) {
+      const startStr = shift.shiftStartDate;
+      const endStr = shift.shiftEndDate;
+      if (!startStr || !endStr) {
+        past.push(shift);
+        continue;
+      }
+      let shiftStartDay: Date;
+      let shiftEndDay: Date;
+      try {
+        shiftStartDay = startOfDay(parseISO(startStr));
+        shiftEndDay = startOfDay(parseISO(endStr));
+      } catch {
+        past.push(shift);
+        continue;
+      }
+
+      const hasEnded = isBefore(shiftEndDay, todayStart);
+      if (hasEnded) {
+        past.push(shift);
+        continue;
+      }
+
+      // Employee-aware: use same logic as job grouping (today = roster today, upcoming = future roster or shift starts future)
+      if (job && applicantId) {
+        const result = getUserShiftForToday(job, applicantId, currentTime, shift);
+        if (result?.start && result?.end) {
+          today.push(shift);
+          continue;
+        }
+        const isInRoster = shift.shiftRoster?.some(
+          (rosterEntry) => rosterEntry._id === applicantId
+        );
+        let hasUpcomingForEmployee = false;
+        if (isInRoster) {
+          if (isAfter(shiftStartDay, todayStart)) {
+            hasUpcomingForEmployee = true;
+          }
+          const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+          for (const day of days) {
+            const scheduleEntry = shift.defaultSchedule?.[day];
+            const roster = scheduleEntry?.roster;
+            if (!Array.isArray(roster)) continue;
+            for (const entry of roster) {
+              if (entry && typeof entry === 'object' && 'employeeId' in entry && 'date' in entry) {
+                const empId = (entry as { employeeId: string; date: string }).employeeId;
+                const dateStr = (entry as { employeeId: string; date: string }).date;
+                if (empId === applicantId && dateStr) {
+                  try {
+                    const rosterDay = startOfDay(parseISO(dateStr));
+                    if (isAfter(rosterDay, todayStart)) {
+                      hasUpcomingForEmployee = true;
+                      break;
+                    }
+                  } catch {
+                    // skip invalid date
+                  }
+                }
+              }
+            }
+            if (hasUpcomingForEmployee) break;
+          }
+        }
+        if (hasUpcomingForEmployee) {
+          upcomingOnly.push(shift);
+        } else {
+          past.push(shift);
+        }
+      } else {
+        // Fallback: date-range only when no job/applicant
+        const spansToday = isWithinInterval(todayStart, { start: shiftStartDay, end: shiftEndDay });
+        const startsInFuture = isAfter(shiftStartDay, todayStart);
+        if (spansToday) {
+          today.push(shift);
+        } else if (startsInFuture) {
+          upcomingOnly.push(shift);
+        } else {
+          past.push(shift);
+        }
+      }
+    }
+
+    const sortUpcoming = (a: Shift, b: Shift) => {
+      try {
+        return isBefore(parseISO(a.shiftStartDate), parseISO(b.shiftStartDate)) ? -1 : 1;
+      } catch {
+        return 0;
+      }
+    };
+    upcomingOnly.sort(sortUpcoming);
+    past.sort((a, b) => {
+      try {
+        return isAfter(parseISO(a.shiftEndDate), parseISO(b.shiftEndDate)) ? -1 : 1;
+      } catch {
+        return 0;
+      }
+    });
+    return { today, upcomingOnly, past };
+  }, [availableShifts, todayStart, selectedJob, userData?.applicantId]);
+
+  const getShiftDateContext = useCallback((shift: Shift): string => {
+    const startStr = shift.shiftStartDate;
+    const endStr = shift.shiftEndDate;
+    if (!startStr || !endStr) return '—';
+    let start: Date;
+    let end: Date;
+    try {
+      start = parseISO(startStr);
+      end = parseISO(endStr);
+    } catch {
+      return '—';
+    }
+    const shiftStartDay = startOfDay(start);
+    const shiftEndDay = startOfDay(end);
+    if (isWithinInterval(todayStart, { start: shiftStartDay, end: shiftEndDay })) return 'Today';
+    if (isAfter(shiftStartDay, todayStart)) return `Starts ${format(start, 'MMM d')}`;
+    return `Ended ${format(end, 'MMM d')}`;
+  }, [todayStart]);
 
   // Auto-select logic
   useEffect(() => {
@@ -292,20 +562,79 @@ export function JobShiftSelector({
             <ChevronDown className="h-5 w-5 flex-shrink-0 ml-2" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
-          {userData.jobs?.map((job: GignologyJob) => (
-            <DropdownMenuItem
-              key={job._id}
-              onClick={() => onJobSelect(job)}
-              className={`cursor-pointer ${
-                selectedJob?._id === job._id
-                  ? 'bg-blue-50 text-blue-700 font-medium'
-                  : ''
-              }`}
-            >
-              <span className="truncate">{job.title}</span>
-            </DropdownMenuItem>
-          ))}
+        <DropdownMenuContent
+          className="min-w-[var(--radix-dropdown-menu-trigger-width)] w-[var(--radix-dropdown-menu-trigger-width)] max-h-60 overflow-y-auto"
+          align="start"
+        >
+          {groupedJobs.today.length > 0 && (
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground py-1.5 px-2 pointer-events-none">
+                Today
+              </DropdownMenuLabel>
+              {groupedJobs.today.map((job) => (
+                <DropdownMenuItem
+                  key={job._id}
+                  inset
+                  onClick={() => onJobSelect(job)}
+                  className={`cursor-pointer py-1.5 pl-8 pr-2 ${
+                    selectedJob?._id === job._id
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : ''
+                  }`}
+                >
+                  <span className="truncate">
+                    {job.title ? job.title.charAt(0).toUpperCase() + job.title.slice(1) : job._id}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          )}
+          {groupedJobs.upcomingOnly.length > 0 && (
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground py-1.5 px-2 pointer-events-none">
+                Upcoming
+              </DropdownMenuLabel>
+              {groupedJobs.upcomingOnly.map((job) => (
+                <DropdownMenuItem
+                  key={job._id}
+                  inset
+                  onClick={() => onJobSelect(job)}
+                  className={`cursor-pointer py-1.5 pl-8 pr-2 ${
+                    selectedJob?._id === job._id
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : ''
+                  }`}
+                >
+                  <span className="truncate">
+                    {job.title ? job.title.charAt(0).toUpperCase() + job.title.slice(1) : job._id}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          )}
+          {groupedJobs.past.length > 0 && (
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground py-1.5 px-2 pointer-events-none">
+                Past
+              </DropdownMenuLabel>
+              {groupedJobs.past.map((job) => (
+                <DropdownMenuItem
+                  key={job._id}
+                  inset
+                  onClick={() => onJobSelect(job)}
+                  className={`cursor-pointer py-1.5 pl-8 pr-2 ${
+                    selectedJob?._id === job._id
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : ''
+                  }`}
+                >
+                  <span className="truncate">
+                    {job.title ? job.title.charAt(0).toUpperCase() + job.title.slice(1) : job._id}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -331,22 +660,97 @@ export function JobShiftSelector({
               <ChevronDown className="h-5 w-5 flex-shrink-0 ml-2" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width] max-h-60 overflow-y-auto">
-            {availableShifts.map((shift) => (
-              <DropdownMenuItem
-                key={shift.slug}
-                onClick={() => onShiftSelect(shift)}
-                className={`cursor-pointer ${
-                  selectedShift?.slug === shift.slug
-                    ? 'bg-blue-50 text-blue-700 font-medium'
-                    : ''
-                }`}
-              >
-                <span className="truncate">
-                  {shift.shiftName || shift.slug}
-                </span>
-              </DropdownMenuItem>
-            ))}
+          <DropdownMenuContent
+            className="min-w-[var(--radix-dropdown-menu-trigger-width)] w-[var(--radix-dropdown-menu-trigger-width)] max-h-60 overflow-y-auto"
+            align="start"
+          >
+            {groupedShifts.today.length > 0 && (
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground py-1.5 px-2 pointer-events-none">
+                  Today
+                </DropdownMenuLabel>
+                {groupedShifts.today.map((shift) => (
+                  <DropdownMenuItem
+                    key={shift.slug}
+                    inset
+                    onClick={() => onShiftSelect(shift)}
+                    className={`cursor-pointer py-1.5 pl-8 pr-2 ${
+                      selectedShift?.slug === shift.slug
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : ''
+                    }`}
+                  >
+                    <div className="flex flex-col items-start">
+                      <span className="truncate">
+                        {(shift.shiftName || shift.slug).charAt(0).toUpperCase() +
+                          (shift.shiftName || shift.slug).slice(1)}
+                      </span>
+                      <span className="text-xs text-muted-foreground font-normal">
+                        {getShiftDateContext(shift)}
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            )}
+            {groupedShifts.upcomingOnly.length > 0 && (
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground py-1.5 px-2 pointer-events-none">
+                  Upcoming
+                </DropdownMenuLabel>
+                {groupedShifts.upcomingOnly.map((shift) => (
+                  <DropdownMenuItem
+                    key={shift.slug}
+                    inset
+                    onClick={() => onShiftSelect(shift)}
+                    className={`cursor-pointer py-1.5 pl-8 pr-2 ${
+                      selectedShift?.slug === shift.slug
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : ''
+                    }`}
+                  >
+                    <div className="flex flex-col items-start">
+                      <span className="truncate">
+                        {(shift.shiftName || shift.slug).charAt(0).toUpperCase() +
+                          (shift.shiftName || shift.slug).slice(1)}
+                      </span>
+                      <span className="text-xs text-muted-foreground font-normal">
+                        {getShiftDateContext(shift)}
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            )}
+            {groupedShifts.past.length > 0 && (
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground py-1.5 px-2 pointer-events-none">
+                  Past
+                </DropdownMenuLabel>
+                {groupedShifts.past.map((shift) => (
+                  <DropdownMenuItem
+                    key={shift.slug}
+                    inset
+                    onClick={() => onShiftSelect(shift)}
+                    className={`cursor-pointer py-1.5 pl-8 pr-2 ${
+                      selectedShift?.slug === shift.slug
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : ''
+                    }`}
+                  >
+                    <div className="flex flex-col items-start">
+                      <span className="truncate">
+                        {(shift.shiftName || shift.slug).charAt(0).toUpperCase() +
+                          (shift.shiftName || shift.slug).slice(1)}
+                      </span>
+                      <span className="text-xs text-muted-foreground font-normal">
+                        {getShiftDateContext(shift)}
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )}
