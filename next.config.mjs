@@ -61,24 +61,21 @@ const nextConfig = {
       
       // Reduce file watching overhead - more aggressive
       config.watchOptions = {
-        poll: 2000, // Check less frequently
-        aggregateTimeout: 500, // Wait longer before rebuilding
+        poll: 2000,
+        aggregateTimeout: 500,
         ignored: [
-          /node_modules/,
-          /\.next/,
-          /\.git/,
-          /\.swp/,
-          /\.swo/,
-          /\.DS_Store/,
+          '**/node_modules/**',
+          '**/.next/**',
+          '**/.git/**',
+          '**/*.swp',
+          '**/*.swo',
+          '**/.DS_Store',
         ],
       };
       
       // Cache everything possible
       config.cache = {
         type: 'filesystem',
-        buildDependencies: {
-          config: [__filename],
-        },
       };
     }
     return config;
@@ -134,6 +131,9 @@ const nextConfig = {
       removeConsole: true,
     },
   }),
+
+  // Transpile @react-pdf/renderer so Next bundles it (it's ESM and can't be server-externalized)
+  transpilePackages: ['@react-pdf/renderer'],
 
   // Add experimental features for better compatibility
   experimental: {

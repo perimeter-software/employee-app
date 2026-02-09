@@ -1,7 +1,7 @@
 /**
- * Export single invoice as Excel, CSV, or PDF.
+ * Export single invoice as Excel or CSV.
+ * PDF is generated client-side (see invoice-pdf-client.ts) to avoid server bundling issues.
  * Client users only; invoice must be for a venue in their clientOrgs.
- * Replicates sp1-api exportExcelInvoice logic; no calls to sp1-api.
  */
 
 import { NextResponse } from 'next/server';
@@ -14,8 +14,6 @@ import {
 } from '../../lib/client-orgs';
 import { ObjectId } from 'mongodb';
 import * as XLSX from 'xlsx';
-import { createRequire } from 'module';
-import path from 'path';
 
 type InvoiceDoc = {
   _id: ObjectId;
@@ -65,9 +63,9 @@ async function exportHandler(
       { status: 400 }
     );
   }
-  if (!['xlsx', 'csv', 'pdf'].includes(format)) {
+  if (!['xlsx', 'csv'].includes(format)) {
     return NextResponse.json(
-      { success: false, message: 'format must be xlsx, csv, or pdf' },
+      { success: false, message: 'format must be xlsx or csv; PDF is generated in the browser' },
       { status: 400 }
     );
   }
@@ -108,11 +106,19 @@ async function exportHandler(
     );
   }
 
+  const to2 = (n: number) => Math.round(n * 100) / 100;
+  const fmtNum = (n: number) => to2(n).toFixed(2);
+  const fmtCurrency = (n: number) =>
+    new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(to2(n));
+
   const invoiceNumber =
     inv.invoiceNumber != null ? String(inv.invoiceNumber).padStart(8, '0') : '';
   const details = inv.details ?? [];
 
-  // Summary row for export
+  // Summary row for export (totals limited to 2 decimals)
   const totalAmount = details.reduce(
     (sum, d) =>
       sum +
@@ -122,6 +128,7 @@ async function exportHandler(
           1.5),
     0
   );
+  const totalAmountFormatted = fmtCurrency(totalAmount);
 
   if (format === 'xlsx') {
     const header = [
@@ -144,13 +151,13 @@ async function exportHandler(
         inv.jobSlug ? inv.jobName : inv.eventName,
         inv.startDate ?? '',
         d?.position ?? '',
-        hours,
-        ot,
-        rate,
-        lineTotal,
+        fmtNum(hours),
+        fmtNum(ot),
+        fmtNum(rate),
+        fmtCurrency(lineTotal),
       ];
     });
-    const summaryRow = ['', '', '', 'Total', '', '', '', totalAmount];
+    const summaryRow = ['', '', '', 'Total', '', '', '', totalAmountFormatted];
     const wsData = [header, ...rows, summaryRow];
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(wsData);
@@ -181,13 +188,15 @@ async function exportHandler(
         esc(inv.jobSlug ? inv.jobName : inv.eventName),
         esc(inv.startDate),
         esc(d?.position),
-        hours,
-        ot,
-        rate,
-        lineTotal,
+        fmtNum(hours),
+        fmtNum(ot),
+        fmtNum(rate),
+        fmtCurrency(lineTotal),
       ].join(',');
     });
-    const csv = [header, ...rows, `,,,"Total",,,,${totalAmount}`].join('\r\n');
+    const csv = [header, ...rows, `,,,"Total",,,,${totalAmountFormatted}`].join(
+      '\r\n'
+    );
     const filename = buildFilename(inv, 'csv');
     return new NextResponse(csv, {
       headers: {
@@ -197,106 +206,8 @@ async function exportHandler(
     });
   }
 
-  if (format === 'pdf') {
-    try {
-      // Load pdfkit at runtime: createRequire works in dev; in prod bundle it may be undefined, so fallback to dynamic import
-      let PDFDocument: unknown;
-      if (typeof createRequire === 'function') {
-        const requireFromProject = createRequire(
-          path.join(process.cwd(), 'package.json')
-        );
-        PDFDocument = requireFromProject('pdfkit');
-      } else {
-        const mod = await import('pdfkit');
-        PDFDocument = mod.default ?? mod;
-      }
-      if (typeof PDFDocument !== 'function') {
-        throw new Error('PDF library (pdfkit) could not be loaded');
-      }
-      type PDFDoc = {
-        on(e: string, fn: (chunk: Buffer) => void): void;
-        end(): void;
-        fontSize(n: number): PDFDoc;
-        text(s: string, opts?: object): PDFDoc;
-        moveDown(n?: number): PDFDoc;
-      };
-      const DocCtor = PDFDocument as new (opts?: { size?: string; margin?: number }) => PDFDoc;
-      const doc = new DocCtor({ size: 'LETTER', margin: 50 });
-      const chunks: Buffer[] = [];
-      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      const body = await new Promise<Buffer>((resolve, reject) => {
-        doc.on('end', () => resolve(Buffer.concat(chunks)));
-        doc.on('error', reject);
-        const pad = (s: string, n: number) => s.slice(0, n).padEnd(n, ' ');
-        const r2 = (n: number) => Number(n.toFixed(2)).toFixed(2);
-
-        doc
-          .fontSize(14)
-          .text(`Invoice # ${invoiceNumber}`, { continued: false });
-        doc
-          .fontSize(11)
-          .text(
-            `Event/Job: ${inv.jobSlug ? inv.jobName : (inv.eventName ?? '')}`,
-            { continued: false }
-          );
-        doc.text(`Start Date: ${inv.startDate ?? ''}`, { continued: false });
-        doc.moveDown();
-
-        doc.fontSize(10);
-        doc.text(
-          pad('Position', 24) +
-            pad('Hours', 10) +
-            pad('OT', 8) +
-            pad('Bill Rate', 12) +
-            'Line Total',
-          { continued: false }
-        );
-        doc.moveDown(0.5);
-
-        details.forEach((d) => {
-          const hours = Number(d?.totalHours) || 0;
-          const ot = Number(d?.totalOvertimeHours) || 0;
-          const rate = Number(d?.billRate) || 0;
-          const lineTotal = hours * rate + ot * rate * 1.5;
-          const positionStr = String(d?.position ?? '').trim() || '—';
-          doc.text(
-            pad(positionStr, 24) +
-              pad(r2(hours), 10) +
-              pad(r2(ot), 8) +
-              pad(r2(rate), 12) +
-              r2(lineTotal),
-            { continued: false }
-          );
-        });
-
-        doc.moveDown();
-        doc
-          .fontSize(12)
-          .text(`Total: $${r2(totalAmount)}`, { continued: false });
-        doc.end();
-      });
-      const filename = buildFilename(inv, 'pdf');
-      return new NextResponse(body as unknown as BodyInit, {
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `attachment; filename="${filename}"`,
-          'Content-Length': String(body.length),
-        },
-      });
-    } catch (err) {
-      console.error('PDF export error:', err);
-      return NextResponse.json(
-        {
-          success: false,
-          message: (err as Error).message || 'Failed to generate PDF',
-        },
-        { status: 500 }
-      );
-    }
-  }
-
   return NextResponse.json(
-    { success: false, message: 'format must be xlsx, csv, or pdf' },
+    { success: false, message: 'format must be xlsx or csv' },
     { status: 400 }
   );
 }

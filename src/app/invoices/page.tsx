@@ -46,6 +46,8 @@ import {
   DialogFooter,
 } from '@/components/ui/Dialog';
 import type { InvoiceListItem } from '@/domains/invoice/types';
+import type { InvoiceForPdf } from '@/components/invoices/invoice-pdf-types';
+import { InvoicePreviewModal } from '@/components/invoices/InvoicePreviewModal';
 
 type DateMode = 'day' | 'week' | 'month' | 'custom';
 
@@ -144,6 +146,8 @@ export default function InvoicesPage() {
   const [emailSending, setEmailSending] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
 
+  const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
+
   const openEmailModal = (ids: string[]) => {
     setEmailInvoiceIds(ids);
     setEmailTo('');
@@ -183,10 +187,26 @@ export default function InvoicesPage() {
     }
   };
 
-  const downloadInvoice = (
+  const downloadInvoice = async (
     invoiceId: string,
     format: 'xlsx' | 'csv' | 'pdf'
   ) => {
+    if (format === 'pdf') {
+      try {
+        const res = await fetch(`/api/invoices/${invoiceId}`);
+        const json = await res.json();
+        if (!json.success || !json.data) {
+          alert(json.message || 'Failed to load invoice');
+          return;
+        }
+        const inv = json.data as InvoiceForPdf;
+        const { downloadInvoicePdf } = await import('@/components/invoices/InvoicePdfDownloader');
+        await downloadInvoicePdf(inv);
+      } catch (e) {
+        alert((e as Error).message || 'Failed to generate PDF');
+      }
+      return;
+    }
     window.open(`/api/invoices/${invoiceId}/export?format=${format}`, '_blank');
   };
 
@@ -299,7 +319,11 @@ export default function InvoicesPage() {
       header: 'Invoice Actions',
       sortable: false,
       render: (_v, row) => (
-        <div className="flex items-center gap-2">
+        <div
+          className="flex items-center gap-2"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <select
             className="rounded border border-gray-300 bg-white px-2 py-1 text-sm"
             onChange={(e) => {
@@ -455,6 +479,7 @@ export default function InvoicesPage() {
             emptyMessage="No invoices for the selected date range."
             loading={isLoading}
             pageSize={limit}
+            onRowClick={(row) => setPreviewInvoiceId(row._id)}
           />
         </div>
 
@@ -485,6 +510,26 @@ export default function InvoicesPage() {
           </div>
         )}
       </div>
+
+      {/* Invoice preview modal (same content as stadium-people) */}
+      <InvoicePreviewModal
+        open={!!previewInvoiceId}
+        onOpenChange={(open) => !open && setPreviewInvoiceId(null)}
+        invoiceId={previewInvoiceId}
+        onDownloadPdf={
+          previewInvoiceId
+            ? () => downloadInvoice(previewInvoiceId, 'pdf')
+            : undefined
+        }
+        onSendEmail={
+          previewInvoiceId
+            ? (ids) => {
+                setPreviewInvoiceId(null);
+                openEmailModal(ids);
+              }
+            : undefined
+        }
+      />
 
       {/* Email modal */}
       <Dialog open={emailModalOpen} onOpenChange={setEmailModalOpen}>

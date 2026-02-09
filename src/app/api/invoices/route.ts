@@ -73,6 +73,61 @@ async function getInvoicesHandler(request: AuthenticatedRequest) {
 
   const raw = await cursor.toArray();
 
+  const isFullUrl = (url: string) => /^https?:\/\//i.test(url);
+
+  // Images base URL (same logic as documents page): env or derive from VERCEL_ENV
+  const getImagesBaseUrl = (): string => {
+    const envBase = process.env.NEXT_PUBLIC_IMAGES_BASE_URL;
+    if (envBase) return envBase.replace(/\/$/, '');
+    const vercelEnv = process.env.VERCEL_ENV;
+    if (vercelEnv === 'production') return 'https://images.stadiumpeople.com';
+    if (vercelEnv === 'preview') return 'https://images.stage.stadiumpeople.com';
+    return 'https://images.dev.stadiumpeople.com';
+  };
+  const imagesBaseUrl = getImagesBaseUrl();
+  const tenantPath = request.user?.tenant?.url || 'sp';
+  const buildFullLogoUrl = (relativePath: string): string => {
+    const path = relativePath.replace(/^\//, '');
+    return `${imagesBaseUrl}/${tenantPath}/${path}`;
+  };
+
+  // For each venue, capture a full logo URL from any invoice in this set (so we can reuse when venue only has relative path).
+  const fullLogoByVenue: Record<string, string> = {};
+  for (const inv of raw as Array<Record<string, unknown>>) {
+    const slug = inv.venueSlug as string | undefined;
+    const logo = (inv.logoUrl as string) || '';
+    if (slug && logo && isFullUrl(logo)) fullLogoByVenue[slug] = logo;
+  }
+
+  // Look up venue records for all venues in this result set.
+  const venueSlugs = [
+    ...new Set(
+      (raw as Array<Record<string, unknown>>)
+        .filter((inv) => inv.venueSlug)
+        .map((inv) => String(inv.venueSlug))
+    ),
+  ];
+  let venueLogoBySlug: Record<string, string> = {};
+  if (venueSlugs.length > 0) {
+    const venues = await db
+      .collection('venues')
+      .find({ slug: { $in: venueSlugs } })
+      .project({ slug: 1, logoUrl: 1, logoUrls: 1 })
+      .toArray();
+    venueLogoBySlug = Object.fromEntries(
+      (venues as Array<Record<string, unknown>>)
+        .map((v) => {
+          const slug = v.slug as string;
+          const logo =
+            (v.logoUrl as string) ||
+            (Array.isArray(v.logoUrls) && (v.logoUrls[0] as string)) ||
+            '';
+          return [slug, logo];
+        })
+        .filter(([, logo]) => !!logo)
+    );
+  }
+
   /** Serialize for JSON: ObjectId → string, Date → ISO string, nested objects/arrays recursed. */
   function serializeValue(v: unknown): unknown {
     if (v == null) return v;
@@ -110,10 +165,23 @@ async function getInvoicesHandler(request: AuthenticatedRequest) {
       0
     );
     const serialized = serializeValue(inv) as Record<string, unknown>;
+    const venueSlug = inv.venueSlug as string | undefined;
+    const venueLogo = venueSlug ? venueLogoBySlug[venueSlug] : '';
+    const invLogo = (inv.logoUrl as string) || '';
+    // Use venue logo when it's a full URL; else use invoice's full URL; else use full URL from another invoice for same venue; else venue or invoice as-is.
+    let logoUrl = (venueLogo && isFullUrl(venueLogo))
+      ? venueLogo
+      : (invLogo && isFullUrl(invLogo))
+        ? invLogo
+        : (venueSlug && fullLogoByVenue[venueSlug]) || venueLogo || invLogo || '';
+    if (logoUrl && !isFullUrl(logoUrl)) {
+      logoUrl = buildFullLogoUrl(logoUrl);
+    }
     return {
       ...serialized,
       _id: inv._id instanceof ObjectId ? inv._id.toString() : String(inv._id),
       totalAmount,
+      ...(logoUrl ? { logoUrl } : {}),
     };
   });
 

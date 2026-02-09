@@ -77,6 +77,14 @@ async function exportReportHandler(request: AuthenticatedRequest) {
     .limit(10000)
     .toArray();
 
+  const to2 = (n: number) => Math.round(n * 100) / 100;
+  const fmtNum = (n: number) => to2(n).toFixed(2);
+  const fmtCurrency = (n: number) =>
+    new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(to2(n));
+
   const summaryHeader = ['Invoice #', 'Date', 'Event/Job', 'Venue', 'Amount'];
   const detailHeader = [
     'Invoice #',
@@ -111,7 +119,7 @@ async function exportReportHandler(request: AuthenticatedRequest) {
       String(inv.startDate ?? ''),
       String(inv.jobSlug ? inv.jobName : inv.eventName ?? ''),
       String(inv.venueSlug ?? ''),
-      amount,
+      fmtCurrency(amount),
     ];
   });
 
@@ -129,7 +137,7 @@ async function exportReportHandler(request: AuthenticatedRequest) {
     const name = String(inv.jobSlug ? inv.jobName : inv.eventName ?? '');
     const venue = String(inv.venueSlug ?? '');
     if (details.length === 0) {
-      detailRows.push([invNum, date, name, venue, '', '', '', '', 0]);
+      detailRows.push([invNum, date, name, venue, '', '0.00', '0.00', '0.00', '0.00']);
     } else {
       details.forEach((d) => {
         const hours = Number(d?.totalHours) || 0;
@@ -141,11 +149,11 @@ async function exportReportHandler(request: AuthenticatedRequest) {
           date,
           name,
           venue,
-          d?.position ?? '',
-          hours,
-          ot,
-          rate,
-          lineTotal,
+          (d as { position?: string }).position ?? '',
+          fmtNum(hours),
+          fmtNum(ot),
+          fmtNum(rate),
+          fmtCurrency(lineTotal),
         ]);
       });
     }
