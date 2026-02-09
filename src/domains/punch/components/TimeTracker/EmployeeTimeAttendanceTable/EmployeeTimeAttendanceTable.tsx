@@ -1072,7 +1072,8 @@ export function EmployeeTimeAttendanceTable({
   );
   const groupedJobs = useMemo(() => {
     const today: GignologyJob[] = [];
-    const upcoming: GignologyJob[] = [];
+    const upcomingOnly: GignologyJob[] = [];
+    const upcomingForFilter: GignologyJob[] = [];
     const past: GignologyJob[] = [];
 
     for (const job of availableJobs) {
@@ -1082,31 +1083,38 @@ export function EmployeeTimeAttendanceTable({
         continue;
       }
       let hasToday = false;
-      let hasUpcoming = false;
+      let hasStartsInFuture = false;
+      let latestEnd: Date | null = null;
 
       for (const shift of shifts) {
         const startStr = shift.shiftStartDate;
         const endStr = shift.shiftEndDate;
-        if (!startStr || !endStr) {
-          continue;
-        }
+        if (!startStr || !endStr) continue;
         try {
           const shiftStartDay = startOfDay(parseISO(startStr));
           const shiftEndDay = startOfDay(parseISO(endStr));
           if (isWithinInterval(todayStart, { start: shiftStartDay, end: shiftEndDay })) {
             hasToday = true;
-          } else if (isAfter(shiftStartDay, todayStart)) {
-            hasUpcoming = true;
+          }
+          if (isAfter(shiftStartDay, todayStart)) {
+            hasStartsInFuture = true;
+          }
+          if (!latestEnd || isAfter(shiftEndDay, latestEnd)) {
+            latestEnd = shiftEndDay;
           }
         } catch {
           // skip invalid shift dates
         }
       }
 
-      if (hasToday) {
-        today.push(job);
-      } else if (hasUpcoming) {
-        upcoming.push(job);
+      const hasFuture = latestEnd !== null && !isBefore(latestEnd, todayStart);
+      if (hasFuture) {
+        upcomingForFilter.push(job);
+        if (hasToday) {
+          today.push(job);
+        } else if (hasStartsInFuture) {
+          upcomingOnly.push(job);
+        }
       } else {
         past.push(job);
       }
@@ -1139,7 +1147,13 @@ export function EmployeeTimeAttendanceTable({
       }
       return latest;
     };
-    upcoming.sort((a, b) => {
+    upcomingOnly.sort((a: GignologyJob, b: GignologyJob) => {
+      const aStart = getEarliestShiftStart(a);
+      const bStart = getEarliestShiftStart(b);
+      if (!aStart || !bStart) return 0;
+      return isBefore(aStart, bStart) ? -1 : 1;
+    });
+    upcomingForFilter.sort((a: GignologyJob, b: GignologyJob) => {
       const aStart = getEarliestShiftStart(a);
       const bStart = getEarliestShiftStart(b);
       if (!aStart || !bStart) return 0;
@@ -1151,13 +1165,18 @@ export function EmployeeTimeAttendanceTable({
       if (!aEnd || !bEnd) return 0;
       return isAfter(aEnd, bEnd) ? -1 : 1;
     });
-    return { today, upcoming, past };
+    return { today, upcomingOnly, upcomingForFilter, past };
   }, [availableJobs, todayStart]);
 
   // Group shifts by time context (Today / Upcoming / Past) for dropdown UX (date-fns for parsing and comparison)
+  // - past: shift has ended (end < today)
+  // - today: shift spans today
+  // - upcomingOnly: shift starts in future (start > today) — for "All" view Upcoming section (no overlap with Today)
+  // - upcomingForFilter: shift has future (end >= today) — for "Upcoming" filter; includes today's shifts so "Upcoming" shows anything with future
   const groupedShifts = useMemo(() => {
     const today: Shift[] = [];
-    const upcoming: Shift[] = [];
+    const upcomingOnly: Shift[] = [];
+    const upcomingForFilter: Shift[] = [];
     const past: Shift[] = [];
 
     for (const shift of availableShifts) {
@@ -1177,21 +1196,30 @@ export function EmployeeTimeAttendanceTable({
         continue;
       }
 
-      if (isWithinInterval(todayStart, { start: shiftStartDay, end: shiftEndDay })) {
-        today.push(shift);
-      } else if (isAfter(shiftStartDay, todayStart)) {
-        upcoming.push(shift);
-      } else {
+      const spansToday = isWithinInterval(todayStart, { start: shiftStartDay, end: shiftEndDay });
+      const hasEnded = isBefore(shiftEndDay, todayStart);
+      const startsInFuture = isAfter(shiftStartDay, todayStart);
+
+      if (hasEnded) {
         past.push(shift);
+      } else {
+        upcomingForFilter.push(shift); // has future (end >= today)
+        if (spansToday) {
+          today.push(shift);
+        } else if (startsInFuture) {
+          upcomingOnly.push(shift);
+        }
       }
     }
-    upcoming.sort((a, b) => {
+    const sortUpcoming = (a: Shift, b: Shift) => {
       try {
         return isBefore(parseISO(a.shiftStartDate), parseISO(b.shiftStartDate)) ? -1 : 1;
       } catch {
         return 0;
       }
-    });
+    };
+    upcomingOnly.sort(sortUpcoming);
+    upcomingForFilter.sort(sortUpcoming);
     past.sort((a, b) => {
       try {
         return isAfter(parseISO(a.shiftEndDate), parseISO(b.shiftEndDate)) ? -1 : 1;
@@ -1199,7 +1227,7 @@ export function EmployeeTimeAttendanceTable({
         return 0;
       }
     });
-    return { today, upcoming, past };
+    return { today, upcomingOnly, upcomingForFilter, past };
   }, [availableShifts, todayStart]);
 
   // Date context label for a shift (for secondary line in dropdown)
@@ -1231,19 +1259,19 @@ export function EmployeeTimeAttendanceTable({
   useEffect(() => {
     if (selectedJobId === 'all') return;
     if (jobFilter === 'all') return;
-    const list = jobFilter === 'today' ? groupedJobs.today : jobFilter === 'upcoming' ? groupedJobs.upcoming : groupedJobs.past;
-    const inList = list.some((j) => j._id === selectedJobId);
+    const list = jobFilter === 'today' ? groupedJobs.today : jobFilter === 'upcoming' ? groupedJobs.upcomingForFilter : groupedJobs.past;
+    const inList = list.some((j: GignologyJob) => j._id === selectedJobId);
     if (!inList) setSelectedJobId('all');
-  }, [jobFilter, selectedJobId, groupedJobs.today, groupedJobs.upcoming, groupedJobs.past]);
+  }, [jobFilter, selectedJobId, groupedJobs.today, groupedJobs.upcomingForFilter, groupedJobs.past]);
 
   // Clear shift selection when selected shift is not in the current filter
   useEffect(() => {
     if (selectedShiftSlug === 'all') return;
     if (shiftFilter === 'all') return;
-    const list = shiftFilter === 'today' ? groupedShifts.today : shiftFilter === 'upcoming' ? groupedShifts.upcoming : groupedShifts.past;
+    const list = shiftFilter === 'today' ? groupedShifts.today : shiftFilter === 'upcoming' ? groupedShifts.upcomingForFilter : groupedShifts.past;
     const inList = list.some((s) => s.slug === selectedShiftSlug);
     if (!inList) setSelectedShiftSlug('all');
-  }, [shiftFilter, selectedShiftSlug, groupedShifts.today, groupedShifts.upcoming, groupedShifts.past]);
+  }, [shiftFilter, selectedShiftSlug, groupedShifts.today, groupedShifts.upcomingForFilter, groupedShifts.past]);
 
   // Reset shift when job changes
   // NOTE: This must be AFTER availableShifts is defined
@@ -2140,10 +2168,10 @@ export function EmployeeTimeAttendanceTable({
                         })}
                       </SelectGroup>
                     )}
-                    {groupedJobs.upcoming.length > 0 && (
+                    {groupedJobs.upcomingOnly.length > 0 && (
                       <SelectGroup>
                         <SelectGroupLabel>Upcoming</SelectGroupLabel>
-                        {groupedJobs.upcoming.map((job) => {
+                        {groupedJobs.upcomingOnly.map((job) => {
                           const displayTitle = job.title
                             ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
                             : job._id;
@@ -2187,10 +2215,10 @@ export function EmployeeTimeAttendanceTable({
                     })}
                   </SelectGroup>
                 )}
-                {jobFilter === 'upcoming' && groupedJobs.upcoming.length > 0 && (
+                {jobFilter === 'upcoming' && groupedJobs.upcomingForFilter.length > 0 && (
                   <SelectGroup>
                     <SelectGroupLabel>Upcoming</SelectGroupLabel>
-                    {groupedJobs.upcoming.map((job) => {
+                    {groupedJobs.upcomingForFilter.map((job) => {
                       const displayTitle = job.title
                         ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
                         : job._id;
@@ -2218,7 +2246,7 @@ export function EmployeeTimeAttendanceTable({
                   </SelectGroup>
                 )}
                 {((jobFilter === 'today' && groupedJobs.today.length === 0) ||
-                  (jobFilter === 'upcoming' && groupedJobs.upcoming.length === 0) ||
+                  (jobFilter === 'upcoming' && groupedJobs.upcomingForFilter.length === 0) ||
                   (jobFilter === 'past' && groupedJobs.past.length === 0)) && (
                   <div className="py-2 px-2 text-sm text-muted-foreground">
                     No jobs in this period
@@ -2313,10 +2341,10 @@ export function EmployeeTimeAttendanceTable({
                             })}
                           </SelectGroup>
                         )}
-                        {groupedShifts.upcoming.length > 0 && (
+                        {groupedShifts.upcomingOnly.length > 0 && (
                           <SelectGroup>
                             <SelectGroupLabel>Upcoming</SelectGroupLabel>
-                            {groupedShifts.upcoming.map((shift) => {
+                            {groupedShifts.upcomingOnly.map((shift) => {
                               const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
                               const dateContext = getShiftDateContext(shift);
                               return (
@@ -2366,10 +2394,10 @@ export function EmployeeTimeAttendanceTable({
                         })}
                       </SelectGroup>
                     )}
-                    {shiftFilter === 'upcoming' && groupedShifts.upcoming.length > 0 && (
+                    {shiftFilter === 'upcoming' && groupedShifts.upcomingForFilter.length > 0 && (
                       <SelectGroup>
                         <SelectGroupLabel>Upcoming</SelectGroupLabel>
-                        {groupedShifts.upcoming.map((shift) => {
+                        {groupedShifts.upcomingForFilter.map((shift) => {
                           const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
                           const dateContext = getShiftDateContext(shift);
                           return (
@@ -2401,7 +2429,7 @@ export function EmployeeTimeAttendanceTable({
                       </SelectGroup>
                     )}
                     {((shiftFilter === 'today' && groupedShifts.today.length === 0) ||
-                      (shiftFilter === 'upcoming' && groupedShifts.upcoming.length === 0) ||
+                      (shiftFilter === 'upcoming' && groupedShifts.upcomingForFilter.length === 0) ||
                       (shiftFilter === 'past' && groupedShifts.past.length === 0)) && (
                       <div className="py-2 px-2 text-sm text-muted-foreground">
                         No shifts in this period
