@@ -1358,23 +1358,23 @@ export function EmployeeTimeAttendanceTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewType, weekStartsOn]);
 
-  // Keep baseDate/calendarDate normalized for Table view when tableRange changes
+  // Keep baseDate/calendarDate normalized for Table view when tableRange changes (so date nav + display range stay in sync)
   useEffect(() => {
     if (viewType !== 'table') return;
     const dateToUse = baseDate || new Date();
+    let normalized: Date;
     if (tableRange === 'day') {
-      const dayStart = startOfDay(dateToUse);
-      setBaseDate(dayStart);
-      setCalendarDate(dayStart);
+      normalized = startOfDay(dateToUse);
     } else if (tableRange === 'month') {
-      const monthStart = startOfMonth(dateToUse);
-      setBaseDate(monthStart);
-      setCalendarDate(monthStart);
+      normalized = startOfMonth(dateToUse);
     } else {
-      const weekStart = startOfWeek(dateToUse, { weekStartsOn: weekStartsOn || 0 });
-      setBaseDate(weekStart);
-      setCalendarDate(weekStart);
+      normalized = startOfWeek(dateToUse, { weekStartsOn: weekStartsOn || 0 });
     }
+    if (baseDate.getTime() !== normalized.getTime()) {
+      setBaseDate(normalized);
+      setCalendarDate(normalized);
+    }
+    // Only run when tableRange/viewType/weekStartsOn change; omit baseDate to avoid extra runs on nav
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewType, tableRange, weekStartsOn]);
 
@@ -2497,74 +2497,108 @@ export function EmployeeTimeAttendanceTable({
         <div className="flex flex-col gap-4">
           {/* First Row: View Type and Date Navigation */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {/* View Type Toggle */}
-            <ToggleGroup
-              type="single"
-              value={viewType}
-              onValueChange={(value) => {
-                if (value) {
-                  setViewType(value as 'table' | 'month' | 'week' | 'day');
-                }
-              }}
-              className="inline-flex rounded-lg border border-gray-300 p-1"
-            >
-              <ToggleGroupItem
-                value="table"
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                  viewType === 'table'
-                    ? 'bg-blue-500 text-white shadow-md'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                }`}
+            {/* View Type: Table | Calendar — same Day | Week | Month toggle for both (range for Table, view for Calendar) */}
+            <div className="flex flex-wrap items-center gap-2">
+              <ToggleGroup
+                type="single"
+                value={viewType === 'table' ? 'table' : 'calendar'}
+                onValueChange={(value) => {
+                  if (value === 'table') {
+                    setViewType('table');
+                  } else if (value === 'calendar') {
+                    setViewType((prev) =>
+                      prev === 'table' ? tableRange : prev
+                    );
+                  }
+                }}
+                className="inline-flex rounded-lg border border-gray-300 p-1"
               >
-                Table
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="month"
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                  viewType === 'month'
-                    ? 'bg-blue-500 text-white shadow-md'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                }`}
-              >
-                Month
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="week"
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                  viewType === 'week'
-                    ? 'bg-blue-500 text-white shadow-md'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                }`}
-              >
-                Week
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="day"
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                  viewType === 'day'
-                    ? 'bg-blue-500 text-white shadow-md'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                }`}
-              >
-                Day
-              </ToggleGroupItem>
-            </ToggleGroup>
+                <ToggleGroupItem
+                  value="table"
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                    viewType === 'table'
+                      ? 'bg-blue-500 text-white shadow-md'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  Table
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="calendar"
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                    viewType !== 'table'
+                      ? 'bg-blue-500 text-white shadow-md'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  Calendar
+                </ToggleGroupItem>
+              </ToggleGroup>
 
-            {/* Future Timecards Checkbox - Show for calendar views */}
-            {(viewType === 'month' || viewType === 'week' || viewType === 'day') && (
-              <div className="flex items-center gap-2 whitespace-nowrap">
-                <input
-                  type="checkbox"
-                  id="show-future-timecards-calendar"
-                  checked={showFutureTimecards}
-                  onChange={(e) => setShowFutureTimecards(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <label htmlFor="show-future-timecards-calendar" className="text-sm font-medium text-gray-700 cursor-pointer">
-                  Include Future Timecards
-                </label>
-              </div>
-            )}
+              {/* Same Day | Week | Month toggle for both: Table range when Table selected, Calendar view when Calendar selected */}
+              <ToggleGroup
+                type="single"
+                value={
+                  viewType === 'table'
+                    ? tableRange
+                    : (viewType as 'day' | 'week' | 'month')
+                }
+                onValueChange={(value) => {
+                  if (!value) return;
+                  if (viewType === 'table') {
+                    setTableRange(value as 'day' | 'week' | 'month');
+                  } else {
+                    setViewType(value as 'day' | 'week' | 'month');
+                  }
+                }}
+                className="inline-flex rounded-lg border border-gray-300 p-1"
+              >
+                <ToggleGroupItem
+                  value="day"
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                    (viewType === 'table' ? tableRange : viewType) === 'day'
+                      ? 'bg-blue-500 text-white shadow-md'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  Day
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="week"
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                    (viewType === 'table' ? tableRange : viewType) === 'week'
+                      ? 'bg-blue-500 text-white shadow-md'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  Week
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="month"
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                    (viewType === 'table' ? tableRange : viewType) === 'month'
+                      ? 'bg-blue-500 text-white shadow-md'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  Month
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+
+            {/* Include Future Timecards - shared for both Table and Calendar */}
+            <div className="flex items-center gap-2 whitespace-nowrap">
+              <input
+                type="checkbox"
+                id="show-future-timecards"
+                checked={showFutureTimecards}
+                onChange={(e) => setShowFutureTimecards(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <label htmlFor="show-future-timecards" className="text-sm font-medium text-gray-700 cursor-pointer">
+                Include Future Timecards
+              </label>
+            </div>
 
             {/* Date Navigation */}
             <div className="flex items-center justify-end gap-2">
@@ -2615,39 +2649,11 @@ export function EmployeeTimeAttendanceTable({
             </h2>
           </div>
 
-          {/* Table Controls - Only show in table view */}
+          {/* Table Controls - Only show in table view (Day | Week | Month and Include Future Timecards are in top row) */}
           {viewType === 'table' && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-              {/* Table Range */}
-              <div className="w-full sm:w-36">
-                <Select
-                  value={tableRange}
-                  onValueChange={(value) =>
-                    setTableRange(value as 'day' | 'week' | 'month')
-                  }
-                >
-                  <SelectTrigger className="w-full h-8">
-                    <SelectValue
-                      placeholder="Range"
-                      displayText={
-                        tableRange === 'day'
-                          ? 'Day'
-                          : tableRange === 'month'
-                            ? 'Month'
-                            : 'Week'
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="day">Day</SelectItem>
-                    <SelectItem value="week">Week</SelectItem>
-                    <SelectItem value="month">Month</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Employee Search */}
-              <div className="relative w-full sm:w-[400px] md:w-[500px]">
+              {/* Mobile: full width; sm and up: fixed half-width so it doesn't stretch (max-w-md = 28rem) */}
+              <div className="relative w-full sm:w-1/2 sm:min-w-0 sm:max-w-md">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 z-10 pointer-events-none" />
                 <Input
                   type="text"
@@ -2656,23 +2662,6 @@ export function EmployeeTimeAttendanceTable({
                   onChange={(e) => setEmployeeSearchQuery(e.target.value)}
                   className="pl-10 h-8 text-sm w-full"
                 />
-              </div>
-
-              {/* Future Timecards Checkbox */}
-              <div className="flex items-center gap-2 whitespace-nowrap">
-                <input
-                  type="checkbox"
-                  id="show-future-timecards"
-                  checked={showFutureTimecards}
-                  onChange={(e) => setShowFutureTimecards(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <label
-                  htmlFor="show-future-timecards"
-                  className="text-sm font-medium text-gray-700 cursor-pointer"
-                >
-                  Include Future Timecards
-                </label>
               </div>
             </div>
           )}
