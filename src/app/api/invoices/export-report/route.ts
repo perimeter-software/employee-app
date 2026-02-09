@@ -90,7 +90,7 @@ async function exportReportHandler(request: AuthenticatedRequest) {
     'Line Total',
   ];
 
-  const summaryRows = invoices.map((inv: Record<string, unknown>) => {
+  const summaryRows: (string | number)[][] = invoices.map((inv: Record<string, unknown>) => {
     const details =
       (inv.details as Array<{
         totalHours?: number;
@@ -108,9 +108,9 @@ async function exportReportHandler(request: AuthenticatedRequest) {
     );
     return [
       (inv.invoiceNumber ?? '').toString(),
-      inv.startDate ?? '',
-      inv.jobSlug ? inv.jobName : inv.eventName,
-      inv.venueSlug ?? '',
+      String(inv.startDate ?? ''),
+      String(inv.jobSlug ? inv.jobName : inv.eventName ?? ''),
+      String(inv.venueSlug ?? ''),
       amount,
     ];
   });
@@ -125,9 +125,9 @@ async function exportReportHandler(request: AuthenticatedRequest) {
         billRate?: number;
       }>) ?? [];
     const invNum = (inv.invoiceNumber ?? '').toString();
-    const date = inv.startDate ?? '';
-    const name = inv.jobSlug ? inv.jobName : inv.eventName;
-    const venue = inv.venueSlug ?? '';
+    const date = String(inv.startDate ?? '');
+    const name = String(inv.jobSlug ? inv.jobName : inv.eventName ?? '');
+    const venue = String(inv.venueSlug ?? '');
     if (details.length === 0) {
       detailRows.push([invNum, date, name, venue, '', '', '', '', 0]);
     } else {
@@ -171,7 +171,7 @@ async function exportReportHandler(request: AuthenticatedRequest) {
   }
 
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(data);
+  const ws = XLSX.utils.aoa_to_sheet(data as (string | number)[][]);
   XLSX.utils.book_append_sheet(wb, ws, 'Invoice Report');
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   const filename = `invoice-report-${startDate}-${endDate}-${reportType}.xlsx`;
