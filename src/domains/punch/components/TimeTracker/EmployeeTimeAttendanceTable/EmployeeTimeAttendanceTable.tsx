@@ -234,6 +234,9 @@ export function EmployeeTimeAttendanceTable({
   // Selected shift state
   const [selectedShiftSlug, setSelectedShiftSlug] = useState<string>('all');
 
+  // Job list filter: All | Today | Upcoming | Past (for narrowing the dropdown)
+  const [jobFilter, setJobFilter] = useState<'all' | 'today' | 'upcoming' | 'past'>('all');
+
   // Shift list filter: All | Today | Upcoming | Past (for narrowing the dropdown)
   const [shiftFilter, setShiftFilter] = useState<'all' | 'today' | 'upcoming' | 'past'>('all');
 
@@ -1059,8 +1062,99 @@ export function EmployeeTimeAttendanceTable({
     return availableShifts.map(s => s.slug).sort().join(',');
   }, [availableShifts]);
 
+  // Group jobs/shifts by time context; todayStart updates when calendar date changes (avoids stale "Today" after midnight)
+  const todayDateKey = format(new Date(), 'yyyy-MM-dd');
+  const todayStart = useMemo(
+    () => startOfDay(new Date()),
+    // todayDateKey ensures recompute when the calendar day changes (e.g. after midnight)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [todayDateKey]
+  );
+  const groupedJobs = useMemo(() => {
+    const today: GignologyJob[] = [];
+    const upcoming: GignologyJob[] = [];
+    const past: GignologyJob[] = [];
+
+    for (const job of availableJobs) {
+      const shifts = job.shifts || [];
+      if (shifts.length === 0) {
+        past.push(job);
+        continue;
+      }
+      let hasToday = false;
+      let hasUpcoming = false;
+
+      for (const shift of shifts) {
+        const startStr = shift.shiftStartDate;
+        const endStr = shift.shiftEndDate;
+        if (!startStr || !endStr) {
+          continue;
+        }
+        try {
+          const shiftStartDay = startOfDay(parseISO(startStr));
+          const shiftEndDay = startOfDay(parseISO(endStr));
+          if (isWithinInterval(todayStart, { start: shiftStartDay, end: shiftEndDay })) {
+            hasToday = true;
+          } else if (isAfter(shiftStartDay, todayStart)) {
+            hasUpcoming = true;
+          }
+        } catch {
+          // skip invalid shift dates
+        }
+      }
+
+      if (hasToday) {
+        today.push(job);
+      } else if (hasUpcoming) {
+        upcoming.push(job);
+      } else {
+        past.push(job);
+      }
+    }
+
+    // Sort upcoming by earliest shift start; past by latest shift end
+    const getEarliestShiftStart = (job: GignologyJob): Date | null => {
+      let earliest: Date | null = null;
+      for (const s of job.shifts || []) {
+        if (!s.shiftStartDate) continue;
+        try {
+          const d = parseISO(s.shiftStartDate);
+          if (!earliest || isBefore(d, earliest)) earliest = d;
+        } catch {
+          // skip
+        }
+      }
+      return earliest;
+    };
+    const getLatestShiftEnd = (job: GignologyJob): Date | null => {
+      let latest: Date | null = null;
+      for (const s of job.shifts || []) {
+        if (!s.shiftEndDate) continue;
+        try {
+          const d = parseISO(s.shiftEndDate);
+          if (!latest || isAfter(d, latest)) latest = d;
+        } catch {
+          // skip
+        }
+      }
+      return latest;
+    };
+    upcoming.sort((a, b) => {
+      const aStart = getEarliestShiftStart(a);
+      const bStart = getEarliestShiftStart(b);
+      if (!aStart || !bStart) return 0;
+      return isBefore(aStart, bStart) ? -1 : 1;
+    });
+    past.sort((a, b) => {
+      const aEnd = getLatestShiftEnd(a);
+      const bEnd = getLatestShiftEnd(b);
+      if (!aEnd || !bEnd) return 0;
+      return isAfter(aEnd, bEnd) ? -1 : 1;
+    });
+    return { today, upcoming, past };
+  }, [availableJobs, todayStart]);
+
   // Group shifts by time context (Today / Upcoming / Past) for dropdown UX (date-fns for parsing and comparison)
-  const todayStart = useMemo(() => startOfDay(new Date()), []);
   const groupedShifts = useMemo(() => {
     const today: Shift[] = [];
     const upcoming: Shift[] = [];
@@ -1132,6 +1226,24 @@ export function EmployeeTimeAttendanceTable({
   useEffect(() => {
     setShiftFilter('all');
   }, [selectedJobId]);
+
+  // Clear job selection when selected job is not in the current filter (e.g. filter "Past" but selection was "Today")
+  useEffect(() => {
+    if (selectedJobId === 'all') return;
+    if (jobFilter === 'all') return;
+    const list = jobFilter === 'today' ? groupedJobs.today : jobFilter === 'upcoming' ? groupedJobs.upcoming : groupedJobs.past;
+    const inList = list.some((j) => j._id === selectedJobId);
+    if (!inList) setSelectedJobId('all');
+  }, [jobFilter, selectedJobId, groupedJobs.today, groupedJobs.upcoming, groupedJobs.past]);
+
+  // Clear shift selection when selected shift is not in the current filter
+  useEffect(() => {
+    if (selectedShiftSlug === 'all') return;
+    if (shiftFilter === 'all') return;
+    const list = shiftFilter === 'today' ? groupedShifts.today : shiftFilter === 'upcoming' ? groupedShifts.upcoming : groupedShifts.past;
+    const inList = list.some((s) => s.slug === selectedShiftSlug);
+    if (!inList) setSelectedShiftSlug('all');
+  }, [shiftFilter, selectedShiftSlug, groupedShifts.today, groupedShifts.upcoming, groupedShifts.past]);
 
   // Reset shift when job changes
   // NOTE: This must be AFTER availableShifts is defined
@@ -1963,9 +2075,30 @@ export function EmployeeTimeAttendanceTable({
         <div className="flex flex-wrap gap-4 mb-3">
           {/* Job Selector */}
           <div className="w-full min-w-0 sm:flex-1 sm:max-w-md">
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Select Job
-            </label>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <label className="text-sm font-medium text-gray-700 shrink-0">
+                Select Job
+              </label>
+              <ToggleGroup
+                type="single"
+                value={jobFilter}
+                onValueChange={(v) => v && setJobFilter(v as 'all' | 'today' | 'upcoming' | 'past')}
+                className="flex flex-wrap gap-1"
+              >
+                <ToggleGroupItem value="all" aria-label="All jobs" className="text-xs px-2 py-1 h-7">
+                  All
+                </ToggleGroupItem>
+                <ToggleGroupItem value="today" aria-label="Today" className="text-xs px-2 py-1 h-7">
+                  Today
+                </ToggleGroupItem>
+                <ToggleGroupItem value="upcoming" aria-label="Upcoming" className="text-xs px-2 py-1 h-7">
+                  Upcoming
+                </ToggleGroupItem>
+                <ToggleGroupItem value="past" aria-label="Past" className="text-xs px-2 py-1 h-7">
+                  Past
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
             <Select value={selectedJobId} onValueChange={setSelectedJobId}>
               <SelectTrigger className="w-full">
                 <SelectValue
@@ -1990,16 +2123,107 @@ export function EmployeeTimeAttendanceTable({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Jobs</SelectItem>
-                {availableJobs.map((job) => {
-                  const displayTitle = job.title
-                    ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
-                    : job._id;
-                  return (
-                    <SelectItem key={job._id} value={job._id}>
-                      {displayTitle}
-                    </SelectItem>
-                  );
-                })}
+                {jobFilter === 'all' && (
+                  <>
+                    {groupedJobs.today.length > 0 && (
+                      <SelectGroup>
+                        <SelectGroupLabel>Today</SelectGroupLabel>
+                        {groupedJobs.today.map((job) => {
+                          const displayTitle = job.title
+                            ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
+                            : job._id;
+                          return (
+                            <SelectItem key={job._id} value={job._id}>
+                              {displayTitle}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectGroup>
+                    )}
+                    {groupedJobs.upcoming.length > 0 && (
+                      <SelectGroup>
+                        <SelectGroupLabel>Upcoming</SelectGroupLabel>
+                        {groupedJobs.upcoming.map((job) => {
+                          const displayTitle = job.title
+                            ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
+                            : job._id;
+                          return (
+                            <SelectItem key={job._id} value={job._id}>
+                              {displayTitle}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectGroup>
+                    )}
+                    {groupedJobs.past.length > 0 && (
+                      <SelectGroup>
+                        <SelectGroupLabel>Past</SelectGroupLabel>
+                        {groupedJobs.past.map((job) => {
+                          const displayTitle = job.title
+                            ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
+                            : job._id;
+                          return (
+                            <SelectItem key={job._id} value={job._id}>
+                              {displayTitle}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectGroup>
+                    )}
+                  </>
+                )}
+                {jobFilter === 'today' && groupedJobs.today.length > 0 && (
+                  <SelectGroup>
+                    <SelectGroupLabel>Today</SelectGroupLabel>
+                    {groupedJobs.today.map((job) => {
+                      const displayTitle = job.title
+                        ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
+                        : job._id;
+                      return (
+                        <SelectItem key={job._id} value={job._id}>
+                          {displayTitle}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectGroup>
+                )}
+                {jobFilter === 'upcoming' && groupedJobs.upcoming.length > 0 && (
+                  <SelectGroup>
+                    <SelectGroupLabel>Upcoming</SelectGroupLabel>
+                    {groupedJobs.upcoming.map((job) => {
+                      const displayTitle = job.title
+                        ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
+                        : job._id;
+                      return (
+                        <SelectItem key={job._id} value={job._id}>
+                          {displayTitle}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectGroup>
+                )}
+                {jobFilter === 'past' && groupedJobs.past.length > 0 && (
+                  <SelectGroup>
+                    <SelectGroupLabel>Past</SelectGroupLabel>
+                    {groupedJobs.past.map((job) => {
+                      const displayTitle = job.title
+                        ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
+                        : job._id;
+                      return (
+                        <SelectItem key={job._id} value={job._id}>
+                          {displayTitle}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectGroup>
+                )}
+                {((jobFilter === 'today' && groupedJobs.today.length === 0) ||
+                  (jobFilter === 'upcoming' && groupedJobs.upcoming.length === 0) ||
+                  (jobFilter === 'past' && groupedJobs.past.length === 0)) && (
+                  <div className="py-2 px-2 text-sm text-muted-foreground">
+                    No jobs in this period
+                  </div>
+                )}
               </SelectContent>
             </Select>
           </div>
