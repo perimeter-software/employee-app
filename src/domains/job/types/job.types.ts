@@ -80,3 +80,8 @@ export type GignologyJob = {
 export type DisplayJob = GignologyJob & {
   punches: PunchWJobInfoDayHours[];
 };
+
+/** Params for jobs-with-shifts API (Client time & attendance). */
+export type JobsWithShiftsParams = {
+  includeHiddenJobs?: boolean;
+};
