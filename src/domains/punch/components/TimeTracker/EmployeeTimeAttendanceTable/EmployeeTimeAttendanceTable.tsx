@@ -16,6 +16,8 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import {
   Select,
   SelectContent,
+  SelectGroup,
+  SelectGroupLabel,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -28,6 +30,10 @@ import {
   endOfMonth,
   startOfDay,
   format,
+  parseISO,
+  isWithinInterval,
+  isAfter,
+  isBefore,
 } from 'date-fns';
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
 import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
@@ -227,6 +233,9 @@ export function EmployeeTimeAttendanceTable({
 
   // Selected shift state
   const [selectedShiftSlug, setSelectedShiftSlug] = useState<string>('all');
+
+  // Shift list filter: All | Today | Upcoming | Past (for narrowing the dropdown)
+  const [shiftFilter, setShiftFilter] = useState<'all' | 'today' | 'upcoming' | 'past'>('all');
 
   // Employee search state
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState<string>('');
@@ -1049,6 +1058,80 @@ export function EmployeeTimeAttendanceTable({
     if (!availableShifts || availableShifts.length === 0) return '';
     return availableShifts.map(s => s.slug).sort().join(',');
   }, [availableShifts]);
+
+  // Group shifts by time context (Today / Upcoming / Past) for dropdown UX (date-fns for parsing and comparison)
+  const todayStart = useMemo(() => startOfDay(new Date()), []);
+  const groupedShifts = useMemo(() => {
+    const today: Shift[] = [];
+    const upcoming: Shift[] = [];
+    const past: Shift[] = [];
+
+    for (const shift of availableShifts) {
+      const startStr = shift.shiftStartDate;
+      const endStr = shift.shiftEndDate;
+      if (!startStr || !endStr) {
+        past.push(shift);
+        continue;
+      }
+      let shiftStartDay: Date;
+      let shiftEndDay: Date;
+      try {
+        shiftStartDay = startOfDay(parseISO(startStr));
+        shiftEndDay = startOfDay(parseISO(endStr));
+      } catch {
+        past.push(shift);
+        continue;
+      }
+
+      if (isWithinInterval(todayStart, { start: shiftStartDay, end: shiftEndDay })) {
+        today.push(shift);
+      } else if (isAfter(shiftStartDay, todayStart)) {
+        upcoming.push(shift);
+      } else {
+        past.push(shift);
+      }
+    }
+    upcoming.sort((a, b) => {
+      try {
+        return isBefore(parseISO(a.shiftStartDate), parseISO(b.shiftStartDate)) ? -1 : 1;
+      } catch {
+        return 0;
+      }
+    });
+    past.sort((a, b) => {
+      try {
+        return isAfter(parseISO(a.shiftEndDate), parseISO(b.shiftEndDate)) ? -1 : 1;
+      } catch {
+        return 0;
+      }
+    });
+    return { today, upcoming, past };
+  }, [availableShifts, todayStart]);
+
+  // Date context label for a shift (for secondary line in dropdown)
+  const getShiftDateContext = useCallback((shift: Shift): string => {
+    const startStr = shift.shiftStartDate;
+    const endStr = shift.shiftEndDate;
+    if (!startStr || !endStr) return '—';
+    let start: Date;
+    let end: Date;
+    try {
+      start = parseISO(startStr);
+      end = parseISO(endStr);
+    } catch {
+      return '—';
+    }
+    const shiftStartDay = startOfDay(start);
+    const shiftEndDay = startOfDay(end);
+    if (isWithinInterval(todayStart, { start: shiftStartDay, end: shiftEndDay })) return 'Today';
+    if (isAfter(shiftStartDay, todayStart)) return `Starts ${format(start, 'MMM d')}`;
+    return `Ended ${format(end, 'MMM d')}`;
+  }, [todayStart]);
+
+  // Reset shift filter when job changes
+  useEffect(() => {
+    setShiftFilter('all');
+  }, [selectedJobId]);
 
   // Reset shift when job changes
   // NOTE: This must be AFTER availableShifts is defined
@@ -1876,11 +1959,11 @@ export function EmployeeTimeAttendanceTable({
           Time & Attendance
         </h1>
 
-        {/* Job Selector and Clocked In Summary Row */}
-        <div className="flex gap-4 mb-3">
+        {/* Job Selector and Clocked In Summary Row - responsive: stack on mobile, row on sm+ */}
+        <div className="flex flex-wrap gap-4 mb-3">
           {/* Job Selector */}
-          <div className="flex-1 max-w-md">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="w-full min-w-0 sm:flex-1 sm:max-w-md">
+            <label className="block text-sm font-medium text-gray-700 mb-3">
               Select Job
             </label>
             <Select value={selectedJobId} onValueChange={setSelectedJobId}>
@@ -1923,10 +2006,31 @@ export function EmployeeTimeAttendanceTable({
 
           {/* Shift Selector - Only show when a job is selected */}
           {selectedJobId !== 'all' && (
-            <div className="flex-1 max-w-md">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Shift
-              </label>
+            <div className="w-full min-w-0 sm:flex-1 sm:max-w-md">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <label className="text-sm font-medium text-gray-700 shrink-0">
+                  Select Shift
+                </label>
+                <ToggleGroup
+                  type="single"
+                  value={shiftFilter}
+                  onValueChange={(v) => v && setShiftFilter(v as 'all' | 'today' | 'upcoming' | 'past')}
+                  className="flex flex-wrap gap-1"
+                >
+                  <ToggleGroupItem value="all" aria-label="All shifts" className="text-xs px-2 py-1 h-7">
+                    All
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="today" aria-label="Today" className="text-xs px-2 py-1 h-7">
+                    Today
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="upcoming" aria-label="Upcoming" className="text-xs px-2 py-1 h-7">
+                    Upcoming
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="past" aria-label="Past" className="text-xs px-2 py-1 h-7">
+                    Past
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </div>
               {shiftsLoading ? (
                 <Skeleton className="h-10 w-full" />
               ) : (
@@ -1966,17 +2070,119 @@ export function EmployeeTimeAttendanceTable({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Shifts</SelectItem>
-                    {availableShifts.map((shift) => {
-                      const displayName = shift.shiftName || shift.slug;
-                      const capitalizedName =
-                        displayName.charAt(0).toUpperCase() +
-                        displayName.slice(1);
-                      return (
-                        <SelectItem key={shift.slug} value={shift.slug}>
-                          {capitalizedName}
-                        </SelectItem>
-                      );
-                    })}
+                    {shiftFilter === 'all' && (
+                      <>
+                        {groupedShifts.today.length > 0 && (
+                          <SelectGroup>
+                            <SelectGroupLabel>Today</SelectGroupLabel>
+                            {groupedShifts.today.map((shift) => {
+                              const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
+                              const dateContext = getShiftDateContext(shift);
+                              return (
+                                <SelectItem key={shift.slug} value={shift.slug}>
+                                  <div className="flex flex-col items-start">
+                                    <span>{displayName}</span>
+                                    <span className="text-xs text-muted-foreground font-normal">{dateContext}</span>
+                                  </div>
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectGroup>
+                        )}
+                        {groupedShifts.upcoming.length > 0 && (
+                          <SelectGroup>
+                            <SelectGroupLabel>Upcoming</SelectGroupLabel>
+                            {groupedShifts.upcoming.map((shift) => {
+                              const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
+                              const dateContext = getShiftDateContext(shift);
+                              return (
+                                <SelectItem key={shift.slug} value={shift.slug}>
+                                  <div className="flex flex-col items-start">
+                                    <span>{displayName}</span>
+                                    <span className="text-xs text-muted-foreground font-normal">{dateContext}</span>
+                                  </div>
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectGroup>
+                        )}
+                        {groupedShifts.past.length > 0 && (
+                          <SelectGroup>
+                            <SelectGroupLabel>Past</SelectGroupLabel>
+                            {groupedShifts.past.map((shift) => {
+                              const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
+                              const dateContext = getShiftDateContext(shift);
+                              return (
+                                <SelectItem key={shift.slug} value={shift.slug}>
+                                  <div className="flex flex-col items-start">
+                                    <span>{displayName}</span>
+                                    <span className="text-xs text-muted-foreground font-normal">{dateContext}</span>
+                                  </div>
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectGroup>
+                        )}
+                      </>
+                    )}
+                    {shiftFilter === 'today' && groupedShifts.today.length > 0 && (
+                      <SelectGroup>
+                        <SelectGroupLabel>Today</SelectGroupLabel>
+                        {groupedShifts.today.map((shift) => {
+                          const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
+                          const dateContext = getShiftDateContext(shift);
+                          return (
+                            <SelectItem key={shift.slug} value={shift.slug}>
+                              <div className="flex flex-col items-start">
+                                <span>{displayName}</span>
+                                <span className="text-xs text-muted-foreground font-normal">{dateContext}</span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectGroup>
+                    )}
+                    {shiftFilter === 'upcoming' && groupedShifts.upcoming.length > 0 && (
+                      <SelectGroup>
+                        <SelectGroupLabel>Upcoming</SelectGroupLabel>
+                        {groupedShifts.upcoming.map((shift) => {
+                          const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
+                          const dateContext = getShiftDateContext(shift);
+                          return (
+                            <SelectItem key={shift.slug} value={shift.slug}>
+                              <div className="flex flex-col items-start">
+                                <span>{displayName}</span>
+                                <span className="text-xs text-muted-foreground font-normal">{dateContext}</span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectGroup>
+                    )}
+                    {shiftFilter === 'past' && groupedShifts.past.length > 0 && (
+                      <SelectGroup>
+                        <SelectGroupLabel>Past</SelectGroupLabel>
+                        {groupedShifts.past.map((shift) => {
+                          const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
+                          const dateContext = getShiftDateContext(shift);
+                          return (
+                            <SelectItem key={shift.slug} value={shift.slug}>
+                              <div className="flex flex-col items-start">
+                                <span>{displayName}</span>
+                                <span className="text-xs text-muted-foreground font-normal">{dateContext}</span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectGroup>
+                    )}
+                    {((shiftFilter === 'today' && groupedShifts.today.length === 0) ||
+                      (shiftFilter === 'upcoming' && groupedShifts.upcoming.length === 0) ||
+                      (shiftFilter === 'past' && groupedShifts.past.length === 0)) && (
+                      <div className="py-2 px-2 text-sm text-muted-foreground">
+                        No shifts in this period
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
               )}
@@ -1985,8 +2191,8 @@ export function EmployeeTimeAttendanceTable({
 
           {/* Geofence Map Button - Only show when a job is selected and has location data */}
           {selectedJobId !== 'all' && selectedJob && geofenceLocationData && (
-            <div className="flex flex-col">
-              <label className="block text-sm font-medium text-gray-700 mb-2 opacity-0 pointer-events-none">
+            <div className="flex flex-col shrink-0">
+              <label className="block text-sm font-medium text-gray-700 mb-3 opacity-0 pointer-events-none">
                 Map
               </label>
               <Button
@@ -2000,8 +2206,8 @@ export function EmployeeTimeAttendanceTable({
             </div>
           )}
 
-          {/* Currently Clocked In Summary Card */}
-          <div className="flex item-center bg-teal-50 border border-teal-200 rounded-lg p-2 min-w-[240px]">
+          {/* Currently Clocked In Summary Card - full width on mobile so it doesn't overflow */}
+          <div className="flex item-center bg-teal-50 border border-teal-200 rounded-lg p-2 w-full min-w-0 sm:min-w-[240px] sm:w-auto">
             <div className="flex items-center gap-4">
               {/* Large teal circle with count */}
               <div className="relative flex-shrink-0">

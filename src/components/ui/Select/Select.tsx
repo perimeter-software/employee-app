@@ -6,7 +6,9 @@ import { clsxm } from "@/lib/utils/class-utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/DropdownMenu";
 
@@ -37,6 +39,15 @@ interface SelectItemProps {
 interface SelectValueProps {
   placeholder?: string;
   displayText?: string;
+}
+
+interface SelectGroupProps {
+  children: React.ReactNode;
+}
+
+interface SelectGroupLabelProps {
+  children: React.ReactNode;
+  className?: string;
 }
 
 const SelectContext = React.createContext<{
@@ -89,6 +100,21 @@ const SelectContent = ({ children, className, align = "start" }: SelectContentPr
   </DropdownMenuContent>
 );
 
+const SelectGroup = ({ children }: SelectGroupProps) => (
+  <DropdownMenuGroup>{children}</DropdownMenuGroup>
+);
+
+const SelectGroupLabel = ({ children, className }: SelectGroupLabelProps) => (
+  <DropdownMenuLabel
+    className={clsxm(
+      "text-xs font-semibold text-muted-foreground uppercase tracking-wide pointer-events-none py-1.5",
+      className
+    )}
+  >
+    {children}
+  </DropdownMenuLabel>
+);
+
 const SelectItem = ({ value, children, onSelect }: SelectItemProps) => {
   const context = React.useContext(SelectContext);
   const isSelected = context.value === value;
@@ -116,4 +142,4 @@ const SelectValue = ({ placeholder, displayText }: SelectValueProps) => {
   return <span>{text}</span>;
 };
 
-export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue };
+export { Select, SelectContent, SelectGroup, SelectGroupLabel, SelectItem, SelectTrigger, SelectValue };
