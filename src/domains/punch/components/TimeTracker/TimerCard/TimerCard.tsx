@@ -82,10 +82,6 @@ export function TimerCard({ userData, openPunches }: TimerCardProps) {
     );
   }
 
-  {
-    console.log('shiftInfo: ', shiftInfo);
-  }
-
   return (
     <>
       <ClockInValidationModal
