@@ -3,6 +3,7 @@ import { baseInstance } from '@/lib/api/instance';
 import type {
   GignologyJob,
   JobsWithShiftsParams,
+  Shift,
 } from '@/domains/job/types/job.types';
 
 export const jobQueryKeys = {
@@ -12,6 +13,8 @@ export const jobQueryKeys = {
   /** Jobs with shifts (Client time & attendance). Key includes includeHiddenJobs for cache separation. */
   withShifts: (includeHiddenJobs: boolean) =>
     [...jobQueryKeys.all, 'withShifts', includeHiddenJobs] as const,
+  /** Full shifts for a single job (Client time & attendance). */
+  shifts: (jobId: string) => [...jobQueryKeys.all, 'shifts', jobId] as const,
 } as const;
 
 export class JobPipelineService {
@@ -72,6 +75,32 @@ export class JobsWithShiftsService {
       return response.data;
     } catch (error) {
       console.error('❌ getJobsWithShifts API error:', error);
+      throw error;
+    }
+  }
+}
+
+/** Service for job-shifts API (full shift data for one job). */
+export class JobShiftsService {
+  static getEndpoint = (jobId: string) => `jobs/${jobId}/shifts` as const;
+
+  /**
+   * Get full shifts for a job (includes defaultSchedule, shiftRoster, etc.).
+   */
+  static async getJobShifts(jobId: string): Promise<Shift[]> {
+    try {
+      const response = await baseInstance.get<{ jobId: string; shifts: Shift[] }>(
+        JobShiftsService.getEndpoint(jobId)
+      );
+
+      if (!response.success || !response.data) {
+        console.error('❌ No job shifts data in response:', response);
+        throw new Error('No job shifts data received from API');
+      }
+
+      return response.data.shifts ?? [];
+    } catch (error) {
+      console.error('❌ getJobShifts API error:', error);
       throw error;
     }
   }

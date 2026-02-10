@@ -36,7 +36,7 @@ import {
   isBefore,
 } from 'date-fns';
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
-import { useJobsWithShifts } from '@/domains/job/hooks';
+import { useJobShifts, useJobsWithShifts } from '@/domains/job/hooks';
 import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
 import type { Applicant } from '@/domains/user/types/applicant.types';
 import { clsxm } from '@/lib/utils/class-utils';
@@ -165,23 +165,6 @@ async function fetchActiveEmployeeCount(jobIds?: string[], shiftSlug?: string) {
 
   const data = await response.json();
   return data.data.count as number;
-}
-
-async function fetchJobShifts(jobId: string): Promise<Shift[]> {
-  const response = await fetch(`/api/jobs/${jobId}/shifts`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to fetch job shifts');
-  }
-
-  const data = await response.json();
-  return (data.data.shifts || []) as Shift[];
 }
 
 export function EmployeeTimeAttendanceTable({
@@ -393,11 +376,10 @@ export function EmployeeTimeAttendanceTable({
 
   // Fetch shifts for selected job - always fetch to get full shift data with rosters
   // This is needed for generating future punches even if job already has minimal shift data
-  const { data: jobShifts = [], isLoading: shiftsLoading } = useQuery({
-    queryKey: ['jobShifts', selectedJobId],
-    queryFn: () => fetchJobShifts(selectedJobId),
-    enabled: !companyLoading && selectedJobId !== 'all', // Always fetch for selected job to get full shift data
-  });
+  const { data: jobShifts = [], isLoading: shiftsLoading } = useJobShifts(
+    selectedJobId,
+    { enabled: !companyLoading }
+  );
 
   // Get all available shifts for selected job (from fetched shifts or job data)
   const allAvailableShifts = useMemo(() => {
