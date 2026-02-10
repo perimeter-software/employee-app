@@ -4,12 +4,13 @@ import { startOfWeek, addDays, format } from 'date-fns';
 import CalendarBodyDayContent from '../Day/CalendarBodyDayContent';
 import { useCalendarAutoScroll } from '../../hooks';
 import { getDayNamesFromWeekStartsOn } from '@/lib/utils/date-utils';
+import { clsxm } from '@/lib/utils';
 
 // Time hours array - moved outside component to prevent recreation on every render
 const hours = Array.from({ length: 24 }, (_, i) => i);
 
 export default function CalendarBodyWeek() {
-  const { date, events, weekStartsOn = 0 } = useCalendarContext();
+  const { date, events, weekStartsOn = 0, dayBadges } = useCalendarContext();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Memoize week calculations - only recalculate when date or weekStartsOn changes
@@ -37,6 +38,9 @@ export default function CalendarBodyWeek() {
         {/* Day headers */}
         <div className="flex flex-1 overflow-x-auto">
           {weekDays.map((day, index) => {
+            const dateKey = format(day, 'yyyy-MM-dd');
+            const badges = dayBadges?.[dateKey];
+            
             return (
               <div
                 key={day.toISOString()}
@@ -52,6 +56,35 @@ export default function CalendarBodyWeek() {
                   </span>
                 </div>
                 <div className="text-xs lg:text-sm">{format(day, 'dd')}</div>
+                {badges && badges.length > 0 && (
+                  <div className="flex items-center justify-center gap-0.5 mt-1 text-[9px] lg:text-[10px] font-medium">
+                    {badges.map((badge, index) => (
+                      <span
+                        key={index}
+                        className="relative inline-flex group"
+                      >
+                        <span
+                          className={clsxm(
+                            'flex items-center rounded px-1 py-0.5 cursor-default',
+                            badge.color,
+                            badge.textColor || 'text-white'
+                          )}
+                          title={badge.label}
+                        >
+                          {badge.value}
+                        </span>
+                        {badge.label && (
+                          <span
+                            role="tooltip"
+                            className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-[10px] font-medium text-background opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                          >
+                            {badge.label}
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
