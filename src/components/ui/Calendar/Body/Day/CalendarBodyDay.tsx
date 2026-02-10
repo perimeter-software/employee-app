@@ -6,11 +6,16 @@ import CalendarBodyDayContent from './CalendarBodyDayContent';
 import CalendarBodyMarginDayMargin from './CalendarBodyMarginDayMargin';
 import { format, isSameDay } from 'date-fns';
 import { useCalendarAutoScroll } from '../../hooks';
+import { clsxm } from '@/lib/utils';
 
 export default function CalendarBodyDay() {
-  const { date, events } = useCalendarContext();
+  const { date, events, dayBadges } = useCalendarContext();
   const today = new Date();
   const isToday = isSameDay(date, today);
+  
+  // Get badges for this day
+  const dateKey = format(date, 'yyyy-MM-dd');
+  const badges = dayBadges?.[dateKey];
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Use the auto-scroll hook
@@ -37,6 +42,35 @@ export default function CalendarBodyDay() {
             {format(date, 'EEEE')}
           </div>
           <div className="text-xs lg:text-sm">{format(date, 'dd')}</div>
+          {badges && badges.length > 0 && (
+            <div className="flex items-center justify-center gap-1 mt-1 text-[10px] lg:text-xs font-medium">
+              {badges.map((badge, index) => (
+                <span
+                  key={index}
+                  className="relative inline-flex group"
+                >
+                  <span
+                    className={clsxm(
+                      'flex items-center rounded px-1.5 py-0.5 cursor-default',
+                      badge.color,
+                      badge.textColor || 'text-white'
+                    )}
+                    title={badge.label}
+                  >
+                    {badge.value}
+                  </span>
+                  {badge.label && (
+                    <span
+                      role="tooltip"
+                      className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-[10px] font-medium text-background opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                    >
+                      {badge.label}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Sidebar header spacer */}

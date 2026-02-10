@@ -1723,7 +1723,57 @@ export function EmployeeTimeAttendanceTable({
     setShowPunchModal(true);
   }, [isFutureEvent]);
 
-  // Get shift data for the selected punch
+  // Get the currently selected shift from the Shift selector dropdown
+  const currentlySelectedShift = useMemo(() => {
+    if (selectedShiftSlug === 'all' || !allAvailableShifts.length) return null;
+    return allAvailableShifts.find((s) => s.slug === selectedShiftSlug) ?? null;
+  }, [selectedShiftSlug, allAvailableShifts]);
+
+  // Compute position badges for each day when a shift is selected
+  // Creates generic badge data that the Calendar can render
+  const dayBadges = useMemo(() => {
+    if (!currentlySelectedShift || !currentlySelectedShift.positions || !currentlySelectedShift.defaultSchedule) {
+      return {};
+    }
+
+    const badges: Record<string, Array<{ value: number; color: string; textColor?: string; label?: string }>> = {};
+    
+    // Calculate total requested positions (sum of numberPositions from all positions)
+    const totalRequested = currentlySelectedShift.positions.reduce((sum: number, pos) => {
+      const num = parseInt(pos.numberPositions?.toString() || '0', 10);
+      return sum + (isNaN(num) ? 0 : num);
+    }, 0);
+
+    // For each day in defaultSchedule, compute filled count
+    const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+    
+    daysOfWeek.forEach((dayOfWeek) => {
+      const daySchedule = currentlySelectedShift.defaultSchedule[dayOfWeek];
+      if (!daySchedule || !daySchedule.roster || daySchedule.roster.length === 0) {
+        return; // Skip days with no roster
+      }
+
+      // Each roster entry represents someone scheduled for that day
+      const filled = daySchedule.roster.length;
+      const unfilled = Math.max(0, totalRequested - filled);
+
+      // Get dates from roster entries (they should all have the same date for this day)
+      daySchedule.roster.forEach((entry) => {
+        if (entry.date) {
+          const dateKey = entry.date; // Already in 'yyyy-MM-dd' format
+          badges[dateKey] = [
+            { value: totalRequested, color: 'bg-blue-500', textColor: 'text-white', label: 'Requested positions' },
+            { value: filled, color: 'bg-successGreen', textColor: 'text-white', label: 'Filled positions' },
+            { value: unfilled, color: 'bg-red-500', textColor: 'text-white', label: 'Unfilled positions' },
+          ];
+        }
+      });
+    });
+
+    return badges;
+  }, [currentlySelectedShift]);
+
+  // Get shift data for the selected punch (for modal)
   const selectedShift = useMemo(() => {
     if (!selectedPunch || !selectedJob) return undefined;
     const shiftSlug = selectedPunch.shiftSlug;
@@ -2697,6 +2747,7 @@ export function EmployeeTimeAttendanceTable({
             setDate={setCalendarDate}
             calendarIconIsToday={false}
             weekStartsOn={weekStartsOn || 0}
+            dayBadges={dayBadges}
             onOverflowClick={handleOverflowClick}
           >
             <CalendarEventHandler />

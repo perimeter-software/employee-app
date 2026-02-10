@@ -1,3 +1,12 @@
+export type CalendarDayBadge = {
+  value: number | string;
+  color: string; // Tailwind bg color class (e.g., 'bg-blue-500', 'bg-green-500')
+  textColor?: string; // Tailwind text color class (defaults to 'text-white')
+  label?: string; // Optional label for accessibility/tooltips
+};
+
+export type CalendarDayBadges = CalendarDayBadge[];
+
 export type CalendarProps = {
   events: CalendarEvent[];
   setEvents: (events: CalendarEvent[]) => void;
@@ -8,6 +17,7 @@ export type CalendarProps = {
   calendarIconIsToday?: boolean;
   hideTotalColumn?: boolean;
   weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Sunday, 1 = Monday, 2 = Tuesday, etc.
+  dayBadges?: Record<string, CalendarDayBadges>; // Map of date (yyyy-MM-dd) to array of badges
 };
 
 export type CalendarContextType = CalendarProps & {
