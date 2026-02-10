@@ -15,19 +15,9 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { CalendarEvent as CalendarEventType } from '../../../Calendar/types';
 import CalendarEvent from '../../CalendarEvent';
 import { getDayNamesFromWeekStartsOn } from '@/lib/utils/date-utils';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/DropdownMenu/DropdownMenu';
 
-export default function CalendarBodyMonth({
-  hideTotalColumn = false,
-}: {
-  hideTotalColumn?: boolean;
-}) {
-  const { date, events, setDate, setMode, onOverflowClick } = useCalendarContext();
+export default function CalendarBodyMonth() {
+  const { date, events, setDate, setMode, onOverflowClick, dayBadges } = useCalendarContext();
 
   // Get weekStartsOn from context, default to Sunday
   const { weekStartsOn = 0 } = useCalendarContext();
@@ -101,6 +91,10 @@ export default function CalendarBodyMonth({
                   );
                   const isToday = isSameDay(day, today);
                   const isCurrentMonth = isSameMonth(day, date);
+                  
+                  // Get badges for this day
+                  const dateKey = format(day, 'yyyy-MM-dd');
+                  const badges = dayBadges?.[dateKey];
 
                   return (
                     <div
@@ -115,14 +109,45 @@ export default function CalendarBodyMonth({
                         setMode('day');
                       }}
                     >
-                      <div
-                        className={clsxm(
-                          'text-xs lg:text-sm font-medium w-fit p-0.5 lg:p-1 flex flex-col items-center justify-center rounded-full aspect-square mb-1 lg:mb-2',
-                          isToday && 'bg-appPrimary text-white',
-                          !isCurrentMonth && 'text-gray-400'
+                      <div className="flex items-center gap-1 mb-1 lg:mb-2">
+                        <div
+                          className={clsxm(
+                            'text-xs lg:text-sm font-medium w-fit p-0.5 lg:p-1 flex flex-col items-center justify-center rounded-full aspect-square',
+                            isToday && 'bg-appPrimary text-white',
+                            !isCurrentMonth && 'text-gray-400'
+                          )}
+                        >
+                          {format(day, 'd')}
+                        </div>
+                        {badges && badges.length > 0 && (
+                          <div className="flex items-center gap-0.5 text-[9px] lg:text-[10px] font-medium">
+                            {badges.map((badge, index) => (
+                              <span
+                                key={index}
+                                className="relative inline-flex group"
+                              >
+                                <span
+                                  className={clsxm(
+                                    'flex items-center rounded px-1 py-0.5 cursor-default',
+                                    badge.color,
+                                    badge.textColor || 'text-white'
+                                  )}
+                                  title={badge.label}
+                                >
+                                  {badge.value}
+                                </span>
+                                {badge.label && (
+                                  <span
+                                    role="tooltip"
+                                    className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-2 py-1 text-[10px] font-medium text-background opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                                  >
+                                    {badge.label}
+                                  </span>
+                                )}
+                              </span>
+                            ))}
+                          </div>
                         )}
-                      >
-                        {format(day, 'd')}
                       </div>
                       <AnimatePresence mode="wait">
                         <div className="flex flex-col gap-0.5 lg:gap-1 flex-1">
