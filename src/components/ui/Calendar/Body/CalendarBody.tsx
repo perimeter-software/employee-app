@@ -8,15 +8,14 @@ export default function CalendarBody({
 }: {
   hideTotalColumn?: boolean;
 }) {
+  console.log('hideTotalColumn', hideTotalColumn);
   const { mode } = useCalendarContext();
 
   return (
     <>
       {mode === "day" && <CalendarBodyDay />}
       {mode === "week" && <CalendarBodyWeek />}
-      {mode === "month" && (
-        <CalendarBodyMonth hideTotalColumn={hideTotalColumn} />
-      )}
+      {mode === "month" && <CalendarBodyMonth />}
     </>
   );
 }
