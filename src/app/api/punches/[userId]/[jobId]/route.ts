@@ -11,7 +11,7 @@ import {
   checkForPreviousPunchesWithinShift,
   getTotalWorkedHoursForWeek,
 } from '@/domains/punch/utils';
-import { ObjectId as ObjectIdFunction, ObjectId } from 'mongodb';
+import { ObjectId as ObjectIdFunction } from 'mongodb';
 import { parseClockInCoordinates } from '@/lib/utils';
 import { ClockInCoordinates, Shift } from '@/domains/job';
 import { findJobByjobId, getUserType } from '@/domains/user/utils';
@@ -23,7 +23,10 @@ import {
 } from '@/domains/punch/utils/shift-job-utils';
 import { Punch, PunchNoId } from '@/domains/punch';
 import { createNotification } from '@/domains/notification/utils/mongo-notification-utils';
-import { convertToJSON } from '@/lib/utils/mongo-utils';
+import type {
+  ApplicantCollectionDoc,
+  ApplicantNote,
+} from '@/domains/user/types/applicant.types';
 
 // Utility Functions
 const calculateDistance = (
@@ -456,6 +459,44 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
           { error: 'update-failed', message: 'Error updating punch' },
           { status: 500 }
         );
+      }
+
+      // Add manager note to applicant's notes array when manager note was added/updated
+      if (managerNoteAdded && punch.managerNote && punch.applicantId) {
+        try {
+          const managerFirstName =
+            user.firstName || user.name?.split(' ')[0] || 'Manager';
+          const managerLastName =
+            user.lastName || user.name?.split(' ').slice(1).join(' ') || '';
+          const managerUserId =
+            user._id != null ? String(user._id) : '';
+
+          const applicantNote: ApplicantNote = {
+            type: 'General',
+            text: `<div>${String(punch.managerNote)
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')}</div>`,
+            firstName: managerFirstName,
+            lastName: managerLastName,
+            userId: managerUserId,
+            date: new Date(),
+          };
+
+          await db
+            .collection<ApplicantCollectionDoc>('applicants')
+            .updateOne(
+              { _id: new ObjectIdFunction(punch.applicantId) },
+              {
+                $push: { notes: applicantNote },
+                $set: { modifiedDate: new Date() },
+              }
+            );
+        } catch (applicantNoteError) {
+          console.error(
+            'Error adding manager note to applicant notes:',
+            applicantNoteError
+          );
+        }
       }
 
       // Send notification to venue manager if managerNote was added/updated
