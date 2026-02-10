@@ -2626,7 +2626,8 @@ export function EmployeeTimeAttendanceTable({
               </ToggleGroup>
             </div>
 
-            {/* Include Future Timecards - shared for both Table and Calendar */}
+            {/* Include Future Timecards - temporarily hidden */}
+            {false && (
             <div className="flex items-center gap-2 whitespace-nowrap">
               <input
                 type="checkbox"
@@ -2639,6 +2640,7 @@ export function EmployeeTimeAttendanceTable({
                 Include Future Timecards
               </label>
             </div>
+            )}
 
             {/* Date Navigation */}
             <div className="flex items-center justify-end gap-2">
