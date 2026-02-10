@@ -16,9 +16,10 @@ import { Label } from '@/components/ui/Label';
 import { Textarea } from '@/components/ui/Textarea';
 import { MapModal } from '../MapModal';
 import { toast } from 'sonner';
-import type { EmployeePunch } from './types';
+import type { EmployeePunch } from '@/domains/punch/types/employee-punches.types';
 import type { Shift } from '@/domains/job/types/job.types';
 import { formatPhoneNumber } from '@/lib/utils';
+import { punchQueryKeys } from '@/domains/punch/services';
 
 interface EmployeePunchDetailsModalProps {
   isOpen: boolean;
@@ -341,17 +342,22 @@ export function EmployeePunchDetailsModal({
 
       toast.success('Punch updated successfully!');
       
-      // ERROR-PROOF: Invalidate queries with pattern matching to refetch all employeePunches queries
-      // This ensures all date ranges and filters get fresh data
-      queryClient.invalidateQueries({ 
-        queryKey: ['employeePunches'],
-        exact: false, // Match all queries that start with 'employeePunches'
+      // Invalidate punch-domain queries so table and active card refetch (same keys as useEmployeePunches / useActiveEmployeeCount)
+      queryClient.invalidateQueries({
+        queryKey: [...punchQueryKeys.all, 'employeePunches'],
+        exact: false,
       });
-      queryClient.invalidateQueries({ queryKey: ['activeEmployeeCount'] });
-      
-      // Refetch immediately to ensure fresh data is available
-      await queryClient.refetchQueries({ 
-        queryKey: ['employeePunches'],
+      queryClient.invalidateQueries({
+        queryKey: [...punchQueryKeys.all, 'activeCount'],
+        exact: false,
+      });
+      queryClient.invalidateQueries({
+        queryKey: [...punchQueryKeys.all, 'activeEmployees'],
+        exact: false,
+      });
+
+      await queryClient.refetchQueries({
+        queryKey: [...punchQueryKeys.all, 'employeePunches'],
         exact: false,
       });
       
