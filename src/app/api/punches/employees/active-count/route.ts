@@ -5,9 +5,10 @@ import type { AuthenticatedRequest } from '@/domains/user/types';
 import { ObjectId } from 'mongodb';
 
 // POST Handler for Getting Active Employee Count (for Client role)
+// Optionally returns full list of active employees when includeList=true
 async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
   try {
-    const { jobIds, shiftSlug } = await request.json();
+    const { jobIds, shiftSlug, includeList } = await request.json();
     const user = request.user;
 
     // Only allow Client role to access this endpoint
@@ -64,69 +65,186 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
 
     // Log query for debugging (only in development)
     if (process.env.NODE_ENV === 'development') {
-      console.log('[Active Employee Count API] Query:', JSON.stringify(query, null, 2));
+      console.log('[Active Employee Count API] Query:', {
+        includeList,
+        jobIds: jobIds?.length || 0,
+        shiftSlug: shiftSlug || 'all',
+      });
     }
 
-    // Use aggregation pipeline similar to employee punches API
-    // This ensures we get distinct applicants with active punches
-    const activePunches = await db
-      .collection('timecard')
-      .aggregate([
-        {
-          $match: query,
+    // Build aggregation pipeline - if includeList=true, return full employee details
+    // Otherwise just count distinct applicants
+    const pipeline: Record<string, unknown>[] = [
+      {
+        $match: query,
+      },
+      // Convert string IDs to ObjectIds for lookups (applicant always; job only when includeList)
+      {
+        $addFields: {
+          applicantIdObjectId: {
+            $cond: {
+              if: { $eq: [{ $type: '$applicantId' }, 'string'] },
+              then: { $toObjectId: '$applicantId' },
+              else: '$applicantId',
+            },
+          },
+          jobIdObjectId: {
+            $cond: {
+              if: { $eq: [{ $type: '$jobId' }, 'string'] },
+              then: { $toObjectId: '$jobId' },
+              else: '$jobId',
+            },
+          },
         },
-        // Convert string IDs to ObjectIds for lookups (same as employee punches API)
+      },
+      // Lookup applicant – only the fields we need (firstName, lastName, email, phone)
+      {
+        $lookup: {
+          from: 'applicants',
+          let: { applicantIdObj: '$applicantIdObjectId' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$applicantIdObj'] } } },
+            { $project: { firstName: 1, lastName: 1, email: 1, phone: 1 } },
+          ],
+          as: 'applicant',
+        },
+      },
+      // Unwind applicant array
+      {
+        $unwind: {
+          path: '$applicant',
+          preserveNullAndEmptyArrays: false, // Only include punches with valid applicants
+        },
+      },
+    ];
+
+    // If includeList=true, add job lookup and project full details (applicant has email; profileImg from applicant only)
+    if (includeList) {
+      pipeline.push(
+        // Lookup job – only the fields we need (title, venueName, venueSlug, location, shifts)
+        {
+          $lookup: {
+            from: 'jobs',
+            let: { jobIdObj: '$jobIdObjectId' },
+            pipeline: [
+              { $match: { $expr: { $eq: ['$_id', '$$jobIdObj'] } } },
+              { $project: { title: 1, venueName: 1, venueSlug: 1, location: 1, shifts: 1 } },
+            ],
+            as: 'job',
+          },
+        },
+        {
+          $unwind: {
+            path: '$job',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        // Resolve shift name from job.shifts array
         {
           $addFields: {
-            applicantIdObjectId: {
+            resolvedShiftName: {
               $cond: {
-                if: { $eq: [{ $type: '$applicantId' }, 'string'] },
-                then: { $toObjectId: '$applicantId' },
-                else: '$applicantId',
+                if: { $and: ['$shiftSlug', '$job.shifts'] },
+                then: {
+                  $let: {
+                    vars: {
+                      matchedShift: {
+                        $arrayElemAt: [
+                          {
+                            $filter: {
+                              input: { $ifNull: ['$job.shifts', []] },
+                              as: 'shift',
+                              cond: { $eq: ['$$shift.slug', '$shiftSlug'] },
+                            },
+                          },
+                          0,
+                        ],
+                      },
+                    },
+                    in: { $ifNull: ['$$matchedShift.shiftName', null] },
+                  },
+                },
+                else: null,
               },
             },
           },
         },
-        // Lookup applicant to ensure we're counting valid employees
+        // Project employee details (matching employee punches API)
         {
-          $lookup: {
-            from: 'applicants',
-            localField: 'applicantIdObjectId',
-            foreignField: '_id',
-            as: 'applicant',
+          $project: {
+            _id: 1,
+            userId: 1,
+            applicantId: 1,
+            jobId: 1,
+            timeIn: 1,
+            timeOut: 1,
+            status: 1,
+            shiftSlug: 1,
+            shiftName: '$resolvedShiftName',
+            clockInCoordinates: 1,
+            clockOutCoordinates: 1,
+            userNote: 1,
+            managerNote: 1,
+            employeeName: {
+              $concat: [
+                { $ifNull: ['$applicant.firstName', ''] },
+                ' ',
+                { $ifNull: ['$applicant.lastName', ''] },
+              ],
+            },
+            firstName: { $ifNull: ['$applicant.firstName', ''] },
+            lastName: { $ifNull: ['$applicant.lastName', ''] },
+            employeeEmail: { $ifNull: ['$applicant.email', ''] },
+            phoneNumber: { $ifNull: ['$applicant.phone', ''] },
+            jobTitle: { $ifNull: ['$job.title', ''] },
+            jobSite: { $ifNull: ['$job.venueName', '$job.title', ''] },
+            location: { $ifNull: ['$job.location.locationName', '$job.venueSlug', ''] },
           },
         },
-        // Only count punches where applicant exists
+        // Sort by timeIn descending (most recent first)
         {
-          $match: {
-            applicant: { $ne: [] },
+          $sort: {
+            timeIn: -1,
           },
+        }
+      );
+    } else {
+      // If not including list, just group by applicantId to count distinct employees
+      pipeline.push({
+        $group: {
+          _id: '$applicantId',
         },
-        // Group by applicantId to get distinct applicants
-        {
-          $group: {
-            _id: '$applicantId',
-          },
-        },
-      ])
+      });
+    }
+
+    const result = await db
+      .collection('timecard')
+      .aggregate(pipeline)
       .toArray();
 
-    const activeCount = activePunches.length;
+    const activeCount = result.length;
 
     // Log result for debugging (only in development)
     if (process.env.NODE_ENV === 'development') {
       console.log('[Active Employee Count API] Result:', {
         count: activeCount,
-        applicantIds: activePunches.map((p) => p._id).slice(0, 10), // Log first 10 for debugging
+        includeList,
       });
     }
+
+    // Return response - if includeList=true, include employees array
+    const responseData = includeList
+      ? { count: activeCount, employees: result }
+      : { count: activeCount };
 
     return NextResponse.json(
       {
         success: true,
-        message: 'Active employee count retrieved successfully',
+        message: includeList
+          ? 'Active employees retrieved successfully'
+          : 'Active employee count retrieved successfully',
         count: activeCount,
-        data: { count: activeCount },
+        data: responseData,
       },
       { status: 200 }
     );
