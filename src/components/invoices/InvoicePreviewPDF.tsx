@@ -5,6 +5,7 @@
 
 import {
   Document,
+  Font,
   Page,
   StyleSheet,
   Text,
@@ -12,14 +13,24 @@ import {
 } from '@react-pdf/renderer';
 import type { InvoiceForPdf } from './invoice-pdf-types';
 
+// Disable hyphenation so words like "Stadium" wrap to the next line instead of "Sta-dium"
+Font.registerHyphenationCallback((word) => [word]);
+
 export type { InvoiceForPdf } from './invoice-pdf-types';
 
 // Same StyleSheet structure as stadium-people InvoiceEditorPreviewPDF
 const styles = StyleSheet.create({
   page: {
     padding: 24,
+    paddingTop: 48,
     fontFamily: 'Helvetica',
     fontSize: 12,
+  },
+  fixedHeader: {
+    paddingTop: 8,
+  },
+  contentBelowHeader: {
+    marginTop: 280,
   },
   invoiceHeader: {
     flexDirection: 'row',
@@ -167,8 +178,9 @@ export function InvoicePreviewPDF({ invoice }: Props) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Invoice Header – same two columns as stadium-people */}
-        <View style={styles.invoiceHeader}>
+        {/* Fixed header so it repeats on every page and is not cut off when table has many rows */}
+        <View fixed style={styles.fixedHeader}>
+          <View style={styles.invoiceHeader}>
           <View style={styles.invoiceInfoContainer}>
             <Text style={styles.invoiceTitle}>INVOICE</Text>
             <Text style={styles.invoiceInfo}>
@@ -212,9 +224,12 @@ export function InvoicePreviewPDF({ invoice }: Props) {
             <Text style={{ fontWeight: 'bold' }}>Attn:</Text> {formatAttn(to.attn)}
           </Text>
         </View>
+        </View>
 
+        {/* Table + totals: flow below fixed header so top is never cut off */}
+        <View style={styles.contentBelowHeader}>
         {/* Table – same column headers and data as modal: DATE, POSITION, QTY STAFF, RATE, AMOUNT */}
-        <View style={styles.table} wrap={false}>
+        <View style={styles.table}>
           <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderCell, styles.summaryCol2]}>DATE</Text>
             <Text style={[styles.tableHeaderCell, styles.summaryCol3]}>POSITION</Text>
@@ -255,6 +270,7 @@ export function InvoicePreviewPDF({ invoice }: Props) {
               <Text style={styles.totalsFinal}>{moneyFormatter.format(totalAmount)}</Text>
             </View>
           </View>
+        </View>
         </View>
       </Page>
     </Document>
