@@ -117,7 +117,7 @@ export function EmployeeTimeAttendanceTable({
   const [jobFilter, setJobFilter] = useState<'all' | 'today' | 'upcoming' | 'past'>('all');
 
   // Shift list filter: All | Today | Upcoming | Past (for narrowing the dropdown)
-  const [shiftFilter, setShiftFilter] = useState<'all' | 'today' | 'upcoming' | 'past'>('all');
+  const [shiftFilter, setShiftFilter] = useState<'all' | 'today' | 'upcoming' | 'past'>('today');
 
   // Include jobs where hideThisJob is 'Yes' in the job selector (default: false = don't show them)
   const [includeHiddenJobs, setIncludeHiddenJobs] = useState<boolean>(false);
@@ -1143,7 +1143,7 @@ export function EmployeeTimeAttendanceTable({
 
   // Reset shift filter when job changes
   useEffect(() => {
-    setShiftFilter('all');
+    setShiftFilter('today');
   }, [selectedJobId]);
 
   // Clear job selection when selected job is not in the list (e.g. after unchecking "Include hidden jobs" and API returns fewer jobs)
