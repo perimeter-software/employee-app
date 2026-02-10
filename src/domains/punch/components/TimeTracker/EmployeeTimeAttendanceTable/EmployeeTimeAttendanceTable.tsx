@@ -48,41 +48,11 @@ import { EmployeePunchDetailsModal } from '../EmployeePunchDetailsModal/Employee
 import { MapModal } from '../MapModal/MapModal';
 import { ActiveEmployeesModal } from '../ActiveEmployeesModal';
 import { formatPhoneNumber } from '@/lib/utils';
-import { useActiveEmployeeCount, useActiveEmployees } from '@/domains/punch/hooks';
-
-interface EmployeePunch extends Record<string, unknown> {
-  _id: string;
-  userId: string;
-  applicantId: string;
-  jobId: string;
-  timeIn: string;
-  timeOut: string | null;
-  status: string;
-  shiftSlug?: string;
-  shiftName?: string;
-  employeeName: string;
-  firstName?: string;
-  lastName?: string;
-  employeeEmail: string;
-  phoneNumber?: string;
-  profileImg?: string | null;
-  jobTitle: string;
-  jobSite: string;
-  location: string;
-  userNote?: string; // ERROR-PROOF: Include userNote field
-  managerNote?: string; // ERROR-PROOF: Include managerNote field
-  isSelected?: boolean;
-  checkbox?: unknown;
-  date?: unknown;
-  employee?: unknown;
-  timeRange?: unknown;
-  totalHours?: unknown;
-}
-
-interface EmployeeTimeAttendanceTableProps {
-  startDate?: string;
-  endDate?: string;
-}
+import { useActiveEmployeeCount, useActiveEmployees, useEmployeePunches } from '@/domains/punch/hooks';
+import type {
+  EmployeePunch,
+  EmployeeTimeAttendanceTableProps,
+} from '@/domains/punch/types/employee-punches.types';
 
 // Format time as 24-hour format (HH:mm)
 const formatTime24 = (dateString: string) => {
@@ -108,45 +78,6 @@ const calculateTotalHours = (timeIn: string, timeOut: string | null) => {
   const hours = (end - start) / (1000 * 60 * 60);
   return Math.round(hours * 10) / 10; // One decimal place
 };
-
-async function fetchEmployeePunches(
-  startDate: string,
-  endDate: string,
-  jobIds?: string[],
-  shiftSlug?: string
-) {
-  // ERROR-PROOF: Normalize shiftSlug before sending
-  const normalizedShiftSlug =
-    shiftSlug && shiftSlug !== 'all' && shiftSlug.trim() !== ''
-      ? shiftSlug.trim()
-      : undefined;
-
-  // Removed debug logging to prevent infinite loops
-
-  const response = await fetch('/api/punches/employees', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      startDate,
-      endDate,
-      jobIds: jobIds && jobIds.length > 0 ? jobIds : undefined,
-      shiftSlug: normalizedShiftSlug,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to fetch employee punches');
-  }
-
-  const data = await response.json();
-
-  // Removed debug logging to prevent infinite loops
-
-  return data.data as EmployeePunch[];
-}
 
 export function EmployeeTimeAttendanceTable({
   startDate: propStartDate,
@@ -388,11 +319,6 @@ export function EmployeeTimeAttendanceTable({
     return [selectedJobId];
   }, [selectedJobId, availableJobs]);
 
-  // Create stable string key for query (prevents unnecessary refetches)
-  const selectedJobIdsKey = useMemo(() => {
-    return selectedJobIds.sort().join(',');
-  }, [selectedJobIds]);
-
   // Calculate date range based on view type
   // ERROR-PROOF: Ensures consistent date normalization matching backend expectations
   const dateRange = useMemo(() => {
@@ -541,40 +467,35 @@ export function EmployeeTimeAttendanceTable({
     weekStartsOn,
   ]);
 
-  // Fetch employee punches (with shift filter applied)
-  // ERROR-PROOF: Increased staleTime and added refetchOnWindowFocus: false to reduce API calls
-  const {
-    data: employeePunches,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: [
-      'employeePunches',
-      dateRange.startDate,
-      dateRange.endDate,
-      selectedJobIdsKey,
-      selectedShiftSlug,
-    ],
-    queryFn: () =>
-      fetchEmployeePunches(
-        dateRange.startDate,
-        dateRange.endDate,
-        selectedJobIds,
-        selectedShiftSlug
-      ),
-    enabled:
-      !companyLoading &&
-      !jobsLoading &&
-      availableJobs.length > 0 &&
-      selectedJobIds.length > 0 &&
-      !!dateRange.startDate &&
-      !!dateRange.endDate,
-    staleTime: 120000, // Consider data fresh for 2 minutes (reduced API calls)
-    gcTime: 300000, // Keep in cache for 5 minutes
-    refetchOnWindowFocus: false, // Don't refetch on window focus (reduces API calls)
-    refetchOnReconnect: false, // Don't refetch on reconnect (reduces API calls)
-    refetchOnMount: false, // Don't refetch when component remounts (reduces API calls)
-  });
+  // Fetch employee punches by date range (same pattern as useJobsWithShifts / useActiveEmployees)
+  const employeePunchesQuery = useEmployeePunches(
+    {
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+      jobIds: selectedJobIds,
+      shiftSlug: selectedShiftSlug,
+    },
+    {
+      enabled:
+        !companyLoading &&
+        !jobsLoading &&
+        availableJobs.length > 0 &&
+        selectedJobIds.length > 0 &&
+        !!dateRange.startDate &&
+        !!dateRange.endDate,
+      staleTime: 120000,
+      gcTime: 300000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+    }
+  );
+  const employeePunches = useMemo(
+    () => (employeePunchesQuery.data ?? []) as EmployeePunch[],
+    [employeePunchesQuery.data]
+  );
+  const isLoading = employeePunchesQuery.isLoading;
+  const error = employeePunchesQuery.error;
 
   // Helper function to generate future punch records from scheduled shifts
   const generateFuturePunches = useCallback(
