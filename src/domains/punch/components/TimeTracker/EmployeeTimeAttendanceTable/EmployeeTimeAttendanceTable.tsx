@@ -46,7 +46,9 @@ import type { CalendarEvent, Mode } from '@/components/ui/Calendar';
 import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
 import { EmployeePunchDetailsModal } from '../EmployeePunchDetailsModal/EmployeePunchDetailsModal';
 import { MapModal } from '../MapModal/MapModal';
+import { ActiveEmployeesModal } from '../ActiveEmployeesModal';
 import { formatPhoneNumber } from '@/lib/utils';
+import { useActiveEmployeeCount, useActiveEmployees } from '@/domains/punch/hooks';
 
 interface EmployeePunch extends Record<string, unknown> {
   _id: string;
@@ -146,27 +148,6 @@ async function fetchEmployeePunches(
   return data.data as EmployeePunch[];
 }
 
-async function fetchActiveEmployeeCount(jobIds?: string[], shiftSlug?: string) {
-  const response = await fetch('/api/punches/employees/active-count', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      jobIds: jobIds && jobIds.length > 0 ? jobIds : undefined,
-      shiftSlug: shiftSlug && shiftSlug !== 'all' ? shiftSlug : undefined,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to fetch active employee count');
-  }
-
-  const data = await response.json();
-  return data.data.count as number;
-}
-
 export function EmployeeTimeAttendanceTable({
   startDate: propStartDate,
   endDate: propEndDate,
@@ -218,6 +199,9 @@ export function EmployeeTimeAttendanceTable({
 
   // Geofence modal state
   const [showGeofenceModal, setShowGeofenceModal] = useState(false);
+
+  // Active employees modal state
+  const [showActiveEmployeesModal, setShowActiveEmployeesModal] = useState(false);
 
   // Base date for navigation
   const [baseDate, setBaseDate] = useState(() => {
@@ -898,6 +882,20 @@ export function EmployeeTimeAttendanceTable({
     generateFuturePunches,
   ]);
 
+  // Fetch active employees list from API (used for modal and tooltip)
+  const activeEmployeesQuery = useActiveEmployees(
+    { jobIds: selectedJobIds, shiftSlug: selectedShiftSlug },
+    {
+      enabled: !companyLoading && !jobsLoading && availableJobs.length > 0 && selectedJobIds.length > 0,
+      refetchInterval: 120000,
+      staleTime: 60000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+    }
+  );
+  const activeClockedInEmployees = activeEmployeesQuery.data ?? [];
+  const activeEmployeesLoading = activeEmployeesQuery.isLoading;
+
   // Table data - filtered by search query and future timecards visibility
   const tableData = useMemo(() => {
     const punches = allEmployeePunches || [];
@@ -1284,20 +1282,23 @@ export function EmployeeTimeAttendanceTable({
   //   }
   // }, [isLoading, employeePunches?.length, dateRange.displayRange]);
 
-  // Fetch active employee count
-  const { data: activeCount, isLoading: activeCountLoading } = useQuery({
-    queryKey: ['activeEmployeeCount', selectedJobIdsKey, selectedShiftSlug],
-    queryFn: () => fetchActiveEmployeeCount(selectedJobIds, selectedShiftSlug),
-    enabled:
-      !companyLoading &&
-      !jobsLoading &&
-      availableJobs.length > 0 &&
-      selectedJobIds.length > 0,
-    refetchInterval: 120000, // ERROR-PROOF: Refetch every 2 minutes (reduced from 60 seconds to prevent rate limiting)
-    staleTime: 60000, // ERROR-PROOF: Consider data fresh for 1 minute (increased from 30 seconds)
-    refetchOnWindowFocus: false, // ERROR-PROOF: Don't refetch on window focus
-    refetchOnMount: false, // ERROR-PROOF: Don't refetch on remount
-  });
+  // Fetch active employee count (same pattern as useJobsWithShifts)
+  const activeCountQuery = useActiveEmployeeCount(
+    { jobIds: selectedJobIds, shiftSlug: selectedShiftSlug },
+    {
+      enabled:
+        !companyLoading &&
+        !jobsLoading &&
+        availableJobs.length > 0 &&
+        selectedJobIds.length > 0,
+      refetchInterval: 120000,
+      staleTime: 60000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+    }
+  );
+  const activeCount = activeCountQuery.data;
+  const activeCountLoading = activeCountQuery.isLoading;
 
   // Update baseDate and calendar mode when view type changes
   // ERROR-PROOF: Only update when viewType or weekStartsOn changes, not baseDate (to prevent infinite loops)
@@ -2499,38 +2500,80 @@ export function EmployeeTimeAttendanceTable({
           )}
 
           {/* Currently Clocked In Summary Card - full width on mobile so it doesn't overflow */}
-          <div className="flex item-center bg-teal-50 border border-teal-200 rounded-lg p-2 w-full min-w-0 sm:min-w-[240px] sm:w-auto">
-            <div className="flex items-center gap-4">
-              {/* Large teal circle with count */}
-              <div className="relative flex-shrink-0">
-                <div className="w-8 h-8 bg-appPrimary rounded-full flex items-center justify-center text-white text-xl font-bold shadow-sm">
-                  {activeCountLoading ? (
-                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    activeCount || 0
-                  )}
+          <span className="relative inline-flex group w-full min-w-0 sm:min-w-[240px] sm:w-auto">
+            <div 
+              className="flex item-center bg-teal-50 border border-teal-200 rounded-lg p-2 w-full cursor-pointer hover:bg-teal-100 transition-colors"
+              onClick={() => setShowActiveEmployeesModal(true)}
+            >
+              <div className="flex items-center gap-4">
+                {/* Large teal circle with count */}
+                <div className="relative flex-shrink-0">
+                  <div className="w-8 h-8 bg-appPrimary rounded-full flex items-center justify-center text-white text-xl font-bold shadow-sm">
+                    {activeCountLoading ? (
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      activeCount || 0
+                    )}
+                  </div>
+                  {/* Green status dot on top-right */}
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
                 </div>
-                {/* Green status dot on top-right */}
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
-              </div>
-              {/* Text content */}
-              <div className="flex-1">
-                <div className="text-[10px] font-medium text-gray-600 mb-1 uppercase tracking-wide">
-                  Currently Clocked In
-                </div>
-                <div className="text-xs font-semibold text-gray-900">
-                  {activeCountLoading ? (
-                    <span className="text-gray-400">Loading...</span>
-                  ) : (
-                    <>
-                      {activeCount || 0}{' '}
-                      {activeCount === 1 ? 'Employee' : 'Employees'}
-                    </>
-                  )}
+                {/* Text content */}
+                <div className="flex-1">
+                  <div className="text-[10px] font-medium text-gray-600 mb-1 uppercase tracking-wide">
+                    Currently Clocked In
+                  </div>
+                  <div className="text-xs font-semibold text-gray-900">
+                    {activeCountLoading ? (
+                      <span className="text-gray-400">Loading...</span>
+                    ) : (
+                      <>
+                        {activeCount || 0}{' '}
+                        {activeCount === 1 ? 'Employee' : 'Employees'}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+            {/* Tooltip: employee names with date and time (opens below card where there is more space) */}
+            {!activeCountLoading && !activeEmployeesLoading && activeClockedInEmployees.length > 0 && (
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 w-full max-w-[280px] -translate-x-1/2 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-left text-[11px] font-medium text-gray-900 shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+              >
+                <div className="mb-1 border-b border-gray-100 pb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-500">
+                  Currently clocked in
+                </div>
+                <ul className="space-y-1">
+                  {activeClockedInEmployees.slice(0, 6).map((punch) => {
+                    const name = punch.employeeName || `${punch.firstName ?? ''} ${punch.lastName ?? ''}`.trim() || '—';
+                    const timeIn = new Date(punch.timeIn);
+                    const dateTime = `${format(timeIn, 'MMM d')} at ${format(timeIn, 'h:mm a')}`;
+                    const shiftName = punch.shiftName?.trim() || null;
+                    return (
+                      <li key={punch._id} className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-medium text-gray-900 truncate" title={name}>
+                          {name}
+                        </span>
+                        <span className="text-[9px] text-gray-500">{dateTime}</span>
+                        {shiftName && (
+                          <span className="text-[9px] text-gray-400 truncate" title={shiftName}>
+                            {shiftName}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+                {activeClockedInEmployees.length > 6 && (
+                  <div className="mt-1 border-t border-gray-100 pt-1 text-[9px] text-gray-500">
+                    + {activeClockedInEmployees.length - 6} more
+                  </div>
+                )}
+              </span>
+            )}
+          </span>
         </div>
 
         {/* View Toggle Buttons and Controls */}
@@ -2780,6 +2823,15 @@ export function EmployeeTimeAttendanceTable({
           // Refetch data after successful update will be handled by queryClient
           // The modal component will handle the refetch
         }}
+      />
+
+      {/* Active Employees Modal */}
+      <ActiveEmployeesModal
+        isOpen={showActiveEmployeesModal}
+        onClose={() => setShowActiveEmployeesModal(false)}
+        employees={activeClockedInEmployees}
+        activeCount={activeCount}
+        isLoading={activeEmployeesLoading}
       />
 
       {/* Overflow Dropdown - Custom positioned */}
