@@ -18,18 +18,18 @@ export const punchQueryKeys = {
   allOpen: (userId: string) =>
     [...punchQueryKeys.all, 'allOpen', userId] as const,
   status: (id: string) => [...punchQueryKeys.all, 'status', id] as const,
-  /** Active employee count (Client time & attendance). Key includes jobIds + shiftSlug for cache separation. */
-  activeCount: (jobIdsKey: string, shiftSlug: string) =>
-    [...punchQueryKeys.all, 'activeCount', jobIdsKey, shiftSlug] as const,
-  /** Active employees list (Client time & attendance). Key includes jobIds + shiftSlug for cache separation. */
-  activeEmployees: (jobIdsKey: string, shiftSlug: string) =>
-    [...punchQueryKeys.all, 'activeEmployees', jobIdsKey, shiftSlug] as const,
-  /** Employee punches by date range (Client time & attendance). Key includes startDate, endDate, jobIds, shiftSlug. */
+  /** Active employee count (Client time & attendance). Key includes jobIds + shiftSlugsKey for cache separation. */
+  activeCount: (jobIdsKey: string, shiftSlugsKey: string) =>
+    [...punchQueryKeys.all, 'activeCount', jobIdsKey, shiftSlugsKey] as const,
+  /** Active employees list (Client time & attendance). Key includes jobIds + shiftSlugsKey for cache separation. */
+  activeEmployees: (jobIdsKey: string, shiftSlugsKey: string) =>
+    [...punchQueryKeys.all, 'activeEmployees', jobIdsKey, shiftSlugsKey] as const,
+  /** Employee punches by date range (Client time & attendance). Key includes startDate, endDate, jobIds, shiftSlugsKey. */
   employeePunches: (
     startDate: string,
     endDate: string,
     jobIdsKey: string,
-    shiftSlug: string
+    shiftSlugsKey: string
   ) =>
     [
       ...punchQueryKeys.all,
@@ -37,7 +37,7 @@ export const punchQueryKeys = {
       startDate,
       endDate,
       jobIdsKey,
-      shiftSlug,
+      shiftSlugsKey,
     ] as const,
 } as const;
 
