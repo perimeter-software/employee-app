@@ -8,7 +8,11 @@ import { format, isSameDay } from 'date-fns';
 import { useCalendarAutoScroll } from '../../hooks';
 import { clsxm } from '@/lib/utils';
 
-export default function CalendarBodyDay() {
+export default function CalendarBodyDay({
+  noHeaderSpacing = false,
+}: {
+  noHeaderSpacing?: boolean;
+}) {
   const { date, events, dayBadges } = useCalendarContext();
   const today = new Date();
   const isToday = isSameDay(date, today);
@@ -28,7 +32,12 @@ export default function CalendarBodyDay() {
   return (
     <div className="flex flex-col h-full">
       {/* Day header - sticky below calendar header */}
-      <div className="sticky top-[135px] z-40 flex bg-appPrimary text-white shadow-md border-b border-cyan-400">
+      <div
+        className={clsxm(
+          'sticky z-40 flex bg-appPrimary text-white shadow-md border-b border-cyan-400',
+          noHeaderSpacing ? 'top-0' : 'top-[135px]'
+        )}
+      >
         {/* Time column header */}
         <div className="hidden lg:block w-20 py-3 px-4 border-r border-cyan-400 flex-shrink-0"></div>
 

@@ -9,7 +9,11 @@ import { clsxm } from '@/lib/utils';
 // Time hours array - moved outside component to prevent recreation on every render
 const hours = Array.from({ length: 24 }, (_, i) => i);
 
-export default function CalendarBodyWeek() {
+export default function CalendarBodyWeek({
+  noHeaderSpacing = false,
+}: {
+  noHeaderSpacing?: boolean;
+}) {
   const { date, events, weekStartsOn = 0, dayBadges } = useCalendarContext();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -31,7 +35,12 @@ export default function CalendarBodyWeek() {
   return (
     <div className="flex flex-col h-full">
       {/* Week header - sticky below calendar header */}
-      <div className="sticky top-[135px] z-40 flex bg-appPrimary text-white shadow-md border-b border-cyan-400">
+      <div
+        className={clsxm(
+          'sticky z-40 flex bg-appPrimary text-white shadow-md border-b border-cyan-400',
+          noHeaderSpacing ? 'top-0' : 'top-[135px]'
+        )}
+      >
         {/* Time column header */}
         <div className="w-12 sm:w-16 xl:w-20 py-2 sm:py-3 px-1 sm:px-2 xl:px-4 border-r border-cyan-400 flex-shrink-0"></div>
 

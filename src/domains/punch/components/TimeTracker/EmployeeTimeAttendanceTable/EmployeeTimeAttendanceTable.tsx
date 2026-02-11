@@ -2672,60 +2672,61 @@ export function EmployeeTimeAttendanceTable({
             </div>
           )}
         </div>
+        <div
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto border border-gray-200 rounded-md"
+          style={{ height: 'calc(100vh - 36rem)', maxHeight: 'calc(100vh - 36rem)' }}
+        >
+          {/* Conditional rendering: Calendar or Table */}
+          {viewType === 'table' ? (
+            /* Table view */
+            <Table
+              title=""
+              description=""
+              columns={columns}
+              data={tableData}
+              showPagination={false}
+              selectable={false}
+              className="w-full"
+              emptyMessage="No employee time and attendance records found for the selected date range."
+              getRowClassName={(row) => {
+                // Check if this is a future punch by ID or time
+                const isFutureById = row._id?.startsWith('future-');
+                const timeInMs = new Date(row.timeIn).getTime();
+                const isFutureByTime = !Number.isNaN(timeInMs) && timeInMs > Date.now();
 
-        {/* Conditional rendering: Calendar or Table */}
-        {viewType === 'table' ? (
-          /* Table view */
-          <Table
-            title=""
-            description=""
-            columns={columns}
-            data={tableData}
-            showPagination={false}
-            selectable={false}
-            className="w-full"
-            emptyMessage="No employee time and attendance records found for the selected date range."
-            getRowClassName={(row) => {
-              // Check if this is a future punch by ID or time
-              const isFutureById = row._id?.startsWith('future-');
-              const timeInMs = new Date(row.timeIn).getTime();
-              const isFutureByTime = !Number.isNaN(timeInMs) && timeInMs > Date.now();
-              
-              if (isFutureById || isFutureByTime) {
-                // Light blue background to indicate upcoming shifts
-                return 'bg-blue-50 hover:bg-blue-100';
-              }
-              return '';
-            }}
-          />
-        ) : /* Calendar view (Month, Week, Day) */
-        companyLoading ? (
-          <div className="flex items-center justify-center min-h-[500px]">
-            <div className="text-gray-500">Loading calendar...</div>
-          </div>
-        ) : (
-          <CalendarProvider
-            events={events}
-            setEvents={setEvents}
-            mode={calendarMode}
-            setMode={setCalendarMode}
-            date={calendarDate}
-            setDate={setCalendarDate}
-            calendarIconIsToday={false}
-            weekStartsOn={weekStartsOn || 0}
-            dayBadges={dayBadges}
-            onOverflowClick={handleOverflowClick}
-          >
-            <CalendarEventHandler />
-            <div className="space-y-4">
-              <div className="border rounded-lg bg-white shadow-sm min-h-[500px]">
+                if (isFutureById || isFutureByTime) {
+                  // Light blue background to indicate upcoming shifts
+                  return 'bg-blue-50 hover:bg-blue-100';
+                }
+                return '';
+              }}
+            />
+          ) : companyLoading ? (
+            <div className="flex items-center justify-center min-h-[500px]">
+              <div className="text-gray-500">Loading calendar...</div>
+            </div>
+          ) : (
+            <CalendarProvider
+              events={events}
+              setEvents={setEvents}
+              mode={calendarMode}
+              setMode={setCalendarMode}
+              date={calendarDate}
+              setDate={setCalendarDate}
+              calendarIconIsToday={false}
+              weekStartsOn={weekStartsOn || 0}
+              dayBadges={dayBadges}
+              onOverflowClick={handleOverflowClick}
+            >
+              <CalendarEventHandler />
+              <div className="flex flex-col flex-1 h-full border rounded-lg bg-white shadow-sm">
                 <Calendar hideHeaderActions={true} hideHeaderDate={true} />
               </div>
-            </div>
-            {/* ModalCloseHandler must be inside CalendarProvider */}
-            <ModalCloseHandler />
-          </CalendarProvider>
-        )}
+              {/* ModalCloseHandler must be inside CalendarProvider */}
+              <ModalCloseHandler />
+            </CalendarProvider>
+          )}
+        </div>
       </div>
 
       {/* Employee Punch Details Modal */}

@@ -16,7 +16,11 @@ import type { CalendarEvent as CalendarEventType } from '../../../Calendar/types
 import CalendarEvent from '../../CalendarEvent';
 import { getDayNamesFromWeekStartsOn } from '@/lib/utils/date-utils';
 
-export default function CalendarBodyMonth() {
+export default function CalendarBodyMonth({
+  noHeaderSpacing = false,
+}: {
+  noHeaderSpacing?: boolean;
+}) {
   const { date, events, setDate, setMode, onOverflowClick, dayBadges } = useCalendarContext();
 
   // Get weekStartsOn from context, default to Sunday
@@ -54,7 +58,10 @@ export default function CalendarBodyMonth() {
     <div className="flex flex-col">
       {/* Week days header - sticky below calendar header */}
       <div
-        className="grid grid-cols-7 bg-appPrimary text-white sticky top-[135px] z-40 shadow-md border-b border-cyan-400"
+        className={clsxm(
+          'grid grid-cols-7 bg-appPrimary text-white sticky z-40 shadow-md border-b border-cyan-400',
+          noHeaderSpacing ? 'top-0' : 'top-[135px]'
+        )}
       >
         {getDayNamesFromWeekStartsOn(weekStartsOn).map((day) => (
           <div
