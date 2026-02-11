@@ -313,13 +313,7 @@ export function EmployeeTimeAttendanceTable({
     return [];
   }, [selectedJobId, selectedJob, jobShifts]);
 
-  // Get selected job IDs for filtering - use stable string key for query
-  const selectedJobIds = useMemo(() => {
-    if (selectedJobId === 'all') {
-      return availableJobs.map((job) => job._id);
-    }
-    return [selectedJobId];
-  }, [selectedJobId, availableJobs]);
+  // NOTE: selectedJobIds and selectedShiftSlugs moved below after groupedJobs and groupedShifts are defined
 
   // Calculate date range based on view type
   // ERROR-PROOF: Ensures consistent date normalization matching backend expectations
@@ -468,37 +462,9 @@ export function EmployeeTimeAttendanceTable({
     tableRange,
     weekStartsOn,
   ]);
+  
 
-  // Fetch employee punches by date range (same pattern as useJobsWithShifts / useActiveEmployees)
-  const employeePunchesQuery = useEmployeePunches(
-    {
-      startDate: dateRange.startDate,
-      endDate: dateRange.endDate,
-      jobIds: selectedJobIds,
-      shiftSlug: selectedShiftSlug,
-    },
-    {
-      enabled:
-        !companyLoading &&
-        !jobsLoading &&
-        availableJobs.length > 0 &&
-        selectedJobIds.length > 0 &&
-        !!dateRange.startDate &&
-        !!dateRange.endDate,
-      staleTime: 120000,
-      gcTime: 300000,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
-      refetchOnMount: false,
-    }
-  );
-  const employeePunches = useMemo(
-    () => (employeePunchesQuery.data ?? []) as EmployeePunch[],
-    [employeePunchesQuery.data]
-  );
-  const isLoading = employeePunchesQuery.isLoading;
-  const isFetching = employeePunchesQuery.isFetching;
-  const error = employeePunchesQuery.error;
+  // NOTE: employeePunchesQuery moved below after selectedJobIds and selectedShiftSlugs are defined
 
   // Helper function to generate future punch records from scheduled shifts
   const generateFuturePunches = useCallback(
@@ -506,7 +472,7 @@ export function EmployeeTimeAttendanceTable({
       jobs: GignologyJob[],
       startDate: Date,
       endDate: Date,
-      selectedShiftSlug?: string
+      selectedShiftSlugs?: string[]
     ): EmployeePunch[] => {
       const futurePunches: EmployeePunch[] = [];
       const now = Date.now();
@@ -539,8 +505,8 @@ export function EmployeeTimeAttendanceTable({
             if (!job.shifts || job.shifts.length === 0) return;
 
             job.shifts.forEach((shift) => {
-              // Filter by selected shift if specified
-              if (selectedShiftSlug && selectedShiftSlug !== 'all' && shift.slug !== selectedShiftSlug) {
+              // Filter by selected shift(s) if specified
+              if (selectedShiftSlugs && selectedShiftSlugs.length > 0 && !selectedShiftSlugs.includes(shift.slug)) {
                 return;
               }
 
@@ -739,206 +705,11 @@ export function EmployeeTimeAttendanceTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedJobId, availableJobs, jobShiftsKey, jobShifts.length]);
 
-  // Merge actual punches with future punches
-  const allEmployeePunches = useMemo(() => {
-    const actualPunches = employeePunches || [];
-    const startDate = new Date(dateRange.startDate);
-    const endDate = new Date(dateRange.endDate);
-
-    // Generate future punches from scheduled shifts using jobs with full shift data
-    const futurePunches = generateFuturePunches(
-      jobsWithFullShiftData,
-      startDate,
-      endDate,
-      selectedShiftSlug
-    );
-
-    // TEMPORARY DEBUG: Log to understand what's happening
-    if (process.env.NODE_ENV === 'development' && futurePunches.length === 0 && jobsWithFullShiftData.length > 0) {
-      console.log('[Future Punches Debug]', {
-        jobsCount: jobsWithFullShiftData.length,
-        jobs: jobsWithFullShiftData.map(j => ({
-          id: j._id,
-          title: j.title,
-          shiftsCount: j.shifts?.length || 0,
-          shifts: j.shifts?.map(s => ({
-            slug: s.slug,
-            shiftName: s.shiftName,
-            hasDefaultSchedule: !!s.defaultSchedule,
-            hasShiftRoster: !!s.shiftRoster,
-            shiftRosterLength: s.shiftRoster?.length || 0,
-            defaultScheduleKeys: s.defaultSchedule ? Object.keys(s.defaultSchedule) : [],
-          })) || [],
-        })),
-        dateRange: {
-          start: startDate.toISOString(),
-          end: endDate.toISOString(),
-        },
-        selectedShiftSlug,
-      });
-    }
-
-    // Merge and deduplicate (future punches should not duplicate actual punches)
-    const merged = [...actualPunches, ...futurePunches];
-
-    // Remove duplicates based on employee, job, shift, and date
-    const unique = merged.reduce((acc, punch) => {
-      const key = `${punch.userId || punch.applicantId}-${punch.jobId}-${punch.shiftSlug}-${format(new Date(punch.timeIn), 'yyyy-MM-dd')}`;
-      if (!acc.has(key)) {
-        acc.set(key, punch);
-      } else {
-        // Prefer actual punch over future punch
-        const existing = acc.get(key);
-        if (punch._id && !punch._id.startsWith('future-') && existing?._id?.startsWith('future-')) {
-          acc.set(key, punch);
-        }
-      }
-      return acc;
-    }, new Map<string, EmployeePunch>());
-
-    return Array.from(unique.values());
-  }, [
-    employeePunches,
-    jobsWithFullShiftData,
-    dateRange.startDate,
-    dateRange.endDate,
-    selectedShiftSlug,
-    generateFuturePunches,
-  ]);
-
-  // Fetch active employees list from API (used for modal and tooltip)
-  const activeEmployeesQuery = useActiveEmployees(
-    { jobIds: selectedJobIds, shiftSlug: selectedShiftSlug },
-    {
-      enabled: !companyLoading && !jobsLoading && availableJobs.length > 0 && selectedJobIds.length > 0,
-      refetchInterval: 120000,
-      staleTime: 60000,
-      refetchOnWindowFocus: false,
-      refetchOnMount: false,
-    }
-  );
-  const activeClockedInEmployees = activeEmployeesQuery.data ?? [];
-  const activeEmployeesLoading = activeEmployeesQuery.isLoading;
-
-  // Table data - filtered by search query
-  const tableData = useMemo(() => {
-    const punches = allEmployeePunches || [];
-    if (viewType !== 'table') return punches;
-
-    // Filter by employee search query (first name, last name, email)
-    if (!employeeSearchQuery.trim()) return punches;
-    const searchLower = employeeSearchQuery.toLowerCase().trim();
-    return punches.filter((punch) => {
-      const firstName = (punch.firstName || '').toLowerCase();
-      const lastName = (punch.lastName || '').toLowerCase();
-      const employeeName = (punch.employeeName || '').toLowerCase();
-      const email = (punch.employeeEmail || '').toLowerCase();
-      return (
-        firstName.includes(searchLower) ||
-        lastName.includes(searchLower) ||
-        employeeName.includes(searchLower) ||
-        email.includes(searchLower)
-      );
-    });
-  }, [allEmployeePunches, viewType, employeeSearchQuery]);
-
-  // Get unique shift slugs from actual punches in the date range
-  // ERROR-PROOF: Only show shifts that have data in the current date range
-  // NOTE: We extract this from the main employeePunches query to avoid duplicate API calls
-  // This must be AFTER employeePunches is defined
-  const availableShiftSlugs = useMemo(() => {
-    // When "all" shifts is selected, we can extract shift slugs from the current data
-    // This avoids making a separate API call just to get shift slugs
-    if (!allEmployeePunches || allEmployeePunches.length === 0) {
-      return new Set<string>();
-    }
-    // Extract unique shift slugs from punches (including future punches)
-    const shiftSlugs = allEmployeePunches
-      .map((punch) => punch.shiftSlug)
-      .filter((slug): slug is string => !!slug && slug !== 'all');
-    return new Set(shiftSlugs);
-  }, [allEmployeePunches]);
-
-  // Get all available shifts for the dropdown
-  // Always show all shifts from the job, regardless of current filter
-  // This ensures users can always see and select all shifts, even when a specific shift is selected
-  // NOTE: This must be AFTER availableShiftSlugs is defined
-  const availableShifts = useMemo(() => {
-    if (selectedJobId === 'all') {
-      return [];
-    }
-
-    // Always start with all shifts from the job
-    // This ensures all shifts are always visible in the dropdown
-    const baseShifts = [...allAvailableShifts];
-
-    // If we have punches, check for virtual shifts (deleted/missing shifts that appear in punches)
-    // Use employeePunches instead of allEmployeePunches to avoid circular dependency
-    if (availableShiftSlugs.size > 0 && employeePunches) {
-      // Find shift slugs from punches that don't exist in the job's shifts
-      const missingShiftSlugs = Array.from(availableShiftSlugs).filter(
-        (slug) => !allAvailableShifts.some((shift) => shift.slug === slug)
-      );
-
-      // Create virtual shifts for deleted/missing shifts using data from punches
-      const virtualShifts: Shift[] = missingShiftSlugs.map((slug) => {
-        // Find a punch with this slug to get the shiftName
-        const punchWithShift = employeePunches.find(
-          (p) => p.shiftSlug === slug
-        );
-
-        // Use shiftName from punch if available, otherwise format the slug
-        let shiftName = punchWithShift?.shiftName;
-        if (!shiftName && slug) {
-          // Format slug: remove timestamp and random suffix, then format nicely
-          shiftName = slug
-            .replace(/-\d{13}-[a-z0-9]+$/i, '') // Remove timestamp and random suffix
-            .split('-')
-            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
-        }
-
-        // Create empty default schedule with all days
-        const emptySchedule = {
-          monday: { start: '', end: '', roster: [] },
-          tuesday: { start: '', end: '', roster: [] },
-          wednesday: { start: '', end: '', roster: [] },
-          thursday: { start: '', end: '', roster: [] },
-          friday: { start: '', end: '', roster: [] },
-          saturday: { start: '', end: '', roster: [] },
-          sunday: { start: '', end: '', roster: [] },
-        };
-
-        return {
-          slug,
-          shiftName: shiftName || slug,
-          shiftStartDate: '',
-          shiftEndDate: '',
-          defaultSchedule: emptySchedule,
-          billRate: 0,
-          payRate: 0,
-          shiftRoster: [],
-          exceptions: [],
-        } as Shift;
-      });
-
-      // Combine base shifts with virtual shifts
-      const allShifts = [...baseShifts, ...virtualShifts];
-
-      // Removed debug logging to prevent infinite loops
-
-      return allShifts;
-    }
-
-    // If no punches yet, show all shifts (they might have data we haven't loaded)
-    return baseShifts;
-  }, [selectedJobId, allAvailableShifts, availableShiftSlugs, employeePunches]);
-
-  // Create stable key for availableShifts to prevent infinite loops
-  const availableShiftsKey = useMemo(() => {
-    if (!availableShifts || availableShifts.length === 0) return '';
-    return availableShifts.map(s => s.slug).sort().join(',');
-  }, [availableShifts]);
+  // Base shifts from job only (no virtual shifts) - used for grouping so we can define query/employeePunches/allEmployeePunches before tableData/availableShiftSlugs/availableShifts
+  const availableShiftsBase: Shift[] = useMemo(() => {
+    if (selectedJobId === 'all') return [];
+    return [...allAvailableShifts];
+  }, [selectedJobId, allAvailableShifts]);
 
   // Group jobs/shifts by time context; todayStart updates when calendar date changes (avoids stale "Today" after midnight)
   const todayDateKey = format(new Date(), 'yyyy-MM-dd');
@@ -1057,7 +828,7 @@ export function EmployeeTimeAttendanceTable({
     const upcomingForFilter: Shift[] = [];
     const past: Shift[] = [];
 
-    for (const shift of availableShifts) {
+    for (const shift of availableShiftsBase) {
       const startStr = shift.shiftStartDate;
       const endStr = shift.shiftEndDate;
       if (!startStr || !endStr) {
@@ -1106,7 +877,45 @@ export function EmployeeTimeAttendanceTable({
       }
     });
     return { today, upcomingOnly, upcomingForFilter, past };
-  }, [availableShifts, todayStart]);
+  }, [availableShiftsBase, todayStart]);
+
+  // Get selected job IDs for filtering - respects jobFilter (today/upcoming/past)
+  const selectedJobIds = useMemo(() => {
+    if (selectedJobId === 'all') {
+      // Filter based on jobFilter (today/upcoming/past)
+      if (jobFilter === 'today') {
+        return groupedJobs.today.map((job) => job._id);
+      } else if (jobFilter === 'upcoming') {
+        return groupedJobs.upcomingForFilter.map((job) => job._id);
+      } else if (jobFilter === 'past') {
+        return groupedJobs.past.map((job) => job._id);
+      }
+      // jobFilter === 'all'
+      return availableJobs.map((job) => job._id);
+    }
+    return [selectedJobId];
+  }, [selectedJobId, availableJobs, jobFilter, groupedJobs.today, groupedJobs.upcomingForFilter, groupedJobs.past]);
+
+  // Get selected shift slugs for filtering - respects shiftFilter (today/upcoming/past)
+  const selectedShiftSlugs: string[] = useMemo(() => {
+    if (selectedShiftSlug === 'all' && selectedJobId !== 'all') {
+      // Filter based on shiftFilter (today/upcoming/past) when a job is selected
+      if (shiftFilter === 'today') {
+        return groupedShifts.today.map((shift: Shift) => shift.slug);
+      } else if (shiftFilter === 'upcoming') {
+        return groupedShifts.upcomingForFilter.map((shift: Shift) => shift.slug);
+      } else if (shiftFilter === 'past') {
+        return groupedShifts.past.map((shift: Shift) => shift.slug);
+      }
+      // shiftFilter === 'all'
+      return availableShiftsBase.map((shift: Shift) => shift.slug);
+    }
+    // When a specific shift is selected or no job is selected, return single slug or empty array
+    if (selectedShiftSlug === 'all') {
+      return [];
+    }
+    return [selectedShiftSlug];
+  }, [selectedShiftSlug, selectedJobId, shiftFilter, groupedShifts.today, groupedShifts.upcomingForFilter, groupedShifts.past, availableShiftsBase]);
 
   // Date context label for a shift (for secondary line in dropdown)
   const getShiftDateContext = useCallback((shift: Shift): string => {
@@ -1127,6 +936,208 @@ export function EmployeeTimeAttendanceTable({
     if (isAfter(shiftStartDay, todayStart)) return `Starts ${format(start, 'MMM d')}`;
     return `Ended ${format(end, 'MMM d')}`;
   }, [todayStart]);
+
+  // Fetch employee punches by date range (same pattern as useJobsWithShifts / useActiveEmployees)
+  const employeePunchesQuery = useEmployeePunches(
+    {
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+      jobIds: selectedJobIds,
+      shiftSlugs: selectedShiftSlugs,
+    },
+    {
+      enabled:
+        !companyLoading &&
+        !jobsLoading &&
+        availableJobs.length > 0 &&
+        selectedJobIds.length > 0 &&
+        !!dateRange.startDate &&
+        !!dateRange.endDate,
+      staleTime: 120000,
+      gcTime: 300000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+    }
+  );
+  const employeePunches = useMemo(
+    () => (employeePunchesQuery.data ?? []) as EmployeePunch[],
+    [employeePunchesQuery.data]
+  );
+  const isLoading = employeePunchesQuery.isLoading;
+  const isFetching = employeePunchesQuery.isFetching;
+  const error = employeePunchesQuery.error;
+
+  // Merge actual punches with future punches
+  const allEmployeePunches: EmployeePunch[] = useMemo(() => {
+    const actualPunches = employeePunches || [];
+    const startDate = new Date(dateRange.startDate);
+    const endDate = new Date(dateRange.endDate);
+
+    // Generate future punches from scheduled shifts using jobs with full shift data
+    const futurePunches = generateFuturePunches(
+      jobsWithFullShiftData,
+      startDate,
+      endDate,
+      selectedShiftSlugs
+    );
+
+    // TEMPORARY DEBUG: Log to understand what's happening
+    if (process.env.NODE_ENV === 'development' && futurePunches.length === 0 && jobsWithFullShiftData.length > 0) {
+      console.log('[Future Punches Debug]', {
+        jobsCount: jobsWithFullShiftData.length,
+        jobs: jobsWithFullShiftData.map(j => ({
+          id: j._id,
+          title: j.title,
+          shiftsCount: j.shifts?.length || 0,
+          shifts: j.shifts?.map(s => ({
+            slug: s.slug,
+            shiftName: s.shiftName,
+            hasDefaultSchedule: !!s.defaultSchedule,
+            hasShiftRoster: !!s.shiftRoster,
+            shiftRosterLength: s.shiftRoster?.length || 0,
+            defaultScheduleKeys: s.defaultSchedule ? Object.keys(s.defaultSchedule) : [],
+          })) || [],
+        })),
+        dateRange: {
+          start: startDate.toISOString(),
+          end: endDate.toISOString(),
+        },
+        selectedShiftSlugs,
+      });
+    }
+
+    // Merge and deduplicate (future punches should not duplicate actual punches)
+    const merged = [...actualPunches, ...futurePunches];
+
+    // Remove duplicates based on employee, job, shift, and date
+    const unique = merged.reduce((acc, punch) => {
+      const key = `${punch.userId || punch.applicantId}-${punch.jobId}-${punch.shiftSlug}-${format(new Date(punch.timeIn), 'yyyy-MM-dd')}`;
+      if (!acc.has(key)) {
+        acc.set(key, punch);
+      } else {
+        // Prefer actual punch over future punch
+        const existing = acc.get(key);
+        if (punch._id && !punch._id.startsWith('future-') && existing?._id?.startsWith('future-')) {
+          acc.set(key, punch);
+        }
+      }
+      return acc;
+    }, new Map<string, EmployeePunch>());
+
+    return Array.from(unique.values());
+  }, [
+    employeePunches,
+    jobsWithFullShiftData,
+    dateRange.startDate,
+    dateRange.endDate,
+    selectedShiftSlugs,
+    generateFuturePunches,
+  ]);
+
+  // Fetch active employees list from API (used for modal and tooltip)
+  const activeEmployeesQuery = useActiveEmployees(
+    { jobIds: selectedJobIds, shiftSlugs: selectedShiftSlugs },
+    {
+      enabled: !companyLoading && !jobsLoading && availableJobs.length > 0 && selectedJobIds.length > 0,
+      refetchInterval: 120000,
+      staleTime: 60000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+    }
+  );
+  const activeClockedInEmployees = activeEmployeesQuery.data ?? [];
+  const activeEmployeesLoading = activeEmployeesQuery.isLoading;
+
+  // Table data - filtered by search query (after allEmployeePunches to avoid "used before declaration")
+  const tableData: EmployeePunch[] = useMemo(() => {
+    const punches = allEmployeePunches || [];
+    if (viewType !== 'table') return punches;
+
+    // Filter by employee search query (first name, last name, email)
+    if (!employeeSearchQuery.trim()) return punches;
+    const searchLower = employeeSearchQuery.toLowerCase().trim();
+    return punches.filter((punch: EmployeePunch) => {
+      const firstName = (punch.firstName || '').toLowerCase();
+      const lastName = (punch.lastName || '').toLowerCase();
+      const employeeName = (punch.employeeName || '').toLowerCase();
+      const email = (punch.employeeEmail || '').toLowerCase();
+      return (
+        firstName.includes(searchLower) ||
+        lastName.includes(searchLower) ||
+        employeeName.includes(searchLower) ||
+        email.includes(searchLower)
+      );
+    });
+  }, [allEmployeePunches, viewType, employeeSearchQuery]);
+
+  // Get unique shift slugs from actual punches in the date range (after allEmployeePunches)
+  const availableShiftSlugs: Set<string> = useMemo(() => {
+    if (!allEmployeePunches || allEmployeePunches.length === 0) {
+      return new Set<string>();
+    }
+    const shiftSlugs: string[] = allEmployeePunches
+      .map((punch: EmployeePunch) => punch.shiftSlug)
+      .filter((slug: string | undefined): slug is string => !!slug && slug !== 'all');
+    return new Set(shiftSlugs);
+  }, [allEmployeePunches]);
+
+  // Get all available shifts for the dropdown (base + virtual from punches); after employeePunches and availableShiftSlugs
+  const availableShifts: Shift[] = useMemo(() => {
+    if (selectedJobId === 'all') {
+      return [];
+    }
+    const baseShifts = [...allAvailableShifts];
+
+    if (availableShiftSlugs.size > 0 && employeePunches) {
+      const missingShiftSlugs = Array.from(availableShiftSlugs).filter(
+        (slug: string) => !allAvailableShifts.some((shift: Shift) => shift.slug === slug)
+      );
+
+      const virtualShifts: Shift[] = missingShiftSlugs.map((slug: string) => {
+        const punchWithShift = employeePunches.find(
+          (p: EmployeePunch) => p.shiftSlug === slug
+        );
+        let shiftName: string | null | undefined = punchWithShift?.shiftName;
+        if (!shiftName && slug) {
+          shiftName = String(slug)
+            .replace(/-\d{13}-[a-z0-9]+$/i, '')
+            .split('-')
+            .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+        }
+        const emptySchedule = {
+          monday: { start: '', end: '', roster: [] },
+          tuesday: { start: '', end: '', roster: [] },
+          wednesday: { start: '', end: '', roster: [] },
+          thursday: { start: '', end: '', roster: [] },
+          friday: { start: '', end: '', roster: [] },
+          saturday: { start: '', end: '', roster: [] },
+          sunday: { start: '', end: '', roster: [] },
+        };
+        return {
+          slug,
+          shiftName: shiftName || slug,
+          shiftStartDate: '',
+          shiftEndDate: '',
+          defaultSchedule: emptySchedule,
+          billRate: 0,
+          payRate: 0,
+          shiftRoster: [],
+          exceptions: [],
+        } as Shift;
+      });
+
+      return [...baseShifts, ...virtualShifts];
+    }
+    return baseShifts;
+  }, [selectedJobId, allAvailableShifts, availableShiftSlugs, employeePunches]);
+
+  // Create stable key for availableShifts to prevent infinite loops
+  const availableShiftsKey = useMemo(() => {
+    if (!availableShifts || availableShifts.length === 0) return '';
+    return availableShifts.map((s: Shift) => s.slug).sort().join(',');
+  }, [availableShifts]);
 
   // Reset shift filter when job changes
   useEffect(() => {
@@ -1192,7 +1203,7 @@ export function EmployeeTimeAttendanceTable({
 
   // Fetch active employee count (same pattern as useJobsWithShifts)
   const activeCountQuery = useActiveEmployeeCount(
-    { jobIds: selectedJobIds, shiftSlug: selectedShiftSlug },
+    { jobIds: selectedJobIds, shiftSlugs: selectedShiftSlugs },
     {
       enabled:
         !companyLoading &&
@@ -2122,7 +2133,13 @@ export function EmployeeTimeAttendanceTable({
                   placeholder="Select a job"
                   displayText={
                     selectedJobId === 'all'
-                      ? 'All Jobs'
+                      ? jobFilter === 'all'
+                        ? 'All Jobs'
+                        : jobFilter === 'today'
+                          ? "All Today's Jobs"
+                          : jobFilter === 'upcoming'
+                            ? 'All Upcoming Jobs'
+                            : 'All Past Jobs'
                       : availableJobs.find((job) => job._id === selectedJobId)
                             ?.title
                         ? (() => {
@@ -2139,7 +2156,15 @@ export function EmployeeTimeAttendanceTable({
                 />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Jobs</SelectItem>
+                <SelectItem value="all">
+                  {jobFilter === 'all'
+                    ? 'All Jobs'
+                    : jobFilter === 'today'
+                      ? "All Today's Jobs"
+                      : jobFilter === 'upcoming'
+                        ? 'All Upcoming Jobs'
+                        : 'All Past Jobs'}
+                </SelectItem>
                 {jobFilter === 'all' && (
                   <>
                     {groupedJobs.today.length > 0 && (
@@ -2288,7 +2313,13 @@ export function EmployeeTimeAttendanceTable({
                       }
                       displayText={
                         selectedShiftSlug === 'all'
-                          ? 'All Shifts'
+                          ? shiftFilter === 'all'
+                            ? 'All Shifts'
+                            : shiftFilter === 'today'
+                              ? "All Today's Shifts"
+                              : shiftFilter === 'upcoming'
+                                ? 'All Upcoming Shifts'
+                                : 'All Past Shifts'
                           : availableShifts.find(
                                 (shift) => shift.slug === selectedShiftSlug
                               )?.shiftName
@@ -2310,7 +2341,15 @@ export function EmployeeTimeAttendanceTable({
                     />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Shifts</SelectItem>
+                    <SelectItem value="all">
+                      {shiftFilter === 'all'
+                        ? 'All Shifts'
+                        : shiftFilter === 'today'
+                          ? "All Today's Shifts"
+                          : shiftFilter === 'upcoming'
+                            ? 'All Upcoming Shifts'
+                            : 'All Past Shifts'}
+                    </SelectItem>
                     {shiftFilter === 'all' && (
                       <>
                         {groupedShifts.today.length > 0 && (
@@ -2777,7 +2816,14 @@ export function EmployeeTimeAttendanceTable({
 
           {/* Conditional rendering: Calendar or Table */}
           {viewType === 'table' ? (
-            /* Table view */
+            isLoading ? (
+              <div className="flex items-center justify-center min-h-[400px]">
+                <div className="flex flex-col items-center gap-3 text-gray-500">
+                  <div className="h-8 w-8 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm">Loading time and attendance...</span>
+                </div>
+              </div>
+            ) : (
             <Table
               title=""
               description=""
@@ -2800,6 +2846,7 @@ export function EmployeeTimeAttendanceTable({
                 return '';
               }}
             />
+            )
           ) : companyLoading ? (
             <div className="flex items-center justify-center min-h-[500px]">
               <div className="text-gray-500">Loading calendar...</div>

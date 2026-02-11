@@ -311,9 +311,14 @@ export class ActiveEmployeesService {
     params: ActiveEmployeesParams = {}
   ): Promise<number> {
     try {
+      const normalizedShiftSlugs =
+        params.shiftSlugs && params.shiftSlugs.length > 0
+          ? params.shiftSlugs.filter((s) => s && s.trim() !== '')
+          : undefined;
+
       const body = {
         jobIds: params.jobIds && params.jobIds.length > 0 ? params.jobIds : undefined,
-        shiftSlug: params.shiftSlug && params.shiftSlug !== 'all' ? params.shiftSlug : undefined,
+        shiftSlugs: normalizedShiftSlugs,
         includeList: false,
       };
       const response = await baseInstance.post<ActiveEmployeeCountResponse>(
@@ -339,9 +344,14 @@ export class ActiveEmployeesService {
     params: ActiveEmployeesParams = {}
   ): Promise<ActiveEmployeeRow[]> {
     try {
+      const normalizedShiftSlugs =
+        params.shiftSlugs && params.shiftSlugs.length > 0
+          ? params.shiftSlugs.filter((s) => s && s.trim() !== '')
+          : undefined;
+
       const body = {
         jobIds: params.jobIds && params.jobIds.length > 0 ? params.jobIds : undefined,
-        shiftSlug: params.shiftSlug && params.shiftSlug !== 'all' ? params.shiftSlug : undefined,
+        shiftSlugs: normalizedShiftSlugs,
         includeList: true,
       };
       const response = await baseInstance.post<ActiveEmployeesListResponse>(
@@ -373,11 +383,9 @@ export class EmployeePunchesService {
     params: EmployeePunchesParams
   ): Promise<Record<string, unknown>[]> {
     try {
-      const normalizedShiftSlug =
-        params.shiftSlug &&
-        params.shiftSlug !== 'all' &&
-        params.shiftSlug.trim() !== ''
-          ? params.shiftSlug.trim()
+      const normalizedShiftSlugs =
+        params.shiftSlugs && params.shiftSlugs.length > 0
+          ? params.shiftSlugs.filter((s) => s && s.trim() !== '')
           : undefined;
 
       const body = {
@@ -385,7 +393,7 @@ export class EmployeePunchesService {
         endDate: params.endDate,
         jobIds:
           params.jobIds && params.jobIds.length > 0 ? params.jobIds : undefined,
-        shiftSlug: normalizedShiftSlug,
+        shiftSlugs: normalizedShiftSlugs,
       };
 
       const response = await baseInstance.post<Record<string, unknown>[]>(

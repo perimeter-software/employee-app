@@ -19,10 +19,10 @@ export function useActiveEmployeeCount(
   options?: UseActiveEmployeeCountOptions
 ) {
   const jobIdsKey = params.jobIds?.slice().sort().join(',') ?? '';
-  const shiftSlug = params.shiftSlug ?? 'all';
+  const shiftSlugsKey = params.shiftSlugs?.slice().sort().join(',') ?? '';
 
   return useQuery({
-    queryKey: punchQueryKeys.activeCount(jobIdsKey, shiftSlug),
+    queryKey: punchQueryKeys.activeCount(jobIdsKey, shiftSlugsKey),
     queryFn: () => ActiveEmployeesService.getActiveCount(params),
     enabled: options?.enabled ?? true,
     staleTime: options?.staleTime ?? 60 * 1000, // 1 minute
