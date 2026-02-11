@@ -125,9 +125,6 @@ export function EmployeeTimeAttendanceTable({
   // Employee search state
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState<string>('');
 
-  // Future timecards visibility state
-  const [showFutureTimecards, setShowFutureTimecards] = useState<boolean>(true);
-
   // Geofence modal state
   const [showGeofenceModal, setShowGeofenceModal] = useState(false);
 
@@ -495,6 +492,7 @@ export function EmployeeTimeAttendanceTable({
     [employeePunchesQuery.data]
   );
   const isLoading = employeePunchesQuery.isLoading;
+  const isFetching = employeePunchesQuery.isFetching;
   const error = employeePunchesQuery.error;
 
   // Helper function to generate future punch records from scheduled shifts
@@ -817,43 +815,27 @@ export function EmployeeTimeAttendanceTable({
   const activeClockedInEmployees = activeEmployeesQuery.data ?? [];
   const activeEmployeesLoading = activeEmployeesQuery.isLoading;
 
-  // Table data - filtered by search query and future timecards visibility
+  // Table data - filtered by search query
   const tableData = useMemo(() => {
     const punches = allEmployeePunches || [];
     if (viewType !== 'table') return punches;
-    
-    let filtered = punches;
 
     // Filter by employee search query (first name, last name, email)
-    if (employeeSearchQuery.trim()) {
-      const searchLower = employeeSearchQuery.toLowerCase().trim();
-      filtered = filtered.filter((punch) => {
-        const firstName = (punch.firstName || '').toLowerCase();
-        const lastName = (punch.lastName || '').toLowerCase();
-        const employeeName = (punch.employeeName || '').toLowerCase();
-        const email = (punch.employeeEmail || '').toLowerCase();
-        
-        return (
-          firstName.includes(searchLower) ||
-          lastName.includes(searchLower) ||
-          employeeName.includes(searchLower) ||
-          email.includes(searchLower)
-        );
-      });
-    }
-
-    // Filter by future timecards visibility
-    if (!showFutureTimecards) {
-      filtered = filtered.filter((punch) => {
-        const isFutureById = punch._id?.startsWith('future-');
-        const timeInMs = new Date(punch.timeIn).getTime();
-        const isFutureByTime = !Number.isNaN(timeInMs) && timeInMs > Date.now();
-        return !isFutureById && !isFutureByTime;
-      });
-    }
-
-    return filtered;
-  }, [allEmployeePunches, viewType, employeeSearchQuery, showFutureTimecards]);
+    if (!employeeSearchQuery.trim()) return punches;
+    const searchLower = employeeSearchQuery.toLowerCase().trim();
+    return punches.filter((punch) => {
+      const firstName = (punch.firstName || '').toLowerCase();
+      const lastName = (punch.lastName || '').toLowerCase();
+      const employeeName = (punch.employeeName || '').toLowerCase();
+      const email = (punch.employeeEmail || '').toLowerCase();
+      return (
+        firstName.includes(searchLower) ||
+        lastName.includes(searchLower) ||
+        employeeName.includes(searchLower) ||
+        email.includes(searchLower)
+      );
+    });
+  }, [allEmployeePunches, viewType, employeeSearchQuery]);
 
   // Get unique shift slugs from actual punches in the date range
   // ERROR-PROOF: Only show shifts that have data in the current date range
@@ -1418,16 +1400,6 @@ export function EmployeeTimeAttendanceTable({
     primaryCompany?.imageUrl, // Use primitive instead of object
   ]);
 
-  // Filter out future events if showFutureTimecards is false
-  const filteredCalendarEvents = useMemo(() => {
-    if (showFutureTimecards) return calendarEvents;
-    const now = Date.now();
-    return calendarEvents.filter((event) => {
-      const eventStart = new Date(event.start).getTime();
-      return eventStart <= now;
-    });
-  }, [calendarEvents, showFutureTimecards]);
-
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedPunch, setSelectedPunch] = useState<EmployeePunch | null>(
     null
@@ -1479,22 +1451,15 @@ export function EmployeeTimeAttendanceTable({
       .join(',');
   }, [allEmployeePunches]);
 
-  // Update calendar events when they actually change (detected by stable key or filter change)
+  // Update calendar events when they actually change (detected by stable key)
   const prevEventsKeyRef = useRef<string>('');
-  const prevFilterRef = useRef<boolean>(showFutureTimecards);
   useEffect(() => {
-    // Update events when key changes or filter changes (filteredCalendarEvents from closure is latest for this run)
     const keyChanged = calendarEventsKey !== prevEventsKeyRef.current;
-    const filterChanged = showFutureTimecards !== prevFilterRef.current;
-    
-    if (keyChanged || filterChanged) {
+    if (keyChanged) {
       prevEventsKeyRef.current = calendarEventsKey;
-      prevFilterRef.current = showFutureTimecards;
-      setEvents(filteredCalendarEvents);
+      setEvents(calendarEvents);
     }
-    // Only depend on key and filter; filteredCalendarEvents is read from closure when we need it (when key/filter change)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarEventsKey, showFutureTimecards]);
+  }, [calendarEventsKey, calendarEvents]);
 
   // Component that listens to calendar event clicks
   // ERROR-PROOF: Prevent multiple rapid calls that could cause rate limiting
@@ -1964,8 +1929,9 @@ export function EmployeeTimeAttendanceTable({
     [handleOpenPunchModal, getAvatarUrl, isFutureEvent]
   );
 
-  // Show loading state only when actually loading
-  if (isLoading || companyLoading || jobsLoading) {
+  // Show loading state only on initial load (company/jobs loading)
+  // Don't block the UI when just refetching punches (filter changes)
+  if (companyLoading || jobsLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-8 w-64" />
@@ -2590,22 +2556,6 @@ export function EmployeeTimeAttendanceTable({
               </ToggleGroup>
             </div>
 
-            {/* Include Future Timecards - temporarily hidden */}
-            {false && (
-            <div className="flex items-center gap-2 whitespace-nowrap">
-              <input
-                type="checkbox"
-                id="show-future-timecards"
-                checked={showFutureTimecards}
-                onChange={(e) => setShowFutureTimecards(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              <label htmlFor="show-future-timecards" className="text-sm font-medium text-gray-700 cursor-pointer">
-                Include Future Timecards
-              </label>
-            </div>
-            )}
-
             {/* Date Navigation */}
             <div className="flex items-center justify-end gap-2">
               <Button
@@ -2655,7 +2605,7 @@ export function EmployeeTimeAttendanceTable({
             </h2>
           </div>
 
-          {/* Table Controls - Only show in table view (Day | Week | Month and Include Future Timecards are in top row) */}
+          {/* Table Controls - Only show in table view */}
           {viewType === 'table' && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
               {/* Mobile: full width; sm and up: fixed half-width so it doesn't stretch (max-w-md = 28rem) */}
@@ -2673,9 +2623,19 @@ export function EmployeeTimeAttendanceTable({
           )}
         </div>
         <div
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto border border-gray-200 rounded-md"
+          className="relative flex min-h-0 flex-1 flex-col overflow-y-auto border border-gray-200 rounded-md"
           style={{ height: 'calc(100vh - 36rem)', maxHeight: 'calc(100vh - 36rem)' }}
         >
+          {/* Loading overlay when refetching (not initial load) */}
+          {isFetching && !isLoading && (
+            <div className="absolute inset-0 bg-white/50 backdrop-blur-[2px] z-50 flex items-start justify-center pt-4">
+              <div className="bg-white rounded-lg shadow-lg px-4 py-2 flex items-center gap-2">
+                <div className="animate-spin h-4 w-4 border-2 border-cyan-600 border-t-transparent rounded-full" />
+                <span className="text-sm text-gray-700">Updating...</span>
+              </div>
+            </div>
+          )}
+
           {/* Conditional rendering: Calendar or Table */}
           {viewType === 'table' ? (
             /* Table view */
