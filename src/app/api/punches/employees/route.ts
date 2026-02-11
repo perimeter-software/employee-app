@@ -755,41 +755,22 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
                 }
                 debugInfo.shiftsWithSchedule++;
 
-                // Get roster for this day
-                let roster: Array<string | { employeeId: string; date?: string } | { _id: string }> = (daySchedule.roster || []) as Array<string | { employeeId: string; date?: string } | { _id: string }>;
+                // Get roster for this day - only employees explicitly assigned to this date
+                const rawRoster: Array<string | { employeeId: string; date?: string } | { _id: string }> = (daySchedule.roster || []) as Array<string | { employeeId: string; date?: string } | { _id: string }>;
                 
-                // Filter roster entries to only those that match the current date (if they have a date field)
-                // Entries without a date field are used for all dates
-                const dateFilteredRoster = roster.filter((entry) => {
+                // Filter roster entries to only those that match the current date.
+                // Someone is "scheduled" only when added to the roster with a date for that day.
+                // Entries with a date must match dateKey; entries without a date are not used (no date = not scheduled for a specific day).
+                const roster = rawRoster.filter((entry) => {
                   if (typeof entry === 'string') {
-                    return true; // String IDs are used for all dates
+                    return false; // String IDs have no date - don't treat as scheduled for this day
                   }
-                  if (entry && typeof entry === 'object') {
-                    if ('employeeId' in entry) {
-                      const e = entry as { employeeId: string; date?: string };
-                      // If entry has a date, only include if it matches current date
-                      // If no date, include for all dates
-                      return !e.date || e.date === dateKey;
-                    }
-                    if ('_id' in entry) {
-                      return true; // Objects with _id are used for all dates
-                    }
+                  if (entry && typeof entry === 'object' && 'employeeId' in entry) {
+                    const e = entry as { employeeId: string; date?: string };
+                    return e.date === dateKey;
                   }
                   return false;
                 });
-                
-                // If no roster entries match this date, try to use shiftRoster as fallback
-                // shiftRoster doesn't have date restrictions, so use it for all future dates
-                if (dateFilteredRoster.length === 0 && shift.shiftRoster && Array.isArray(shift.shiftRoster) && shift.shiftRoster.length > 0) {
-                  roster = shift.shiftRoster.map((emp) => {
-                    if (emp && typeof emp === 'object' && '_id' in emp) {
-                      return { _id: emp._id };
-                    }
-                    return null;
-                  }).filter((item): item is { _id: string } => item !== null);
-                } else {
-                  roster = dateFilteredRoster;
-                }
                 
                 if (roster.length === 0) {
                   continue;

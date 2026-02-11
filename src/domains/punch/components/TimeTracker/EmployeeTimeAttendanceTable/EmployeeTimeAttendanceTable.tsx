@@ -529,31 +529,17 @@ export function EmployeeTimeAttendanceTable({
                 return;
               }
 
-              // Get roster for this day (can be array of IDs or array of objects with employeeId and date)
-              // First try daySchedule.roster, then fall back to shift.shiftRoster if available
+              // Get roster for this day - only employees explicitly assigned to this date
+              // Someone is "scheduled" only when added to the roster with a date for that day
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              let roster: any[] = (daySchedule.roster || []) as any[];
-              
-              // If no roster in daySchedule, try to use shiftRoster as fallback
-              // This handles cases where roster is stored at the shift level rather than per day
-              if (roster.length === 0 && shift.shiftRoster && Array.isArray(shift.shiftRoster) && shift.shiftRoster.length > 0) {
-                // Use shiftRoster as fallback - create roster entries from shiftRoster
-                roster = shift.shiftRoster.map((emp: unknown) => {
-                  // If it's already an object with _id, use it directly
-                  if (emp && typeof emp === 'object' && '_id' in emp) {
-                    return emp;
-                  }
-                  // If it's a string ID, return it as string
-                  if (typeof emp === 'string') {
-                    return emp;
-                  }
-                  // If it's an object with employeeId, return it
-                  if (emp && typeof emp === 'object' && 'employeeId' in emp) {
-                    return emp;
-                  }
-                  return null;
-                }).filter(Boolean);
-              }
+              const rawRoster: any[] = (daySchedule.roster || []) as any[];
+              const roster = rawRoster.filter((rosterEntry: unknown) => {
+                if (rosterEntry && typeof rosterEntry === 'object' && 'employeeId' in rosterEntry) {
+                  const e = rosterEntry as { employeeId: string; date?: string };
+                  return e.date === dateKey;
+                }
+                return false;
+              });
               
               if (roster.length === 0) {
                 return;
@@ -1159,10 +1145,17 @@ export function EmployeeTimeAttendanceTable({
     return availableShifts.map((s: Shift) => s.slug).sort().join(',');
   }, [availableShifts]);
 
-  // Reset shift filter when job changes
+  // Reset shift filter when job changes (default to Today)
   useEffect(() => {
     setShiftFilter('today');
   }, [selectedJobId]);
+
+  // If Select Shift default is Today but there are no shifts under Today, default to All
+  useEffect(() => {
+    if (shiftFilter === 'today' && groupedShifts.today?.length === 0) {
+      setShiftFilter('all');
+    }
+  }, [shiftFilter, groupedShifts.today?.length]);
 
   // Clear job selection when selected job is not in the list (e.g. after unchecking "Include hidden jobs" and API returns fewer jobs)
   useEffect(() => {
