@@ -4,18 +4,21 @@ import CalendarBodyMonth from "./Month/CalendarBodyMonth";
 import { useCalendarContext } from "../CalendarContext";
 
 export default function CalendarBody({
-  hideTotalColumn = false,
+  hideHeaderActions = false,
+  hideHeaderDate = false,
 }: {
   hideTotalColumn?: boolean;
+  hideHeaderActions?: boolean;
+  hideHeaderDate?: boolean;
 }) {
-  console.log('hideTotalColumn', hideTotalColumn);
   const { mode } = useCalendarContext();
+  const noHeaderSpacing = hideHeaderActions && hideHeaderDate;
 
   return (
     <>
-      {mode === "day" && <CalendarBodyDay />}
-      {mode === "week" && <CalendarBodyWeek />}
-      {mode === "month" && <CalendarBodyMonth />}
+      {mode === "day" && <CalendarBodyDay noHeaderSpacing={noHeaderSpacing} />}
+      {mode === "week" && <CalendarBodyWeek noHeaderSpacing={noHeaderSpacing} />}
+      {mode === "month" && <CalendarBodyMonth noHeaderSpacing={noHeaderSpacing} />}
     </>
   );
 }
