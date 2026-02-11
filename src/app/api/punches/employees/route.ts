@@ -9,7 +9,7 @@ import { ObjectId } from 'mongodb';
 // POST Handler for Finding Employee Punches (for Client role)
 async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
   try {
-    const { startDate, endDate, jobIds, shiftSlug } = await request.json();
+    const { startDate, endDate, jobIds, shiftSlugs } = await request.json();
     const user = request.user;
 
     // Only allow Client role to access this endpoint
@@ -137,7 +137,7 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
         $lte: string;
       };
       $or?: Array<{ jobId: { $in: unknown[] } }>;
-      shiftSlug?: string;
+      shiftSlug?: string | { $in: string[] };
     } = {
       type: 'punch',
       timeIn: {
@@ -164,17 +164,20 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
       ];
     }
 
-    // If shiftSlug is provided, filter by it
-    // ERROR-PROOF: Validate and normalize shiftSlug
-    if (shiftSlug && shiftSlug !== 'all' && shiftSlug.trim() !== '') {
-      query.shiftSlug = shiftSlug.trim();
-      
-      // Log for debugging (only in development)
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[Employee Punches API] Filtering by shiftSlug:', shiftSlug);
+    // If shiftSlugs array is provided, filter by shifts
+    // ERROR-PROOF: Validate and normalize shift filter
+    if (shiftSlugs && Array.isArray(shiftSlugs) && shiftSlugs.length > 0) {
+      const validSlugs = shiftSlugs.filter((s) => s && s.trim() !== '');
+      if (validSlugs.length > 0) {
+        query.shiftSlug = { $in: validSlugs.map((s) => s.trim()) };
+
+        // Log for debugging (only in development)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[Employee Punches API] Filtering by shiftSlugs:', validSlugs);
+        }
       }
-    } else if (shiftSlug === 'all' || !shiftSlug) {
-      // Explicitly don't filter by shift when 'all' or undefined
+    } else {
+      // Explicitly don't filter by shift when empty or undefined
       if (process.env.NODE_ENV === 'development') {
         console.log('[Employee Punches API] Not filtering by shift (all shifts)');
       }
@@ -443,7 +446,7 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
         totalPunches: punches.length,
         uniqueJobIds: uniqueJobIds.length,
         jobsFound: jobMap.size,
-        shiftSlugFilter: shiftSlug || 'all',
+        shiftSlugsFilter: shiftSlugs?.length || 0,
         samplePunches: punches.slice(0, 3).map((p) => {
           const jobIdStr = p.jobId?.toString() || '';
           const job = jobMap.get(jobIdStr);
@@ -727,9 +730,12 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
 
               for (const shift of job.shifts) {
                 debugInfo.shiftsChecked++;
-                // Filter by selected shift if specified
-                if (shiftSlug && shiftSlug !== 'all' && shift.slug !== shiftSlug) {
-                  continue;
+                // Filter by selected shift(s) if specified
+                if (shiftSlugs && Array.isArray(shiftSlugs) && shiftSlugs.length > 0) {
+                  const validSlugs = shiftSlugs.filter((s) => s && s.trim() !== '');
+                  if (validSlugs.length > 0 && !validSlugs.includes(shift.slug)) {
+                    continue;
+                  }
                 }
 
                 // Check if shift is active for this date

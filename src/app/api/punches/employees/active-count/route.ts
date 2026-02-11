@@ -8,7 +8,7 @@ import { ObjectId } from 'mongodb';
 // Optionally returns full list of active employees when includeList=true
 async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
   try {
-    const { jobIds, shiftSlug, includeList } = await request.json();
+    const { jobIds, shiftSlugs, includeList } = await request.json();
     const user = request.user;
 
     // Only allow Client role to access this endpoint
@@ -55,10 +55,13 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
       ];
     }
 
-    // If shiftSlug is provided, filter by it
-    // ERROR-PROOF: Validate and normalize shiftSlug (same as employee punches API)
-    if (shiftSlug && shiftSlug !== 'all' && shiftSlug.trim() !== '') {
-      baseQuery.shiftSlug = shiftSlug.trim();
+    // If shiftSlugs array is provided, filter by shifts
+    // ERROR-PROOF: Validate and normalize shift filter (same as employee punches API)
+    if (shiftSlugs && Array.isArray(shiftSlugs) && shiftSlugs.length > 0) {
+      const validSlugs = shiftSlugs.filter((s) => s && s.trim() !== '');
+      if (validSlugs.length > 0) {
+        baseQuery.shiftSlug = { $in: validSlugs.map((s) => s.trim()) };
+      }
     }
 
     const query = baseQuery;
@@ -68,7 +71,7 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
       console.log('[Active Employee Count API] Query:', {
         includeList,
         jobIds: jobIds?.length || 0,
-        shiftSlug: shiftSlug || 'all',
+        shiftSlugs: shiftSlugs?.length || 0,
       });
     }
 
@@ -249,7 +252,11 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Error fetching active employee count:', error);
+    const err = error as NodeJS.ErrnoException;
+    const isClientAbort = err?.code === 'ECONNRESET' || err?.message === 'aborted';
+    if (!isClientAbort) {
+      console.error('Error fetching active employee count:', error);
+    }
     return NextResponse.json(
       {
         error: 'internal-error',

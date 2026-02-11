@@ -20,14 +20,14 @@ export function useEmployeePunches(
   options?: UseEmployeePunchesOptions
 ) {
   const jobIdsKey = params.jobIds?.slice().sort().join(',') ?? '';
-  const shiftSlug = params.shiftSlug ?? 'all';
+  const shiftSlugsKey = params.shiftSlugs?.slice().sort().join(',') ?? '';
 
   return useQuery({
     queryKey: punchQueryKeys.employeePunches(
       params.startDate,
       params.endDate,
       jobIdsKey,
-      shiftSlug
+      shiftSlugsKey
     ),
     queryFn: () => EmployeePunchesService.getEmployeePunches(params),
     enabled: options?.enabled ?? true,

@@ -3,7 +3,7 @@ export interface EmployeePunchesParams {
   startDate: string;
   endDate: string;
   jobIds?: string[];
-  shiftSlug?: string;
+  shiftSlugs?: string[];
 }
 
 /** Shape of a punch row from the employee punches API / table (Client time & attendance). */

@@ -1,7 +1,7 @@
 /** Params for active employee count / list (Client time & attendance). */
 export interface ActiveEmployeesParams {
   jobIds?: string[];
-  shiftSlug?: string;
+  shiftSlugs?: string[];
 }
 
 /** Response shape from active-count API when includeList is false. */
