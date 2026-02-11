@@ -826,13 +826,12 @@ const DashboardPage: NextPage = () => {
   const isClient = currentUser?.userType === 'Client';
 
   // Fetch employees list (only for Client users)
-  const { data: employeesList = [] } = useQuery<
+  const { data: employeesList = [], isLoading: employeesListLoading } = useQuery<
     Array<{
       _id: string;
       firstName: string;
       lastName: string;
       email: string;
-      fullName: string;
     }>
   >({
     queryKey: ['employeesList'],
@@ -1071,15 +1070,24 @@ const DashboardPage: NextPage = () => {
                 <div className="w-[250px]">
                   <ReactSelect
                     value={
-                      selectedEmployeeId
-                        ? {
-                            value: selectedEmployeeId,
-                            label:
-                              employeesList.find(
-                                (e) => e._id === selectedEmployeeId
-                              )?.fullName || 'Employee',
-                          }
-                        : { value: 'all', label: 'All Employees' }
+                      employeesListLoading
+                        ? null
+                        : selectedEmployeeId
+                          ? (() => {
+                              const e = employeesList.find(
+                                (emp) => emp._id === selectedEmployeeId
+                              );
+                              const label = e
+                                ? `${e.firstName ?? ''} ${e.lastName ?? ''}`.trim() ||
+                                  e.email ||
+                                  'Employee'
+                                : 'Employee';
+                              return {
+                                value: selectedEmployeeId,
+                                label,
+                              };
+                            })()
+                          : { value: 'all', label: 'All Employees' }
                     }
                     onChange={(option) => {
                       setSelectedEmployeeId(
@@ -1090,11 +1098,16 @@ const DashboardPage: NextPage = () => {
                       { value: 'all', label: 'All Employees' },
                       ...employeesList.map((employee) => ({
                         value: employee._id,
-                        label: employee.fullName,
+                        label:
+                          `${employee.firstName ?? ''} ${employee.lastName ?? ''}`.trim() ||
+                          employee.email ||
+                          'Employee',
                       })),
                     ]}
                     isSearchable
-                    placeholder="Search employees..."
+                    isLoading={employeesListLoading}
+                    placeholder={employeesListLoading ? 'Loading employees...' : 'Search employees...'}
+                    isDisabled={employeesListLoading}
                     className="react-select-container"
                     classNamePrefix="react-select"
                     styles={{

@@ -13,6 +13,7 @@ import { Punch } from '../types';
 import { toast } from 'sonner';
 import { userQueryKeys } from '@/domains/user/services';
 
+import { format, parseISO, startOfDay, isAfter } from 'date-fns';
 // Import your shift validation utilities
 import {
   getUserShiftForToday,
@@ -77,10 +78,6 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         (job) => job._id === selectedJob._id
       );
       if (!jobExists) {
-        console.log(
-          '🧹 Clearing stale selected job from useTimerCard:',
-          selectedJob.title
-        );
         removeSelectedJob();
         removeSelectedShift(); // Also clear shift since job is invalid
       }
@@ -92,10 +89,6 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         (shift) => shift.slug === selectedShift.slug
       );
       if (!shiftExists) {
-        console.log(
-          '🧹 Clearing stale selected shift from useTimerCard:',
-          selectedShift.slug
-        );
         removeSelectedShift();
       }
     }
@@ -135,54 +128,65 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       )?.title || null
     : null;
 
-  // Enhanced shift filtering with validation
+  // Enhanced shift filtering: include shifts for today (with end time check) or upcoming (future roster date / shift start)
   const availableShifts = useMemo(() => {
     if (!selectedJob?.shifts) return [];
     const now = new Date();
-    const nowIso = now.toISOString();
-
-    console.log('🔍 AVAILABLE SHIFTS DEBUG');
-    console.log('Today is:', now.toISOString().split('T')[0]);
-    console.log('Selected job shifts count:', selectedJob.shifts.length);
+    const currentTime = format(now, "yyyy-MM-dd'T'HH:mm:ss.SSS");
+    const todayStart = startOfDay(now);
+    const applicantId = userData?.applicantId ?? '';
 
     return selectedJob.shifts.filter((shift) => {
-      console.log('🔍 Checking shift:', shift.shiftName, 'slug:', shift.slug);
+      const startStr = shift.shiftStartDate;
+      const endStr = shift.shiftEndDate;
+      if (!startStr || !endStr) return false;
 
-      // pull both start+end from your util
+      // 1) Today: employee has this shift today and it hasn't ended
       const { start, end } = getUserShiftForToday(
         selectedJob,
-        userData.applicantId,
-        nowIso,
+        applicantId,
+        currentTime,
         shift
       );
-
-      console.log('getUserShiftForToday returned:', { start, end });
-
-      if (!start || !end) {
-        console.log('❌ Shift filtered out - no start/end times for today');
-        return false;
+      if (start && end) {
+        const shiftEndTime = combineCurrentDateWithTimeFromDateObject(
+          end as Date,
+          currentTime,
+          start as Date
+        );
+        if (shiftEndTime > now) return true;
       }
 
-      // FIXED: Use the combineCurrentDateWithTimeFromDateObject for proper time handling
-      const shiftEndTime = combineCurrentDateWithTimeFromDateObject(
-        end as Date,
-        nowIso,
-        start as Date // Pass start as reference for overnight detection
+      // 2) Upcoming: employee is in roster, shift hasn't ended, and (shift starts after today OR has roster assignment on a future date)
+      const isInRoster = shift.shiftRoster?.some(
+        (rosterEntry) => rosterEntry._id === applicantId
       );
-
-      console.log('Shift end time:', shiftEndTime.toISOString());
-      console.log('Now:', now.toISOString());
-      console.log('Shift end > now?', shiftEndTime > now);
-
-      // Keep any shift that hasn't passed its end time
-      const isValid = shiftEndTime > now;
-      console.log(
-        isValid ? '✅ Shift included' : '❌ Shift excluded - already ended'
-      );
-
-      return isValid;
+      if (!isInRoster) return false;
+      try {
+        const shiftStartDay = startOfDay(parseISO(startStr));
+        const shiftEndDay = startOfDay(parseISO(endStr));
+        if (shiftEndDay < todayStart) return false; // shift already ended
+        if (isAfter(shiftStartDay, todayStart)) return true;
+        const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+        for (const day of days) {
+          const roster = shift.defaultSchedule?.[day]?.roster;
+          if (!Array.isArray(roster)) continue;
+          for (const entry of roster) {
+            if (entry && typeof entry === 'object' && 'employeeId' in entry && 'date' in entry) {
+              const e = entry as { employeeId: string; date: string };
+              if (e.employeeId === applicantId && e.date) {
+                const rosterDay = startOfDay(parseISO(e.date));
+                if (isAfter(rosterDay, todayStart)) return true;
+              }
+            }
+          }
+        }
+      } catch {
+        // skip invalid dates
+      }
+      return false;
     });
-  }, [selectedJob, userData.applicantId]);
+  }, [selectedJob, userData?.applicantId]);
 
   const enoughLocationInfo =
     location &&
