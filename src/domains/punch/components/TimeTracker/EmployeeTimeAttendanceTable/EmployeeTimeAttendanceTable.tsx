@@ -127,6 +127,9 @@ export function EmployeeTimeAttendanceTable({
   // Employee search state
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState<string>('');
 
+  // Employee status filter state
+  const [employeeStatusFilter, setEmployeeStatusFilter] = useState<'all' | 'clocked-in' | 'scheduled' | 'clocked-in-out'>('all');
+
   // Geofence modal state
   const [showGeofenceModal, setShowGeofenceModal] = useState(false);
 
@@ -1049,27 +1052,44 @@ export function EmployeeTimeAttendanceTable({
   const activeClockedInEmployees = activeEmployeesQuery.data ?? [];
   const activeEmployeesLoading = activeEmployeesQuery.isLoading;
 
-  // Table data - filtered by search query (after allEmployeePunches to avoid "used before declaration")
+  // Table data - filtered by search query and status (after allEmployeePunches to avoid "used before declaration")
   const tableData: EmployeePunch[] = useMemo(() => {
-    const punches = allEmployeePunches || [];
+    let punches = allEmployeePunches || [];
     if (viewType !== 'table') return punches;
 
     // Filter by employee search query (first name, last name, email)
-    if (!employeeSearchQuery.trim()) return punches;
-    const searchLower = employeeSearchQuery.toLowerCase().trim();
-    return punches.filter((punch: EmployeePunch) => {
-      const firstName = (punch.firstName || '').toLowerCase();
-      const lastName = (punch.lastName || '').toLowerCase();
-      const employeeName = (punch.employeeName || '').toLowerCase();
-      const email = (punch.employeeEmail || '').toLowerCase();
-      return (
-        firstName.includes(searchLower) ||
-        lastName.includes(searchLower) ||
-        employeeName.includes(searchLower) ||
-        email.includes(searchLower)
-      );
-    });
-  }, [allEmployeePunches, viewType, employeeSearchQuery]);
+    if (employeeSearchQuery.trim()) {
+      const searchLower = employeeSearchQuery.toLowerCase().trim();
+      punches = punches.filter((punch: EmployeePunch) => {
+        const firstName = (punch.firstName || '').toLowerCase();
+        const lastName = (punch.lastName || '').toLowerCase();
+        const employeeName = (punch.employeeName || '').toLowerCase();
+        const email = (punch.employeeEmail || '').toLowerCase();
+        return (
+          firstName.includes(searchLower) ||
+          lastName.includes(searchLower) ||
+          employeeName.includes(searchLower) ||
+          email.includes(searchLower)
+        );
+      });
+    }
+
+    // Filter by employee status
+    if (employeeStatusFilter !== 'all') {
+      punches = punches.filter((punch: EmployeePunch) => {
+        if (employeeStatusFilter === 'clocked-in') {
+          return punch.timeOut === null && punch.status !== 'scheduled';
+        } else if (employeeStatusFilter === 'scheduled') {
+          return punch.status === 'scheduled';
+        } else if (employeeStatusFilter === 'clocked-in-out') {
+          return punch.timeOut !== null;
+        }
+        return true;
+      });
+    }
+
+    return punches;
+  }, [allEmployeePunches, viewType, employeeSearchQuery, employeeStatusFilter]);
 
   // Get unique shift slugs from actual punches in the date range (after allEmployeePunches)
   const availableShiftSlugs: Set<string> = useMemo(() => {
@@ -2797,6 +2817,26 @@ export function EmployeeTimeAttendanceTable({
                   className="pl-10 h-8 text-sm w-full"
                 />
               </div>
+              {/* Employee Status Filter */}
+              <ToggleGroup
+                type="single"
+                value={employeeStatusFilter}
+                onValueChange={(v) => v && setEmployeeStatusFilter(v as 'all' | 'clocked-in' | 'scheduled' | 'clocked-in-out')}
+                className="flex flex-wrap gap-1"
+              >
+                <ToggleGroupItem value="all" aria-label="All employees" className="text-xs px-2 py-1 h-7">
+                  All
+                </ToggleGroupItem>
+                <ToggleGroupItem value="clocked-in" aria-label="Clocked In" className="text-xs px-2 py-1 h-7">
+                  Clocked In
+                </ToggleGroupItem>
+                <ToggleGroupItem value="scheduled" aria-label="Scheduled" className="text-xs px-2 py-1 h-7">
+                  Scheduled
+                </ToggleGroupItem>
+                <ToggleGroupItem value="clocked-in-out" aria-label="Clocked In/Out" className="text-xs px-2 py-1 h-7">
+                  Clocked In/Out
+                </ToggleGroupItem>
+              </ToggleGroup>
             </div>
           )}
         </div>
