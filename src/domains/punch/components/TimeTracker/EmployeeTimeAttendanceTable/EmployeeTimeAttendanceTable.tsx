@@ -38,6 +38,7 @@ import {
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
 import { useJobShifts, useJobsWithShifts } from '@/domains/job/hooks';
 import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
+import type { RosterApplicant } from '@/domains/job/types/schedule.types';
 import type { Applicant } from '@/domains/user/types/applicant.types';
 import { clsxm } from '@/lib/utils/class-utils';
 import CalendarProvider from '@/components/ui/Calendar/CalendarProvider';
@@ -46,41 +47,14 @@ import type { CalendarEvent, Mode } from '@/components/ui/Calendar';
 import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
 import { EmployeePunchDetailsModal } from '../EmployeePunchDetailsModal/EmployeePunchDetailsModal';
 import { MapModal } from '../MapModal/MapModal';
+import { ActiveEmployeesModal } from '../ActiveEmployeesModal';
+import { ShiftPositionsModal } from '../ShiftPositionsModal';
 import { formatPhoneNumber } from '@/lib/utils';
-
-interface EmployeePunch extends Record<string, unknown> {
-  _id: string;
-  userId: string;
-  applicantId: string;
-  jobId: string;
-  timeIn: string;
-  timeOut: string | null;
-  status: string;
-  shiftSlug?: string;
-  shiftName?: string;
-  employeeName: string;
-  firstName?: string;
-  lastName?: string;
-  employeeEmail: string;
-  phoneNumber?: string;
-  profileImg?: string | null;
-  jobTitle: string;
-  jobSite: string;
-  location: string;
-  userNote?: string; // ERROR-PROOF: Include userNote field
-  managerNote?: string; // ERROR-PROOF: Include managerNote field
-  isSelected?: boolean;
-  checkbox?: unknown;
-  date?: unknown;
-  employee?: unknown;
-  timeRange?: unknown;
-  totalHours?: unknown;
-}
-
-interface EmployeeTimeAttendanceTableProps {
-  startDate?: string;
-  endDate?: string;
-}
+import { useActiveEmployeeCount, useActiveEmployees, useEmployeePunches } from '@/domains/punch/hooks';
+import type {
+  EmployeePunch,
+  EmployeeTimeAttendanceTableProps,
+} from '@/domains/punch/types/employee-punches.types';
 
 // Format time as 24-hour format (HH:mm)
 const formatTime24 = (dateString: string) => {
@@ -106,66 +80,6 @@ const calculateTotalHours = (timeIn: string, timeOut: string | null) => {
   const hours = (end - start) / (1000 * 60 * 60);
   return Math.round(hours * 10) / 10; // One decimal place
 };
-
-async function fetchEmployeePunches(
-  startDate: string,
-  endDate: string,
-  jobIds?: string[],
-  shiftSlug?: string
-) {
-  // ERROR-PROOF: Normalize shiftSlug before sending
-  const normalizedShiftSlug =
-    shiftSlug && shiftSlug !== 'all' && shiftSlug.trim() !== ''
-      ? shiftSlug.trim()
-      : undefined;
-
-  // Removed debug logging to prevent infinite loops
-
-  const response = await fetch('/api/punches/employees', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      startDate,
-      endDate,
-      jobIds: jobIds && jobIds.length > 0 ? jobIds : undefined,
-      shiftSlug: normalizedShiftSlug,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to fetch employee punches');
-  }
-
-  const data = await response.json();
-
-  // Removed debug logging to prevent infinite loops
-
-  return data.data as EmployeePunch[];
-}
-
-async function fetchActiveEmployeeCount(jobIds?: string[], shiftSlug?: string) {
-  const response = await fetch('/api/punches/employees/active-count', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      jobIds: jobIds && jobIds.length > 0 ? jobIds : undefined,
-      shiftSlug: shiftSlug && shiftSlug !== 'all' ? shiftSlug : undefined,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to fetch active employee count');
-  }
-
-  const data = await response.json();
-  return data.data.count as number;
-}
 
 export function EmployeeTimeAttendanceTable({
   startDate: propStartDate,
@@ -205,7 +119,7 @@ export function EmployeeTimeAttendanceTable({
   const [jobFilter, setJobFilter] = useState<'all' | 'today' | 'upcoming' | 'past'>('all');
 
   // Shift list filter: All | Today | Upcoming | Past (for narrowing the dropdown)
-  const [shiftFilter, setShiftFilter] = useState<'all' | 'today' | 'upcoming' | 'past'>('all');
+  const [shiftFilter, setShiftFilter] = useState<'all' | 'today' | 'upcoming' | 'past'>('today');
 
   // Include jobs where hideThisJob is 'Yes' in the job selector (default: false = don't show them)
   const [includeHiddenJobs, setIncludeHiddenJobs] = useState<boolean>(false);
@@ -213,11 +127,14 @@ export function EmployeeTimeAttendanceTable({
   // Employee search state
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState<string>('');
 
-  // Future timecards visibility state
-  const [showFutureTimecards, setShowFutureTimecards] = useState<boolean>(true);
-
   // Geofence modal state
   const [showGeofenceModal, setShowGeofenceModal] = useState(false);
+
+  // Active employees modal state
+  const [showActiveEmployeesModal, setShowActiveEmployeesModal] = useState(false);
+
+  // Shift positions modal state
+  const [showShiftPositionsModal, setShowShiftPositionsModal] = useState(false);
 
   // Base date for navigation
   const [baseDate, setBaseDate] = useState(() => {
@@ -404,11 +321,6 @@ export function EmployeeTimeAttendanceTable({
     return [selectedJobId];
   }, [selectedJobId, availableJobs]);
 
-  // Create stable string key for query (prevents unnecessary refetches)
-  const selectedJobIdsKey = useMemo(() => {
-    return selectedJobIds.sort().join(',');
-  }, [selectedJobIds]);
-
   // Calculate date range based on view type
   // ERROR-PROOF: Ensures consistent date normalization matching backend expectations
   const dateRange = useMemo(() => {
@@ -557,40 +469,36 @@ export function EmployeeTimeAttendanceTable({
     weekStartsOn,
   ]);
 
-  // Fetch employee punches (with shift filter applied)
-  // ERROR-PROOF: Increased staleTime and added refetchOnWindowFocus: false to reduce API calls
-  const {
-    data: employeePunches,
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: [
-      'employeePunches',
-      dateRange.startDate,
-      dateRange.endDate,
-      selectedJobIdsKey,
-      selectedShiftSlug,
-    ],
-    queryFn: () =>
-      fetchEmployeePunches(
-        dateRange.startDate,
-        dateRange.endDate,
-        selectedJobIds,
-        selectedShiftSlug
-      ),
-    enabled:
-      !companyLoading &&
-      !jobsLoading &&
-      availableJobs.length > 0 &&
-      selectedJobIds.length > 0 &&
-      !!dateRange.startDate &&
-      !!dateRange.endDate,
-    staleTime: 120000, // Consider data fresh for 2 minutes (reduced API calls)
-    gcTime: 300000, // Keep in cache for 5 minutes
-    refetchOnWindowFocus: false, // Don't refetch on window focus (reduces API calls)
-    refetchOnReconnect: false, // Don't refetch on reconnect (reduces API calls)
-    refetchOnMount: false, // Don't refetch when component remounts (reduces API calls)
-  });
+  // Fetch employee punches by date range (same pattern as useJobsWithShifts / useActiveEmployees)
+  const employeePunchesQuery = useEmployeePunches(
+    {
+      startDate: dateRange.startDate,
+      endDate: dateRange.endDate,
+      jobIds: selectedJobIds,
+      shiftSlug: selectedShiftSlug,
+    },
+    {
+      enabled:
+        !companyLoading &&
+        !jobsLoading &&
+        availableJobs.length > 0 &&
+        selectedJobIds.length > 0 &&
+        !!dateRange.startDate &&
+        !!dateRange.endDate,
+      staleTime: 120000,
+      gcTime: 300000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+    }
+  );
+  const employeePunches = useMemo(
+    () => (employeePunchesQuery.data ?? []) as EmployeePunch[],
+    [employeePunchesQuery.data]
+  );
+  const isLoading = employeePunchesQuery.isLoading;
+  const isFetching = employeePunchesQuery.isFetching;
+  const error = employeePunchesQuery.error;
 
   // Helper function to generate future punch records from scheduled shifts
   const generateFuturePunches = useCallback(
@@ -898,43 +806,41 @@ export function EmployeeTimeAttendanceTable({
     generateFuturePunches,
   ]);
 
-  // Table data - filtered by search query and future timecards visibility
+  // Fetch active employees list from API (used for modal and tooltip)
+  const activeEmployeesQuery = useActiveEmployees(
+    { jobIds: selectedJobIds, shiftSlug: selectedShiftSlug },
+    {
+      enabled: !companyLoading && !jobsLoading && availableJobs.length > 0 && selectedJobIds.length > 0,
+      refetchInterval: 120000,
+      staleTime: 60000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+    }
+  );
+  const activeClockedInEmployees = activeEmployeesQuery.data ?? [];
+  const activeEmployeesLoading = activeEmployeesQuery.isLoading;
+
+  // Table data - filtered by search query
   const tableData = useMemo(() => {
     const punches = allEmployeePunches || [];
     if (viewType !== 'table') return punches;
-    
-    let filtered = punches;
 
     // Filter by employee search query (first name, last name, email)
-    if (employeeSearchQuery.trim()) {
-      const searchLower = employeeSearchQuery.toLowerCase().trim();
-      filtered = filtered.filter((punch) => {
-        const firstName = (punch.firstName || '').toLowerCase();
-        const lastName = (punch.lastName || '').toLowerCase();
-        const employeeName = (punch.employeeName || '').toLowerCase();
-        const email = (punch.employeeEmail || '').toLowerCase();
-        
-        return (
-          firstName.includes(searchLower) ||
-          lastName.includes(searchLower) ||
-          employeeName.includes(searchLower) ||
-          email.includes(searchLower)
-        );
-      });
-    }
-
-    // Filter by future timecards visibility
-    if (!showFutureTimecards) {
-      filtered = filtered.filter((punch) => {
-        const isFutureById = punch._id?.startsWith('future-');
-        const timeInMs = new Date(punch.timeIn).getTime();
-        const isFutureByTime = !Number.isNaN(timeInMs) && timeInMs > Date.now();
-        return !isFutureById && !isFutureByTime;
-      });
-    }
-
-    return filtered;
-  }, [allEmployeePunches, viewType, employeeSearchQuery, showFutureTimecards]);
+    if (!employeeSearchQuery.trim()) return punches;
+    const searchLower = employeeSearchQuery.toLowerCase().trim();
+    return punches.filter((punch) => {
+      const firstName = (punch.firstName || '').toLowerCase();
+      const lastName = (punch.lastName || '').toLowerCase();
+      const employeeName = (punch.employeeName || '').toLowerCase();
+      const email = (punch.employeeEmail || '').toLowerCase();
+      return (
+        firstName.includes(searchLower) ||
+        lastName.includes(searchLower) ||
+        employeeName.includes(searchLower) ||
+        email.includes(searchLower)
+      );
+    });
+  }, [allEmployeePunches, viewType, employeeSearchQuery]);
 
   // Get unique shift slugs from actual punches in the date range
   // ERROR-PROOF: Only show shifts that have data in the current date range
@@ -1224,7 +1130,7 @@ export function EmployeeTimeAttendanceTable({
 
   // Reset shift filter when job changes
   useEffect(() => {
-    setShiftFilter('all');
+    setShiftFilter('today');
   }, [selectedJobId]);
 
   // Clear job selection when selected job is not in the list (e.g. after unchecking "Include hidden jobs" and API returns fewer jobs)
@@ -1284,20 +1190,23 @@ export function EmployeeTimeAttendanceTable({
   //   }
   // }, [isLoading, employeePunches?.length, dateRange.displayRange]);
 
-  // Fetch active employee count
-  const { data: activeCount, isLoading: activeCountLoading } = useQuery({
-    queryKey: ['activeEmployeeCount', selectedJobIdsKey, selectedShiftSlug],
-    queryFn: () => fetchActiveEmployeeCount(selectedJobIds, selectedShiftSlug),
-    enabled:
-      !companyLoading &&
-      !jobsLoading &&
-      availableJobs.length > 0 &&
-      selectedJobIds.length > 0,
-    refetchInterval: 120000, // ERROR-PROOF: Refetch every 2 minutes (reduced from 60 seconds to prevent rate limiting)
-    staleTime: 60000, // ERROR-PROOF: Consider data fresh for 1 minute (increased from 30 seconds)
-    refetchOnWindowFocus: false, // ERROR-PROOF: Don't refetch on window focus
-    refetchOnMount: false, // ERROR-PROOF: Don't refetch on remount
-  });
+  // Fetch active employee count (same pattern as useJobsWithShifts)
+  const activeCountQuery = useActiveEmployeeCount(
+    { jobIds: selectedJobIds, shiftSlug: selectedShiftSlug },
+    {
+      enabled:
+        !companyLoading &&
+        !jobsLoading &&
+        availableJobs.length > 0 &&
+        selectedJobIds.length > 0,
+      refetchInterval: 120000,
+      staleTime: 60000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+    }
+  );
+  const activeCount = activeCountQuery.data;
+  const activeCountLoading = activeCountQuery.isLoading;
 
   // Update baseDate and calendar mode when view type changes
   // ERROR-PROOF: Only update when viewType or weekStartsOn changes, not baseDate (to prevent infinite loops)
@@ -1496,16 +1405,6 @@ export function EmployeeTimeAttendanceTable({
     primaryCompany?.imageUrl, // Use primitive instead of object
   ]);
 
-  // Filter out future events if showFutureTimecards is false
-  const filteredCalendarEvents = useMemo(() => {
-    if (showFutureTimecards) return calendarEvents;
-    const now = Date.now();
-    return calendarEvents.filter((event) => {
-      const eventStart = new Date(event.start).getTime();
-      return eventStart <= now;
-    });
-  }, [calendarEvents, showFutureTimecards]);
-
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedPunch, setSelectedPunch] = useState<EmployeePunch | null>(
     null
@@ -1557,22 +1456,15 @@ export function EmployeeTimeAttendanceTable({
       .join(',');
   }, [allEmployeePunches]);
 
-  // Update calendar events when they actually change (detected by stable key or filter change)
+  // Update calendar events when they actually change (detected by stable key)
   const prevEventsKeyRef = useRef<string>('');
-  const prevFilterRef = useRef<boolean>(showFutureTimecards);
   useEffect(() => {
-    // Update events when key changes or filter changes (filteredCalendarEvents from closure is latest for this run)
     const keyChanged = calendarEventsKey !== prevEventsKeyRef.current;
-    const filterChanged = showFutureTimecards !== prevFilterRef.current;
-    
-    if (keyChanged || filterChanged) {
+    if (keyChanged) {
       prevEventsKeyRef.current = calendarEventsKey;
-      prevFilterRef.current = showFutureTimecards;
-      setEvents(filteredCalendarEvents);
+      setEvents(calendarEvents);
     }
-    // Only depend on key and filter; filteredCalendarEvents is read from closure when we need it (when key/filter change)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarEventsKey, showFutureTimecards]);
+  }, [calendarEventsKey, calendarEvents]);
 
   // Component that listens to calendar event clicks
   // ERROR-PROOF: Prevent multiple rapid calls that could cause rate limiting
@@ -1730,7 +1622,7 @@ export function EmployeeTimeAttendanceTable({
   }, [selectedShiftSlug, allAvailableShifts]);
 
   // Compute position badges for each day when a shift is selected
-  // Creates generic badge data that the Calendar can render
+  // Position is "filled" only when assigned to someone (see stadium-people WeeklyScheduleConfigurationModal)
   const dayBadges = useMemo(() => {
     if (!currentlySelectedShift || !currentlySelectedShift.positions || !currentlySelectedShift.defaultSchedule) {
       return {};
@@ -1744,33 +1636,89 @@ export function EmployeeTimeAttendanceTable({
       return sum + (isNaN(num) ? 0 : num);
     }, 0);
 
-    // For each day in defaultSchedule, compute filled count
     const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
-    
+    const dateFilled: Record<string, number> = {};
+    const dateSeen: Record<string, boolean> = {};
+
     daysOfWeek.forEach((dayOfWeek) => {
       const daySchedule = currentlySelectedShift.defaultSchedule[dayOfWeek];
-      if (!daySchedule || !daySchedule.roster || daySchedule.roster.length === 0) {
-        return; // Skip days with no roster
-      }
+      if (!daySchedule?.roster?.length) return;
 
-      // Each roster entry represents someone scheduled for that day
-      const filled = daySchedule.roster.length;
-      const unfilled = Math.max(0, totalRequested - filled);
-
-      // Get dates from roster entries (they should all have the same date for this day)
       daySchedule.roster.forEach((entry) => {
-        if (entry.date) {
-          const dateKey = entry.date; // Already in 'yyyy-MM-dd' format
-          badges[dateKey] = [
-            { value: totalRequested, color: 'bg-blue-500', textColor: 'text-white', label: 'Requested positions' },
-            { value: filled, color: 'bg-successGreen', textColor: 'text-white', label: 'Filled positions' },
-            { value: unfilled, color: 'bg-red-500', textColor: 'text-white', label: 'Unfilled positions' },
-          ];
+        if (!entry.date) return;
+        dateSeen[entry.date] = true;
+        // Count as filled only when assigned to a position (assignedPosition set)
+        const isAssigned = Boolean(entry.employeeId && (entry as { assignedPosition?: string }).assignedPosition);
+        if (isAssigned) {
+          dateFilled[entry.date] = (dateFilled[entry.date] ?? 0) + 1;
         }
       });
     });
 
+    Object.keys(dateSeen).forEach((dateKey) => {
+      const filled = dateFilled[dateKey] ?? 0;
+      const unfilled = Math.max(0, totalRequested - filled);
+      badges[dateKey] = [
+        { value: totalRequested, color: 'bg-blue-500', textColor: 'text-white', label: 'Requested positions' },
+        { value: filled, color: 'bg-successGreen', textColor: 'text-white', label: 'Filled positions' },
+        { value: unfilled, color: 'bg-red-500', textColor: 'text-white', label: 'Unfilled positions' },
+      ];
+    });
+
     return badges;
+  }, [currentlySelectedShift]);
+
+  // Compute position summary for the selected shift (for position summary card)
+  const shiftPositionSummary = useMemo(() => {
+    if (!currentlySelectedShift || !currentlySelectedShift.defaultSchedule) {
+      return null;
+    }
+
+    // Calculate total requested positions (0 when positions array is empty or missing)
+    const totalRequested = (currentlySelectedShift.positions ?? []).reduce((sum: number, pos) => {
+      const num = parseInt(pos.numberPositions?.toString() || '0', 10);
+      return sum + (isNaN(num) ? 0 : num);
+    }, 0);
+
+    // Aggregate filled (assigned to position) and unassigned (on shift but no position) per date
+    const dateDetails: Record<string, { filled: number; unassigned: number; totalRequested: number }> = {};
+    const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+    
+    daysOfWeek.forEach((dayOfWeek) => {
+      const daySchedule = currentlySelectedShift.defaultSchedule[dayOfWeek];
+      if (daySchedule?.roster?.length > 0) {
+        daySchedule.roster.forEach((entry) => {
+          if (entry.date && entry.employeeId) {
+            if (!dateDetails[entry.date]) {
+              dateDetails[entry.date] = { filled: 0, unassigned: 0, totalRequested };
+            }
+            const hasPosition = Boolean((entry as { assignedPosition?: string }).assignedPosition);
+            if (hasPosition) {
+              dateDetails[entry.date].filled++;
+            } else {
+              dateDetails[entry.date].unassigned++;
+            }
+          }
+        });
+      }
+    });
+
+    const numDates = Object.keys(dateDetails).length;
+    const totalFilled = Object.values(dateDetails).reduce((sum, d) => sum + d.filled, 0);
+    const totalUnassigned = Object.values(dateDetails).reduce((sum, d) => sum + d.unassigned, 0);
+    // Total position-slots across all dates (positions per day × number of dates); 0 when no dates
+    const totalSlots = totalRequested * numDates;
+    const totalUnfilled = Math.max(0, totalSlots - totalFilled);
+
+    return {
+      totalRequested,
+      totalSlots,
+      totalFilled,
+      totalUnassigned,
+      totalUnfilled,
+      dateDetails,
+      shiftName: currentlySelectedShift.shiftName,
+    };
   }, [currentlySelectedShift]);
 
   // Get shift data for the selected punch (for modal)
@@ -2042,8 +1990,9 @@ export function EmployeeTimeAttendanceTable({
     [handleOpenPunchModal, getAvatarUrl, isFutureEvent]
   );
 
-  // Show loading state only when actually loading
-  if (isLoading || companyLoading || jobsLoading) {
+  // Show loading state only on initial load (company/jobs loading)
+  // Don't block the UI when just refetching punches (filter changes)
+  if (companyLoading || jobsLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-8 w-64" />
@@ -2499,38 +2448,158 @@ export function EmployeeTimeAttendanceTable({
           )}
 
           {/* Currently Clocked In Summary Card - full width on mobile so it doesn't overflow */}
-          <div className="flex item-center bg-teal-50 border border-teal-200 rounded-lg p-2 w-full min-w-0 sm:min-w-[240px] sm:w-auto">
-            <div className="flex items-center gap-4">
-              {/* Large teal circle with count */}
-              <div className="relative flex-shrink-0">
-                <div className="w-8 h-8 bg-appPrimary rounded-full flex items-center justify-center text-white text-xl font-bold shadow-sm">
-                  {activeCountLoading ? (
-                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    activeCount || 0
-                  )}
+          <span className="relative inline-flex group w-full min-w-0 sm:min-w-[240px] sm:w-auto">
+            <div 
+              className="flex item-center bg-teal-50 border border-teal-200 rounded-lg p-2 w-full cursor-pointer hover:bg-teal-100 transition-colors"
+              onClick={() => setShowActiveEmployeesModal(true)}
+            >
+              <div className="flex items-center gap-4">
+                {/* Large teal circle with count */}
+                <div className="relative flex-shrink-0">
+                  <div className="w-8 h-8 bg-appPrimary rounded-full flex items-center justify-center text-white text-xl font-bold shadow-sm">
+                    {activeCountLoading ? (
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      activeCount || 0
+                    )}
+                  </div>
+                  {/* Green status dot on top-right */}
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
                 </div>
-                {/* Green status dot on top-right */}
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
-              </div>
-              {/* Text content */}
-              <div className="flex-1">
-                <div className="text-[10px] font-medium text-gray-600 mb-1 uppercase tracking-wide">
-                  Currently Clocked In
-                </div>
-                <div className="text-xs font-semibold text-gray-900">
-                  {activeCountLoading ? (
-                    <span className="text-gray-400">Loading...</span>
-                  ) : (
-                    <>
-                      {activeCount || 0}{' '}
-                      {activeCount === 1 ? 'Employee' : 'Employees'}
-                    </>
-                  )}
+                {/* Text content */}
+                <div className="flex-1">
+                  <div className="text-[10px] font-medium text-gray-600 mb-1 uppercase tracking-wide">
+                    Currently Clocked In
+                  </div>
+                  <div className="text-xs font-semibold text-gray-900">
+                    {activeCountLoading ? (
+                      <span className="text-gray-400">Loading...</span>
+                    ) : (
+                      <>
+                        {activeCount || 0}{' '}
+                        {activeCount === 1 ? 'Employee' : 'Employees'}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+            {/* Tooltip: employee names with date and time (opens below card where there is more space) */}
+            {!activeCountLoading && !activeEmployeesLoading && activeClockedInEmployees.length > 0 && (
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 w-full max-w-[280px] -translate-x-1/2 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-left text-[11px] font-medium text-gray-900 shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+              >
+                <div className="mb-1 border-b border-gray-100 pb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-500">
+                  Currently clocked in
+                </div>
+                <ul className="space-y-1">
+                  {activeClockedInEmployees.slice(0, 6).map((punch) => {
+                    const name = punch.employeeName || `${punch.firstName ?? ''} ${punch.lastName ?? ''}`.trim() || '—';
+                    const timeIn = new Date(punch.timeIn);
+                    const dateTime = `${format(timeIn, 'MMM d')} at ${format(timeIn, 'h:mm a')}`;
+                    const shiftName = punch.shiftName?.trim() || null;
+                    return (
+                      <li key={punch._id} className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-medium text-gray-900 truncate" title={name}>
+                          {name}
+                        </span>
+                        <span className="text-[9px] text-gray-500">{dateTime}</span>
+                        {shiftName && (
+                          <span className="text-[9px] text-gray-400 truncate" title={shiftName}>
+                            {shiftName}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+                {activeClockedInEmployees.length > 6 && (
+                  <div className="mt-1 border-t border-gray-100 pt-1 text-[9px] text-gray-500">
+                    + {activeClockedInEmployees.length - 6} more
+                  </div>
+                )}
+              </span>
+            )}
+          </span>
+
+          {/* Shift Position Summary Card */}
+          {currentlySelectedShift && shiftPositionSummary && (
+            <span className="relative inline-flex group w-full min-w-0 sm:min-w-[240px] sm:w-auto">
+              <div 
+                className="flex item-center bg-teal-50 border border-teal-200 rounded-lg p-2 w-full cursor-pointer hover:bg-teal-100 transition-colors"
+                onClick={() => setShowShiftPositionsModal(true)}
+              >
+                <div className="flex items-center gap-4">
+                  {/* Circle: filled count or — when no positions */}
+                  <div className="relative flex-shrink-0">
+                    <div className="w-8 h-8 bg-appPrimary rounded-full flex items-center justify-center text-white text-xl font-bold shadow-sm">
+                      {shiftPositionSummary.totalRequested === 0 ? '—' : shiftPositionSummary.totalFilled}
+                    </div>
+                  </div>
+                  {/* Text content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] font-medium text-gray-600 mb-1 uppercase tracking-wide">
+                      Shift Positions
+                    </div>
+                    <div className="text-xs font-semibold text-gray-900">
+                      {shiftPositionSummary.totalRequested === 0
+                        ? 'No positions configured'
+                        : `${shiftPositionSummary.totalFilled} / ${shiftPositionSummary.totalSlots} filled`}
+                    </div>
+                    {shiftPositionSummary.totalUnassigned > 0 && (
+                      <div className="text-[10px] text-amber-600 font-medium mt-1">
+                        {shiftPositionSummary.totalUnassigned} unassigned
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Hover Tooltip with date-wise breakdown */}
+              {Object.keys(shiftPositionSummary.dateDetails).length > 0 && (
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 w-full max-w-[280px] -translate-x-1/2 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-left text-[11px] font-medium text-gray-900 shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                >
+                  <div className="mb-1 border-b border-gray-100 pb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-500">
+                    {shiftPositionSummary.shiftName}
+                  </div>
+                  <ul className="space-y-1 max-h-48 overflow-y-auto">
+                    {Object.entries(shiftPositionSummary.dateDetails)
+                      .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+                      .slice(0, 6)
+                      .map(([date, details]) => {
+                        const unfilled = details.totalRequested - details.filled;
+                        const unassigned = details.unassigned ?? 0;
+                        return (
+                          <li key={date} className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-medium text-gray-900">
+                              {format(parseISO(date), 'MMM d, yyyy')}
+                            </span>
+                            <span className="text-[9px] text-gray-600">
+                              Filled: <span className="font-semibold text-green-600">{details.filled}</span> / 
+                              Total: <span className="font-semibold">{details.totalRequested}</span>
+                              {unfilled > 0 && (
+                                <span className="text-red-600"> ({unfilled} unfilled)</span>
+                              )}
+                              {unassigned > 0 && (
+                                <span className="text-amber-600"> • {unassigned} unassigned</span>
+                              )}
+                            </span>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                  {Object.keys(shiftPositionSummary.dateDetails).length > 6 && (
+                    <div className="mt-1 border-t border-gray-100 pt-1 text-[9px] text-gray-500">
+                      + {Object.keys(shiftPositionSummary.dateDetails).length - 6} more dates
+                    </div>
+                  )}
+                </span>
+              )}
+            </span>
+          )}
         </div>
 
         {/* View Toggle Buttons and Controls */}
@@ -2626,22 +2695,6 @@ export function EmployeeTimeAttendanceTable({
               </ToggleGroup>
             </div>
 
-            {/* Include Future Timecards - temporarily hidden */}
-            {false && (
-            <div className="flex items-center gap-2 whitespace-nowrap">
-              <input
-                type="checkbox"
-                id="show-future-timecards"
-                checked={showFutureTimecards}
-                onChange={(e) => setShowFutureTimecards(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              <label htmlFor="show-future-timecards" className="text-sm font-medium text-gray-700 cursor-pointer">
-                Include Future Timecards
-              </label>
-            </div>
-            )}
-
             {/* Date Navigation */}
             <div className="flex items-center justify-end gap-2">
               <Button
@@ -2691,7 +2744,7 @@ export function EmployeeTimeAttendanceTable({
             </h2>
           </div>
 
-          {/* Table Controls - Only show in table view (Day | Week | Month and Include Future Timecards are in top row) */}
+          {/* Table Controls - Only show in table view */}
           {viewType === 'table' && (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
               {/* Mobile: full width; sm and up: fixed half-width so it doesn't stretch (max-w-md = 28rem) */}
@@ -2708,60 +2761,71 @@ export function EmployeeTimeAttendanceTable({
             </div>
           )}
         </div>
-
-        {/* Conditional rendering: Calendar or Table */}
-        {viewType === 'table' ? (
-          /* Table view */
-          <Table
-            title=""
-            description=""
-            columns={columns}
-            data={tableData}
-            showPagination={false}
-            selectable={false}
-            className="w-full"
-            emptyMessage="No employee time and attendance records found for the selected date range."
-            getRowClassName={(row) => {
-              // Check if this is a future punch by ID or time
-              const isFutureById = row._id?.startsWith('future-');
-              const timeInMs = new Date(row.timeIn).getTime();
-              const isFutureByTime = !Number.isNaN(timeInMs) && timeInMs > Date.now();
-              
-              if (isFutureById || isFutureByTime) {
-                // Light blue background to indicate upcoming shifts
-                return 'bg-blue-50 hover:bg-blue-100';
-              }
-              return '';
-            }}
-          />
-        ) : /* Calendar view (Month, Week, Day) */
-        companyLoading ? (
-          <div className="flex items-center justify-center min-h-[500px]">
-            <div className="text-gray-500">Loading calendar...</div>
-          </div>
-        ) : (
-          <CalendarProvider
-            events={events}
-            setEvents={setEvents}
-            mode={calendarMode}
-            setMode={setCalendarMode}
-            date={calendarDate}
-            setDate={setCalendarDate}
-            calendarIconIsToday={false}
-            weekStartsOn={weekStartsOn || 0}
-            dayBadges={dayBadges}
-            onOverflowClick={handleOverflowClick}
-          >
-            <CalendarEventHandler />
-            <div className="space-y-4">
-              <div className="border rounded-lg bg-white shadow-sm min-h-[500px]">
-                <Calendar hideHeaderActions={true} hideHeaderDate={true} />
+        <div
+          className="relative flex min-h-0 flex-1 flex-col overflow-y-auto border border-gray-200 rounded-md"
+          style={{ height: 'calc(100vh - 36rem)', maxHeight: 'calc(100vh - 36rem)' }}
+        >
+          {/* Loading overlay when refetching (not initial load) */}
+          {isFetching && !isLoading && (
+            <div className="absolute inset-0 bg-white/50 backdrop-blur-[2px] z-50 flex items-start justify-center pt-4">
+              <div className="bg-white rounded-lg shadow-lg px-4 py-2 flex items-center gap-2">
+                <div className="animate-spin h-4 w-4 border-2 border-cyan-600 border-t-transparent rounded-full" />
+                <span className="text-sm text-gray-700">Updating...</span>
               </div>
             </div>
-            {/* ModalCloseHandler must be inside CalendarProvider */}
-            <ModalCloseHandler />
-          </CalendarProvider>
-        )}
+          )}
+
+          {/* Conditional rendering: Calendar or Table */}
+          {viewType === 'table' ? (
+            /* Table view */
+            <Table
+              title=""
+              description=""
+              columns={columns}
+              data={tableData}
+              showPagination={false}
+              selectable={false}
+              className="w-full"
+              emptyMessage="No employee time and attendance records found for the selected date range."
+              getRowClassName={(row) => {
+                // Check if this is a future punch by ID or time
+                const isFutureById = row._id?.startsWith('future-');
+                const timeInMs = new Date(row.timeIn).getTime();
+                const isFutureByTime = !Number.isNaN(timeInMs) && timeInMs > Date.now();
+
+                if (isFutureById || isFutureByTime) {
+                  // Light blue background to indicate upcoming shifts
+                  return 'bg-blue-50 hover:bg-blue-100';
+                }
+                return '';
+              }}
+            />
+          ) : companyLoading ? (
+            <div className="flex items-center justify-center min-h-[500px]">
+              <div className="text-gray-500">Loading calendar...</div>
+            </div>
+          ) : (
+            <CalendarProvider
+              events={events}
+              setEvents={setEvents}
+              mode={calendarMode}
+              setMode={setCalendarMode}
+              date={calendarDate}
+              setDate={setCalendarDate}
+              calendarIconIsToday={false}
+              weekStartsOn={weekStartsOn || 0}
+              dayBadges={dayBadges}
+              onOverflowClick={handleOverflowClick}
+            >
+              <CalendarEventHandler />
+              <div className="flex flex-col flex-1 h-full border rounded-lg bg-white shadow-sm">
+                <Calendar hideHeaderActions={true} hideHeaderDate={true} />
+              </div>
+              {/* ModalCloseHandler must be inside CalendarProvider */}
+              <ModalCloseHandler />
+            </CalendarProvider>
+          )}
+        </div>
       </div>
 
       {/* Employee Punch Details Modal */}
@@ -2780,6 +2844,23 @@ export function EmployeeTimeAttendanceTable({
           // Refetch data after successful update will be handled by queryClient
           // The modal component will handle the refetch
         }}
+      />
+
+      {/* Active Employees Modal */}
+      <ActiveEmployeesModal
+        isOpen={showActiveEmployeesModal}
+        onClose={() => setShowActiveEmployeesModal(false)}
+        employees={activeClockedInEmployees}
+        activeCount={activeCount}
+        isLoading={activeEmployeesLoading}
+      />
+
+      <ShiftPositionsModal
+        isOpen={showShiftPositionsModal}
+        onClose={() => setShowShiftPositionsModal(false)}
+        shift={currentlySelectedShift}
+        dateDetails={shiftPositionSummary?.dateDetails || {}}
+        shiftRoster={(currentlySelectedShift?.shiftRoster || []) as (RosterApplicant | Applicant)[]}
       />
 
       {/* Overflow Dropdown - Custom positioned */}

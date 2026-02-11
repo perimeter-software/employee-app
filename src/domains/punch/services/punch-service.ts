@@ -1,5 +1,12 @@
 import { baseInstance } from '@/lib/api/instance';
 import { Punch, PunchWithJobInfo } from '../types';
+import type {
+  ActiveEmployeesParams,
+  ActiveEmployeeCountResponse,
+  ActiveEmployeeRow,
+  ActiveEmployeesListResponse,
+} from '../types/active-employees.types';
+import type { EmployeePunchesParams } from '../types/employee-punches.types';
 import { ClockInCoordinates } from '@/domains/job/types/location.types';
 import { Shift } from '@/domains/job/types/job.types';
 
@@ -11,6 +18,27 @@ export const punchQueryKeys = {
   allOpen: (userId: string) =>
     [...punchQueryKeys.all, 'allOpen', userId] as const,
   status: (id: string) => [...punchQueryKeys.all, 'status', id] as const,
+  /** Active employee count (Client time & attendance). Key includes jobIds + shiftSlug for cache separation. */
+  activeCount: (jobIdsKey: string, shiftSlug: string) =>
+    [...punchQueryKeys.all, 'activeCount', jobIdsKey, shiftSlug] as const,
+  /** Active employees list (Client time & attendance). Key includes jobIds + shiftSlug for cache separation. */
+  activeEmployees: (jobIdsKey: string, shiftSlug: string) =>
+    [...punchQueryKeys.all, 'activeEmployees', jobIdsKey, shiftSlug] as const,
+  /** Employee punches by date range (Client time & attendance). Key includes startDate, endDate, jobIds, shiftSlug. */
+  employeePunches: (
+    startDate: string,
+    endDate: string,
+    jobIdsKey: string,
+    shiftSlug: string
+  ) =>
+    [
+      ...punchQueryKeys.all,
+      'employeePunches',
+      startDate,
+      endDate,
+      jobIdsKey,
+      shiftSlug,
+    ] as const,
 } as const;
 
 export class PunchApiService {
@@ -266,6 +294,114 @@ export class PunchApiService {
 
       // The ApiClient already extracts and throws meaningful errors
       // Just re-throw the error - it already has the proper message and error code
+      throw error;
+    }
+  }
+}
+
+/** Service for active employee count / list (Client time & attendance). Uses Next.js API route. */
+export class ActiveEmployeesService {
+  /** Path relative to API base URL. */
+  static readonly ENDPOINT = 'punches/employees/active-count' as const;
+
+  /**
+   * Get active employee count. API returns count of currently clocked-in employees for the given job(s) and shift.
+   */
+  static async getActiveCount(
+    params: ActiveEmployeesParams = {}
+  ): Promise<number> {
+    try {
+      const body = {
+        jobIds: params.jobIds && params.jobIds.length > 0 ? params.jobIds : undefined,
+        shiftSlug: params.shiftSlug && params.shiftSlug !== 'all' ? params.shiftSlug : undefined,
+        includeList: false,
+      };
+      const response = await baseInstance.post<ActiveEmployeeCountResponse>(
+        ActiveEmployeesService.ENDPOINT,
+        body
+      );
+
+      if (!response.success || response.data === undefined) {
+        throw new Error(response.message || 'Failed to fetch active employee count');
+      }
+
+      return response.data.count;
+    } catch (error) {
+      console.error('❌ getActiveCount API error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get active employees list. API returns full list of currently clocked-in employees for the given job(s) and shift.
+   */
+  static async getActiveEmployees(
+    params: ActiveEmployeesParams = {}
+  ): Promise<ActiveEmployeeRow[]> {
+    try {
+      const body = {
+        jobIds: params.jobIds && params.jobIds.length > 0 ? params.jobIds : undefined,
+        shiftSlug: params.shiftSlug && params.shiftSlug !== 'all' ? params.shiftSlug : undefined,
+        includeList: true,
+      };
+      const response = await baseInstance.post<ActiveEmployeesListResponse>(
+        ActiveEmployeesService.ENDPOINT,
+        body
+      );
+
+      if (!response.success || response.data === undefined) {
+        throw new Error(response.message || 'Failed to fetch active employees');
+      }
+
+      return response.data.employees ?? [];
+    } catch (error) {
+      console.error('❌ getActiveEmployees API error:', error);
+      throw error;
+    }
+  }
+}
+
+/** Service for employee punches by date range (Client time & attendance). Uses Next.js API route. */
+export class EmployeePunchesService {
+  /** Path relative to API base URL. */
+  static readonly ENDPOINT = 'punches/employees' as const;
+
+  /**
+   * Get employee punches for a date range. API returns punches filtered by job(s) and optional shift.
+   */
+  static async getEmployeePunches(
+    params: EmployeePunchesParams
+  ): Promise<Record<string, unknown>[]> {
+    try {
+      const normalizedShiftSlug =
+        params.shiftSlug &&
+        params.shiftSlug !== 'all' &&
+        params.shiftSlug.trim() !== ''
+          ? params.shiftSlug.trim()
+          : undefined;
+
+      const body = {
+        startDate: params.startDate,
+        endDate: params.endDate,
+        jobIds:
+          params.jobIds && params.jobIds.length > 0 ? params.jobIds : undefined,
+        shiftSlug: normalizedShiftSlug,
+      };
+
+      const response = await baseInstance.post<Record<string, unknown>[]>(
+        EmployeePunchesService.ENDPOINT,
+        body
+      );
+
+      if (!response.success || response.data === undefined) {
+        throw new Error(
+          response.message || 'Failed to fetch employee punches'
+        );
+      }
+
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      console.error('❌ getEmployeePunches API error:', error);
       throw error;
     }
   }

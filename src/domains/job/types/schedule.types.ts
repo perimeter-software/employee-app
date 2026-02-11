@@ -3,6 +3,8 @@ import type { Applicant } from '@/domains/user/types/applicant.types';
 export type RosterEntry = {
   employeeId: string;
   date: string;
+  /** Position is filled when assigned to someone (see stadium-people WeeklyScheduleConfigurationModal) */
+  assignedPosition?: string;
 };
 
 export type ScheduleEntry = {
