@@ -23,14 +23,9 @@ const styles = StyleSheet.create({
   page: {
     padding: 24,
     paddingTop: 48,
+    paddingBottom: 40,
     fontFamily: 'Helvetica',
     fontSize: 12,
-  },
-  fixedHeader: {
-    paddingTop: 8,
-  },
-  contentBelowHeader: {
-    marginTop: 280,
   },
   invoiceHeader: {
     flexDirection: 'row',
@@ -133,6 +128,15 @@ const styles = StyleSheet.create({
   notesFinal: {
     fontSize: 14,
   },
+  pageFooter: {
+    position: 'absolute',
+    bottom: 12,
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    fontSize: 10,
+    color: '#666',
+  },
 });
 
 const moneyFormatter = new Intl.NumberFormat('en-US', {
@@ -177,10 +181,18 @@ export function InvoicePreviewPDF({ invoice }: Props) {
 
   return (
     <Document>
-      <Page size="A4" style={styles.page}>
-        {/* Fixed header so it repeats on every page and is not cut off when table has many rows */}
-        <View fixed style={styles.fixedHeader}>
-          <View style={styles.invoiceHeader}>
+      <Page size="A4" style={styles.page} wrap>
+        {/* Page count footer – fixed at bottom of each page to avoid overlap with content */}
+        <View fixed style={styles.pageFooter}>
+          <Text
+            render={({ pageNumber, totalPages }) =>
+              `${pageNumber} of ${totalPages}`
+            }
+          />
+        </View>
+
+        {/* Invoice Header – same two columns as stadium-people */}
+        <View style={styles.invoiceHeader}>
           <View style={styles.invoiceInfoContainer}>
             <Text style={styles.invoiceTitle}>INVOICE</Text>
             <Text style={styles.invoiceInfo}>
@@ -224,10 +236,7 @@ export function InvoicePreviewPDF({ invoice }: Props) {
             <Text style={{ fontWeight: 'bold' }}>Attn:</Text> {formatAttn(to.attn)}
           </Text>
         </View>
-        </View>
 
-        {/* Table + totals: flow below fixed header so top is never cut off */}
-        <View style={styles.contentBelowHeader}>
         {/* Table – same column headers and data as modal: DATE, POSITION, QTY STAFF, RATE, AMOUNT */}
         <View style={styles.table}>
           <View style={styles.tableHeader}>
@@ -270,7 +279,6 @@ export function InvoicePreviewPDF({ invoice }: Props) {
               <Text style={styles.totalsFinal}>{moneyFormatter.format(totalAmount)}</Text>
             </View>
           </View>
-        </View>
         </View>
       </Page>
     </Document>
