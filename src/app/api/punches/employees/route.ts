@@ -850,9 +850,9 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
                     continue;
                   }
 
-                  // For future punches, use just the date (start of day) - no specific time
-                  const timeIn = new Date(currentDate);
-                  timeIn.setHours(0, 0, 0, 0);
+                  // For future punches, use noon UTC for the calendar date so it displays correctly in all client timezones.
+                  // (Midnight UTC would show as the previous day when the client formats in local time, e.g. US Pacific.)
+                  const timeIn = `${dateKey}T12:00:00.000Z`;
 
                   // Get employee data
                   const firstName = employeeData?.firstName || '';
@@ -866,7 +866,7 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
                     userId: employeeId,
                     applicantId: employeeId,
                     jobId: job._id,
-                    timeIn: timeIn.toISOString(),
+                    timeIn,
                     timeOut: null, // Future punches have no clock out
                     status: 'scheduled',
                     shiftSlug: shift.slug,
