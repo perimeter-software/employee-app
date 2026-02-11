@@ -38,6 +38,7 @@ import {
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
 import { useJobShifts, useJobsWithShifts } from '@/domains/job/hooks';
 import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
+import type { RosterApplicant } from '@/domains/job/types/schedule.types';
 import type { Applicant } from '@/domains/user/types/applicant.types';
 import { clsxm } from '@/lib/utils/class-utils';
 import CalendarProvider from '@/components/ui/Calendar/CalendarProvider';
@@ -47,6 +48,7 @@ import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
 import { EmployeePunchDetailsModal } from '../EmployeePunchDetailsModal/EmployeePunchDetailsModal';
 import { MapModal } from '../MapModal/MapModal';
 import { ActiveEmployeesModal } from '../ActiveEmployeesModal';
+import { ShiftPositionsModal } from '../ShiftPositionsModal';
 import { formatPhoneNumber } from '@/lib/utils';
 import { useActiveEmployeeCount, useActiveEmployees, useEmployeePunches } from '@/domains/punch/hooks';
 import type {
@@ -130,6 +132,9 @@ export function EmployeeTimeAttendanceTable({
 
   // Active employees modal state
   const [showActiveEmployeesModal, setShowActiveEmployeesModal] = useState(false);
+
+  // Shift positions modal state
+  const [showShiftPositionsModal, setShowShiftPositionsModal] = useState(false);
 
   // Base date for navigation
   const [baseDate, setBaseDate] = useState(() => {
@@ -1617,7 +1622,7 @@ export function EmployeeTimeAttendanceTable({
   }, [selectedShiftSlug, allAvailableShifts]);
 
   // Compute position badges for each day when a shift is selected
-  // Creates generic badge data that the Calendar can render
+  // Position is "filled" only when assigned to someone (see stadium-people WeeklyScheduleConfigurationModal)
   const dayBadges = useMemo(() => {
     if (!currentlySelectedShift || !currentlySelectedShift.positions || !currentlySelectedShift.defaultSchedule) {
       return {};
@@ -1631,33 +1636,89 @@ export function EmployeeTimeAttendanceTable({
       return sum + (isNaN(num) ? 0 : num);
     }, 0);
 
-    // For each day in defaultSchedule, compute filled count
     const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
-    
+    const dateFilled: Record<string, number> = {};
+    const dateSeen: Record<string, boolean> = {};
+
     daysOfWeek.forEach((dayOfWeek) => {
       const daySchedule = currentlySelectedShift.defaultSchedule[dayOfWeek];
-      if (!daySchedule || !daySchedule.roster || daySchedule.roster.length === 0) {
-        return; // Skip days with no roster
-      }
+      if (!daySchedule?.roster?.length) return;
 
-      // Each roster entry represents someone scheduled for that day
-      const filled = daySchedule.roster.length;
-      const unfilled = Math.max(0, totalRequested - filled);
-
-      // Get dates from roster entries (they should all have the same date for this day)
       daySchedule.roster.forEach((entry) => {
-        if (entry.date) {
-          const dateKey = entry.date; // Already in 'yyyy-MM-dd' format
-          badges[dateKey] = [
-            { value: totalRequested, color: 'bg-blue-500', textColor: 'text-white', label: 'Requested positions' },
-            { value: filled, color: 'bg-successGreen', textColor: 'text-white', label: 'Filled positions' },
-            { value: unfilled, color: 'bg-red-500', textColor: 'text-white', label: 'Unfilled positions' },
-          ];
+        if (!entry.date) return;
+        dateSeen[entry.date] = true;
+        // Count as filled only when assigned to a position (assignedPosition set)
+        const isAssigned = Boolean(entry.employeeId && (entry as { assignedPosition?: string }).assignedPosition);
+        if (isAssigned) {
+          dateFilled[entry.date] = (dateFilled[entry.date] ?? 0) + 1;
         }
       });
     });
 
+    Object.keys(dateSeen).forEach((dateKey) => {
+      const filled = dateFilled[dateKey] ?? 0;
+      const unfilled = Math.max(0, totalRequested - filled);
+      badges[dateKey] = [
+        { value: totalRequested, color: 'bg-blue-500', textColor: 'text-white', label: 'Requested positions' },
+        { value: filled, color: 'bg-successGreen', textColor: 'text-white', label: 'Filled positions' },
+        { value: unfilled, color: 'bg-red-500', textColor: 'text-white', label: 'Unfilled positions' },
+      ];
+    });
+
     return badges;
+  }, [currentlySelectedShift]);
+
+  // Compute position summary for the selected shift (for position summary card)
+  const shiftPositionSummary = useMemo(() => {
+    if (!currentlySelectedShift || !currentlySelectedShift.defaultSchedule) {
+      return null;
+    }
+
+    // Calculate total requested positions (0 when positions array is empty or missing)
+    const totalRequested = (currentlySelectedShift.positions ?? []).reduce((sum: number, pos) => {
+      const num = parseInt(pos.numberPositions?.toString() || '0', 10);
+      return sum + (isNaN(num) ? 0 : num);
+    }, 0);
+
+    // Aggregate filled (assigned to position) and unassigned (on shift but no position) per date
+    const dateDetails: Record<string, { filled: number; unassigned: number; totalRequested: number }> = {};
+    const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+    
+    daysOfWeek.forEach((dayOfWeek) => {
+      const daySchedule = currentlySelectedShift.defaultSchedule[dayOfWeek];
+      if (daySchedule?.roster?.length > 0) {
+        daySchedule.roster.forEach((entry) => {
+          if (entry.date && entry.employeeId) {
+            if (!dateDetails[entry.date]) {
+              dateDetails[entry.date] = { filled: 0, unassigned: 0, totalRequested };
+            }
+            const hasPosition = Boolean((entry as { assignedPosition?: string }).assignedPosition);
+            if (hasPosition) {
+              dateDetails[entry.date].filled++;
+            } else {
+              dateDetails[entry.date].unassigned++;
+            }
+          }
+        });
+      }
+    });
+
+    const numDates = Object.keys(dateDetails).length;
+    const totalFilled = Object.values(dateDetails).reduce((sum, d) => sum + d.filled, 0);
+    const totalUnassigned = Object.values(dateDetails).reduce((sum, d) => sum + d.unassigned, 0);
+    // Total position-slots across all dates (positions per day × number of dates); 0 when no dates
+    const totalSlots = totalRequested * numDates;
+    const totalUnfilled = Math.max(0, totalSlots - totalFilled);
+
+    return {
+      totalRequested,
+      totalSlots,
+      totalFilled,
+      totalUnassigned,
+      totalUnfilled,
+      dateDetails,
+      shiftName: currentlySelectedShift.shiftName,
+    };
   }, [currentlySelectedShift]);
 
   // Get shift data for the selected punch (for modal)
@@ -2461,6 +2522,84 @@ export function EmployeeTimeAttendanceTable({
               </span>
             )}
           </span>
+
+          {/* Shift Position Summary Card */}
+          {currentlySelectedShift && shiftPositionSummary && (
+            <span className="relative inline-flex group w-full min-w-0 sm:min-w-[240px] sm:w-auto">
+              <div 
+                className="flex item-center bg-teal-50 border border-teal-200 rounded-lg p-2 w-full cursor-pointer hover:bg-teal-100 transition-colors"
+                onClick={() => setShowShiftPositionsModal(true)}
+              >
+                <div className="flex items-center gap-4">
+                  {/* Circle: filled count or — when no positions */}
+                  <div className="relative flex-shrink-0">
+                    <div className="w-8 h-8 bg-appPrimary rounded-full flex items-center justify-center text-white text-xl font-bold shadow-sm">
+                      {shiftPositionSummary.totalRequested === 0 ? '—' : shiftPositionSummary.totalFilled}
+                    </div>
+                  </div>
+                  {/* Text content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] font-medium text-gray-600 mb-1 uppercase tracking-wide">
+                      Shift Positions
+                    </div>
+                    <div className="text-xs font-semibold text-gray-900">
+                      {shiftPositionSummary.totalRequested === 0
+                        ? 'No positions configured'
+                        : `${shiftPositionSummary.totalFilled} / ${shiftPositionSummary.totalSlots} filled`}
+                    </div>
+                    {shiftPositionSummary.totalUnassigned > 0 && (
+                      <div className="text-[10px] text-amber-600 font-medium mt-1">
+                        {shiftPositionSummary.totalUnassigned} unassigned
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Hover Tooltip with date-wise breakdown */}
+              {Object.keys(shiftPositionSummary.dateDetails).length > 0 && (
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 w-full max-w-[280px] -translate-x-1/2 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-left text-[11px] font-medium text-gray-900 shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                >
+                  <div className="mb-1 border-b border-gray-100 pb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-500">
+                    {shiftPositionSummary.shiftName}
+                  </div>
+                  <ul className="space-y-1 max-h-48 overflow-y-auto">
+                    {Object.entries(shiftPositionSummary.dateDetails)
+                      .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+                      .slice(0, 6)
+                      .map(([date, details]) => {
+                        const unfilled = details.totalRequested - details.filled;
+                        const unassigned = details.unassigned ?? 0;
+                        return (
+                          <li key={date} className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-medium text-gray-900">
+                              {format(parseISO(date), 'MMM d, yyyy')}
+                            </span>
+                            <span className="text-[9px] text-gray-600">
+                              Filled: <span className="font-semibold text-green-600">{details.filled}</span> / 
+                              Total: <span className="font-semibold">{details.totalRequested}</span>
+                              {unfilled > 0 && (
+                                <span className="text-red-600"> ({unfilled} unfilled)</span>
+                              )}
+                              {unassigned > 0 && (
+                                <span className="text-amber-600"> • {unassigned} unassigned</span>
+                              )}
+                            </span>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                  {Object.keys(shiftPositionSummary.dateDetails).length > 6 && (
+                    <div className="mt-1 border-t border-gray-100 pt-1 text-[9px] text-gray-500">
+                      + {Object.keys(shiftPositionSummary.dateDetails).length - 6} more dates
+                    </div>
+                  )}
+                </span>
+              )}
+            </span>
+          )}
         </div>
 
         {/* View Toggle Buttons and Controls */}
@@ -2714,6 +2853,14 @@ export function EmployeeTimeAttendanceTable({
         employees={activeClockedInEmployees}
         activeCount={activeCount}
         isLoading={activeEmployeesLoading}
+      />
+
+      <ShiftPositionsModal
+        isOpen={showShiftPositionsModal}
+        onClose={() => setShowShiftPositionsModal(false)}
+        shift={currentlySelectedShift}
+        dateDetails={shiftPositionSummary?.dateDetails || {}}
+        shiftRoster={(currentlySelectedShift?.shiftRoster || []) as (RosterApplicant | Applicant)[]}
       />
 
       {/* Overflow Dropdown - Custom positioned */}
