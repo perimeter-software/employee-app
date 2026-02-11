@@ -854,6 +854,12 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
                   // (Midnight UTC would show as the previous day when the client formats in local time, e.g. US Pacific.)
                   const timeIn = `${dateKey}T12:00:00.000Z`;
 
+                  // Only include if timeIn falls within the requested range (e.g. week Feb 9–15 ends at Feb 16 05:59 UTC, so exclude Feb 16 noon).
+                  const timeInMs = parseISO(timeIn).getTime();
+                  if (timeInMs < startDateTime.getTime() || timeInMs > endDateTime.getTime()) {
+                    continue;
+                  }
+
                   // Get employee data
                   const firstName = employeeData?.firstName || '';
                   const lastName = employeeData?.lastName || '';
