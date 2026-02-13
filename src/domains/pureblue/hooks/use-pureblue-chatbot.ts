@@ -6,7 +6,13 @@ import { PureBlueService } from '../services/pureblue-service';
 import { useCurrentUser } from '@/domains/user/hooks/use-current-user';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 
-export function usePureBlueChatbot() {
+export interface UsePureBlueChatbotOptions {
+  /** Persona slug to use (e.g. 'employee-personalized-chatbot', 'sidebar-chatbot') */
+  personaSlug: string;
+}
+
+export function usePureBlueChatbot(options: UsePureBlueChatbotOptions) {
+  const { personaSlug } = options;
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const { data: primaryCompany, isLoading: companyLoading } =
     usePrimaryCompany();
@@ -26,7 +32,13 @@ export function usePureBlueChatbot() {
     error: tokenError,
     refetch,
   } = useQuery({
-    queryKey: ['pureblue-auth-token', userEmail, applicantId, pureBlueConfig],
+    queryKey: [
+      'pureblue-auth-token',
+      userEmail,
+      applicantId,
+      pureBlueConfig,
+      personaSlug,
+    ],
     queryFn: async () => {
       if (!userEmail) {
         throw new Error('User email is required');
@@ -42,10 +54,16 @@ export function usePureBlueChatbot() {
       return PureBlueService.getAuthToken(
         userEmail,
         applicantId,
-        pureBlueConfig
+        pureBlueConfig,
+        personaSlug
       );
     },
-    enabled: !!userEmail && !!pureBlueConfig && !userLoading && !companyLoading,
+    enabled:
+      !!userEmail &&
+      !!pureBlueConfig &&
+      !!personaSlug &&
+      !userLoading &&
+      !companyLoading,
     staleTime: 50 * 60 * 1000, // 50 minutes (tokens expire in 1 hour)
     gcTime: 60 * 60 * 1000, // 1 hour
     retry: 2,
@@ -61,8 +79,7 @@ export function usePureBlueChatbot() {
     if (authToken?.success && authToken?.responseObject?.token) {
       try {
         const token = authToken.responseObject.token;
-        const personaSlug = PureBlueService.getPersonaSlug(pureBlueConfig);
-        const chatUrl = PureBlueService.getChatUrl(pureBlueConfig);
+        const chatUrl = PureBlueService.getChatUrl(pureBlueConfig, personaSlug);
         const url = `${chatUrl}/chat-auth/external-chat?authToken=${token}&personaSlug=${personaSlug}`;
         setChatbotUrl(url);
         setError(null);
@@ -82,7 +99,7 @@ export function usePureBlueChatbot() {
       );
       setChatbotUrl(null);
     }
-  }, [authToken, tokenError, pureBlueConfig]);
+  }, [authToken, tokenError, pureBlueConfig, personaSlug]);
 
   return {
     chatbotUrl,

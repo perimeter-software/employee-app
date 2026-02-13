@@ -21,9 +21,13 @@ export interface PureBlueAuthTokenResponse {
 
 export class PureBlueService {
   /**
-   * Get PureBlue configuration from primary company
+   * Get PureBlue configuration from primary company for a given persona.
+   * Validates that the requested personaSlug exists in config.personas.
    */
-  private static getConfig(primaryCompanyConfig: PureBlueConfig): {
+  private static getConfig(
+    primaryCompanyConfig: PureBlueConfig,
+    personaSlug: string
+  ): {
     apiUrl: string;
     chatUrl: string;
     apiKey: string;
@@ -36,10 +40,17 @@ export class PureBlueService {
     const apiUrl = primaryCompanyConfig.apiUrl;
     const chatUrl = primaryCompanyConfig.chatUrl;
     const apiKey = primaryCompanyConfig.apiKey;
-    const personaSlug = primaryCompanyConfig.personaSlug;
+    const personas = primaryCompanyConfig.personas;
 
-    if (!apiUrl || !chatUrl || !apiKey || !personaSlug) {
+    if (!apiUrl || !chatUrl || !apiKey || !personas?.length) {
       throw new Error('Chatbot not available for this tenant');
+    }
+
+    const persona = personas.find((p) => p.personaSlug === personaSlug);
+    if (!persona) {
+      throw new Error(
+        `Chatbot persona "${personaSlug}" not found for this tenant`
+      );
     }
 
     return { apiUrl, chatUrl, apiKey, personaSlug };
@@ -63,14 +74,15 @@ export class PureBlueService {
 
   /**
    * Get external authentication token from PureBlue
-   * Always uses entity-based authentication with personaSlug from primary company
+   * Always uses entity-based authentication with the requested personaSlug
    */
   static async getAuthToken(
     userEmail: string,
     applicantId: string,
-    primaryCompanyConfig: PureBlueConfig
+    primaryCompanyConfig: PureBlueConfig,
+    personaSlug: string
   ): Promise<PureBlueAuthTokenResponse> {
-    const config = this.getConfig(primaryCompanyConfig);
+    const config = this.getConfig(primaryCompanyConfig, personaSlug);
 
     // Extract hostname from chat URL for x-origin header
     const tenantDomain = this.extractHostnameFromUrl(config.chatUrl);
@@ -113,14 +125,16 @@ export class PureBlueService {
   static async getChatbotUrl(
     userEmail: string,
     applicantId: string,
-    primaryCompanyConfig: PureBlueConfig
+    primaryCompanyConfig: PureBlueConfig,
+    personaSlug: string
   ): Promise<string> {
-    const config = this.getConfig(primaryCompanyConfig);
+    const config = this.getConfig(primaryCompanyConfig, personaSlug);
 
     const authResponse = await this.getAuthToken(
       userEmail,
       applicantId,
-      primaryCompanyConfig
+      primaryCompanyConfig,
+      personaSlug
     );
 
     if (!authResponse.success || !authResponse.responseObject?.token) {
@@ -130,24 +144,19 @@ export class PureBlueService {
     }
 
     const token = authResponse.responseObject.token;
-    const personaSlug = config.personaSlug;
 
     return `${config.chatUrl}/chat-auth/external-chat?authToken=${token}&personaSlug=${personaSlug}`;
   }
 
   /**
-   * Get the PureBlue chat URL (for direct use)
+   * Get the PureBlue chat URL (for direct use).
+   * Requires a personaSlug only to validate config; returns chatUrl from config.
    */
-  static getChatUrl(primaryCompanyConfig: PureBlueConfig): string {
-    const config = this.getConfig(primaryCompanyConfig);
+  static getChatUrl(
+    primaryCompanyConfig: PureBlueConfig,
+    personaSlug: string
+  ): string {
+    const config = this.getConfig(primaryCompanyConfig, personaSlug);
     return config.chatUrl;
-  }
-
-  /**
-   * Get the persona slug
-   */
-  static getPersonaSlug(primaryCompanyConfig: PureBlueConfig): string {
-    const config = this.getConfig(primaryCompanyConfig);
-    return config.personaSlug;
   }
 }

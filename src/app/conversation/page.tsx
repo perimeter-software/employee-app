@@ -30,13 +30,13 @@ const ChatConversationPage = () => {
   // Get current user for logging
   const { data: currentUser } = useCurrentUser();
 
-  // Get PureBlue chatbot URL
+  // Get PureBlue chatbot URL (employee-personalized-chatbot for the "Ask a Question" page)
   const {
     chatbotUrl,
     isLoading: chatbotLoading,
     error: chatbotError,
     refetch,
-  } = usePureBlueChatbot();
+  } = usePureBlueChatbot({ personaSlug: 'employee-personalized-chatbot' });
 
   // Log "Ask a Question" activity when chatbot is successfully loaded
   useEffect(() => {
