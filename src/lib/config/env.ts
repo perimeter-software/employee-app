@@ -28,12 +28,12 @@ export const env = {
 
   // Redis Configuration
   redis: {
-    host: process.env.REDIS_HOST || "127.0.0.1",
-    port: parseInt(process.env.REDIS_PORT || "6379"),
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
     url:
       process.env.REDIS_URL ||
-      `redis://${process.env.REDIS_HOST || "127.0.0.1"}:${
-        process.env.REDIS_PORT || "6379"
+      `redis://${process.env.REDIS_HOST || '127.0.0.1'}:${
+        process.env.REDIS_PORT || '6379'
       }`,
   },
 
@@ -49,28 +49,36 @@ export const env = {
     anthropic: process.env.ANTHROPIC_API_KEY!,
   },
 
+  // AWS SES Configuration (for email service)
+  ses: {
+    region:
+      process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-2',
+    fromEmail: process.env.SES_FROM_EMAIL || 'jobs@stadiumpeople.com',
+    sendInDev: process.env.SES_SEND_IN_DEV === 'true',
+  },
+
   // Environment Detection
-  isDevelopment: process.env.NODE_ENV === "development",
-  isProduction: process.env.NODE_ENV === "production",
-  isTest: process.env.NODE_ENV === "test",
+  isDevelopment: process.env.NODE_ENV === 'development',
+  isProduction: process.env.NODE_ENV === 'production',
+  isTest: process.env.NODE_ENV === 'test',
 };
 
 // Type-safe environment variable checker
 export function validateEnv() {
   const requiredVars = [
-    "AUTH0_SECRET",
-    "AUTH0_BASE_URL",
-    "AUTH0_ISSUER_BASE_URL",
-    "AUTH0_CLIENT_ID",
-    "AUTH0_CLIENT_SECRET",
-    "MONGODB_CONNECTION_STRING",
+    'AUTH0_SECRET',
+    'AUTH0_BASE_URL',
+    'AUTH0_ISSUER_BASE_URL',
+    'AUTH0_CLIENT_ID',
+    'AUTH0_CLIENT_SECRET',
+    'MONGODB_CONNECTION_STRING',
   ];
 
   const missingVars = requiredVars.filter((varName) => !process.env[varName]);
 
   if (missingVars.length > 0) {
     throw new Error(
-      `Missing required environment variables: ${missingVars.join(", ")}`
+      `Missing required environment variables: ${missingVars.join(', ')}`
     );
   }
 }
@@ -79,19 +87,19 @@ export function validateEnv() {
 export function getEnvironmentConfig() {
   const baseUrl = process.env.AUTH0_BASE_URL!;
 
-  if (baseUrl.includes("localhost")) {
+  if (baseUrl.includes('localhost')) {
     return {
-      environment: "development",
+      environment: 'development',
       isLocal: true,
     };
-  } else if (baseUrl.includes("stage") || baseUrl.includes("staging")) {
+  } else if (baseUrl.includes('stage') || baseUrl.includes('staging')) {
     return {
-      environment: "staging",
+      environment: 'staging',
       isLocal: false,
     };
   } else {
     return {
-      environment: "production",
+      environment: 'production',
       isLocal: false,
     };
   }
