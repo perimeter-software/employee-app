@@ -8,13 +8,15 @@ import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 
 export function usePureBlueChatbot() {
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
-  const { data: primaryCompany, isLoading: companyLoading } = usePrimaryCompany();
+  const { data: primaryCompany, isLoading: companyLoading } =
+    usePrimaryCompany();
   const [chatbotUrl, setChatbotUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Get email from currentUser (EnhancedUser type has email field)
   const userEmail = currentUser?.email || null;
-  
+  const applicantId = currentUser?.applicantId || null;
+
   // Get PureBlue config from primary company (required)
   const pureBlueConfig = primaryCompany?.pureBlueConfig;
 
@@ -24,15 +26,24 @@ export function usePureBlueChatbot() {
     error: tokenError,
     refetch,
   } = useQuery({
-    queryKey: ['pureblue-auth-token', userEmail, pureBlueConfig],
+    queryKey: ['pureblue-auth-token', userEmail, applicantId, pureBlueConfig],
     queryFn: async () => {
       if (!userEmail) {
         throw new Error('User email is required');
       }
+
+      if (!applicantId) {
+        throw new Error('Applicant ID is required');
+      }
+
       if (!pureBlueConfig) {
         throw new Error('Chatbot not available for this tenant');
       }
-      return PureBlueService.getAuthToken(userEmail, pureBlueConfig);
+      return PureBlueService.getAuthToken(
+        userEmail,
+        applicantId,
+        pureBlueConfig
+      );
     },
     enabled: !!userEmail && !!pureBlueConfig && !userLoading && !companyLoading,
     staleTime: 50 * 60 * 1000, // 50 minutes (tokens expire in 1 hour)
@@ -56,11 +67,19 @@ export function usePureBlueChatbot() {
         setChatbotUrl(url);
         setError(null);
       } catch (configError) {
-        setError(configError instanceof Error ? configError.message : 'Chatbot not available for this tenant');
+        setError(
+          configError instanceof Error
+            ? configError.message
+            : 'Chatbot not available for this tenant'
+        );
         setChatbotUrl(null);
       }
     } else if (tokenError) {
-      setError(tokenError instanceof Error ? tokenError.message : 'Chatbot not available for this tenant');
+      setError(
+        tokenError instanceof Error
+          ? tokenError.message
+          : 'Chatbot not available for this tenant'
+      );
       setChatbotUrl(null);
     }
   }, [authToken, tokenError, pureBlueConfig]);
@@ -72,4 +91,3 @@ export function usePureBlueChatbot() {
     refetch,
   };
 }
-

@@ -52,7 +52,9 @@ export class PureBlueService {
     try {
       const urlObj = new URL(url);
       // Return hostname with port if port is specified
-      return urlObj.port ? `${urlObj.hostname}:${urlObj.port}` : urlObj.hostname;
+      return urlObj.port
+        ? `${urlObj.hostname}:${urlObj.port}`
+        : urlObj.hostname;
     } catch {
       // If URL parsing fails, try to remove http:// or https:// manually
       return url.replace(/^https?:\/\//, '').split('/')[0];
@@ -65,6 +67,7 @@ export class PureBlueService {
    */
   static async getAuthToken(
     userEmail: string,
+    applicantId: string,
     primaryCompanyConfig: PureBlueConfig
   ): Promise<PureBlueAuthTokenResponse> {
     const config = this.getConfig(primaryCompanyConfig);
@@ -72,11 +75,16 @@ export class PureBlueService {
     // Extract hostname from chat URL for x-origin header
     const tenantDomain = this.extractHostnameFromUrl(config.chatUrl);
 
+    const pureblueChatVariables = {
+      email: userEmail,
+      applicantId,
+    };
+
     try {
       const response = await axios.post<PureBlueAuthTokenResponse>(
         `${config.apiUrl}/api/v1/auth/external-token`,
         {
-          email: userEmail,
+          pureblueChatVariables,
           personaSlug: config.personaSlug,
           entityBasedAuth: true,
         },
@@ -92,9 +100,9 @@ export class PureBlueService {
       return response.data;
     } catch (error) {
       console.error('Error getting PureBlue auth token:', error);
-      const errorMessage = 
-        (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        'Failed to authenticate with PureBlue chatbot';
+      const errorMessage =
+        (error as { response?: { data?: { message?: string } } })?.response
+          ?.data?.message || 'Failed to authenticate with PureBlue chatbot';
       throw new Error(errorMessage);
     }
   }
@@ -104,14 +112,21 @@ export class PureBlueService {
    */
   static async getChatbotUrl(
     userEmail: string,
+    applicantId: string,
     primaryCompanyConfig: PureBlueConfig
   ): Promise<string> {
     const config = this.getConfig(primaryCompanyConfig);
 
-    const authResponse = await this.getAuthToken(userEmail, primaryCompanyConfig);
-    
+    const authResponse = await this.getAuthToken(
+      userEmail,
+      applicantId,
+      primaryCompanyConfig
+    );
+
     if (!authResponse.success || !authResponse.responseObject?.token) {
-      throw new Error(authResponse.message || 'Failed to get authentication token');
+      throw new Error(
+        authResponse.message || 'Failed to get authentication token'
+      );
     }
 
     const token = authResponse.responseObject.token;
@@ -136,4 +151,3 @@ export class PureBlueService {
     return config.personaSlug;
   }
 }
-
