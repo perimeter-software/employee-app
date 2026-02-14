@@ -311,16 +311,21 @@ export class ActiveEmployeesService {
     params: ActiveEmployeesParams = {}
   ): Promise<number> {
     try {
-      const normalizedShiftSlugs =
-        params.shiftSlugs && params.shiftSlugs.length > 0
-          ? params.shiftSlugs.filter((s) => s && s.trim() !== '')
-          : undefined;
+      // Same contract as getEmployeePunches: undefined = omit (all shifts), [] = no shifts
+      const shiftSlugsForBody =
+        params.shiftSlugs === undefined
+          ? undefined
+          : params.shiftSlugs.length > 0
+            ? params.shiftSlugs.filter((s) => s && s.trim() !== '')
+            : [];
 
-      const body = {
+      const body: Record<string, unknown> = {
         jobIds: params.jobIds && params.jobIds.length > 0 ? params.jobIds : undefined,
-        shiftSlugs: normalizedShiftSlugs,
         includeList: false,
       };
+      if (shiftSlugsForBody !== undefined) {
+        body.shiftSlugs = shiftSlugsForBody;
+      }
       const response = await baseInstance.post<ActiveEmployeeCountResponse>(
         ActiveEmployeesService.ENDPOINT,
         body
@@ -344,16 +349,21 @@ export class ActiveEmployeesService {
     params: ActiveEmployeesParams = {}
   ): Promise<ActiveEmployeeRow[]> {
     try {
-      const normalizedShiftSlugs =
-        params.shiftSlugs && params.shiftSlugs.length > 0
-          ? params.shiftSlugs.filter((s) => s && s.trim() !== '')
-          : undefined;
+      // Same contract as getEmployeePunches: undefined = omit (all shifts), [] = no shifts
+      const shiftSlugsForBody =
+        params.shiftSlugs === undefined
+          ? undefined
+          : params.shiftSlugs.length > 0
+            ? params.shiftSlugs.filter((s) => s && s.trim() !== '')
+            : [];
 
-      const body = {
+      const body: Record<string, unknown> = {
         jobIds: params.jobIds && params.jobIds.length > 0 ? params.jobIds : undefined,
-        shiftSlugs: normalizedShiftSlugs,
         includeList: true,
       };
+      if (shiftSlugsForBody !== undefined) {
+        body.shiftSlugs = shiftSlugsForBody;
+      }
       const response = await baseInstance.post<ActiveEmployeesListResponse>(
         ActiveEmployeesService.ENDPOINT,
         body
@@ -383,18 +393,24 @@ export class EmployeePunchesService {
     params: EmployeePunchesParams
   ): Promise<Record<string, unknown>[]> {
     try {
-      const normalizedShiftSlugs =
-        params.shiftSlugs && params.shiftSlugs.length > 0
-          ? params.shiftSlugs.filter((s) => s && s.trim() !== '')
-          : undefined;
+      // When shiftSlugs is undefined (e.g. Select Job "all"), omit so API returns all shifts.
+      // When shiftSlugs is [] (e.g. Today with no shifts), send [] so API returns no punches.
+      const shiftSlugsForBody =
+        params.shiftSlugs === undefined
+          ? undefined
+          : params.shiftSlugs.length > 0
+            ? params.shiftSlugs.filter((s) => s && s.trim() !== '')
+            : [];
 
-      const body = {
+      const body: Record<string, unknown> = {
         startDate: params.startDate,
         endDate: params.endDate,
         jobIds:
           params.jobIds && params.jobIds.length > 0 ? params.jobIds : undefined,
-        shiftSlugs: normalizedShiftSlugs,
       };
+      if (shiftSlugsForBody !== undefined) {
+        body.shiftSlugs = shiftSlugsForBody;
+      }
 
       const response = await baseInstance.post<Record<string, unknown>[]>(
         EmployeePunchesService.ENDPOINT,

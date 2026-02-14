@@ -164,20 +164,23 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
       ];
     }
 
-    // If shiftSlugs array is provided, filter by shifts
-    // ERROR-PROOF: Validate and normalize shift filter
-    if (shiftSlugs && Array.isArray(shiftSlugs) && shiftSlugs.length > 0) {
-      const validSlugs = shiftSlugs.filter((s) => s && s.trim() !== '');
-      if (validSlugs.length > 0) {
-        query.shiftSlug = { $in: validSlugs.map((s) => s.trim()) };
-
-        // Log for debugging (only in development)
+    // Shift filter: missing/undefined = all shifts; [] = no shifts (return no punches); [slugs] = filter by those
+    if (shiftSlugs !== undefined && Array.isArray(shiftSlugs)) {
+      if (shiftSlugs.length === 0) {
+        query.shiftSlug = { $in: [] }; // Match no documents (Today/Upcoming/Past with no shifts)
         if (process.env.NODE_ENV === 'development') {
-          console.log('[Employee Punches API] Filtering by shiftSlugs:', validSlugs);
+          console.log('[Employee Punches API] shiftSlugs [] → no punches');
+        }
+      } else {
+        const validSlugs = shiftSlugs.filter((s) => s && s.trim() !== '');
+        if (validSlugs.length > 0) {
+          query.shiftSlug = { $in: validSlugs.map((s) => s.trim()) };
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[Employee Punches API] Filtering by shiftSlugs:', validSlugs);
+          }
         }
       }
     } else {
-      // Explicitly don't filter by shift when empty or undefined
       if (process.env.NODE_ENV === 'development') {
         console.log('[Employee Punches API] Not filtering by shift (all shifts)');
       }
@@ -613,7 +616,9 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
       });
     }
     
-    if (hasFutureDates && jobsToProcess.length > 0) {
+    // Skip future punch generation when shiftSlugs is [] (Today/Upcoming/Past with no shifts)
+    const skipFuturePunches = Array.isArray(shiftSlugs) && shiftSlugs.length === 0;
+    if (hasFutureDates && jobsToProcess.length > 0 && !skipFuturePunches) {
       try {
         // Fetch jobs with full shift data (defaultSchedule and shiftRoster)
         const futureJobObjectIds = jobsToProcess
@@ -755,41 +760,22 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
                 }
                 debugInfo.shiftsWithSchedule++;
 
-                // Get roster for this day
-                let roster: Array<string | { employeeId: string; date?: string } | { _id: string }> = (daySchedule.roster || []) as Array<string | { employeeId: string; date?: string } | { _id: string }>;
+                // Get roster for this day - only employees explicitly assigned to this date
+                const rawRoster: Array<string | { employeeId: string; date?: string } | { _id: string }> = (daySchedule.roster || []) as Array<string | { employeeId: string; date?: string } | { _id: string }>;
                 
-                // Filter roster entries to only those that match the current date (if they have a date field)
-                // Entries without a date field are used for all dates
-                const dateFilteredRoster = roster.filter((entry) => {
+                // Filter roster entries to only those that match the current date.
+                // Someone is "scheduled" only when added to the roster with a date for that day.
+                // Entries with a date must match dateKey; entries without a date are not used (no date = not scheduled for a specific day).
+                const roster = rawRoster.filter((entry) => {
                   if (typeof entry === 'string') {
-                    return true; // String IDs are used for all dates
+                    return false; // String IDs have no date - don't treat as scheduled for this day
                   }
-                  if (entry && typeof entry === 'object') {
-                    if ('employeeId' in entry) {
-                      const e = entry as { employeeId: string; date?: string };
-                      // If entry has a date, only include if it matches current date
-                      // If no date, include for all dates
-                      return !e.date || e.date === dateKey;
-                    }
-                    if ('_id' in entry) {
-                      return true; // Objects with _id are used for all dates
-                    }
+                  if (entry && typeof entry === 'object' && 'employeeId' in entry) {
+                    const e = entry as { employeeId: string; date?: string };
+                    return e.date === dateKey;
                   }
                   return false;
                 });
-                
-                // If no roster entries match this date, try to use shiftRoster as fallback
-                // shiftRoster doesn't have date restrictions, so use it for all future dates
-                if (dateFilteredRoster.length === 0 && shift.shiftRoster && Array.isArray(shift.shiftRoster) && shift.shiftRoster.length > 0) {
-                  roster = shift.shiftRoster.map((emp) => {
-                    if (emp && typeof emp === 'object' && '_id' in emp) {
-                      return { _id: emp._id };
-                    }
-                    return null;
-                  }).filter((item): item is { _id: string } => item !== null);
-                } else {
-                  roster = dateFilteredRoster;
-                }
                 
                 if (roster.length === 0) {
                   continue;
@@ -869,9 +855,15 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
                     continue;
                   }
 
-                  // For future punches, use just the date (start of day) - no specific time
-                  const timeIn = new Date(currentDate);
-                  timeIn.setHours(0, 0, 0, 0);
+                  // For future punches, use noon UTC for the calendar date so it displays correctly in all client timezones.
+                  // (Midnight UTC would show as the previous day when the client formats in local time, e.g. US Pacific.)
+                  const timeIn = `${dateKey}T12:00:00.000Z`;
+
+                  // Only include if timeIn falls within the requested range (e.g. week Feb 9–15 ends at Feb 16 05:59 UTC, so exclude Feb 16 noon).
+                  const timeInMs = parseISO(timeIn).getTime();
+                  if (timeInMs < startDateTime.getTime() || timeInMs > endDateTime.getTime()) {
+                    continue;
+                  }
 
                   // Get employee data
                   const firstName = employeeData?.firstName || '';
@@ -885,7 +877,7 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
                     userId: employeeId,
                     applicantId: employeeId,
                     jobId: job._id,
-                    timeIn: timeIn.toISOString(),
+                    timeIn,
                     timeOut: null, // Future punches have no clock out
                     status: 'scheduled',
                     shiftSlug: shift.slug,
