@@ -164,20 +164,23 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
       ];
     }
 
-    // If shiftSlugs array is provided, filter by shifts
-    // ERROR-PROOF: Validate and normalize shift filter
-    if (shiftSlugs && Array.isArray(shiftSlugs) && shiftSlugs.length > 0) {
-      const validSlugs = shiftSlugs.filter((s) => s && s.trim() !== '');
-      if (validSlugs.length > 0) {
-        query.shiftSlug = { $in: validSlugs.map((s) => s.trim()) };
-
-        // Log for debugging (only in development)
+    // Shift filter: missing/undefined = all shifts; [] = no shifts (return no punches); [slugs] = filter by those
+    if (shiftSlugs !== undefined && Array.isArray(shiftSlugs)) {
+      if (shiftSlugs.length === 0) {
+        query.shiftSlug = { $in: [] }; // Match no documents (Today/Upcoming/Past with no shifts)
         if (process.env.NODE_ENV === 'development') {
-          console.log('[Employee Punches API] Filtering by shiftSlugs:', validSlugs);
+          console.log('[Employee Punches API] shiftSlugs [] → no punches');
+        }
+      } else {
+        const validSlugs = shiftSlugs.filter((s) => s && s.trim() !== '');
+        if (validSlugs.length > 0) {
+          query.shiftSlug = { $in: validSlugs.map((s) => s.trim()) };
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[Employee Punches API] Filtering by shiftSlugs:', validSlugs);
+          }
         }
       }
     } else {
-      // Explicitly don't filter by shift when empty or undefined
       if (process.env.NODE_ENV === 'development') {
         console.log('[Employee Punches API] Not filtering by shift (all shifts)');
       }
@@ -613,7 +616,9 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
       });
     }
     
-    if (hasFutureDates && jobsToProcess.length > 0) {
+    // Skip future punch generation when shiftSlugs is [] (Today/Upcoming/Past with no shifts)
+    const skipFuturePunches = Array.isArray(shiftSlugs) && shiftSlugs.length === 0;
+    if (hasFutureDates && jobsToProcess.length > 0 && !skipFuturePunches) {
       try {
         // Fetch jobs with full shift data (defaultSchedule and shiftRoster)
         const futureJobObjectIds = jobsToProcess

@@ -55,12 +55,15 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
       ];
     }
 
-    // If shiftSlugs array is provided, filter by shifts
-    // ERROR-PROOF: Validate and normalize shift filter (same as employee punches API)
-    if (shiftSlugs && Array.isArray(shiftSlugs) && shiftSlugs.length > 0) {
-      const validSlugs = shiftSlugs.filter((s) => s && s.trim() !== '');
-      if (validSlugs.length > 0) {
-        baseQuery.shiftSlug = { $in: validSlugs.map((s) => s.trim()) };
+    // Shift filter: same contract as employee punches API - missing = all shifts, [] = no matches
+    if (shiftSlugs !== undefined && Array.isArray(shiftSlugs)) {
+      if (shiftSlugs.length === 0) {
+        baseQuery.shiftSlug = { $in: [] };
+      } else {
+        const validSlugs = shiftSlugs.filter((s) => s && s.trim() !== '');
+        if (validSlugs.length > 0) {
+          baseQuery.shiftSlug = { $in: validSlugs.map((s) => s.trim()) };
+        }
       }
     }
 
