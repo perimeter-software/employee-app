@@ -36,6 +36,7 @@ async function getUserSession(
       loginMethod: string;
       isLimitedAccess?: boolean;
       isApplicantOnly?: boolean;
+      userType?: string;
       employmentStatus?: string;
       status?: string;
       createdAt: string;
@@ -45,21 +46,69 @@ async function getUserSession(
       return null;
     }
 
+    // Applicant-only promotion: if they now have a user record, upgrade session and persist to Redis
+    let sessionData = otpSessionData;
+    if (otpSessionData.isApplicantOnly) {
+      try {
+        const { mongoConn } = await import('@/lib/db/mongodb');
+        const { checkUserExistsByEmail } = await import(
+          '@/domains/user/utils/mongo-user-utils'
+        );
+        const normalizedEmail = otpSessionData.email.toLowerCase().trim();
+        const { db } = await mongoConn();
+        const user = await checkUserExistsByEmail(db, normalizedEmail);
+
+        if (user?._id) {
+          const employmentStatus = user.status ?? '';
+          const isLimitedAccess =
+            employmentStatus === 'Terminated' || employmentStatus === 'Inactive';
+
+          const upgradedPayload = {
+            userId: user._id,
+            applicantId: user.applicantId ?? otpSessionData.applicantId,
+            email: otpSessionData.email,
+            name: otpSessionData.name,
+            firstName: user.firstName ?? otpSessionData.firstName,
+            lastName: user.lastName ?? otpSessionData.lastName,
+            picture: otpSessionData.picture,
+            loginMethod: 'otp',
+            isLimitedAccess,
+            isApplicantOnly: false,
+            userType: 'user',
+            employmentStatus,
+            status: employmentStatus,
+            createdAt: otpSessionData.createdAt,
+          };
+
+          await redisService.set(
+            `otp_session:${otpSessionId}`,
+            upgradedPayload,
+            30 * 24 * 60 * 60
+          );
+          sessionData = upgradedPayload;
+        }
+      } catch (promoError) {
+        console.error('Applicant promotion check failed:', promoError);
+        // Fall through: keep existing session
+      }
+    }
+
     // Convert OTP session to Auth0-compatible format
     // Note: tenant objects are populated in withEnhancedAuthAPI when needed
     return {
-      sub: otpSessionData.userId,
-      email: otpSessionData.email,
-      name: otpSessionData.name,
-      firstName: otpSessionData.firstName,
-      lastName: otpSessionData.lastName,
-      picture: otpSessionData.picture,
-      applicantId: otpSessionData.applicantId,
-      loginMethod: otpSessionData.loginMethod,
-      isLimitedAccess: otpSessionData.isLimitedAccess || false,
-      isApplicantOnly: otpSessionData.isApplicantOnly || false,
-      employmentStatus: otpSessionData.employmentStatus,
-      status: otpSessionData.status,
+      sub: sessionData.userId,
+      email: sessionData.email,
+      name: sessionData.name,
+      firstName: sessionData.firstName,
+      lastName: sessionData.lastName,
+      picture: sessionData.picture,
+      applicantId: sessionData.applicantId,
+      loginMethod: sessionData.loginMethod,
+      isLimitedAccess: sessionData.isLimitedAccess ?? false,
+      isApplicantOnly: sessionData.isApplicantOnly ?? false,
+      employmentStatus: sessionData.employmentStatus,
+      status: sessionData.status,
+      ...(sessionData.userType && { userType: sessionData.userType }),
     } as Auth0SessionUser;
   } catch (error) {
     console.error('Error getting user session:', error);
