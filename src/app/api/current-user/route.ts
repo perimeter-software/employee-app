@@ -4,6 +4,7 @@ import { getTenantAwareConnection } from '@/lib/db';
 import {
   checkUserExistsByEmail,
   checkUserMasterEmail,
+  findApplicantAndTenantsByEmail,
 } from '@/domains/user/utils';
 import redisService from '@/lib/cache/redis-client';
 import type { EnhancedUser } from '@/domains/user/types';
@@ -16,11 +17,51 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
     const user = request.user;
     const userEmail = user.email!;
 
-    console.log("user in getUserDataHandler", user)
-
-    // Handle applicant-only sessions
+    // Handle applicant-only sessions — use latest applicant data from DB
     if (user.isApplicantOnly) {
-      // For applicants, tenant objects are already populated in middleware
+      const normalizedEmail = userEmail.toLowerCase();
+      let applicantInfo: {
+        firstName?: string;
+        lastName?: string;
+        status?: string;
+        employmentStatus?: string;
+      } | null = null;
+
+      // Fast path: when tenant is already known (from cache), single-DB lookup via same pattern as other API routes
+      if (user.tenant?.dbName) {
+        try {
+          const { db } = await getTenantAwareConnection(request);
+          const applicant = await db.collection('applicants').findOne(
+            { email: normalizedEmail },
+            {
+              projection: {
+                firstName: 1,
+                lastName: 1,
+                status: 1,
+                employmentStatus: 1,
+              },
+            }
+          );
+          if (applicant) {
+            applicantInfo = {
+              firstName: applicant.firstName,
+              lastName: applicant.lastName,
+              status: applicant.status,
+              employmentStatus: applicant.employmentStatus,
+            };
+          }
+        } catch {
+          // Fall through to full lookup
+        }
+      }
+
+      if (!applicantInfo) {
+        const applicantData = await findApplicantAndTenantsByEmail(
+          normalizedEmail
+        );
+        applicantInfo = applicantData?.applicantInfo ?? null;
+      }
+
       // Store tenant data in Redis (consistent with user flow)
       if (user.tenant) {
         const tenantData = {
@@ -30,7 +71,7 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
         };
 
         await redisService.setTenantData(
-          userEmail.toLowerCase(),
+          normalizedEmail,
           tenantData,
           60 * 60 * 24 // 24 hours
         );
@@ -38,14 +79,14 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
 
       const enhancedUser: EnhancedUser = {
         applicantId: user.applicantId || user.sub,
-        tenant: user.tenant, // Already populated in middleware
-        availableTenants: user.availableTenants || [], // Already populated in middleware if available
+        tenant: user.tenant,
+        availableTenants: user.availableTenants || [],
         email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        firstName: applicantInfo?.firstName ?? user.firstName,
+        lastName: applicantInfo?.lastName ?? user.lastName,
         name: user.name,
-        status: user.status,
-        employmentStatus: user.employmentStatus,
+        status: applicantInfo?.status ?? user.status,
+        employmentStatus: applicantInfo?.employmentStatus ?? user.employmentStatus,
         isApplicantOnly: true,
         isLimitedAccess: true,
       };
@@ -82,7 +123,11 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
       60 * 60 * 24
     );
 
-    // Return enhanced user data
+    // Derive from latest DB (not session) so UI updates when status changes
+    const employmentStatus = userExists?.status ?? '';
+    const isLimitedAccess =
+      employmentStatus === 'Terminated' || employmentStatus === 'Inactive';
+
     const enhancedUser: EnhancedUser = {
       _id: userExists?._id,
       applicantId: userExists?.applicantId,
@@ -95,6 +140,9 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
       userType: userExists?.userType,
       employeeType: userExists?.employeeType,
       status: userExists?.status,
+      employmentStatus,
+      isLimitedAccess,
+      isApplicantOnly: false,
     };
 
     return NextResponse.json({

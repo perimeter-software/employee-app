@@ -24,9 +24,10 @@ export async function GET(request: NextRequest) {
       return new NextResponse(null, { status: 204 });
     }
 
-    // Get OTP session data from Redis
+    // Get OTP session data from Redis (same shape as session.ts / otp verify)
     const otpSessionData = await redisService.get<{
       userId: string;
+      applicantId?: string;
       email: string;
       name: string;
       firstName?: string;
@@ -34,7 +35,10 @@ export async function GET(request: NextRequest) {
       picture?: string;
       loginMethod: string;
       isLimitedAccess?: boolean;
+      isApplicantOnly?: boolean;
+      userType?: string;
       employmentStatus?: string;
+      status?: string;
       createdAt: string;
     }>(`otp_session:${otpSessionId}`);
 
@@ -43,7 +47,7 @@ export async function GET(request: NextRequest) {
       return new NextResponse(null, { status: 204 });
     }
 
-    // Return OTP user data in Auth0-compatible format
+    // Return OTP user data in Auth0-compatible format (aligned with session.ts return shape)
     return NextResponse.json({
       sub: otpSessionData.userId,
       email: otpSessionData.email,
@@ -51,10 +55,13 @@ export async function GET(request: NextRequest) {
       firstName: otpSessionData.firstName,
       lastName: otpSessionData.lastName,
       picture: otpSessionData.picture,
-      // Add a flag to indicate this is an OTP session
+      applicantId: otpSessionData.applicantId,
       loginMethod: otpSessionData.loginMethod,
-      isLimitedAccess: otpSessionData.isLimitedAccess || false,
+      isLimitedAccess: otpSessionData.isLimitedAccess ?? false,
+      isApplicantOnly: otpSessionData.isApplicantOnly ?? false,
       employmentStatus: otpSessionData.employmentStatus,
+      status: otpSessionData.status,
+      ...(otpSessionData.userType && { userType: otpSessionData.userType }),
     });
   } catch (error) {
     console.error('Error in /api/auth/me:', error);
