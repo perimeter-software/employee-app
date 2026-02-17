@@ -43,6 +43,9 @@ interface ShiftPositionsModalProps {
   shift: Shift | null;
   dateDetails: Record<string, { filled: number; unassigned?: number; totalRequested: number }>;
   shiftRoster: (RosterApplicant | Applicant)[];
+  /** When set, only show positions for dates within this range (ISO strings) */
+  dateRangeStart?: string;
+  dateRangeEnd?: string;
 }
 
 type ViewMode = 'by-date' | 'all-employees';
@@ -53,8 +56,18 @@ export function ShiftPositionsModal({
   shift,
   dateDetails,
   shiftRoster,
+  dateRangeStart,
+  dateRangeEnd,
 }: ShiftPositionsModalProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('by-date');
+
+  // Compare date keys (yyyy-MM-dd) so timezone doesn't exclude days at range boundaries
+  const isDateInRange = useMemo(() => {
+    if (!dateRangeStart || !dateRangeEnd) return () => true;
+    const rangeStartKey = format(parseISO(dateRangeStart), 'yyyy-MM-dd');
+    const rangeEndKey = format(parseISO(dateRangeEnd), 'yyyy-MM-dd');
+    return (dateKey: string) => dateKey >= rangeStartKey && dateKey <= rangeEndKey;
+  }, [dateRangeStart, dateRangeEnd]);
 
   // Create a map of employeeId to employee details from shiftRoster
   const employeeMap = useMemo(() => {
@@ -67,7 +80,7 @@ export function ShiftPositionsModal({
     return map;
   }, [shiftRoster]);
 
-  // Aggregate data by date with employee details
+  // Aggregate data by date with employee details – only dates within date range when provided
   const dataByDate = useMemo(() => {
     if (!shift?.defaultSchedule) return [];
 
@@ -91,7 +104,7 @@ export function ShiftPositionsModal({
         const timeSlot = formatTimeSlot(daySchedule.start || '', daySchedule.end || '');
 
         daySchedule.roster.forEach((entry: RosterEntry) => {
-          if (entry.date && entry.employeeId) {
+          if (entry.date && entry.employeeId && isDateInRange(entry.date)) {
             const employee = employeeMap.get(entry.employeeId);
             const employeeName = employee
               ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.email || '—'
@@ -123,7 +136,7 @@ export function ShiftPositionsModal({
     });
 
     return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-  }, [shift, dateDetails, employeeMap]);
+  }, [shift, dateDetails, employeeMap, isDateInRange]);
 
   // Flatten all employees across all dates for "All Employees" view
   const allEmployees = useMemo(() => {
@@ -149,6 +162,17 @@ export function ShiftPositionsModal({
   const totalFilled = Object.values(dateDetails).reduce((sum, d) => sum + d.filled, 0);
   const totalUnassigned = Object.values(dateDetails).reduce((sum, d) => sum + (d.unassigned ?? 0), 0);
 
+  const dateRangeTitle = useMemo(() => {
+    if (!dateRangeStart || !dateRangeEnd) return null;
+    try {
+      const start = parseISO(dateRangeStart);
+      const end = parseISO(dateRangeEnd);
+      return `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`;
+    } catch {
+      return null;
+    }
+  }, [dateRangeStart, dateRangeEnd]);
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl w-[calc(100vw-2rem)] sm:w-full max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
@@ -158,7 +182,12 @@ export function ShiftPositionsModal({
           <div className="flex flex-col flex-shrink-0 gap-3 px-6 py-4 border-b bg-background">
             <div className="flex items-center justify-between">
               <DialogTitle className="text-lg font-semibold">
-                {shift?.shiftName || 'Shift'} - Position Details
+                {shift?.shiftName || 'Shift'} – Position Details
+                {dateRangeTitle && (
+                  <span className="block text-sm font-normal text-muted-foreground mt-0.5">
+                    {dateRangeTitle}
+                  </span>
+                )}
               </DialogTitle>
               <div className="text-sm text-gray-600 flex flex-wrap items-center gap-x-3 gap-y-1">
                 {totalRequestedPerDay === 0 ? (
