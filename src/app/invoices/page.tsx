@@ -21,6 +21,7 @@ import {
   addDays,
   addWeeks,
   addMonths,
+  parseISO,
   type Day,
 } from 'date-fns';
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
@@ -50,6 +51,9 @@ import type { InvoiceForPdf } from '@/components/invoices/invoice-pdf-types';
 import { InvoicePreviewModal } from '@/components/invoices/InvoicePreviewModal';
 
 type DateMode = 'day' | 'week' | 'month' | 'custom';
+
+// TODO: Remove this filter in the future - temporary restriction to hide invoices prior to 2/23/2026
+const TEMP_CUTOFF_DATE = '2026-02-23';
 
 function getRange(
   mode: DateMode,
@@ -118,6 +122,44 @@ export default function InvoicesPage() {
     [dateMode, baseDate, customStart, customEnd, weekStartsOn]
   );
 
+  // TODO: Remove this effect when TEMP_CUTOFF_DATE is removed
+  // Adjust baseDate if current range is before cutoff
+  useEffect(() => {
+    if (dateMode === 'custom') return;
+    if (end < TEMP_CUTOFF_DATE) {
+      // Move forward to ensure range ends at or after cutoff
+      const cutoffDate = parseISO(TEMP_CUTOFF_DATE);
+      if (dateMode === 'day') {
+        setBaseDate(cutoffDate);
+      } else if (dateMode === 'week') {
+        // Keep moving forward by weeks until we find one that ends at or after cutoff
+        let testDate = cutoffDate;
+        let testRange = getRange(dateMode, testDate, '', '', weekStartsOn);
+        while (testRange.end < TEMP_CUTOFF_DATE) {
+          testDate = addWeeks(testDate, 1);
+          testRange = getRange(dateMode, testDate, '', '', weekStartsOn);
+        }
+        setBaseDate(testDate);
+      } else {
+        // month mode - use the month containing the cutoff
+        setBaseDate(startOfMonth(cutoffDate));
+      }
+    }
+  }, [dateMode, end, weekStartsOn]);
+
+  // TODO: Remove this when TEMP_CUTOFF_DATE is removed
+  // Check if navigating to previous period would go before cutoff date
+  const isPrevDisabled = useMemo(() => {
+    if (dateMode === 'custom') return false;
+    let prevDate: Date;
+    if (dateMode === 'day') prevDate = addDays(baseDate, -1);
+    else if (dateMode === 'week') prevDate = addWeeks(baseDate, -1);
+    else prevDate = addMonths(baseDate, -1);
+    
+    const prevRange = getRange(dateMode, prevDate, customStart, customEnd, weekStartsOn);
+    return prevRange.end < TEMP_CUTOFF_DATE;
+  }, [dateMode, baseDate, customStart, customEnd, weekStartsOn]);
+
   const { data, isLoading } = useInvoicesList(
     start,
     end,
@@ -149,7 +191,21 @@ export default function InvoicesPage() {
   const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
 
   const openEmailModal = (ids: string[]) => {
-    setEmailInvoiceIds(ids);
+    // TODO: Remove this filter when TEMP_CUTOFF_DATE is removed
+    // Filter to only include invoices with endDate >= TEMP_CUTOFF_DATE
+    const validIds = ids.filter((id) => {
+      const invoice = (data?.data ?? []).find((inv) => inv._id === id);
+      if (!invoice) return false;
+      const endDate = invoice.endDate as string | undefined;
+      return !endDate || endDate >= TEMP_CUTOFF_DATE;
+    });
+    
+    if (validIds.length === 0) {
+      alert('No valid invoices to email. Invoices prior to 2/23/2026 are temporarily unavailable.');
+      return;
+    }
+    
+    setEmailInvoiceIds(validIds);
     setEmailTo('');
     setEmailMessage('');
     setEmailSent(false);
@@ -214,8 +270,16 @@ export default function InvoicesPage() {
     reportType: 'summary' | 'detail',
     format: 'xlsx' | 'csv'
   ) => {
+    // TODO: Remove this date validation when TEMP_CUTOFF_DATE is removed
+    if (end < TEMP_CUTOFF_DATE) {
+      alert('No invoices available for the selected date range. Invoices prior to 2/23/2026 are temporarily unavailable.');
+      return;
+    }
+    
+    const adjustedStart = start < TEMP_CUTOFF_DATE ? TEMP_CUTOFF_DATE : start;
+    
     const body = JSON.stringify({
-      startDate: start,
+      startDate: adjustedStart,
       endDate: end,
       reportType,
       format,
@@ -230,7 +294,7 @@ export default function InvoicesPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `invoice-report-${start}-${end}-${reportType}.${format}`;
+        a.download = `invoice-report-${adjustedStart}-${end}-${reportType}.${format}`;
         a.click();
         URL.revokeObjectURL(url);
       })
@@ -350,7 +414,11 @@ export default function InvoicesPage() {
     },
   ];
 
-  const tableData = data?.data ?? [];
+  // TODO: Remove this filter when TEMP_CUTOFF_DATE is removed
+  const tableData = (data?.data ?? []).filter((invoice) => {
+    const endDate = invoice.endDate as string | undefined;
+    return !endDate || endDate >= TEMP_CUTOFF_DATE;
+  });
   const pagination = data?.pagination ?? {
     page: 1,
     limit: 10,
@@ -370,6 +438,13 @@ export default function InvoicesPage() {
         <p className="text-sm text-gray-600">
           View and download invoices for your venues. Read-only.
         </p>
+        
+        {/* TODO: Remove this notice when TEMP_CUTOFF_DATE is removed */}
+        <div className="bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
+          <p className="text-xs text-blue-800">
+            Note: Invoices prior to February 23, 2026 are temporarily unavailable.
+          </p>
+        </div>
 
         {/* Period selector: filter by pay period (same concept as sp1-api / stadium-people) */}
         <div className="flex flex-wrap items-center gap-3">
@@ -406,6 +481,7 @@ export default function InvoicesPage() {
                 type="date"
                 value={customStart}
                 onChange={(e) => setCustomStart(e.target.value)}
+                min={TEMP_CUTOFF_DATE}
                 className="w-[140px]"
               />
               <Label className="text-sm">To</Label>
@@ -413,12 +489,18 @@ export default function InvoicesPage() {
                 type="date"
                 value={customEnd}
                 onChange={(e) => setCustomEnd(e.target.value)}
+                min={TEMP_CUTOFF_DATE}
                 className="w-[140px]"
               />
             </div>
           ) : (
             <>
-              <Button variant="outline" size="sm" onClick={handlePrev}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handlePrev}
+                disabled={isPrevDisabled}
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <span className="min-w-[200px] text-center font-medium text-gray-700">
@@ -452,6 +534,7 @@ export default function InvoicesPage() {
             variant="outline"
             size="sm"
             onClick={() => downloadReport(reportType, 'xlsx')}
+            disabled={end < TEMP_CUTOFF_DATE}
           >
             <Download className="h-4 w-4 mr-1" />
             Excel
@@ -460,6 +543,7 @@ export default function InvoicesPage() {
             variant="outline"
             size="sm"
             onClick={() => downloadReport(reportType, 'csv')}
+            disabled={end < TEMP_CUTOFF_DATE}
           >
             <Download className="h-4 w-4 mr-1" />
             CSV
