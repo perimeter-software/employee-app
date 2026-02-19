@@ -193,146 +193,68 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
 
     // Fetch punches with employee and job information
     const punches = await db
-      .collection('timecard')
-      .aggregate([
-        {
-          $match: query,
-        },
-        // Convert string IDs to ObjectIds for lookups
-        // This handles the case where IDs are stored as strings in timecard collection
+    .collection('timecard')
+    .aggregate(
+      [
+        { $match: query },
+        { $sort: { timeIn: -1 } },
+  
         {
           $addFields: {
-            userIdObjectId: {
-              $cond: {
-                if: { $eq: [{ $type: '$userId' }, 'string'] },
-                then: { $toObjectId: '$userId' },
-                else: '$userId',
-              },
-            },
-            applicantIdObjectId: {
-              $cond: {
-                if: { $eq: [{ $type: '$applicantId' }, 'string'] },
-                then: { $toObjectId: '$applicantId' },
-                else: '$applicantId',
-              },
-            },
-            jobIdObjectId: {
-              $cond: {
-                if: { $eq: [{ $type: '$jobId' }, 'string'] },
-                then: { $toObjectId: '$jobId' },
-                else: '$jobId',
-              },
-            },
+            _userIdObj: { $convert: { input: '$userId', to: 'objectId', onError: null, onNull: null } },
+            _applicantIdObj: { $convert: { input: '$applicantId', to: 'objectId', onError: null, onNull: null } },
+            _jobIdObj: { $convert: { input: '$jobId', to: 'objectId', onError: null, onNull: null } },
+            _modifiedByObj: { $convert: { input: '$modifiedBy', to: 'objectId', onError: null, onNull: null } },
+          },
+        },
+  
+        {
+          $lookup: {
+            from: 'applicants',
+            localField: '_applicantIdObj',
+            foreignField: '_id',
+            pipeline: [{ $project: { _id: 0, firstName: 1, lastName: 1, email: 1, phone: 1, profileImg: 1 } }],
+            as: '_applicant',
           },
         },
         {
           $lookup: {
             from: 'users',
-            localField: 'userIdObjectId',
+            localField: '_userIdObj',
             foreignField: '_id',
-            as: 'user',
-          },
-        },
-        {
-          $lookup: {
-            from: 'applicants',
-            localField: 'applicantIdObjectId',
-            foreignField: '_id',
-            as: 'applicant',
+            pipeline: [{ $project: { _id: 0, emailAddress: 1, profileImg: 1 } }],
+            as: '_user',
           },
         },
         {
           $lookup: {
             from: 'jobs',
-            localField: 'jobIdObjectId',
+            localField: '_jobIdObj',
             foreignField: '_id',
-            as: 'job',
-            // ERROR-PROOF: Include shifts field in lookup
-            pipeline: [
-              {
-                $project: {
-                  _id: 1,
-                  title: 1,
-                  venueName: 1,
-                  location: 1,
-                  shifts: 1, // Ensure shifts are included
-                },
-              },
-            ],
+            pipeline: [{ $project: { _id: 0, title: 1, venueName: 1, 'location.name': 1, shifts: 1 } }],
+            as: '_job',
           },
         },
         {
-          $unwind: {
-            path: '$user',
-            preserveNullAndEmptyArrays: true,
+          $lookup: {
+            from: 'users',
+            localField: '_modifiedByObj',
+            foreignField: '_id',
+            pipeline: [{ $project: { _id: 0, firstName: 1, lastName: 1 } }],
+            as: '_modifier',
           },
         },
-        {
-          $unwind: {
-            path: '$applicant',
-            preserveNullAndEmptyArrays: true,
-          },
-        },
-        {
-          $unwind: {
-            path: '$job',
-            preserveNullAndEmptyArrays: true,
-          },
-        },
+  
         {
           $addFields: {
-            // ERROR-PROOF: Look up shiftName from job.shifts if not stored in timecard
-            resolvedShiftName: {
-              $cond: {
-                if: {
-                  $and: [
-                    { $ne: ['$shiftName', null] },
-                    { $ne: ['$shiftName', ''] },
-                  ],
-                },
-                then: '$shiftName',
-                else: {
-                  $cond: {
-                    if: {
-                      $and: [
-                        { $ne: ['$job', null] },
-                        { $ne: ['$job.shifts', null] },
-                        { $isArray: '$job.shifts' },
-                        { $gt: [{ $size: '$job.shifts' }, 0] },
-                        { $ne: ['$shiftSlug', null] },
-                        { $ne: ['$shiftSlug', ''] },
-                      ],
-                    },
-                    then: {
-                      $let: {
-                        vars: {
-                          matchingShift: {
-                            $arrayElemAt: [
-                              {
-                                $filter: {
-                                  input: '$job.shifts',
-                                  as: 'shift',
-                                  cond: {
-                                    $eq: ['$$shift.slug', '$shiftSlug'],
-                                  },
-                                },
-                              },
-                              0,
-                            ],
-                          },
-                        },
-                        in: {
-                          $ifNull: ['$$matchingShift.shiftName', null],
-                        },
-                      },
-                    },
-                    else: null,
-                  },
-                },
-              },
-            },
+            _applicant: { $arrayElemAt: ['$_applicant', 0] },
+            _user:      { $arrayElemAt: ['$_user', 0] },
+            _job:       { $arrayElemAt: ['$_job', 0] },
+            _modifier:  { $arrayElemAt: ['$_modifier', 0] },
           },
         },
+  
+        // ✅ Pure inclusion projection — temp fields are simply not listed, so they're dropped
         {
           $project: {
             _id: 1,
@@ -343,41 +265,77 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
             timeOut: 1,
             status: 1,
             shiftSlug: 1,
-            // ERROR-PROOF: Use resolved shift name
-            shiftName: '$resolvedShiftName',
             clockInCoordinates: 1,
             clockOutCoordinates: 1,
-            userNote: 1, // ERROR-PROOF: Include userNote field
-            managerNote: 1, // ERROR-PROOF: Include managerNote field
+            userNote: 1,
+            managerNote: 1,
+            modifiedDate: 1,
+            modifiedBy: 1,
+  
+            modifiedByName: {
+              $trim: {
+                input: {
+                  $concat: [
+                    { $ifNull: ['$_modifier.firstName', ''] },
+                    ' ',
+                    { $ifNull: ['$_modifier.lastName', ''] },
+                  ],
+                },
+              },
+            },
+  
+            shiftName: {
+              $cond: {
+                if: { $gt: [{ $strLenCP: { $ifNull: ['$shiftName', ''] } }, 0] },
+                then: '$shiftName',
+                else: {
+                  $let: {
+                    vars: {
+                      matchingShift: {
+                        $arrayElemAt: [
+                          {
+                            $filter: {
+                              input: { $ifNull: ['$_job.shifts', []] },
+                              as: 'shift',
+                              cond: { $eq: ['$$shift.slug', '$shiftSlug'] },
+                            },
+                          },
+                          0,
+                        ],
+                      },
+                    },
+                    in: { $ifNull: ['$$matchingShift.shiftName', null] },
+                  },
+                },
+              },
+            },
+  
+            firstName:     { $ifNull: ['$_applicant.firstName', ''] },
+            lastName:      { $ifNull: ['$_applicant.lastName', ''] },
             employeeName: {
-              $concat: [
-                { $ifNull: ['$applicant.firstName', ''] },
-                ' ',
-                { $ifNull: ['$applicant.lastName', ''] },
-              ],
+              $trim: {
+                input: {
+                  $concat: [
+                    { $ifNull: ['$_applicant.firstName', ''] },
+                    ' ',
+                    { $ifNull: ['$_applicant.lastName', ''] },
+                  ],
+                },
+              },
             },
-            firstName: { $ifNull: ['$applicant.firstName', ''] },
-            lastName: { $ifNull: ['$applicant.lastName', ''] },
-            employeeEmail: {
-              $ifNull: ['$applicant.email', '$user.emailAddress', ''],
-            },
-            phoneNumber: { $ifNull: ['$applicant.phone', ''] },
-            profileImg: {
-              $ifNull: ['$applicant.profileImg', '$user.profileImg', null],
-            },
-            jobTitle: { $ifNull: ['$job.title', ''] },
-            jobSite: { $ifNull: ['$job.venueName', '$job.title', ''] },
-            location: { $ifNull: ['$job.venueName', '$job.location.name', ''] },
+            employeeEmail: { $ifNull: ['$_applicant.email', '$_user.emailAddress', ''] },
+            phoneNumber:   { $ifNull: ['$_applicant.phone', ''] },
+            profileImg:    { $ifNull: ['$_applicant.profileImg', '$_user.profileImg', null] },
+  
+            jobTitle: { $ifNull: ['$_job.title', ''] },
+            jobSite:  { $ifNull: ['$_job.venueName', '$_job.title', ''] },
+            location: { $ifNull: ['$_job.venueName', '$_job.location.name', ''] },
           },
         },
-        {
-          $sort: {
-            timeIn: -1,
-          },
-        },
-      ])
-      .toArray();
-
+      ],
+      { allowDiskUse: true }
+    )
+    .toArray();
     // ERROR-PROOF: Fetch jobs separately and create a map (following pattern from findAllPunchesByDateRange)
     // Get unique jobIds from punches
     const uniqueJobIds = Array.from(
@@ -490,6 +448,9 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
       clockOutCoordinates?: unknown;
       userNote?: string;
       managerNote?: string;
+      modifiedDate?: string;
+      modifiedBy?: string;
+      modifiedByName?: string;
       [key: string]: unknown;
     };
     
