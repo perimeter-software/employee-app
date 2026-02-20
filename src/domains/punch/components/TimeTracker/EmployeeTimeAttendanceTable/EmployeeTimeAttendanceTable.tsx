@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import { useQuery } from '@tanstack/react-query';
 import Image from 'next/image';
 import { Table } from '@/components/ui/Table';
@@ -10,7 +11,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
-import { ChevronLeft, ChevronRight, Pencil, MapPin, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pencil, MapPin, Search, Flag } from 'lucide-react';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import {
@@ -1791,24 +1792,97 @@ export function EmployeeTimeAttendanceTable({
         header: 'ACTIONS',
         render: (_, row) => {
           const isFuture = isFutureEvent(row) || row._id?.startsWith('future-');
+          const wasEdited = Boolean(row.modifiedBy) || Boolean(row.modifiedDate);
           return (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation(); // Prevent row click from firing
-                handleOpenPunchModal(row);
-              }}
-              disabled={isFuture}
-              className={clsxm(
-                "flex items-center justify-center p-2 rounded-md transition-colors",
-                isFuture
-                  ? "text-gray-300 cursor-not-allowed"
-                  : "text-gray-600 hover:text-teal-600 hover:bg-teal-50"
+            <div className="flex items-center justify-center gap-0.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevent row click from firing
+                  handleOpenPunchModal(row);
+                }}
+                disabled={isFuture}
+                className={clsxm(
+                  "flex items-center justify-center p-2 rounded-md transition-colors",
+                  isFuture
+                    ? "text-gray-300 cursor-not-allowed"
+                    : "text-gray-600 hover:text-teal-600 hover:bg-teal-50"
+                )}
+                title={isFuture ? "Future scheduled shift (not editable)" : "Edit punch details"}
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              {wasEdited && (
+                <TooltipPrimitive.Provider delayDuration={200} skipDelayDuration={100}>
+                  <TooltipPrimitive.Root>
+                    <TooltipPrimitive.Trigger asChild>
+                      <span className="inline-flex cursor-default">
+                        <Flag
+                          className="h-4 w-4 shrink-0 text-red-500"
+                          strokeWidth={2}
+                          fill="currentColor"
+                          aria-hidden
+                        />
+                      </span>
+                    </TooltipPrimitive.Trigger>
+                    <TooltipPrimitive.Portal>
+                      <TooltipPrimitive.Content
+                        side="bottom"
+                        sideOffset={8}
+                        className="z-[100] w-[380px] max-w-[calc(100vw-24px)] rounded-md border border-gray-200 bg-white px-3 py-2.5 text-left text-[11px] font-medium text-gray-900 shadow-lg"
+                        onPointerDownOutside={(e) => e.preventDefault()}
+                      >
+                        <div className="mb-1 border-b border-gray-100 pb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-500">
+                          Punch edited
+                        </div>
+                        <div className="space-y-1.5 text-[10px]">
+                          {(() => {
+                            const by = row.modifiedByName?.trim() || null;
+                            const dateStr = row.modifiedDate
+                              ? format(parseISO(row.modifiedDate), 'MMM d, yyyy \'at\' h:mm a')
+                              : null;
+                            const stripHtml = (s: string) => (s || '').replace(/<[^>]*>/g, '').trim();
+                            const userNote = stripHtml(row.userNote || '');
+                            const managerNote = stripHtml(row.managerNote || '');
+                            return (
+                              <>
+                                {by && (
+                                  <div>
+                                    <span className="font-medium text-gray-500">Updated by: </span>
+                                    <span className="text-gray-700">{by}</span>
+                                  </div>
+                                )}
+                                {dateStr && (
+                                  <div>
+                                    <span className="font-medium text-gray-500">Updated at: </span>
+                                    <span className="text-gray-700">{dateStr}</span>
+                                  </div>
+                                )}
+                                {!by && !dateStr && (
+                                  <div className="text-gray-600">Punch was edited</div>
+                                )}
+                                {userNote && (
+                                  <div className="pt-1 border-t border-gray-100">
+                                    <span className="font-medium text-gray-500">User note: </span>
+                                    <span className="text-gray-700 break-words">{userNote}</span>
+                                  </div>
+                                )}
+                                {managerNote && (
+                                  <div className="pt-1 border-t border-gray-100">
+                                    <span className="font-medium text-gray-500">Manager note: </span>
+                                    <span className="text-gray-700 break-words">{managerNote}</span>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </TooltipPrimitive.Content>
+                    </TooltipPrimitive.Portal>
+                  </TooltipPrimitive.Root>
+                </TooltipPrimitive.Provider>
               )}
-              title={isFuture ? "Future scheduled shift (not editable)" : "Edit punch details"}
-            >
-              <Pencil className="h-4 w-4" />
-            </button>
+            </div>
           );
         },
         className: 'w-16 text-center',

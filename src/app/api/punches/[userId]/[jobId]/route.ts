@@ -27,6 +27,7 @@ import type {
   ApplicantCollectionDoc,
   ApplicantNote,
 } from '@/domains/user/types/applicant.types';
+import { emailService } from '@/lib/services/email-service';
 
 // Utility Functions
 const calculateDistance = (
@@ -48,6 +49,14 @@ const calculateDistance = (
   const distance = R * c; // Distance in km
   return distance;
 };
+
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 function createNewPunch(
   userId: string,
@@ -446,10 +455,11 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
         punch.managerNote && 
         (!originalPunch.managerNote || originalPunch.managerNote !== punch.managerNote);
 
+      const updatedAtIso = new Date().toISOString();
       const updateData: Punch = {
         ...punch,
-        modifiedDate: new Date().toISOString(),
-        modifiedBy: user._id,
+        modifiedDate: updatedAtIso,
+        modifiedBy: String(user._id ?? ''),
       };
 
       updatedPunch = await updatePunch(db, updateData);
@@ -499,70 +509,163 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
         }
       }
 
-      // Send notification to venue manager if managerNote was added/updated
-      if (managerNoteAdded && punch.managerNote) {
+      // Notify event manager(s): same condition for both in-app and email (time edited OR note added)
+      const punchTimeEdited = timeInChanged || timeOutChanged;
+      const shouldNotifyEventManagers = (managerNoteAdded && punch.managerNote) || punchTimeEdited;
+      if (shouldNotifyEventManagers) {
         try {
-          // Fetch job to get venueSlug
           const job = await findJobByjobId(db, punch.jobId);
-          
-          if (job && job.venueSlug) {
-            // Fetch venue to get manager info
-            const venue = await db.collection('venues').findOne(
-              { slug: job.venueSlug },
-              { projection: { venueContact1: 1, venueContact2: 1 } }
-            );
+          type EventManagerRecipient = { userId?: string; applicantId?: string; firstName?: string; lastName?: string; fullName?: string; email?: string };
+          const configRecipients = (job?.additionalConfig as { eventManagerNotificationRecipients?: EventManagerRecipient[] })?.eventManagerNotificationRecipients;
+          if (!job || !Array.isArray(configRecipients) || configRecipients.length === 0) {
+            // No recipients configured; punch update already succeeded
+          } else {
+            const employeeApplicant = await db.collection('applicants').findOne({
+              _id: new ObjectIdFunction(punch.applicantId),
+            }) as { firstName?: string; lastName?: string } | null;
+            const employeeName = employeeApplicant
+              ? `${employeeApplicant.firstName || ''} ${employeeApplicant.lastName || ''}`.trim() || 'Employee'
+              : 'Employee';
+            const editorName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.name || 'User';
+            // US Central Time for event manager email and notification; label for clarity
+            const CENTRAL_TZ = 'America/Chicago';
+            const TZ_LABEL = 'Central Time';
+            const formatDt = (iso: string | null | undefined) => {
+              if (!iso) return '—';
+              const d = new Date(iso);
+              if (Number.isNaN(d.getTime())) return '—';
+              return d.toLocaleString('en-US', { timeZone: CENTRAL_TZ, dateStyle: 'medium', timeStyle: 'short' }) + ` ${TZ_LABEL}`;
+            };
+            const shiftName = (punch as { shiftName?: string }).shiftName || job.shifts?.find((s: { slug?: string }) => s.slug === (punch as { shiftSlug?: string }).shiftSlug)?.shiftName || '—';
+            const stripHtml = (s: string) => String(s || '').replace(/<[^>]*>/g, '').trim();
 
-            if (venue?.venueContact1?.email) {
-              const managerEmail = venue.venueContact1.email;
-              
-              // Find user/applicant by email to get userId and applicantId
-              const managerUser = await db.collection('users').findOne(
-                { emailAddress: managerEmail }
+            // One notification body for both time edit and/or manager note
+            const notificationParts = [
+              `Punch updated for ${employeeName}.`,
+              `(All times in US Central Time.)`,
+              `Job: ${job.title || 'N/A'}`,
+              `Shift: ${shiftName}`,
+              '',
+            ];
+            if (punchTimeEdited) {
+              notificationParts.push(
+                'Time change:',
+                `Original: ${formatDt(originalPunch.timeIn)} – ${formatDt(originalPunch.timeOut ?? null)}`,
+                `New:      ${formatDt(punch.timeIn)} – ${formatDt(punch.timeOut ?? null)}`,
+                ''
               );
+            }
+            if (managerNoteAdded && punch.managerNote) {
+              notificationParts.push('Manager note: ' + stripHtml(punch.managerNote), '');
+            }
+            notificationParts.push('Updated by: ' + editorName, 'Updated at: ' + formatDt(updatedAtIso));
+            const notificationBody = notificationParts.join('\n');
 
-              if (managerUser) {
-                const managerApplicant = managerUser.applicantId
-                  ? await db.collection('applicants').findOne({
-                      _id: new ObjectIdFunction(managerUser.applicantId),
-                    })
-                  : null;
-
-                // Get employee/applicant info for the punch
-                const employeeApplicant = await db.collection('applicants').findOne({
-                  _id: new ObjectIdFunction(punch.applicantId),
-                });
-
-                const employeeName = employeeApplicant
-                  ? `${employeeApplicant.firstName || ''} ${employeeApplicant.lastName || ''}`.trim()
-                  : 'Employee';
-
-                // Create notification
-                const notificationBody = `A manager note has been added to a punch for ${employeeName}.\n\nJob: ${job.title || 'N/A'}\nNote: ${punch.managerNote}`;
-
+            // In-app notification for every recipient (same condition as email)
+            for (const r of configRecipients) {
+              const recipientUserId = r?.userId?.trim();
+              if (!recipientUserId) continue;
+              try {
                 await createNotification(db, {
                   fromUserId: user._id || '',
                   fromFirstName: user.firstName || user.name?.split(' ')[0] || 'Client',
                   fromLastName: user.lastName || user.name?.split(' ').slice(1).join(' ') || 'User',
                   recipient: {
-                    userId: managerUser._id?.toString() || '',
-                    applicantId: managerUser.applicantId?.toString() || managerApplicant?._id?.toString() || '',
-                    firstName: venue.venueContact1.firstName || '',
-                    lastName: venue.venueContact1.lastName || '',
+                    userId: recipientUserId,
+                    applicantId: r?.applicantId?.trim() || '',
+                    firstName: r?.firstName ?? '',
+                    lastName: r?.lastName ?? '',
                   },
                   msgType: 'system',
-                  subject: 'Manager Note Added to Punch',
+                  subject: 'Punch updated',
                   msgTemplate: 'system',
                   body: notificationBody,
                   profileImg: '',
-                  status: 'active',
+                  status: 'unread',
                   type: 'info',
                 });
+              } catch (notifErr) {
+                console.error('Error sending punch-update notification to', recipientUserId, notifErr);
+              }
+            }
+
+            // Email for every recipient (same condition; content adapts to time edit and/or note)
+            const subject = `Punch updated: ${employeeName} – ${job.title || 'Job'}`;
+            const textParts = [
+              'A punch was updated with the following details.',
+              'All times are in US Central Time.',
+              '',
+              'Employee: ' + employeeName,
+              'Job: ' + (job.title || 'N/A'),
+              'Shift: ' + shiftName,
+              '',
+            ];
+            if (punchTimeEdited) {
+              textParts.push(
+                'Original Time In:  ' + formatDt(originalPunch.timeIn),
+                'Original Time Out: ' + formatDt(originalPunch.timeOut ?? null),
+                'New Time In:       ' + formatDt(punch.timeIn),
+                'New Time Out:      ' + formatDt(punch.timeOut ?? null),
+                '',
+              );
+            }
+            textParts.push('Updated by: ' + editorName, 'Updated at: ' + formatDt(updatedAtIso));
+            if (punch.userNote) textParts.push('', 'User note: ' + stripHtml(punch.userNote));
+            if (punch.managerNote) textParts.push('', 'Manager note: ' + stripHtml(punch.managerNote));
+            const text = textParts.join('\n');
+
+            const timeChangeTableRows = punchTimeEdited
+              ? [
+                  '<tr style="background:#f9fafb;"><td colspan="2" style="padding:10px 14px; font-weight:600; color:#374151; border-bottom:1px solid #e5e7eb;">Time change</td></tr>',
+                  '<tr><td style="padding:10px 14px; color:#6b7280; width:140px; border-bottom:1px solid #f3f4f6;">Original time in</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">' + escapeHtml(formatDt(originalPunch.timeIn)) + '</td></tr>',
+                  '<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">Original time out</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">' + escapeHtml(formatDt(originalPunch.timeOut ?? null)) + '</td></tr>',
+                  '<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">New time in</td><td style="padding:10px 14px; color:#0d9488; font-weight:500; border-bottom:1px solid #f3f4f6;">' + escapeHtml(formatDt(punch.timeIn)) + '</td></tr>',
+                  '<tr><td style="padding:10px 14px; color:#6b7280;">New time out</td><td style="padding:10px 14px; color:#0d9488; font-weight:500;">' + escapeHtml(formatDt(punch.timeOut ?? null)) + '</td></tr>',
+                ]
+              : [];
+            const html = [
+              '<div style="font-family:\'Segoe UI\',Tahoma,Geneva,Verdana,sans-serif; max-width:560px; margin:0 auto; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;">',
+              '<div style="background:#0d9488; color:#fff; padding:14px 20px; font-size:18px; font-weight:600;">Punch update notification</div>',
+              '<div style="padding:20px;">',
+              '<p style="margin:0 0 4px; color:#374151; font-size:14px;">A punch was updated with the following details.</p>',
+              '<p style="margin:0 0 16px; color:#6b7280; font-size:12px;">All times are in US Central Time.</p>',
+              '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:20px; border:1px solid #e5e7eb; border-radius:6px;">',
+              '<tr style="background:#f9fafb;"><td colspan="2" style="padding:10px 14px; font-weight:600; color:#374151; border-bottom:1px solid #e5e7eb;">Punch details</td></tr>',
+              '<tr><td style="padding:10px 14px; color:#6b7280; width:140px; border-bottom:1px solid #f3f4f6;">Employee</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">' + escapeHtml(employeeName) + '</td></tr>',
+              '<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">Job</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">' + escapeHtml(job.title || 'N/A') + '</td></tr>',
+              '<tr><td style="padding:10px 14px; color:#6b7280;">Shift</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(shiftName) + '</td></tr>',
+              '</table>',
+              ...(timeChangeTableRows.length > 0
+                ? ['<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:20px; border:1px solid #e5e7eb; border-radius:6px;">', ...timeChangeTableRows, '</table>']
+                : []),
+              '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:20px; border:1px solid #e5e7eb; border-radius:6px;">',
+              '<tr style="background:#f9fafb;"><td colspan="2" style="padding:10px 14px; font-weight:600; color:#374151; border-bottom:1px solid #e5e7eb;">Edited by</td></tr>',
+              '<tr><td style="padding:10px 14px; color:#6b7280; width:140px;">Updated by</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(editorName) + '</td></tr>',
+              '<tr><td style="padding:10px 14px; color:#6b7280;">Updated at</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(formatDt(updatedAtIso)) + '</td></tr>',
+              '</table>',
+              ...(punch.userNote
+                ? ['<div style="margin-bottom:16px; padding:12px 14px; background:#f0f9ff; border-left:4px solid #0ea5e9; border-radius:4px;"><div style="font-size:12px; font-weight:600; color:#0369a1; margin-bottom:4px;">User note</div><div style="font-size:14px; color:#374151;">' + escapeHtml(punch.userNote) + '</div></div>']
+                : []),
+              ...(punch.managerNote
+                ? ['<div style="margin-bottom:16px; padding:12px 14px; background:#fefce8; border-left:4px solid #eab308; border-radius:4px;"><div style="font-size:12px; font-weight:600; color:#a16207; margin-bottom:4px;">Manager note</div><div style="font-size:14px; color:#374151;">' + escapeHtml(punch.managerNote) + '</div></div>']
+                : []),
+              '</div>',
+              '<div style="padding:12px 20px; background:#f9fafb; border-top:1px solid #e5e7eb; font-size:12px; color:#6b7280;">This is an automated notification from the Employee App.</div>',
+              '</div>',
+            ].join('');
+
+            for (const r of configRecipients) {
+              const email = r?.email?.trim();
+              if (!email) continue;
+              try {
+                await emailService.sendEmail({ to: email, subject, html, text });
+              } catch (emailErr) {
+                console.error('Error sending punch-update email to', email, emailErr);
               }
             }
           }
-        } catch (notificationError) {
-          // Don't fail punch update if notification fails
-          console.error('Error sending notification to venue manager:', notificationError);
+        } catch (err) {
+          console.error('Error notifying event manager(s):', err);
         }
       }
     } else {
