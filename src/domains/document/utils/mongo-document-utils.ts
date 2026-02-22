@@ -7,6 +7,10 @@ import {
 } from 'mongodb';
 import { Document, MongoAttachment } from '../types';
 
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Helper function to convert MongoAttachment to Document
 function attachmentToDocument(
   attachment: MongoAttachment,
@@ -198,6 +202,7 @@ export async function searchDocuments(
   query: string
 ): Promise<Document[]> {
   let documents: Document[] = [];
+  const escapedQuery = escapeRegex(query);
 
   try {
     const documentDocs = await db
@@ -207,11 +212,11 @@ export async function searchDocuments(
           $match: {
             status: { $ne: 'Deleted' },
             $or: [
-              { name: { $regex: query, $options: 'i' } },
-              { description: { $regex: query, $options: 'i' } },
-              { tags: { $in: [new RegExp(query, 'i')] } },
-              { category: { $regex: query, $options: 'i' } },
-              { company: { $regex: query, $options: 'i' } },
+              { name: { $regex: escapedQuery, $options: 'i' } },
+              { description: { $regex: escapedQuery, $options: 'i' } },
+              { tags: { $in: [new RegExp(escapedQuery, 'i')] } },
+              { category: { $regex: escapedQuery, $options: 'i' } },
+              { company: { $regex: escapedQuery, $options: 'i' } },
             ],
           },
         },

@@ -4,12 +4,13 @@ import { mongoConn } from '@/lib/db/mongodb';
 import { checkUserExistsByEmail } from '@/domains/user/utils/mongo-user-utils';
 import redisService from '@/lib/cache/redis-client';
 import emailService from '@/lib/services/email-service';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
 // Generate a 6-digit OTP code
 function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
 }
 
 export async function POST(request: NextRequest) {
@@ -20,6 +21,15 @@ export async function POST(request: NextRequest) {
     if (!email || typeof email !== 'string') {
       return NextResponse.json(
         { error: 'Email is required' },
+        { status: 400 }
+      );
+    }
+
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        { error: 'Invalid email format' },
         { status: 400 }
       );
     }

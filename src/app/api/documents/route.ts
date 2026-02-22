@@ -95,6 +95,25 @@ async function createDocumentHandler(
       );
     }
 
+    // Validate file extension
+    const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.txt', '.csv', '.xls', '.xlsx'];
+    const ext = path.extname(file.name || '').toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      return NextResponse.json(
+        { success: false, error: 'invalid-file-type', message: 'File type not allowed' },
+        { status: 400 }
+      );
+    }
+
+    // Validate file size (10MB limit)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { success: false, error: 'file-too-large', message: 'File exceeds 10MB limit' },
+        { status: 400 }
+      );
+    }
+
     // Save file
     const fileExt = path.extname(file.name || '');
     const fileName = `${uuidv4()}${fileExt}`;

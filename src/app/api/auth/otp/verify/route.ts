@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mongoConn } from '@/lib/db/mongodb';
 import { checkUserExistsByEmail } from '@/domains/user/utils/mongo-user-utils';
 import redisService from '@/lib/cache/redis-client';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,7 +104,11 @@ export async function POST(request: NextRequest) {
       if (isTerminatedOrInactive) {
         redirectUrl = '/paycheck-stubs';
       } else if (returnTo) {
-        redirectUrl = decodeURIComponent(returnTo);
+        const decoded = decodeURIComponent(returnTo);
+        // Only allow relative paths to prevent open redirect
+        if (decoded.startsWith('/') && !decoded.startsWith('//')) {
+          redirectUrl = decoded;
+        }
       }
     } else {
       // NEW: APPLICANT-ONLY FLOW
@@ -145,9 +150,9 @@ export async function POST(request: NextRequest) {
     // Delete OTP after successful verification
     await redisService.del(otpKey);
 
-    // Create OTP session in Redis (30 days)
-    const sessionId = `otp_session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    await redisService.set(`otp_session:${sessionId}`, sessionData, 30 * 24 * 60 * 60);
+    // Create OTP session in Redis (24 hours)
+    const sessionId = `otp_session_${crypto.randomUUID()}`;
+    await redisService.set(`otp_session:${sessionId}`, sessionData, 24 * 60 * 60);
 
     // Note: Tenant data caching is handled in /api/current-user for consistency
     // This ensures fresh cache on every page load, same as regular users
@@ -198,7 +203,7 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 30 * 24 * 60 * 60, // 30 days
+      maxAge: 24 * 60 * 60, // 24 hours
     });
 
     // Also set auth0.is.authenticated for compatibility with existing checks
@@ -207,7 +212,7 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 30 * 24 * 60 * 60,
+      maxAge: 24 * 60 * 60,
     });
 
     return response;
