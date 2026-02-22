@@ -45,6 +45,8 @@ const nextConfig = {
     ],
   },
 
+  productionBrowserSourceMaps: false,
+
   // Webpack optimizations for faster dev builds (only when not using Turbopack)
   // Turbopack has its own optimizations, so webpack config is ignored when using --turbo
   webpack: (config, { dev, isServer }) => {
