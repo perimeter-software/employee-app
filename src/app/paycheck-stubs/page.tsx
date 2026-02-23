@@ -5,7 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import {
-  Calendar as CalendarIcon,
+  Calendar,
   ChevronRight,
   Eye,
   EyeOff,
@@ -13,8 +13,6 @@ import {
   Receipt,
   Search,
   Upload,
-  Grid3x3,
-  Table as TableIcon,
 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import {
@@ -37,36 +35,6 @@ import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { useCurrentUser } from '@/domains/user';
 import { usePaycheckStubs } from '@/domains/paycheck-stubs';
 import { clsxm } from '@/lib/utils';
-import CalendarProvider from '@/components/ui/Calendar/CalendarProvider';
-import Calendar from '@/components/ui/Calendar/Calendar';
-import type { CalendarEvent, Mode } from '@/components/ui/Calendar/types';
-import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
-import { startOfMonth } from 'date-fns';
-import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
-import type { PaycheckStub } from '@/domains/paycheck-stubs/types/paycheck-stub.types';
-
-// Calendar Event Handler Component for Paycheck Stubs
-const PaycheckStubCalendarEventHandler = ({
-  onStubClick,
-}: {
-  onStubClick: (stubId: string) => void;
-}) => {
-  const { selectedEvent, manageEventDialogOpen, setManageEventDialogOpen } =
-    useCalendarContext();
-
-  useEffect(() => {
-    // When calendar selects an event and opens the dialog
-    if (selectedEvent && manageEventDialogOpen) {
-      // Close the calendar's default dialog
-      setManageEventDialogOpen(false);
-
-      // Navigate to the paycheck stub detail page
-      onStubClick(selectedEvent.id);
-    }
-  }, [selectedEvent, manageEventDialogOpen, onStubClick, setManageEventDialogOpen]);
-
-  return null; // This component doesn't render anything
-};
 
 // Component that uses useSearchParams - must be wrapped in Suspense
 const PaycheckStubsPageContent: React.FC = () => {
@@ -76,13 +44,6 @@ const PaycheckStubsPageContent: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'viewed' | 'unviewed'
   >('all');
-  const [viewMode, setViewMode] = useState<'card' | 'table' | 'calendar'>('card');
-  const [calendarDate, setCalendarDate] = useState<Date>(() => startOfMonth(new Date()));
-  const [calendarMode, setCalendarMode] = useState<Mode>('month');
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
-  
-  // Get company work week settings for calendar
-  const { weekStartsOn, isLoading: workWeekLoading } = useCompanyWorkWeek();
 
   // Auth check
   const {
@@ -159,29 +120,6 @@ const PaycheckStubsPageContent: React.FC = () => {
 
     return filtered;
   }, [paycheckStubsData?.paycheckStubs, statusFilter, searchQuery]);
-
-  // Convert filtered paycheck stubs to calendar events
-  const paycheckStubEvents = useMemo(() => {
-    return filteredPaycheckStubs.map((stub) => {
-      const checkDate = new Date(stub.checkDate);
-      const isViewed = stub.viewStatus === 'viewed';
-      
-      return {
-        id: stub._id,
-        title: stub.fileName,
-        color: isViewed ? 'gray' : 'blue',
-        start: checkDate,
-        end: checkDate,
-        // Store additional data for the event
-        data: stub,
-      } as CalendarEvent & { data: typeof stub };
-    });
-  }, [filteredPaycheckStubs]);
-
-  // Update calendar events when filtered stubs change
-  useEffect(() => {
-    setCalendarEvents(paycheckStubEvents);
-  }, [paycheckStubEvents]);
 
   // Handle redirect from query parameter (for email links)
   useEffect(() => {
@@ -356,36 +294,6 @@ const PaycheckStubsPageContent: React.FC = () => {
                   Not Viewed
                 </Button>
               </div>
-              {/* View Mode Toggle */}
-              <div className="flex gap-2 border border-gray-200 rounded-lg p-1">
-                <Button
-                  variant={viewMode === 'card' ? 'primary' : 'ghost'}
-                  onClick={() => setViewMode('card')}
-                  className="h-9 px-3"
-                  size="sm"
-                  leftIcon={<Grid3x3 className="w-4 h-4" />}
-                >
-                  Card
-                </Button>
-                <Button
-                  variant={viewMode === 'table' ? 'primary' : 'ghost'}
-                  onClick={() => setViewMode('table')}
-                  className="h-9 px-3"
-                  size="sm"
-                  leftIcon={<TableIcon className="w-4 h-4" />}
-                >
-                  Table
-                </Button>
-                <Button
-                  variant={viewMode === 'calendar' ? 'primary' : 'ghost'}
-                  onClick={() => setViewMode('calendar')}
-                  className="h-9 px-3"
-                  size="sm"
-                  leftIcon={<CalendarIcon className="w-4 h-4" />}
-                >
-                  Calendar
-                </Button>
-              </div>
             </div>
           )}
         </div>
@@ -494,11 +402,10 @@ const PaycheckStubsPageContent: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Paycheck Stubs Views */}
+                {/* Paycheck Stubs Grid */}
                 <div className="max-h-[calc(100vh-30rem)] overflow-y-auto pr-2">
-                  {viewMode === 'card' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {filteredPaycheckStubs.map((paystub) => {
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredPaycheckStubs.map((paystub) => {
                       const isViewed = paystub.viewStatus === 'viewed';
                       return (
                         <Card
@@ -555,7 +462,7 @@ const PaycheckStubsPageContent: React.FC = () => {
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-1.5">
-                                      <CalendarIcon className="w-3.5 h-3.5 flex-shrink-0" />
+                                      <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
                                       <span className="text-xs">
                                         <span className="font-medium">
                                           Check Date:
@@ -611,137 +518,8 @@ const PaycheckStubsPageContent: React.FC = () => {
                           </CardContent>
                         </Card>
                       );
-                      })}
-                    </div>
-                  )}
-
-                  {viewMode === 'table' && (
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b border-gray-200 bg-gray-50">
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                              File Name
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                              Check Date
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                              Uploaded
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                              Batch ID
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                              Voucher Number
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                              Status
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                              Action
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {filteredPaycheckStubs.map((paystub) => {
-                            const isViewed = paystub.viewStatus === 'viewed';
-                            return (
-                              <tr
-                                key={paystub._id}
-                                className={clsxm(
-                                  'hover:bg-gray-50 transition-colors',
-                                  !isViewed && 'bg-blue-50/30'
-                                )}
-                              >
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <div className="flex items-center gap-2">
-                                    <FileText className="w-4 h-4 text-gray-400" />
-                                    <span className="text-sm font-medium text-gray-900">
-                                      {paystub.fileName}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                                  {format(new Date(paystub.checkDate), 'MMM d, yyyy')}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                                  {format(new Date(paystub.uploadedAt), 'MMM d, yyyy')}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 font-mono">
-                                  {paystub.batchId}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                                  {paystub.voucherNumber}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  {getViewStatusBadge(paystub.viewStatus)}
-                                </td>
-                                <td className="px-4 py-3 whitespace-nowrap">
-                                  <Button
-                                    onClick={() =>
-                                      router.push(`/paycheck-stubs/${paystub._id}`)
-                                    }
-                                    variant="primary"
-                                    size="sm"
-                                    leftIcon={<FileText className="w-4 h-4" />}
-                                  >
-                                    View
-                                  </Button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  {viewMode === 'calendar' && (
-                    <div className="space-y-4">
-                      {workWeekLoading ? (
-                        <div className="flex items-center justify-center min-h-[500px]">
-                          <div className="text-gray-500">Loading calendar...</div>
-                        </div>
-                      ) : (
-                        <Card>
-                          <CardContent className="p-4 sm:p-6">
-                            <div className="border rounded-lg overflow-hidden bg-white">
-                              <CalendarProvider
-                                events={calendarEvents}
-                                setEvents={setCalendarEvents}
-                                mode={calendarMode}
-                                setMode={setCalendarMode}
-                                date={calendarDate}
-                                setDate={setCalendarDate}
-                                calendarIconIsToday={false}
-                                weekStartsOn={weekStartsOn || 0}
-                              >
-                                <Calendar hideTotalColumn={true} />
-                                <PaycheckStubCalendarEventHandler
-                                  onStubClick={(stubId) => {
-                                    router.push(`/paycheck-stubs/${stubId}`);
-                                  }}
-                                />
-                              </CalendarProvider>
-                            </div>
-                            
-                            {/* Legend */}
-                            <div className="flex flex-wrap items-center gap-4 mt-4 text-xs">
-                              <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded bg-blue-500"></div>
-                                <span className="text-gray-600">Not Viewed</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded bg-gray-500"></div>
-                                <span className="text-gray-600">Viewed</span>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
-                    </div>
-                  )}
+                    })}
+                  </div>
                 </div>
               </>
             )}

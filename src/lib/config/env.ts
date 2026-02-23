@@ -54,7 +54,7 @@ export const env = {
   // Credentials read from: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
   ses: {
     region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-2',
-    fromEmail: process.env.SES_FROM_EMAIL || 'jobs@stadiumpeople.com',
+    fromEmail: 'jobs@stadiumpeople.com' ,
     sendInDev: process.env.SES_SEND_IN_DEV === 'true',
   },
 

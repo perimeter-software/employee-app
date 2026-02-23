@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mongoConn } from '@/lib/db/mongodb';
 import { checkUserExistsByEmail } from '@/domains/user/utils/mongo-user-utils';
 import redisService from '@/lib/cache/redis-client';
-import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,18 +76,16 @@ export async function POST(request: NextRequest) {
 
     let sessionData;
     let redirectUrl = '/time-attendance';
-    let isApplicantOnly = false;
 
     if (user && user._id) {
       // EXISTING USER FLOW
       const employmentStatus = user.status || '';
       const isTerminatedOrInactive = employmentStatus === 'Terminated' || employmentStatus === 'Inactive';
-      
       sessionData = {
         userId: user._id.toString(),
         applicantId: user.applicantId, // May be null
         email: user.emailAddress || normalizedEmail,
-        name: user.firstName && user.lastName 
+        name: user.firstName && user.lastName
           ? `${user.firstName} ${user.lastName}`.trim()
           : user.firstName || user.lastName || user.emailAddress || normalizedEmail,
         firstName: user.firstName,
@@ -104,11 +101,7 @@ export async function POST(request: NextRequest) {
       if (isTerminatedOrInactive) {
         redirectUrl = '/paycheck-stubs';
       } else if (returnTo) {
-        const decoded = decodeURIComponent(returnTo);
-        // Only allow relative paths to prevent open redirect
-        if (decoded.startsWith('/') && !decoded.startsWith('//')) {
-          redirectUrl = decoded;
-        }
+        redirectUrl = decodeURIComponent(returnTo);
       }
     } else {
       // NEW: APPLICANT-ONLY FLOW
@@ -123,8 +116,6 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      isApplicantOnly = true;
-      
       sessionData = {
         userId: applicantData.applicantId, // Use applicantId as userId (applicant._id)
         applicantId: applicantData.applicantId, // Same as userId for applicants
@@ -150,45 +141,12 @@ export async function POST(request: NextRequest) {
     // Delete OTP after successful verification
     await redisService.del(otpKey);
 
-    // Create OTP session in Redis (24 hours)
-    const sessionId = `otp_session_${crypto.randomUUID()}`;
-    await redisService.set(`otp_session:${sessionId}`, sessionData, 24 * 60 * 60);
+    // Create OTP session in Redis (30 days)
+    const sessionId = `otp_session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    await redisService.set(`otp_session:${sessionId}`, sessionData, 30 * 24 * 60 * 60);
 
     // Note: Tenant data caching is handled in /api/current-user for consistency
     // This ensures fresh cache on every page load, same as regular users
-
-    // Log OTP login activity
-    try {
-      const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
-      const { db } = await mongoConn();
-      const agentName: string = sessionData.firstName && sessionData.lastName 
-        ? `${sessionData.firstName} ${sessionData.lastName}`.trim()
-        : (sessionData.firstName || sessionData.lastName || sessionData.email || normalizedEmail) as string;
-      
-      await logActivity(
-        db,
-        createActivityLogData(
-          'OTP Login',
-          `${agentName} logged in using OTP (Email: ${normalizedEmail})${isApplicantOnly ? ' [Applicant-Only]' : ''}`,
-          {
-            applicantId: sessionData.applicantId ? String(sessionData.applicantId) : undefined,
-            userId: sessionData.userId ? String(sessionData.userId) : undefined,
-            agent: agentName,
-            email: normalizedEmail,
-            details: {
-              loginMethod: 'OTP',
-              email: normalizedEmail,
-              employmentStatus: sessionData.employmentStatus,
-              isLimitedAccess: sessionData.isLimitedAccess,
-              isApplicantOnly: isApplicantOnly,
-            },
-          }
-        )
-      );
-    } catch (error) {
-      // Don't fail login if logging fails
-      console.error('Error logging OTP login activity:', error);
-    }
 
     // Return JSON response instead of redirect (fetch doesn't follow redirects for POST)
     const response = NextResponse.json({
@@ -203,7 +161,7 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 24 * 60 * 60, // 24 hours
+      maxAge: 30 * 24 * 60 * 60, // 30 days
     });
 
     // Also set auth0.is.authenticated for compatibility with existing checks
@@ -212,7 +170,7 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 24 * 60 * 60,
+      maxAge: 30 * 24 * 60 * 60,
     });
 
     return response;

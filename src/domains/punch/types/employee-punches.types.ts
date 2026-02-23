@@ -28,6 +28,9 @@ export interface EmployeePunch extends Record<string, unknown> {
   location: string;
   userNote?: string;
   managerNote?: string;
+  modifiedDate?: string;
+  modifiedBy?: string;
+  modifiedByName?: string;
   isSelected?: boolean;
   checkbox?: unknown;
   date?: unknown;
