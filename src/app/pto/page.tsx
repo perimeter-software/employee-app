@@ -874,6 +874,8 @@ export default function PTODashboard() {
                   selectable={true}
                   className="min-w-[600px] w-full"
                   emptyMessage="No PTO requests found."
+                  enablePdfExport
+                  pdfFileName="pto-request-history.pdf"
                 />
               </div>
             </CardContent>

@@ -14,8 +14,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../Select";
-import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, Download } from "lucide-react";
 import { TableProps } from "./types";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 
 export function Table<T extends Record<string, unknown>>({
   title,
@@ -32,6 +33,8 @@ export function Table<T extends Record<string, unknown>>({
   loadingRows = 5,
   pageSize: initialPageSize = 10,
   pageSizeOptions = [10, 25, 50, 100],
+  enablePdfExport = false,
+  pdfFileName,
 }: TableProps<T>) {
   const [selectedRows, setSelectedRows] = useState<number[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -104,6 +107,149 @@ export function Table<T extends Record<string, unknown>>({
     });
   }, [data, sortColumn, sortDirection, columns]);
 
+  const handleExportPdf = async () => {
+    if (typeof window === "undefined") return;
+    if (!columns.length || !sortedData.length) return;
+
+    const pdfColumns = columns.filter((c) => c.pdfExport !== false);
+    if (!pdfColumns.length) return;
+
+    const pdfDoc = await PDFDocument.create();
+    let page = pdfDoc.addPage();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    const margin = 40;
+    const cellPaddingX = 5;
+    const rowTotalHeight = 20;
+    const headerHeight = 20;
+    let { width, height } = page.getSize();
+    const usableWidth = width - margin * 2;
+    const columnWidth = usableWidth / pdfColumns.length;
+    const cellWidth = columnWidth - cellPaddingX * 2;
+    let y = height - margin;
+
+    const headerFontSize = 8;
+    const cellFontSize = 7;
+
+    const truncateToFit = (text: string, maxWidth: number, fontSize: number) => {
+      if (!text) return "";
+      const ellipsis = "…";
+      if (font.widthOfTextAtSize(text, fontSize) <= maxWidth) return text;
+      let s = text;
+      while (s.length > 0 && font.widthOfTextAtSize(s + ellipsis, fontSize) > maxWidth) {
+        s = s.slice(0, -1);
+      }
+      return s.length > 0 ? s + ellipsis : ellipsis;
+    };
+
+    if (title) {
+      page.drawText(String(title), {
+        x: margin,
+        y,
+        size: headerFontSize + 2,
+        font,
+      });
+      y -= rowTotalHeight * 1.5;
+    }
+
+    const drawHeaderRow = () => {
+      const rowY = y;
+      pdfColumns.forEach((_, colIndex) => {
+        const xEnd = margin + (colIndex + 1) * columnWidth;
+        page.drawLine({
+          start: { x: xEnd, y: rowY },
+          end: { x: xEnd, y: rowY - headerHeight },
+          thickness: 0.5,
+        });
+      });
+      page.drawLine({
+        start: { x: margin, y: rowY },
+        end: { x: margin + usableWidth, y: rowY },
+        thickness: 0.5,
+      });
+      pdfColumns.forEach((column, index) => {
+        const headerText = String(column.header ?? "").trim() || " ";
+        const truncated = truncateToFit(headerText, cellWidth, headerFontSize);
+        page.drawText(truncated, {
+          x: margin + index * columnWidth + cellPaddingX,
+          y: rowY - headerHeight + 5,
+          size: headerFontSize,
+          font,
+        });
+      });
+      y -= headerHeight;
+      page.drawLine({
+        start: { x: margin, y: y },
+        end: { x: margin + usableWidth, y: y },
+        thickness: 0.5,
+      });
+    };
+
+    drawHeaderRow();
+
+    const rowsToExport = sortedData;
+
+    rowsToExport.forEach((row, rowIndex) => {
+      if (y < margin + rowTotalHeight + 10) {
+        page = pdfDoc.addPage();
+        ({ width, height } = page.getSize());
+        y = height - margin;
+        drawHeaderRow();
+      }
+
+      const rowY = y;
+      pdfColumns.forEach((_, colIndex) => {
+        const xEnd = margin + (colIndex + 1) * columnWidth;
+        page.drawLine({
+          start: { x: xEnd, y: rowY },
+          end: { x: xEnd, y: rowY - rowTotalHeight },
+          thickness: 0.25,
+        });
+      });
+
+      pdfColumns.forEach((column, colIndex) => {
+        const baseValue = column.pdfValue
+          ? column.pdfValue(row, rowIndex)
+          : row[column.key];
+        const text =
+          baseValue === null || baseValue === undefined
+            ? ""
+            : String(baseValue).trim();
+        const truncated = truncateToFit(text, cellWidth, cellFontSize);
+
+        page.drawText(truncated, {
+          x: margin + colIndex * columnWidth + cellPaddingX,
+          y: rowY - rowTotalHeight + 12,
+          size: cellFontSize,
+          font,
+        });
+      });
+
+      page.drawLine({
+        start: { x: margin, y: rowY - rowTotalHeight },
+        end: { x: margin + usableWidth, y: rowY - rowTotalHeight },
+        thickness: 0.25,
+      });
+
+      y -= rowTotalHeight;
+    });
+
+    const pdfBytes = await pdfDoc.save();
+    const safeBuffer = new Uint8Array(pdfBytes).slice().buffer as ArrayBuffer;
+    const blob = new Blob([safeBuffer], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const baseName = (pdfFileName || title || "table-export")
+      .toString()
+      .replace(/[^\w\-]+/g, "_");
+    link.href = url;
+    link.download = baseName.endsWith(".pdf") ? baseName : `${baseName}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   // Handle column header click for sorting
   const handleSort = (columnKey: keyof T) => {
     const column = columns.find((col) => col.key === columnKey);
@@ -173,10 +319,24 @@ export function Table<T extends Record<string, unknown>>({
 
   return (
     <Card className={className}>
-      {(title || description) && (
-        <CardHeader>
-          {title && <CardTitle className="text-lg">{title}</CardTitle>}
-          {description && <CardDescription>{description}</CardDescription>}
+      {(title || description || enablePdfExport) && (
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            {title && <CardTitle className="text-lg">{title}</CardTitle>}
+            {description && <CardDescription>{description}</CardDescription>}
+          </div>
+          {enablePdfExport && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleExportPdf}
+              disabled={loading || sortedData.length === 0}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export PDF
+            </Button>
+          )}
         </CardHeader>
       )}
       <CardContent>

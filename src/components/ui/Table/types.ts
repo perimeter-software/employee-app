@@ -8,6 +8,10 @@ export interface TableColumn<T extends Record<string, unknown>> {
   headerClassName?: string;
   sortable?: boolean;
   sortFn?: (a: T, b: T) => number;
+  /** If false, this column is omitted from PDF export (e.g. actions, logo). Default true. */
+  pdfExport?: boolean;
+  /** Optional custom value for PDF export (falls back to raw row[key]). */
+  pdfValue?: (row: T, index: number) => string | number | null | undefined;
 }
 
 export interface TableProps<T extends Record<string, unknown>> {
@@ -25,4 +29,6 @@ export interface TableProps<T extends Record<string, unknown>> {
   loadingRows?: number;
   pageSize?: number;
   pageSizeOptions?: number[];
+  enablePdfExport?: boolean;
+  pdfFileName?: string;
 }

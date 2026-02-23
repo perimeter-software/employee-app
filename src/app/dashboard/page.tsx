@@ -655,6 +655,8 @@ const WeeklyShiftTable = ({
           selectable={true}
           className="w-full"
           emptyMessage="No shift data available."
+          enablePdfExport
+          pdfFileName="weekly-shift-details.pdf"
         />
       </CardContent>
     </Card>

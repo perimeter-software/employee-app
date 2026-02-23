@@ -1643,6 +1643,7 @@ export function EmployeeTimeAttendanceTable({
         key: 'date',
         header: 'DATE',
         render: (_, row) => formatDate(row.timeIn),
+        pdfValue: (row) => formatDate(row.timeIn),
         sortFn: (a, b) => {
           const dateA = new Date(a.timeIn).getTime();
           const dateB = new Date(b.timeIn).getTime();
@@ -1664,6 +1665,7 @@ export function EmployeeTimeAttendanceTable({
             )}
           </div>
         ),
+        pdfValue: (row) => row.lastName?.trim() || 'N/A',
       },
       {
         key: 'firstName',
@@ -1699,6 +1701,7 @@ export function EmployeeTimeAttendanceTable({
             </div>
           );
         },
+        pdfValue: (row) => row.firstName?.trim() || 'N/A',
       },
       {
         key: 'jobSite',
@@ -1713,6 +1716,7 @@ export function EmployeeTimeAttendanceTable({
             )}
           </div>
         ),
+        pdfValue: (row) => row.jobTitle || row.jobSite || 'N/A',
       },
       {
         key: 'timeRange',
@@ -1728,6 +1732,13 @@ export function EmployeeTimeAttendanceTable({
               {row.timeOut ? formatTime24(row.timeOut) : '----'}
             </div>
           );
+        },
+        pdfValue: (row) => {
+          const isFuture = isFutureEvent(row);
+          if (isFuture) return '---- - ----';
+          const start = formatTime24(row.timeIn);
+          const end = row.timeOut ? formatTime24(row.timeOut) : '----';
+          return `${start} - ${end}`;
         },
         sortFn: (a, b) => {
           const timeA = new Date(a.timeIn).getTime();
@@ -1746,6 +1757,12 @@ export function EmployeeTimeAttendanceTable({
           const hours = calculateTotalHours(row.timeIn, row.timeOut);
           return <div className="font-medium">{hours} hrs</div>;
         },
+        pdfValue: (row) => {
+          const isFuture = isFutureEvent(row);
+          if (isFuture) return '0 hrs';
+          const hours = calculateTotalHours(row.timeIn, row.timeOut);
+          return `${hours} hrs`;
+        },
         sortFn: (a, b) => {
           const hoursA = calculateTotalHours(a.timeIn, a.timeOut);
           const hoursB = calculateTotalHours(b.timeIn, b.timeOut);
@@ -1756,6 +1773,7 @@ export function EmployeeTimeAttendanceTable({
         key: 'location',
         header: 'LOCATION',
         render: (_, row) => row.location || 'N/A',
+        pdfValue: (row) => row.location || 'N/A',
       },
       {
         key: 'status',
@@ -1786,10 +1804,20 @@ export function EmployeeTimeAttendanceTable({
             </Badge>
           );
         },
+        pdfValue: (row) => {
+          const isActive = !row.timeOut;
+          const statusRaw =
+            row.status?.toLowerCase() || (isActive ? 'active' : 'pending');
+          if (statusRaw === 'completed') return 'Completed';
+          if (statusRaw === 'active') return 'Active';
+          if (statusRaw === 'pending') return 'Pending';
+          return statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1);
+        },
       },
       {
         key: 'actions',
         header: 'ACTIONS',
+        pdfExport: false,
         render: (_, row) => {
           const isFuture = isFutureEvent(row) || row._id?.startsWith('future-');
           const wasEdited = Boolean(row.modifiedBy) || Boolean(row.modifiedDate);
@@ -2734,28 +2762,31 @@ export function EmployeeTimeAttendanceTable({
                 </div>
               </div>
             ) : (
-            <Table
-              title=""
-              description=""
-              columns={columns}
-              data={tableData}
-              showPagination={false}
-              selectable={false}
-              className="w-full"
-              emptyMessage="No employee time and attendance records found for the selected date range."
-              getRowClassName={(row) => {
-                // Check if this is a future punch by ID or time
-                const isFutureById = row._id?.startsWith('future-');
-                const timeInMs = new Date(row.timeIn).getTime();
-                const isFutureByTime = !Number.isNaN(timeInMs) && timeInMs > Date.now();
+              <Table
+                title=""
+                description=""
+                columns={columns}
+                data={tableData}
+                showPagination={false}
+                selectable={false}
+                className="w-full"
+                emptyMessage="No employee time and attendance records found for the selected date range."
+                getRowClassName={(row) => {
+                  // Check if this is a future punch by ID or time
+                  const isFutureById = row._id?.startsWith('future-');
+                  const timeInMs = new Date(row.timeIn).getTime();
+                  const isFutureByTime =
+                    !Number.isNaN(timeInMs) && timeInMs > Date.now();
 
-                if (isFutureById || isFutureByTime) {
-                  // Light blue background to indicate upcoming shifts
-                  return 'bg-blue-50 hover:bg-blue-100';
-                }
-                return '';
-              }}
-            />
+                  if (isFutureById || isFutureByTime) {
+                    // Light blue background to indicate upcoming shifts
+                    return 'bg-blue-50 hover:bg-blue-100';
+                  }
+                  return '';
+                }}
+                enablePdfExport
+                pdfFileName="time-and-attendance.pdf"
+              />
             )
           ) : companyLoading ? (
             <div className="flex items-center justify-center min-h-[500px]">

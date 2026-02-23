@@ -306,6 +306,7 @@ export default function InvoicesPage() {
       key: 'logoUrl',
       header: 'Logo',
       sortable: false,
+      pdfExport: false,
       render: (_v, row) =>
         row.logoUrl ? (
           <Image
@@ -382,6 +383,7 @@ export default function InvoicesPage() {
       key: 'actions',
       header: 'Invoice Actions',
       sortable: false,
+      pdfExport: false,
       render: (_v, row) => (
         <div
           className="flex items-center gap-2"
@@ -564,6 +566,8 @@ export default function InvoicesPage() {
             loading={isLoading}
             pageSize={limit}
             onRowClick={(row) => setPreviewInvoiceId(row._id)}
+            enablePdfExport
+            pdfFileName={`invoices-${start}-${end}.pdf`}
           />
         </div>
 

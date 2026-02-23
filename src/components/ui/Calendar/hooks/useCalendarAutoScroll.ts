@@ -118,10 +118,13 @@ export function useCalendarAutoScroll({
   const scrollToTime = (hour: number) => {
     if (!scrollContainerRef.current) return;
 
-    const hourHeight = 128;
+    const container = scrollContainerRef.current;
+    const hourRow = container.querySelector<HTMLElement>('[data-hour-row]');
+    const hourHeight =
+      hourRow?.offsetHeight ?? FALLBACK_HOUR_HEIGHT_PX;
     const scrollPosition = Math.max(0, Math.min(23, hour)) * hourHeight;
 
-    scrollContainerRef.current.scrollTo({
+    container.scrollTo({
       top: scrollPosition,
       behavior: 'smooth',
     });
