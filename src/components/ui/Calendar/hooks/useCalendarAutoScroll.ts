@@ -8,6 +8,8 @@ interface UseCalendarAutoScrollProps {
   events: CalendarEvent[];
   weekDays?: Date[]; // For week view
   enableAutoScroll?: boolean; // Allow disabling auto-scroll
+  /** Pixels to leave at top so the first shift appears below sticky header (week/day view). */
+  stickyHeaderOffset?: number;
 }
 
 // Extended event interface that matches the actual events passed from calendars
@@ -32,6 +34,7 @@ export function useCalendarAutoScroll({
   events,
   weekDays,
   enableAutoScroll = true,
+  stickyHeaderOffset = 0,
 }: UseCalendarAutoScrollProps) {
   useEffect(() => {
     if (!enableAutoScroll || !events?.length) return;
@@ -107,7 +110,7 @@ export function useCalendarAutoScroll({
 
     // Match calendar hour row height (CalendarBodyDayContent / CalendarBodyWeek use h-20 sm:h-24 lg:h-32 = 80/96/128px)
     const hourHeight = 128;
-    const scrollPosition = Math.max(0, scrollToHour * hourHeight);
+    const scrollPosition = Math.max(0, scrollToHour * hourHeight - stickyHeaderOffset);
 
     // Returns true if a scroll was performed (so we can skip the retry when layout was ready)
     const runScroll = (): boolean => {
@@ -152,7 +155,7 @@ export function useCalendarAutoScroll({
       clearTimeout(timeoutId);
       if (retryId !== undefined) clearTimeout(retryId);
     };
-  }, [scrollContainerRef, date, events, weekDays, enableAutoScroll]);
+  }, [scrollContainerRef, date, events, weekDays, enableAutoScroll, stickyHeaderOffset]);
 
   const scrollToTime = useCallback(
     (hour: number) => {
