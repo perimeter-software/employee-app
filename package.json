@@ -28,6 +28,7 @@
     "critters": "^0.0.25",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
+    "exceljs": "^4.4.0",
     "formik": "^2.4.6",
     "framer-motion": "^12.17.0",
     "immer": "^10.1.1",

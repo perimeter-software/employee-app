@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
-import { ChevronLeft, ChevronRight, Pencil, MapPin, Search, Flag } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pencil, MapPin, Search, Flag, Download } from 'lucide-react';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import {
@@ -57,6 +57,7 @@ import type {
   EmployeePunch,
   EmployeeTimeAttendanceTableProps,
 } from '@/domains/punch/types/employee-punches.types';
+import ExcelJS from 'exceljs';
 
 // Format time as 24-hour format (HH:mm)
 const formatTime24 = (dateString: string) => {
@@ -844,6 +845,144 @@ export function EmployeeTimeAttendanceTable({
 
     return punches;
   }, [allEmployeePunches, viewType, employeeSearchQuery, employeeStatusFilter]);
+
+  const hasTableData = useMemo(
+    () => tableData && tableData.length > 0,
+    [tableData]
+  );
+
+  const getExportRows = useCallback(() => {
+    const headers = [
+      'Date',
+      'Last Name',
+      'First Name',
+      'Email',
+      'Job/Site',
+      'Start Time',
+      'End Time',
+      'Total Hours',
+      'Status',
+    ];
+
+    const fallback = '-';
+
+    const rows = tableData.map((punch) => [
+      punch.timeIn ? formatDate(punch.timeIn) : fallback,
+      punch.lastName || fallback,
+      punch.firstName || fallback,
+      punch.employeeEmail || fallback,
+      punch.jobTitle || fallback,
+      punch.timeIn ? formatTime24(punch.timeIn) : fallback,
+      punch.timeOut ? formatTime24(punch.timeOut) : fallback,
+      punch.totalHours != null && punch.totalHours !== ''
+        ? `${punch.totalHours} hrs`
+        : fallback,
+      punch.status || fallback,
+    ]);
+
+    return { headers, rows };
+  }, [tableData]);
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportCsv = () => {
+    if (!hasTableData) return;
+
+    const { headers, rows } = getExportRows();
+
+    const escapeCsvValue = (value: unknown) => {
+      if (value == null) return '';
+      const stringValue = String(value);
+      if (/[",\n]/.test(stringValue)) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map(escapeCsvValue).join(','))
+      .join('\r\n');
+
+    const blob = new Blob([csvContent], {
+      type: 'text/csv;charset=utf-8;',
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    downloadBlob(blob, `time-attendance-${today}.csv`);
+  };
+
+  const handleExportExcel = async () => {
+    if (!hasTableData) return;
+
+    const { headers, rows } = getExportRows();
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Time & Attendance');
+
+    worksheet.addRow(headers);
+    rows.forEach((row) => {
+      worksheet.addRow(row);
+    });
+
+    headers.forEach((header, columnIndex) => {
+      const excelColumnIndex = columnIndex + 1;
+      const column = worksheet.getColumn(excelColumnIndex);
+
+      let maxLength = header.length;
+      rows.forEach((row) => {
+        const value = row[columnIndex];
+        const length = value ? String(value).length : 0;
+        maxLength = Math.max(maxLength, length);
+      });
+
+      let preferredMin = 12;
+      if (header === 'Last Name' || header === 'First Name') {
+        preferredMin = 18;
+      } else if (header === 'Email') {
+        preferredMin = 32;
+      } else if (header === 'Job/Site') {
+        preferredMin = 28;
+      } else if (
+        header === 'Start Time' ||
+        header === 'End Time' ||
+        header === 'Total Hours'
+      ) {
+        preferredMin = 14;
+      }
+
+      const computed = Math.max(maxLength + 4, preferredMin);
+      const width = Math.min(computed, 50);
+      column.width = width;
+    });
+
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true, size: 12 };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'left' };
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE5E5E5' },
+      };
+    });
+
+    const workbookArray = await workbook.xlsx.writeBuffer();
+
+    const blob = new Blob([workbookArray], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    downloadBlob(blob, `time-attendance-${today}.xlsx`);
+  };
 
   // Get unique shift slugs from actual punches in the date range (after allEmployeePunches)
   const availableShiftSlugs: Set<string> = useMemo(() => {
@@ -2671,6 +2810,28 @@ export function EmployeeTimeAttendanceTable({
                     ? 'Weekly Shift Details'
                     : 'Daily Shift Details'}
             </h2>
+            {viewType === 'table' && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportExcel}
+                  disabled={!hasTableData}
+                >
+                  <Download className="w-4 h-4 mr-1" />
+                  Excel
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportCsv}
+                  disabled={!hasTableData}
+                >
+                  <Download className="w-4 h-4 mr-1" />
+                  CSV
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Table Controls - Only show in table view */}
