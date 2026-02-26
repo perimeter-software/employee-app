@@ -270,7 +270,12 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
 
   const shiftStart = parseISO(shift.shiftStartDate);
   const shiftEnd = parseISO(shift.shiftEndDate);
-  const minDateStr = format(shiftStart, 'yyyy-MM-dd');
+  // Only allow today and future dates (past dates disabled)
+  const todayYmd = format(new Date(), 'yyyy-MM-dd');
+  const today = parseISO(todayYmd);
+  const minSelectable =
+    shiftStart.getTime() > today.getTime() ? shiftStart : today;
+  const minDateStr = format(minSelectable, 'yyyy-MM-dd');
   const maxDateStr = format(shiftEnd, 'yyyy-MM-dd');
 
   // Only allow recurring selection for days that actually have a schedule
@@ -288,6 +293,14 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
     }
     const d = new Date(newDate);
     if (Number.isNaN(d.getTime())) {
+      return;
+    }
+
+    // Only allow today or future dates (no past dates)
+    const selectedYmd = format(d, 'yyyy-MM-dd');
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    if (selectedYmd < todayStr) {
+      setDateError('Please select today or a future date.');
       return;
     }
 
