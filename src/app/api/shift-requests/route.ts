@@ -277,10 +277,18 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
         ? new ObjectId(applicantId)
         : applicantId;
 
+      const firstName = user.given_name ?? user.firstName ?? '';
+      const lastName = user.family_name ?? user.lastName ?? '';
+      const fullName =
+        (user.name as string | undefined)?.trim() ||
+        [firstName, lastName].filter(Boolean).join(' ') ||
+        '';
+
       addToShiftRoster = {
         _id: shiftRosterId,
-        firstName: user.given_name ?? undefined,
-        lastName: user.family_name ?? undefined,
+        firstName,
+        lastName,
+        fullName,
         email: user.email ?? undefined,
       };
     }
