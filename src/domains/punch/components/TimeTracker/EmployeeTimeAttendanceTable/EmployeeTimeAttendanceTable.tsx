@@ -866,19 +866,43 @@ export function EmployeeTimeAttendanceTable({
 
     const fallback = '-';
 
-    const rows = tableData.map((punch) => [
-      punch.timeIn ? formatDate(punch.timeIn) : fallback,
-      punch.lastName || fallback,
-      punch.firstName || fallback,
-      punch.employeeEmail || fallback,
-      punch.jobTitle || fallback,
-      punch.timeIn ? formatTime24(punch.timeIn) : fallback,
-      punch.timeOut ? formatTime24(punch.timeOut) : fallback,
-      punch.totalHours != null && punch.totalHours !== ''
-        ? `${punch.totalHours} hrs`
-        : fallback,
-      punch.status || fallback,
-    ]);
+    const rows = tableData.map((punch) => {
+      const timeInMs = punch.timeIn ? new Date(punch.timeIn).getTime() : NaN;
+      const isFuture =
+        (!Number.isNaN(timeInMs) && timeInMs > Date.now()) ||
+        punch._id?.startsWith('future-') ||
+        punch.status === 'scheduled';
+
+      const dateValue = punch.timeIn ? formatDate(punch.timeIn) : fallback;
+      const startTimeValue =
+        !isFuture && punch.timeIn ? formatTime24(punch.timeIn) : fallback;
+      const endTimeValue =
+        !isFuture && punch.timeOut ? formatTime24(punch.timeOut) : fallback;
+
+      let totalHoursValue: string;
+      if (isFuture) {
+        totalHoursValue = '0 hrs';
+      } else if (punch.totalHours != null && punch.totalHours !== '') {
+        totalHoursValue = `${punch.totalHours} hrs`;
+      } else if (punch.timeIn && punch.timeOut) {
+        const hours = calculateTotalHours(punch.timeIn, punch.timeOut);
+        totalHoursValue = `${hours} hrs`;
+      } else {
+        totalHoursValue = fallback;
+      }
+
+      return [
+        dateValue,
+        punch.lastName || fallback,
+        punch.firstName || fallback,
+        punch.employeeEmail || fallback,
+        punch.jobTitle || fallback,
+        startTimeValue,
+        endTimeValue,
+        totalHoursValue,
+        punch.status || fallback,
+      ];
+    });
 
     return { headers, rows };
   }, [tableData]);
