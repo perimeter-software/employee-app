@@ -1,4 +1,4 @@
-import { useEffect, RefObject } from 'react';
+import { useEffect, useCallback, RefObject } from 'react';
 import { isSameDay } from 'date-fns';
 import type { CalendarEvent } from '../types';
 
@@ -8,9 +8,11 @@ interface UseCalendarAutoScrollProps {
   events: CalendarEvent[];
   weekDays?: Date[]; // For week view
   enableAutoScroll?: boolean; // Allow disabling auto-scroll
+  /** Pixels to leave at top so the first shift appears below sticky header (week/day view). */
+  stickyHeaderOffset?: number;
 }
 
-// Extended event interface that matches the actual events passed from ShiftsSection
+// Extended event interface that matches the actual events passed from calendars
 interface ExtendedCalendarEvent extends CalendarEvent {
   punchData?: {
     clockInCoordinates?: {
@@ -21,6 +23,9 @@ interface ExtendedCalendarEvent extends CalendarEvent {
     timeIn: string;
   };
   status?: 'active' | 'completed' | 'scheduled' | 'missed';
+  // Optional flag used by some calendars (e.g. time & attendance)
+  // to mark future, "available" shifts or events
+  isFuture?: boolean;
 }
 
 export function useCalendarAutoScroll({
@@ -29,10 +34,10 @@ export function useCalendarAutoScroll({
   events,
   weekDays,
   enableAutoScroll = true,
+  stickyHeaderOffset = 0,
 }: UseCalendarAutoScrollProps) {
   useEffect(() => {
-    if (!enableAutoScroll || !scrollContainerRef.current || !events?.length)
-      return;
+    if (!enableAutoScroll || !events?.length) return;
 
     // Cast events to extended type for better type checking
     const extendedEvents = events as ExtendedCalendarEvent[];
@@ -55,14 +60,24 @@ export function useCalendarAutoScroll({
       );
     });
 
+    // Prefer future/available events (e.g. upcoming shifts) when present
+    const futureEvents = relevantEvents.filter((event) => event.isFuture);
+
     // Also prioritize completed or active punches over scheduled ones
     const actualPunches = relevantEvents.filter(
       (event) => event.status === 'completed' || event.status === 'active'
     );
 
-    // Choose the best events to consider for auto-scroll (prioritize actual punches with location)
+    // Choose the best events to consider for auto-scroll.
+    // Order of preference:
+    // 1) Future/available events (e.g. upcoming shifts)
+    // 2) Events with precise geolocation
+    // 3) Completed or active punches
+    // 4) Any relevant events
     let eventsToConsider: ExtendedCalendarEvent[];
-    if (punchEventsWithLocation.length > 0) {
+    if (futureEvents.length > 0) {
+      eventsToConsider = futureEvents;
+    } else if (punchEventsWithLocation.length > 0) {
       eventsToConsider = punchEventsWithLocation;
     } else if (actualPunches.length > 0) {
       eventsToConsider = actualPunches;
@@ -93,39 +108,65 @@ export function useCalendarAutoScroll({
       scrollToHour = oneHourBefore;
     }
 
-    // Calculate scroll position (each hour is 128px - h-32 class = 8rem = 128px)
+    // Match calendar hour row height (CalendarBodyDayContent / CalendarBodyWeek use h-20 sm:h-24 lg:h-32 = 80/96/128px)
     const hourHeight = 128;
-    const scrollPosition = scrollToHour * hourHeight;
+    const scrollPosition = Math.max(0, scrollToHour * hourHeight - stickyHeaderOffset);
 
-    // Add slight randomization for smooth performance with multiple rapid changes
-    const delay = 150 + Math.random() * 50;
-
-    // Scroll to the calculated position with a slight delay to ensure DOM is ready
-    const timeoutId = setTimeout(() => {
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTo({
-          top: scrollPosition,
-          behavior: 'smooth',
-        });
+    // Returns true if a scroll was performed (so we can skip the retry when layout was ready)
+    const runScroll = (): boolean => {
+      const refEl = scrollContainerRef.current;
+      if (!refEl) return false;
+      let el: HTMLElement | null = refEl;
+      let maxScroll = el.scrollHeight - el.clientHeight;
+      let top = scrollPosition;
+      // If this element isn't scrollable (e.g. parent has overflow), use nearest scrollable ancestor
+      if (maxScroll <= 0) {
+        let parent: HTMLElement | null = refEl.parentElement;
+        while (parent && parent !== document.body) {
+          const style = getComputedStyle(parent);
+          const overflowY = style.overflowY;
+          if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
+            const parentMax = parent.scrollHeight - parent.clientHeight;
+            if (parentMax > 0) {
+              el = parent;
+              maxScroll = parentMax;
+              top = refEl.offsetTop + scrollPosition;
+              break;
+            }
+          }
+          parent = parent.parentElement;
+        }
+        if (!el || maxScroll <= 0) return false;
       }
-    }, delay);
+      top = Math.min(Math.max(0, top), maxScroll);
+      el.scrollTo({ top, behavior: 'smooth' });
+      return true;
+    };
 
-    // Cleanup timeout on unmount or dependency change
-    return () => clearTimeout(timeoutId);
-  }, [scrollContainerRef, date, events, weekDays, enableAutoScroll]);
+    // Delay so the scroll container is mounted, laid out, and has correct scrollHeight
+    let retryId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutId = setTimeout(() => {
+      const didScroll = runScroll();
+      // Retry once only if first attempt didn't scroll (ref/layout not ready); avoids double scroll when ready
+      if (!didScroll) retryId = setTimeout(runScroll, 250);
+    }, 350);
 
-  // Return a function to manually trigger scroll to a specific time
-  const scrollToTime = (hour: number) => {
-    if (!scrollContainerRef.current) return;
+    return () => {
+      clearTimeout(timeoutId);
+      if (retryId !== undefined) clearTimeout(retryId);
+    };
+  }, [scrollContainerRef, date, events, weekDays, enableAutoScroll, stickyHeaderOffset]);
 
-    const hourHeight = 128;
-    const scrollPosition = Math.max(0, Math.min(23, hour)) * hourHeight;
-
-    scrollContainerRef.current.scrollTo({
-      top: scrollPosition,
-      behavior: 'smooth',
-    });
-  };
+  const scrollToTime = useCallback(
+    (hour: number) => {
+      const el = scrollContainerRef.current;
+      if (!el) return;
+      const hourHeight = 128;
+      const scrollPosition = Math.max(0, Math.min(23, hour)) * hourHeight;
+      el.scrollTo({ top: scrollPosition, behavior: 'smooth' });
+    },
+    [scrollContainerRef]
+  );
 
   return { scrollToTime };
 }
