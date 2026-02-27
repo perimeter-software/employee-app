@@ -31,6 +31,20 @@ export interface EmployeePunch extends Record<string, unknown> {
   modifiedDate?: string;
   modifiedBy?: string;
   modifiedByName?: string;
+  /** History of updates (same punch doc); length > 0 means punch was updated */
+  updateHistory?: Array<{
+    timeIn: string;
+    timeOut: string | null;
+    userNote: string | null;
+    managerNote: string | null;
+    timeInBefore?: string;
+    timeOutBefore?: string | null;
+    userNoteBefore?: string | null;
+    managerNoteBefore?: string | null;
+    modifiedBy: string;
+    modifiedByName?: string;
+    modifiedDate: string;
+  }>;
   isSelected?: boolean;
   checkbox?: unknown;
   date?: unknown;

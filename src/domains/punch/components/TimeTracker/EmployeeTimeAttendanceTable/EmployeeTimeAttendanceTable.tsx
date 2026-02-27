@@ -851,6 +851,24 @@ export function EmployeeTimeAttendanceTable({
     [tableData]
   );
 
+  const totalShiftHours = useMemo(() => {
+    if (!tableData.length) return 0;
+    let sum = 0;
+    for (const punch of tableData) {
+      const isFuture = punch.status === 'scheduled' || !punch.timeIn;
+      if (isFuture) continue;
+      if (punch.totalHours != null && punch.totalHours !== '') {
+        const n = Number(punch.totalHours);
+        if (!Number.isNaN(n)) sum += n;
+      } else if (punch.timeIn && punch.timeOut) {
+        sum += calculateTotalHours(punch.timeIn, punch.timeOut);
+      } else if (punch.timeIn) {
+        sum += calculateTotalHours(punch.timeIn, null);
+      }
+    }
+    return Math.round(sum * 10) / 10;
+  }, [tableData]);
+
   const getExportRows = useCallback(() => {
     const headers = [
       'Date',
@@ -907,6 +925,35 @@ export function EmployeeTimeAttendanceTable({
     return { headers, rows };
   }, [tableData]);
 
+  const exportFilenameBase = useMemo(() => {
+    const startStr = dateRange.startDate ? format(parseISO(dateRange.startDate), 'yyyy-MM-dd') : '';
+    const endStr = dateRange.endDate ? format(parseISO(dateRange.endDate), 'yyyy-MM-dd') : '';
+    const datePart = startStr && endStr ? `${startStr}-to-${endStr}` : new Date().toISOString().split('T')[0];
+    const sanitize = (s: string, maxLen = 20) =>
+      s
+        .replace(/[\s/\\:*?"<>|]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, maxLen);
+    const parts = [datePart];
+    if (selectedJobId !== 'all') {
+      const jobLabel = selectedJob?.title ? sanitize(selectedJob.title, 24) : selectedJobId.slice(0, 8);
+      parts.push(`job-${jobLabel}`);
+    }
+    if (selectedShiftSlug !== 'all') parts.push(`shift-${sanitize(selectedShiftSlug, 24)}`);
+    if (employeeStatusFilter !== 'all') parts.push(employeeStatusFilter);
+    if (employeeSearchQuery.trim()) parts.push(`search-${sanitize(employeeSearchQuery.trim(), 16)}`);
+    return parts.join('-');
+  }, [
+    dateRange.startDate,
+    dateRange.endDate,
+    selectedJobId,
+    selectedJob?.title,
+    selectedShiftSlug,
+    employeeStatusFilter,
+    employeeSearchQuery,
+  ]);
+
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -940,8 +987,7 @@ export function EmployeeTimeAttendanceTable({
       type: 'text/csv;charset=utf-8;',
     });
 
-    const today = new Date().toISOString().split('T')[0];
-    downloadBlob(blob, `time-attendance-${today}.csv`);
+    downloadBlob(blob, `time-attendance-${exportFilenameBase}.csv`);
   };
 
   const handleExportExcel = async () => {
@@ -1004,8 +1050,7 @@ export function EmployeeTimeAttendanceTable({
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
 
-    const today = new Date().toISOString().split('T')[0];
-    downloadBlob(blob, `time-attendance-${today}.xlsx`);
+    downloadBlob(blob, `time-attendance-${exportFilenameBase}.xlsx`);
   };
 
   // Get unique shift slugs from actual punches in the date range (after allEmployeePunches)
@@ -1955,7 +2000,9 @@ export function EmployeeTimeAttendanceTable({
         header: 'ACTIONS',
         render: (_, row) => {
           const isFuture = isFutureEvent(row) || row._id?.startsWith('future-');
-          const wasEdited = Boolean(row.modifiedBy) || Boolean(row.modifiedDate);
+          // Only show "edited" when punch has update history (admin update). modifiedBy/modifiedDate
+          // are also set on clock-in/clock-out, so they don't mean "updated by admin".
+          const wasEdited = (row.updateHistory?.length ?? 0) > 0;
           return (
             <div className="flex items-center justify-center gap-0.5">
               <button
@@ -1996,47 +2043,83 @@ export function EmployeeTimeAttendanceTable({
                         onPointerDownOutside={(e) => e.preventDefault()}
                       >
                         <div className="mb-1 border-b border-gray-100 pb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-500">
-                          Punch edited
+                          Punch update history
                         </div>
-                        <div className="space-y-1.5 text-[10px]">
+                        <div className="space-y-2 text-[10px] max-h-[280px] overflow-y-auto">
                           {(() => {
-                            const by = row.modifiedByName?.trim() || null;
-                            const dateStr = row.modifiedDate
-                              ? format(parseISO(row.modifiedDate), 'MMM d, yyyy \'at\' h:mm a')
-                              : null;
-                            const stripHtml = (s: string) => (s || '').replace(/<[^>]*>/g, '').trim();
-                            const userNote = stripHtml(row.userNote || '');
-                            const managerNote = stripHtml(row.managerNote || '');
-                            return (
-                              <>
-                                {by && (
-                                  <div>
-                                    <span className="font-medium text-gray-500">Updated by: </span>
-                                    <span className="text-gray-700">{by}</span>
-                                  </div>
-                                )}
-                                {dateStr && (
-                                  <div>
-                                    <span className="font-medium text-gray-500">Updated at: </span>
-                                    <span className="text-gray-700">{dateStr}</span>
-                                  </div>
-                                )}
-                                {!by && !dateStr && (
-                                  <div className="text-gray-600">Punch was edited</div>
-                                )}
-                                {userNote && (
-                                  <div className="pt-1 border-t border-gray-100">
-                                    <span className="font-medium text-gray-500">User note: </span>
-                                    <span className="text-gray-700 break-words">{userNote}</span>
-                                  </div>
-                                )}
-                                {managerNote && (
-                                  <div className="pt-1 border-t border-gray-100">
-                                    <span className="font-medium text-gray-500">Manager note: </span>
-                                    <span className="text-gray-700 break-words">{managerNote}</span>
-                                  </div>
-                                )}
-                              </>
+                            const history = row.updateHistory ?? [];
+                            const sorted = [...history].reverse();
+                            const safeFmt = (iso: string | null | undefined, fmt: string): string => {
+                              if (!iso || typeof iso !== 'string') return '—';
+                              try {
+                                const d = parseISO(iso);
+                                return isNaN(d.getTime()) ? '—' : format(d, fmt);
+                              } catch {
+                                return '—';
+                              }
+                            };
+                            return sorted.length === 0 ? (
+                              <div className="text-gray-600">No update history</div>
+                            ) : (
+                              sorted.map((entry, idx) => {
+                                    const e = entry as {
+                                      timeIn: string;
+                                      timeOut: string | null;
+                                      timeInBefore?: string;
+                                      timeOutBefore?: string | null;
+                                      modifiedByName?: string;
+                                      modifiedDate: string;
+                                    };
+                                    const dateStr = safeFmt(e.modifiedDate, 'MMM d, yyyy \'at\' h:mm a');
+                                    const timeInUpdated = e.timeInBefore != null && e.timeInBefore !== e.timeIn;
+                                    const timeInBeforeStr = safeFmt(e.timeInBefore, 'MMM d, h:mm a');
+                                    const timeInAfterStr = safeFmt(e.timeIn, 'MMM d, h:mm a');
+                                    const timeInStr = timeInUpdated && timeInBeforeStr !== '—'
+                                      ? `${timeInBeforeStr} → ${timeInAfterStr}`
+                                      : timeInAfterStr;
+                                    const outBeforeVal = e.timeOutBefore?.trim() || null;
+                                    const outAfterVal = e.timeOut?.trim() || null;
+                                    const timeOutUpdated = outBeforeVal !== outAfterVal;
+                                    const timeOutBeforeStr = outBeforeVal ? safeFmt(e.timeOutBefore!, 'MMM d, h:mm a') : null;
+                                    const timeOutAfterStr = safeFmt(e.timeOut, 'MMM d, h:mm a');
+                                    const timeOutStr = timeOutUpdated && timeOutBeforeStr != null
+                                      ? `${timeOutBeforeStr} → ${timeOutAfterStr}`
+                                      : timeOutAfterStr;
+                                    return (
+                                      <div
+                                        key={idx}
+                                        className={clsxm(
+                                          'rounded p-2 bg-gray-50/80',
+                                          idx < sorted.length - 1 && 'mb-2'
+                                        )}
+                                      >
+                                        <div className="font-medium text-gray-600 mb-1">
+                                          Update {sorted.length - idx}
+                                          {e.modifiedByName?.trim() && (
+                                            <span className="text-gray-500 font-normal"> by {e.modifiedByName.trim()}</span>
+                                          )}
+                                        </div>
+                                        <div className="space-y-0.5 text-gray-700">
+                                          <div>
+                                            <span className="text-gray-500">Updated at: </span>
+                                            {dateStr}
+                                          </div>
+                                          {timeInUpdated && (
+                                            <div>
+                                              <span className="text-gray-500">Time in: </span>
+                                              {timeInStr}
+                                            </div>
+                                          )}
+                                          {timeOutUpdated && (
+                                            <div>
+                                              <span className="text-gray-500">Time out: </span>
+                                              {timeOutStr}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })
                             );
                           })()}
                         </div>
@@ -2825,36 +2908,43 @@ export function EmployeeTimeAttendanceTable({
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         <div className="flex flex-col gap-3 mb-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">
-              {viewType === 'table'
-                ? 'Weekly Shift Details'
-                : viewType === 'month'
-                  ? 'Monthly Shift Details'
-                  : viewType === 'week'
-                    ? 'Weekly Shift Details'
-                    : 'Daily Shift Details'}
-            </h2>
+            <div className="flex flex-wrap items-center gap-4">
+              <h2 className="text-lg font-semibold text-gray-900">
+                {viewType === 'table'
+                  ? 'Weekly Shift Details'
+                  : viewType === 'month'
+                    ? 'Monthly Shift Details'
+                    : viewType === 'week'
+                      ? 'Weekly Shift Details'
+                      : 'Daily Shift Details'}
+              </h2>
+              {viewType === 'table' && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportExcel}
+                    disabled={!hasTableData}
+                  >
+                    <Download className="w-4 h-4 mr-1" />
+                    Excel
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportCsv}
+                    disabled={!hasTableData}
+                  >
+                    <Download className="w-4 h-4 mr-1" />
+                    CSV
+                  </Button>
+                </>
+              )}
+            </div>
             {viewType === 'table' && (
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExportExcel}
-                  disabled={!hasTableData}
-                >
-                  <Download className="w-4 h-4 mr-1" />
-                  Excel
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExportCsv}
-                  disabled={!hasTableData}
-                >
-                  <Download className="w-4 h-4 mr-1" />
-                  CSV
-                </Button>
-              </div>
+              <span className="text-base font-semibold text-gray-700 mr-2">
+                Total Shift Hours: <span className="text-gray-900 mr-1">{isLoading ? '—' : `${totalShiftHours} hrs`}</span>
+              </span>
             )}
           </div>
 
