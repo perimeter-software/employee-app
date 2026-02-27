@@ -1468,6 +1468,9 @@ export function EmployeeTimeAttendanceTable({
 
       daySchedule.roster.forEach((entry) => {
         if (!entry.date || !isDateInRange(entry.date)) return;
+        // Exclude pending roster entries from position counts
+        const status = (entry as { status?: string }).status;
+        if (status === 'pending') return;
         dateSeen[entry.date] = true;
         // Count as filled only when assigned to a position (assignedPosition set)
         const isAssigned = Boolean(entry.employeeId && (entry as { assignedPosition?: string }).assignedPosition);
@@ -1516,6 +1519,8 @@ export function EmployeeTimeAttendanceTable({
       const daySchedule = currentlySelectedShift.defaultSchedule[dayOfWeek];
       if (daySchedule?.roster?.length > 0) {
         daySchedule.roster.forEach((entry) => {
+          const status = (entry as { status?: string }).status;
+          if (status === 'pending') return;
           if (entry.date && entry.employeeId && isDateInRange(entry.date)) {
             if (!dateDetails[entry.date]) {
               dateDetails[entry.date] = { filled: 0, unassigned: 0, totalRequested };

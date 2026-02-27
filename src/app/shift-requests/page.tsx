@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { format, parseISO, getDay } from 'date-fns';
+import { format, parseISO, getDay, isAfter, startOfWeek, addWeeks } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 import { CalendarDays, Clock } from 'lucide-react';
+import { getUserTimeZone } from '@/lib/utils';
 
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/Button';
@@ -61,12 +63,32 @@ const dayLabel = (day: DayKey) =>
 
 type RequestStatus = RosterEntryStatus;
 
+const DEFAULT_TZ = 'America/Chicago';
+const ALL_JOBS_ID = '__all__';
+
 type ShiftSummary = {
   slug: string;
   shiftName: string;
   shiftStartDate: string;
   shiftEndDate: string;
 };
+
+type ShiftWithJob = { job: GignologyJob; summary: ShiftSummary };
+
+/**
+ * Today at start-of-day in the browser/user's timezone (fallback America/Chicago).
+ * Use this for all "today" and min-date logic so the shift-request flow respects the user's timezone.
+ */
+function getTodayInUserTz(): Date {
+  try {
+    const tz = getUserTimeZone?.() ?? DEFAULT_TZ;
+    const now = new Date();
+    const zoned = toZonedTime(now, tz);
+    return new Date(zoned.getFullYear(), zoned.getMonth(), zoned.getDate());
+  } catch {
+    return new Date(new Date().setHours(0, 0, 0, 0));
+  }
+}
 
 type MyRequestRow = {
   id: string;
@@ -80,6 +102,8 @@ type MyRequestRow = {
   status: RequestStatus;
   source: 'schedule' | 'request';
   windowLabel: string;
+  /** Used for table actions column */
+  actions?: unknown;
 };
 
 type RequestMode = 'dates' | 'recurring';
@@ -91,16 +115,15 @@ function buildAssignedJobs(jobs: GignologyJob[] | undefined): GignologyJob[] {
 
 function buildShiftSummaries(job: GignologyJob | undefined): ShiftSummary[] {
   if (!job?.shifts?.length) return [];
-  const now = new Date();
+  const today = getTodayInUserTz();
+  const todayYmd = format(today, 'yyyy-MM-dd');
 
-  // Only include shifts whose end date is today or in the future
+  // Only include shifts whose end date is today or in the future (user timezone)
   return job.shifts
     .filter((shift) => {
       const end = new Date(shift.shiftEndDate);
       if (Number.isNaN(end.getTime())) return false;
-      // Normalize to date-only comparison
       const endYmd = format(end, 'yyyy-MM-dd');
-      const todayYmd = format(now, 'yyyy-MM-dd');
       return endYmd >= todayYmd;
     })
     .map((shift) => ({
@@ -249,6 +272,7 @@ type RequestModalProps = {
   onOpenChange: (open: boolean) => void;
   job: GignologyJob | null;
   shift: Shift | null;
+  applicantId: string | undefined;
   onSubmit: (args: { dates: string[]; recurringDays: DayKey[] }) => Promise<void>;
 };
 
@@ -257,6 +281,7 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
   onOpenChange,
   job,
   shift,
+  applicantId,
   onSubmit,
 }) => {
   const [mode, setMode] = useState<RequestMode>('dates');
@@ -265,57 +290,69 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
   const [recurringDays, setRecurringDays] = useState<DayKey[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
+  const [currentWeekStartMs, setCurrentWeekStartMs] = useState<number>(0);
 
-  if (!job || !shift) return null;
-
-  const shiftStart = parseISO(shift.shiftStartDate);
-  const shiftEnd = parseISO(shift.shiftEndDate);
-  // Only allow today and future dates (past dates disabled)
-  const todayYmd = format(new Date(), 'yyyy-MM-dd');
-  const today = parseISO(todayYmd);
+  const shiftStart = job && shift ? parseISO(shift.shiftStartDate) : null;
+  const shiftEnd = job && shift ? parseISO(shift.shiftEndDate) : null;
+  const today = getTodayInUserTz(); // browser/user timezone for "today"
   const minSelectable =
-    shiftStart.getTime() > today.getTime() ? shiftStart : today;
-  const minDateStr = format(minSelectable, 'yyyy-MM-dd');
-  const maxDateStr = format(shiftEnd, 'yyyy-MM-dd');
+    shiftStart && shiftEnd
+      ? isAfter(shiftStart, today)
+        ? shiftStart
+        : today
+      : null;
+  const minDateStr = minSelectable ? format(minSelectable, 'yyyy-MM-dd') : '';
+  const maxDateStr = shiftEnd ? format(shiftEnd, 'yyyy-MM-dd') : '';
 
-  // Only allow recurring selection for days that actually have a schedule
-  const allowedRecurringDays: DayKey[] = [];
-  for (const day of DAY_KEYS) {
-    const schedule = shift.defaultSchedule?.[day];
-    if (schedule?.start && schedule.end) {
-      allowedRecurringDays.push(day);
+  const allowedRecurringDays = React.useMemo((): DayKey[] => {
+    if (!shift?.defaultSchedule) return [];
+    const out: DayKey[] = [];
+    for (const day of DAY_KEYS) {
+      const schedule = shift.defaultSchedule[day];
+      if (schedule?.start && schedule.end) out.push(day);
     }
-  }
+    return out;
+  }, [shift]);
+
+  // Dates already requested by this user for this shift (from roster)
+  const alreadyRequestedDateSet = React.useMemo(() => {
+    const set = new Set<string>();
+    if (!applicantId || !shift?.defaultSchedule) return set;
+    for (const day of DAY_KEYS) {
+      const schedule = shift.defaultSchedule[day];
+      const roster = schedule?.roster;
+      if (!Array.isArray(roster)) continue;
+      for (const entry of roster) {
+        if (typeof entry === 'string') continue;
+        if (entry.employeeId === applicantId && entry.date) {
+          set.add(entry.date);
+        }
+      }
+    }
+    return set;
+  }, [applicantId, shift?.defaultSchedule]);
 
   const handleAddDate = () => {
-    if (!newDate) {
-      return;
-    }
+    if (!newDate || !shiftStart || !shiftEnd) return;
     const d = new Date(newDate);
-    if (Number.isNaN(d.getTime())) {
-      return;
-    }
+    if (Number.isNaN(d.getTime())) return;
 
-    // Only allow today or future dates (no past dates)
     const selectedYmd = format(d, 'yyyy-MM-dd');
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const todayStr = format(getTodayInUserTz(), 'yyyy-MM-dd');
     if (selectedYmd < todayStr) {
       setDateError('Please select today or a future date.');
       return;
     }
-
-    // Enforce that selected date is one of the valid shift weekdays
-    const dayIndex = getDay(d); // 0 (Sun) - 6 (Sat)
+    const dayIndex = getDay(d);
     const dayKey = DAY_KEYS[dayIndex];
     if (!allowedRecurringDays.includes(dayKey)) {
       setDateError(
         `This shift only runs on ${allowedRecurringDays
-          .map((d) => d.slice(0, 3))
+          .map((day) => day.slice(0, 3))
           .join(', ')}. Please pick one of those days.`
       );
       return;
     }
-
     if (d < shiftStart || d > shiftEnd) return;
     if (dates.includes(newDate)) return;
     setDateError(null);
@@ -326,6 +363,107 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
     setRecurringDays((prev) =>
       prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
     );
+  };
+
+  // Build flat list of selectable dates
+  const selectableDateList = React.useMemo(() => {
+    if (!minSelectable || !shiftEnd) return [];
+    const list: string[] = [];
+    const d = new Date(minSelectable.getTime());
+    const end = new Date(shiftEnd);
+    while (d <= end) {
+      const dayKey = DAY_KEYS[getDay(d)];
+      if (allowedRecurringDays.includes(dayKey)) {
+        list.push(format(d, 'yyyy-MM-dd'));
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    return list;
+  }, [minSelectable, shiftEnd, allowedRecurringDays]);
+
+  // Grid by week: rows = weeks, columns = Mon(0)..Sat(5). Sunday excluded so layout is Mon–Sat.
+  const WEEKDAY_INDEX = (date: Date) => (getDay(date) + 6) % 7; // Mon=0 .. Sun=6
+  const selectableDateGridFull = React.useMemo(() => {
+    if (selectableDateList.length === 0) return [];
+    const byWeek = new Map<number, (string | null)[]>();
+    for (const dateStr of selectableDateList) {
+      const d = parseISO(dateStr);
+      const weekStart = startOfWeek(d, { weekStartsOn: 1 });
+      const weekKey = weekStart.getTime();
+      const dayIndex = WEEKDAY_INDEX(d);
+      if (dayIndex === 6) continue; // skip Sunday so columns are Mon–Sat only
+      if (!byWeek.has(weekKey)) {
+        byWeek.set(weekKey, [null, null, null, null, null, null]);
+      }
+      const row = byWeek.get(weekKey)!;
+      row[dayIndex] = dateStr;
+    }
+    const weekKeys = Array.from(byWeek.keys()).sort((a, b) => a - b);
+    return weekKeys.map((weekKey) => ({
+      weekStart: weekKey,
+      days: byWeek.get(weekKey)!,
+    }));
+  }, [selectableDateList]);
+
+  const firstWeekStartMs = minSelectable
+    ? startOfWeek(minSelectable, { weekStartsOn: 1 }).getTime()
+    : 0;
+  const lastWeekStartMs = shiftEnd
+    ? startOfWeek(shiftEnd, { weekStartsOn: 1 }).getTime()
+    : 0;
+
+  // Reset to first week when modal opens or shift changes
+  useEffect(() => {
+    if (!open || !firstWeekStartMs) return;
+    setCurrentWeekStartMs(firstWeekStartMs);
+  }, [open, firstWeekStartMs]);
+
+  // Reset selection state when modal opens or when opening for a different job/shift
+  useEffect(() => {
+    if (!open) return;
+    setDates([]);
+    setRecurringDays([]);
+    setNewDate('');
+    setDateError(null);
+    setMode('dates');
+  }, [open, job?._id, shift?.slug]);
+
+  // Single week to display: use data from full grid or empty row for that week.
+  // Match by week Monday date string so DST doesn't break lookup after a few weeks.
+  const selectableDateGrid = React.useMemo(() => {
+    if (!currentWeekStartMs) return [];
+    const currentMondayStr = format(new Date(currentWeekStartMs), 'yyyy-MM-dd');
+    const row = selectableDateGridFull.find((r) => {
+      const rowMondayStr = format(new Date(r.weekStart), 'yyyy-MM-dd');
+      return rowMondayStr === currentMondayStr;
+    });
+    if (row) return [row];
+    return [{ weekStart: currentWeekStartMs, days: [null, null, null, null, null, null] }];
+  }, [selectableDateGridFull, currentWeekStartMs]);
+
+  const canGoPrev = currentWeekStartMs > firstWeekStartMs;
+  const canGoNext = currentWeekStartMs < lastWeekStartMs;
+  const goPrevWeek = () => {
+    if (!canGoPrev) return;
+    const prevMonday = addWeeks(new Date(currentWeekStartMs), -1);
+    setCurrentWeekStartMs(startOfWeek(prevMonday, { weekStartsOn: 1 }).getTime());
+  };
+  const goNextWeek = () => {
+    if (!canGoNext) return;
+    const nextMonday = addWeeks(new Date(currentWeekStartMs), 1);
+    setCurrentWeekStartMs(startOfWeek(nextMonday, { weekStartsOn: 1 }).getTime());
+  };
+  const currentWeekLabel = currentWeekStartMs
+    ? format(new Date(currentWeekStartMs), 'MMM d, yyyy')
+    : '';
+
+  const toggleDateInGrid = (dateStr: string) => {
+    if (dates.includes(dateStr)) {
+      setDates((prev) => prev.filter((x) => x !== dateStr));
+    } else {
+      setDates((prev) => [...prev, dateStr].sort());
+    }
+    if (dateError) setDateError(null);
   };
 
   const handleSubmit = async () => {
@@ -350,25 +488,27 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
     (mode === 'dates' && dates.length > 0) ||
     (mode === 'recurring' && recurringDays.length > 0);
 
+  if (!job || !shift) return null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Request shift</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-lg">Request shift</DialogTitle>
+          <DialogDescription className="text-sm">
             {job.title} — {shift.shiftName}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="text-xs text-gray-600">
+          <div className="text-sm text-gray-600">
             Shift runs from{' '}
             <span className="font-medium">
-              {format(shiftStart, 'MMM d, yyyy')}
+              {format(parseISO(shift.shiftStartDate), 'MMM d, yyyy')}
             </span>{' '}
             to{' '}
             <span className="font-medium">
-              {format(shiftEnd, 'MMM d, yyyy')}
+              {format(parseISO(shift.shiftEndDate), 'MMM d, yyyy')}
             </span>
             .
           </div>
@@ -406,7 +546,95 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
           </ToggleGroup>
 
           {mode === 'dates' && (
-            <div className="space-y-2">
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600">
+                Select dates from the grid (only days this shift runs) or add below.
+              </p>
+              {minSelectable && shiftEnd && (
+                <div className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={goPrevWeek}
+                    disabled={!canGoPrev}
+                    className="h-9 w-9 shrink-0 p-0"
+                    aria-label="Previous week"
+                  >
+                    <span className="text-lg leading-none">&lsaquo;</span>
+                  </Button>
+                  <span className="min-w-[180px] text-center text-sm font-medium text-slate-700">
+                    Week of {currentWeekLabel}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={goNextWeek}
+                    disabled={!canGoNext}
+                    className="h-9 w-9 shrink-0 p-0"
+                    aria-label="Next week"
+                  >
+                    <span className="text-lg leading-none">&rsaquo;</span>
+                  </Button>
+                </div>
+              )}
+              {selectableDateGrid.length > 0 ? (
+                <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+                  <div className="grid grid-cols-6 gap-2">
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                      <div key={day} className="text-center text-xs font-medium text-slate-500">
+                        {day}
+                      </div>
+                    ))}
+                    {selectableDateGrid.flatMap((row) =>
+                      row.days.map((dateStr, dayIndex) => {
+                        if (!dateStr) {
+                          return <div key={`${row.weekStart}-${dayIndex}`} className="min-h-[52px]" />;
+                        }
+                        const isAlreadyRequested = alreadyRequestedDateSet.has(dateStr);
+                        const checked = dates.includes(dateStr) || isAlreadyRequested;
+                        const d = parseISO(dateStr);
+                        return (
+                          <label
+                            key={dateStr}
+                            className={clsxm(
+                              'flex items-center gap-2 rounded-md border px-2.5 py-2 transition-colors',
+                              isAlreadyRequested && 'cursor-default bg-slate-100/80 border-slate-200',
+                              !isAlreadyRequested && 'cursor-pointer hover:border-slate-300 hover:bg-slate-50',
+                              checked && !isAlreadyRequested && 'border-appPrimary bg-appPrimary/10 text-appPrimary',
+                              checked && isAlreadyRequested && 'border-slate-300 text-slate-600',
+                              !checked && !isAlreadyRequested && 'border-slate-200 bg-white'
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={isAlreadyRequested}
+                              onChange={() => !isAlreadyRequested && toggleDateInGrid(dateStr)}
+                              className="h-5 w-5 shrink-0 rounded border-slate-300 text-appPrimary focus:ring-appPrimary disabled:opacity-70"
+                            />
+                            <div className="min-w-0 flex-1 text-left">
+                              <div className="font-semibold text-base leading-tight">
+                                {format(d, 'EEE')}
+                              </div>
+                              <div className="whitespace-nowrap text-xs leading-tight text-slate-500">
+                                {format(d, 'd MMM yyyy')}
+                              </div>
+                              {isAlreadyRequested && (
+                                <div className="text-[10px] font-medium text-slate-500 mt-0.5">Requested</div>
+                              )}
+                            </div>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Use arrows to move week by week. Add more dates with the picker below.
+                  </p>
+                </div>
+              ) : null}
               <div className="flex items-center gap-2">
                 <Input
                   type="date"
@@ -424,21 +652,22 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={handleAddDate}
+                  className="min-w-[120px]"
                 >
-                  Add
+                  Add date
                 </Button>
               </div>
               {dateError && (
                 <p className="text-xs text-red-600">{dateError}</p>
               )}
               {dates.length > 0 && (
-                <div className="flex flex-wrap gap-2 text-xs">
+                <div className="flex flex-wrap gap-2 text-sm">
                   {dates.map((d) => (
                     <span
                       key={d}
-                      className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1"
                     >
-                      {format(new Date(d), 'MMM d, yyyy')}
+                      {format(parseISO(d), 'MMM d, yyyy')}
                       <button
                         type="button"
                         className="text-slate-500 hover:text-slate-700"
@@ -456,12 +685,12 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
           )}
 
           {mode === 'recurring' && (
-            <div className="space-y-2">
-              <p className="text-xs text-gray-600">
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">
                 Select the days of week you want to work. Requests will be
                 created for all matching dates within the shift range.
               </p>
-              <div className="grid grid-cols-4 gap-2 text-xs">
+              <div className="grid grid-cols-4 gap-2 text-sm">
                 {allowedRecurringDays.map((day) => (
                   <button
                     key={day}
@@ -481,7 +710,7 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex justify-end gap-2 pt-4">
             <Button
               type="button"
               variant="outline"
@@ -523,33 +752,44 @@ export default function ShiftRequestsPage() {
   );
 
   const [selectedJobId, setSelectedJobId] = useState<string>(() =>
-    assignedJobs[0]?._id ?? ''
+    assignedJobs.length > 0 ? ALL_JOBS_ID : (assignedJobs[0]?._id ?? '')
   );
 
-  // When jobs load for the first time, ensure we default-select the first one
+  // When jobs load for the first time, default to All jobs or first job
   useEffect(() => {
     if (!selectedJobId && assignedJobs.length > 0) {
-      setSelectedJobId(assignedJobs[0]._id);
+      setSelectedJobId(ALL_JOBS_ID);
     }
   }, [assignedJobs, selectedJobId]);
 
   const selectedJob = useMemo(
-    () => assignedJobs.find((job) => job._id === selectedJobId) ?? assignedJobs[0],
+    () =>
+      selectedJobId === ALL_JOBS_ID
+        ? null
+        : assignedJobs.find((job) => job._id === selectedJobId) ?? assignedJobs[0] ?? null,
     [assignedJobs, selectedJobId]
   );
 
   const selectedJobLabel =
-    selectedJob?.title ||
-    (assignedJobs.length > 0 ? 'Select job' : 'No jobs available');
+    selectedJobId === ALL_JOBS_ID
+      ? 'All jobs'
+      : selectedJob?.title ||
+        (assignedJobs.length > 0 ? 'Select job' : 'No jobs available');
 
   const [pageIndex, setPageIndex] = useState(0);
-  const pageSize = 3;
-  const shiftSummaries = useMemo(
-    () => buildShiftSummaries(selectedJob),
-    [selectedJob]
-  );
+  const pageSize = 10;
+  const shiftSummariesWithJob: ShiftWithJob[] = useMemo(() => {
+    if (selectedJobId === ALL_JOBS_ID) {
+      return assignedJobs.flatMap((job) =>
+        buildShiftSummaries(job).map((summary) => ({ job, summary }))
+      );
+    }
+    const job = assignedJobs.find((j) => j._id === selectedJobId) ?? assignedJobs[0];
+    if (!job) return [];
+    return buildShiftSummaries(job).map((summary) => ({ job, summary }));
+  }, [assignedJobs, selectedJobId]);
 
-  const pagedShifts = shiftSummaries.slice(
+  const pagedShifts = shiftSummariesWithJob.slice(
     pageIndex * pageSize,
     pageIndex * pageSize + pageSize
   );
@@ -825,7 +1065,7 @@ export default function ShiftRequestsPage() {
                 <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                   <div className="min-w-[200px]">
                     <Select
-                      value={selectedJobId}
+                      value={selectedJobId || undefined}
                       onValueChange={(v) => {
                         setSelectedJobId(v);
                         setPageIndex(0);
@@ -838,6 +1078,9 @@ export default function ShiftRequestsPage() {
                         />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem key={ALL_JOBS_ID} value={ALL_JOBS_ID}>
+                          All jobs
+                        </SelectItem>
                         {assignedJobs.map((job) => (
                           <SelectItem key={job._id} value={job._id}>
                             {job.title}
@@ -866,11 +1109,11 @@ export default function ShiftRequestsPage() {
                       size="sm"
                       className="h-8 w-8 disabled:opacity-100"
                       disabled={
-                        (pageIndex + 1) * pageSize >= shiftSummaries.length
+                        (pageIndex + 1) * pageSize >= shiftSummariesWithJob.length
                       }
                       onClick={() =>
                         setPageIndex((prev) =>
-                          (prev + 1) * pageSize < shiftSummaries.length
+                          (prev + 1) * pageSize < shiftSummariesWithJob.length
                             ? prev + 1
                             : prev
                         )
@@ -886,17 +1129,14 @@ export default function ShiftRequestsPage() {
             </CardHeader>
 
             <CardContent className="space-y-3">
-              {!selectedJob || !selectedJob.shifts?.length ? (
+              {pagedShifts.length === 0 ? (
                 <p className="text-sm text-slate-600">
-                  No shifts found for this job.
+                  No shifts found for the selected job(s).
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {pagedShifts.map((summary) => {
-                    const shift =
-                      selectedJob.shifts?.find(
-                        (s) => s.slug === summary.slug
-                      ) ?? null;
+                  {pagedShifts.map(({ job, summary }) => {
+                    const shift = job.shifts?.find((s) => s.slug === summary.slug) ?? null;
                     if (!shift) return null;
 
                     const start = parseISO(shift.shiftStartDate);
@@ -904,13 +1144,13 @@ export default function ShiftRequestsPage() {
 
                     return (
                       <div
-                        key={shift.slug}
+                        key={`${job._id}-${shift.slug}`}
                         className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3"
                       >
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <p className="font-medium text-sm text-slate-900">
-                              {selectedJob.title} — {shift.shiftName}
+                              {job.title} — {shift.shiftName}
                             </p>
                             <Badge
                               variant="outline"
@@ -930,9 +1170,7 @@ export default function ShiftRequestsPage() {
                           <Button
                             type="button"
                             size="sm"
-                            onClick={() =>
-                              openModalForShift(selectedJob, shift.slug)
-                            }
+                            onClick={() => openModalForShift(job, shift.slug)}
                           >
                             Request shift
                           </Button>
@@ -987,6 +1225,7 @@ export default function ShiftRequestsPage() {
         onOpenChange={setModalOpen}
         job={modalJob}
         shift={modalShift}
+        applicantId={userData?.applicantId}
         onSubmit={handleSubmitRequests}
       />
     </Layout>
