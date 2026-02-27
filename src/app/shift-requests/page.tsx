@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { format, parseISO, getDay, isAfter, startOfWeek, addWeeks } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { CalendarDays, Clock } from 'lucide-react';
-import { getUserTimeZone } from '@/lib/utils';
+import { formatTime as formatTimeTz, getUserTimeZone } from '@/lib/utils';
 
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/Button';
@@ -314,6 +314,28 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
     return out;
   }, [shift]);
 
+  // Per-day schedule time label (e.g. "12:00 AM – 5:00 AM") for day boxes.
+  // Uses app timezone (getUserTimeZone via formatTime) so display matches rest of app.
+  const scheduleTimeByDay = React.useMemo((): Record<DayKey, string> => {
+    const out = {} as Record<DayKey, string>;
+    if (!shift?.defaultSchedule) return out;
+    for (const day of DAY_KEYS) {
+      const schedule = shift.defaultSchedule[day];
+      if (schedule?.start && schedule?.end) {
+        try {
+          const start = new Date(schedule.start);
+          const end = new Date(schedule.end);
+          if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+            out[day] = `${formatTimeTz(start, 'h:mm a')} – ${formatTimeTz(end, 'h:mm a')}`;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return out;
+  }, [shift?.defaultSchedule]);
+
   // Dates already requested by this user for this shift (from roster)
   const alreadyRequestedDateSet = React.useMemo(() => {
     const set = new Set<string>();
@@ -492,7 +514,7 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-6xl">
         <DialogHeader>
           <DialogTitle className="text-lg">Request shift</DialogTitle>
           <DialogDescription className="text-sm">
@@ -513,46 +535,10 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
             .
           </div>
 
-          <ToggleGroup
-            type="single"
-            value={mode}
-            onValueChange={(v) =>
-              v && setMode(v as RequestMode)
-            }
-            className="inline-flex rounded-lg border border-gray-200 p-1 shadow-sm"
-          >
-            <ToggleGroupItem
-              value="dates"
-              className={clsxm(
-                'rounded-md px-3 py-1.5 text-xs font-medium transition-all',
-                mode === 'dates'
-                  ? 'bg-appPrimary text-white shadow-md'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
-              )}
-            >
-              Specific dates
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="recurring"
-              className={clsxm(
-                'rounded-md px-3 py-1.5 text-xs font-medium transition-all',
-                mode === 'recurring'
-                  ? 'bg-appPrimary text-white shadow-md'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
-              )}
-            >
-              Recurring days
-            </ToggleGroupItem>
-          </ToggleGroup>
-
-          {mode === 'dates' && (
+          {minSelectable && shiftEnd && (
             <div className="space-y-3">
-              <p className="text-sm text-slate-600">
-                Select dates from the grid (only days this shift runs) or add below.
-              </p>
-              {minSelectable && shiftEnd && (
-                <div className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
-                  <Button
+              <div className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
+                <Button
                     type="button"
                     variant="outline"
                     size="sm"
@@ -578,10 +564,9 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
                     <span className="text-lg leading-none">&rsaquo;</span>
                   </Button>
                 </div>
-              )}
               {selectableDateGrid.length > 0 ? (
                 <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/50 p-3">
-                  <div className="grid grid-cols-6 gap-2">
+                  <div className="grid grid-cols-6 gap-4">
                     {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
                       <div key={day} className="text-center text-xs font-medium text-slate-500">
                         {day}
@@ -595,11 +580,13 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
                         const isAlreadyRequested = alreadyRequestedDateSet.has(dateStr);
                         const checked = dates.includes(dateStr) || isAlreadyRequested;
                         const d = parseISO(dateStr);
+                        const dayKey = DAY_KEYS[getDay(d)];
+                        const timeLabel = scheduleTimeByDay[dayKey];
                         return (
                           <label
                             key={dateStr}
                             className={clsxm(
-                              'flex items-center gap-2 rounded-md border px-2.5 py-2 transition-colors',
+                              'flex min-w-[10rem] items-center gap-2 rounded-md border px-2.5 py-2 transition-colors',
                               isAlreadyRequested && 'cursor-default bg-slate-100/80 border-slate-200',
                               !isAlreadyRequested && 'cursor-pointer hover:border-slate-300 hover:bg-slate-50',
                               checked && !isAlreadyRequested && 'border-appPrimary bg-appPrimary/10 text-appPrimary',
@@ -621,6 +608,11 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
                               <div className="whitespace-nowrap text-xs leading-tight text-slate-500">
                                 {format(d, 'd MMM yyyy')}
                               </div>
+                              {timeLabel && (
+                                <div className="mt-0.5 whitespace-nowrap text-[10px] leading-tight text-slate-400">
+                                  {timeLabel}
+                                </div>
+                              )}
                               {isAlreadyRequested && (
                                 <div className="text-[10px] font-medium text-slate-500 mt-0.5">Requested</div>
                               )}
@@ -630,36 +622,8 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
                       })
                     )}
                   </div>
-                  <p className="mt-2 text-xs text-slate-500">
-                    Use arrows to move week by week. Add more dates with the picker below.
-                  </p>
                 </div>
               ) : null}
-              <div className="flex items-center gap-2">
-                <Input
-                  type="date"
-                  min={minDateStr}
-                  max={maxDateStr}
-                  value={newDate}
-                  onChange={(e) => {
-                    setNewDate(e.target.value);
-                    if (dateError) setDateError(null);
-                  }}
-                  className="h-9"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAddDate}
-                  className="min-w-[120px]"
-                >
-                  Add date
-                </Button>
-              </div>
-              {dateError && (
-                <p className="text-xs text-red-600">{dateError}</p>
-              )}
               {dates.length > 0 && (
                 <div className="flex flex-wrap gap-2 text-sm">
                   {dates.map((d) => (
@@ -681,32 +645,6 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
                   ))}
                 </div>
               )}
-            </div>
-          )}
-
-          {mode === 'recurring' && (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-600">
-                Select the days of week you want to work. Requests will be
-                created for all matching dates within the shift range.
-              </p>
-              <div className="grid grid-cols-4 gap-2 text-sm">
-                {allowedRecurringDays.map((day) => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => toggleRecurringDay(day)}
-                    className={clsxm(
-                      'rounded-md border px-2 py-1 capitalize',
-                      recurringDays.includes(day)
-                        ? 'bg-appPrimary text-white border-appPrimary'
-                        : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-                    )}
-                  >
-                    {day.slice(0, 3)}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
 
@@ -949,6 +887,11 @@ export default function ShiftRequestsPage() {
   }
 
   const myPendingCount = myRequests.filter((r) => r.status === 'pending').length;
+  const myApprovedCount = myRequests.filter((r) => r.status === 'approved').length;
+  const myRequestsTooltip =
+    myRequests.length > 0
+      ? `Total: ${myRequests.length} • Pending: ${myPendingCount} • Approved: ${myApprovedCount}`
+      : 'No requests yet';
 
   const myColumns: TableColumn<MyRequestRow>[] = [
     {
@@ -1029,6 +972,7 @@ export default function ShiftRequestsPage() {
             </ToggleGroupItem>
             <ToggleGroupItem
               value="mine"
+              title={myRequestsTooltip}
               className={clsxm(
                 'rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium transition-all',
                 activeTab === 'mine'
@@ -1036,12 +980,22 @@ export default function ShiftRequestsPage() {
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
               )}
             >
-              My Requests
-              {myPendingCount > 0 && (
-                <span className="ml-1 rounded-full bg-white/20 px-1.5 text-[10px]">
-                  {myPendingCount}
-                </span>
-              )}
+              <span className="inline-flex items-center gap-1.5">
+                My Requests
+                {myPendingCount > 0 && (
+                  <span
+                    className={clsxm(
+                      'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold',
+                      activeTab === 'mine'
+                        ? 'bg-white text-appPrimary'
+                        : 'bg-appPrimary text-white'
+                    )}
+                    title={myRequestsTooltip}
+                  >
+                    {myPendingCount}
+                  </span>
+                )}
+              </span>
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
@@ -1091,6 +1045,14 @@ export default function ShiftRequestsPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-600 whitespace-nowrap">
+                      {shiftSummariesWithJob.length === 0
+                        ? '0 shifts'
+                        : `${pageIndex * pageSize + 1}–${Math.min(
+                            pageIndex * pageSize + pageSize,
+                            shiftSummariesWithJob.length
+                          )} of ${shiftSummariesWithJob.length}`}
+                    </span>
                     <Button
                       variant="outline"
                       size="sm"
