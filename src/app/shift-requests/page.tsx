@@ -25,7 +25,6 @@ import {
   DialogDescription,
 } from '@/components/ui/Dialog';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
-import { Input } from '@/components/ui/Input';
 import { Table } from '@/components/ui/Table';
 import { TableColumn } from '@/components/ui/Table/types';
 
@@ -105,8 +104,6 @@ type MyRequestRow = {
   /** Used for table actions column */
   actions?: unknown;
 };
-
-type RequestMode = 'dates' | 'recurring';
 
 function buildAssignedJobs(jobs: GignologyJob[] | undefined): GignologyJob[] {
   if (!jobs?.length) return [];
@@ -284,12 +281,9 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
   applicantId,
   onSubmit,
 }) => {
-  const [mode, setMode] = useState<RequestMode>('dates');
-  const [newDate, setNewDate] = useState('');
   const [dates, setDates] = useState<string[]>([]);
   const [recurringDays, setRecurringDays] = useState<DayKey[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [dateError, setDateError] = useState<string | null>(null);
   const [currentWeekStartMs, setCurrentWeekStartMs] = useState<number>(0);
 
   const shiftStart = job && shift ? parseISO(shift.shiftStartDate) : null;
@@ -301,18 +295,6 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
         ? shiftStart
         : today
       : null;
-  const minDateStr = minSelectable ? format(minSelectable, 'yyyy-MM-dd') : '';
-  const maxDateStr = shiftEnd ? format(shiftEnd, 'yyyy-MM-dd') : '';
-
-  const allowedRecurringDays = React.useMemo((): DayKey[] => {
-    if (!shift?.defaultSchedule) return [];
-    const out: DayKey[] = [];
-    for (const day of DAY_KEYS) {
-      const schedule = shift.defaultSchedule[day];
-      if (schedule?.start && schedule.end) out.push(day);
-    }
-    return out;
-  }, [shift]);
 
   // Per-day schedule time label (e.g. "12:00 AM – 5:00 AM") for day boxes.
   // Uses app timezone (getUserTimeZone via formatTime) so display matches rest of app.
@@ -354,38 +336,16 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
     return set;
   }, [applicantId, shift?.defaultSchedule]);
 
-  const handleAddDate = () => {
-    if (!newDate || !shiftStart || !shiftEnd) return;
-    const d = new Date(newDate);
-    if (Number.isNaN(d.getTime())) return;
-
-    const selectedYmd = format(d, 'yyyy-MM-dd');
-    const todayStr = format(getTodayInUserTz(), 'yyyy-MM-dd');
-    if (selectedYmd < todayStr) {
-      setDateError('Please select today or a future date.');
-      return;
+  // Days this shift runs (for filtering selectable dates to Mon–Sat that have schedule)
+  const allowedRecurringDays = React.useMemo((): DayKey[] => {
+    if (!shift?.defaultSchedule) return [];
+    const out: DayKey[] = [];
+    for (const day of DAY_KEYS) {
+      const schedule = shift.defaultSchedule[day];
+      if (schedule?.start && schedule?.end) out.push(day);
     }
-    const dayIndex = getDay(d);
-    const dayKey = DAY_KEYS[dayIndex];
-    if (!allowedRecurringDays.includes(dayKey)) {
-      setDateError(
-        `This shift only runs on ${allowedRecurringDays
-          .map((day) => day.slice(0, 3))
-          .join(', ')}. Please pick one of those days.`
-      );
-      return;
-    }
-    if (d < shiftStart || d > shiftEnd) return;
-    if (dates.includes(newDate)) return;
-    setDateError(null);
-    setDates((prev) => [...prev, newDate].sort());
-  };
-
-  const toggleRecurringDay = (day: DayKey) => {
-    setRecurringDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
-    );
-  };
+    return out;
+  }, [shift]);
 
   // Build flat list of selectable dates
   const selectableDateList = React.useMemo(() => {
@@ -445,9 +405,6 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
     if (!open) return;
     setDates([]);
     setRecurringDays([]);
-    setNewDate('');
-    setDateError(null);
-    setMode('dates');
   }, [open, job?._id, shift?.slug]);
 
   // Single week to display: use data from full grid or empty row for that week.
@@ -485,30 +442,23 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
     } else {
       setDates((prev) => [...prev, dateStr].sort());
     }
-    if (dateError) setDateError(null);
   };
 
   const handleSubmit = async () => {
-    const hasDates = dates.length > 0;
-    const hasRecurring = recurringDays.length > 0;
-    if (!hasDates && !hasRecurring) return;
+    if (dates.length === 0) return;
 
     setSubmitting(true);
     try {
       await onSubmit({ dates, recurringDays });
       setDates([]);
       setRecurringDays([]);
-      setNewDate('');
-      setMode('dates');
       onOpenChange(false);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const hasAnySelection =
-    (mode === 'dates' && dates.length > 0) ||
-    (mode === 'recurring' && recurringDays.length > 0);
+  const hasAnySelection = dates.length > 0;
 
   if (!job || !shift) return null;
 
