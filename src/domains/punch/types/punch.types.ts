@@ -16,6 +16,23 @@ export type PunchDetail = {
   originalPunchTimeOut: string | null;
 };
 
+/** One entry per update: before (original) and after (changed) values, plus who/when */
+export type PunchUpdateHistoryEntry = {
+  /** State after this update */
+  timeIn: string;
+  timeOut: string | null;
+  userNote: string | null;
+  managerNote: string | null;
+  /** State before this update (so we can show "X → Y" and correct Previous) */
+  timeInBefore?: string;
+  timeOutBefore?: string | null;
+  userNoteBefore?: string | null;
+  managerNoteBefore?: string | null;
+  modifiedBy: string;
+  modifiedByName?: string;
+  modifiedDate: string;
+};
+
 export type Punch = {
   _id: string;
   type: "punch";
@@ -38,6 +55,8 @@ export type Punch = {
   shiftName?: string;
   day?: string;
   details?: PunchDetail[];
+  /** History of updates (previous state + who/when); same collection, same document */
+  updateHistory?: PunchUpdateHistoryEntry[];
 };
 
 export type PunchNoId = Omit<Punch, "_id">;

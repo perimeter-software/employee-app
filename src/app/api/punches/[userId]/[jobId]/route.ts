@@ -6,7 +6,7 @@ import {
   findOpenPunchByApplicantIdAndJobId,
   createPunchIn,
   createPunchOut,
-  updatePunch,
+  updatePunchWithHistory,
   checkForOverlappingPunch,
   checkForPreviousPunchesWithinShift,
   getTotalWorkedHoursForWeek,
@@ -414,6 +414,12 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
         console.error('Error logging clock out activity:', error);
       }
     } else if (action === 'update') {
+      if (!punch._id || punch.timeIn == null || punch.timeIn === '') {
+        return NextResponse.json(
+          { error: 'invalid-punch', message: 'Punch must have _id and timeIn' },
+          { status: 400 }
+        );
+      }
       // Get the original punch from database to compare times
       const originalPunch = await db.collection('timecard').findOne({
         _id: new ObjectIdFunction(punch._id),
@@ -426,9 +432,21 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
         );
       }
 
+      // Normalize DB values (may be Date or string) to ISO strings for comparison and history
+      const toIso = (v: unknown): string | null => {
+        if (v == null) return null;
+        if (typeof v === 'string') return v;
+        if (v instanceof Date) return isNaN(v.getTime()) ? null : v.toISOString();
+        return null;
+      };
+      const origTimeIn = toIso(originalPunch.timeIn) ?? '';
+      const origTimeOut = toIso(originalPunch.timeOut);
+      const origUserNote = originalPunch.userNote != null ? String(originalPunch.userNote) : null;
+      const origManagerNote = originalPunch.managerNote != null ? String(originalPunch.managerNote) : null;
+
       // Only check for overlap if timeIn or timeOut has actually changed
-      const timeInChanged = originalPunch.timeIn !== punch.timeIn;
-      const timeOutChanged = originalPunch.timeOut !== punch.timeOut;
+      const timeInChanged = origTimeIn !== punch.timeIn;
+      const timeOutChanged = (origTimeOut ?? null) !== (punch.timeOut ?? null);
 
       if (timeInChanged || timeOutChanged) {
         const overlap = await checkForOverlappingPunch(
@@ -451,9 +469,9 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
       }
 
       // Check if managerNote was added or updated
-      const managerNoteAdded = 
-        punch.managerNote && 
-        (!originalPunch.managerNote || originalPunch.managerNote !== punch.managerNote);
+      const managerNoteAdded =
+        punch.managerNote &&
+        (!origManagerNote || origManagerNote !== punch.managerNote);
 
       const updatedAtIso = new Date().toISOString();
       const updateData: Punch = {
@@ -462,7 +480,22 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
         modifiedBy: String(user._id ?? ''),
       };
 
-      updatedPunch = await updatePunch(db, updateData);
+      // Save history with before (original) and after (changed) so we can show history properly
+      const editorName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.name || 'User';
+      const historyEntry = {
+        timeIn: punch.timeIn,
+        timeOut: punch.timeOut ?? null,
+        userNote: punch.userNote ?? null,
+        managerNote: punch.managerNote ?? null,
+        timeInBefore: origTimeIn,
+        timeOutBefore: origTimeOut ?? null,
+        userNoteBefore: origUserNote ?? null,
+        managerNoteBefore: origManagerNote ?? null,
+        modifiedBy: String(user._id ?? ''),
+        modifiedByName: editorName,
+        modifiedDate: updatedAtIso,
+      };
+      updatedPunch = await updatePunchWithHistory(db, updateData, historyEntry);
 
       if (!updatedPunch) {
         return NextResponse.json(
@@ -471,24 +504,28 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
         );
       }
 
-      // Add manager note to applicant's notes array when manager note was added/updated
-      if (managerNoteAdded && punch.managerNote && punch.applicantId) {
+      // Add employee note (user note) to applicant's notes array when employee note was added/updated
+      const userNoteAdded =
+        punch.userNote != null &&
+        punch.userNote !== '' &&
+        (origUserNote == null || origUserNote !== punch.userNote);
+      if (userNoteAdded && punch.userNote && punch.applicantId) {
         try {
-          const managerFirstName =
+          const editorFirstName =
             user.firstName || user.name?.split(' ')[0] || 'Manager';
-          const managerLastName =
+          const editorLastName =
             user.lastName || user.name?.split(' ').slice(1).join(' ') || '';
-          const managerUserId =
+          const editorUserId =
             user._id != null ? String(user._id) : '';
 
           const applicantNote: ApplicantNote = {
             type: 'General',
-            text: `<div>${String(punch.managerNote)
+            text: `<div>${String(punch.userNote)
               .replace(/</g, '&lt;')
               .replace(/>/g, '&gt;')}</div>`,
-            firstName: managerFirstName,
-            lastName: managerLastName,
-            userId: managerUserId,
+            firstName: editorFirstName,
+            lastName: editorLastName,
+            userId: editorUserId,
             date: new Date(),
           };
 
@@ -503,15 +540,18 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
             );
         } catch (applicantNoteError) {
           console.error(
-            'Error adding manager note to applicant notes:',
+            'Error adding employee note to applicant notes:',
             applicantNoteError
           );
         }
       }
 
-      // Notify event manager(s): same condition for both in-app and email (time edited OR note added)
+      // Notify event manager(s): same condition for both in-app and email (time edited OR any note added)
       const punchTimeEdited = timeInChanged || timeOutChanged;
-      const shouldNotifyEventManagers = (managerNoteAdded && punch.managerNote) || punchTimeEdited;
+      const shouldNotifyEventManagers =
+        (managerNoteAdded && punch.managerNote) ||
+        punchTimeEdited ||
+        (userNoteAdded && punch.userNote);
       if (shouldNotifyEventManagers) {
         try {
           const job = await findJobByjobId(db, punch.jobId);
@@ -539,7 +579,7 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
             const shiftName = (punch as { shiftName?: string }).shiftName || job.shifts?.find((s: { slug?: string }) => s.slug === (punch as { shiftSlug?: string }).shiftSlug)?.shiftName || '—';
             const stripHtml = (s: string) => String(s || '').replace(/<[^>]*>/g, '').trim();
 
-            // One notification body for both time edit and/or manager note
+            // One notification body for time edit and/or notes (employee note, manager note)
             const notificationParts = [
               `Punch updated for ${employeeName}.`,
               `(All times in US Central Time.)`,
@@ -554,6 +594,9 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
                 `New:      ${formatDt(punch.timeIn)} – ${formatDt(punch.timeOut ?? null)}`,
                 ''
               );
+            }
+            if (userNoteAdded && punch.userNote) {
+              notificationParts.push('Employee note: ' + stripHtml(punch.userNote), '');
             }
             if (managerNoteAdded && punch.managerNote) {
               notificationParts.push('Manager note: ' + stripHtml(punch.managerNote), '');

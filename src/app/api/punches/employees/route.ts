@@ -271,7 +271,8 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
             managerNote: 1,
             modifiedDate: 1,
             modifiedBy: 1,
-  
+            updateHistory: 1,
+
             modifiedByName: {
               $trim: {
                 input: {
