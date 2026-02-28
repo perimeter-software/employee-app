@@ -28,12 +28,9 @@ type DayKey =
 type CreateShiftRequestsBody = {
   jobId: string;
   shiftSlug: string;
-  /** Exact dates (YYYY-MM-DD) within the shift range to request. */
-  dates?: string[];
-  /**
-   * One or more recurring weekdays (e.g. ['monday', 'wednesday']).
-   * For each selected day we create a single roster entry without date.
-   */
+  /** Exact dates with day-of-week from the client. Each entry is stored in shift.defaultSchedule[dayKey].roster. */
+  dateRequests?: Array<{ date: string; dayKey: DayKey }>;
+  /** One or more recurring weekdays (e.g. ['monday', 'wednesday']). */
   recurringDays?: DayKey[];
 };
 
@@ -60,13 +57,6 @@ function getApplicantIdFromUser(user: AuthenticatedRequest['user']): string {
   if (user.userId) return String(user.userId);
   if (user._id) return String(user._id);
   return '';
-}
-
-// Helper to group request entries per weekday
-function getDayKeyFromDate(dateString: string): DayKey | null {
-  const d = new Date(dateString);
-  if (Number.isNaN(d.getTime())) return null;
-  return DAY_KEYS[d.getDay()];
 }
 
 // POST /api/shift-requests
@@ -99,7 +89,7 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
     }
 
     const body = (await request.json()) as CreateShiftRequestsBody;
-    const { jobId, shiftSlug, dates = [], recurringDays = [] } = body;
+    const { jobId, shiftSlug, dateRequests = [], recurringDays = [] } = body;
 
     if (!jobId || !shiftSlug) {
       return NextResponse.json(
@@ -111,11 +101,13 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
       );
     }
 
-    if (!Array.isArray(dates) && !Array.isArray(recurringDays)) {
+    const hasDateRequests = Array.isArray(dateRequests) && dateRequests.length > 0;
+    const hasRecurring = Array.isArray(recurringDays) && recurringDays.length > 0;
+    if (!hasDateRequests && !hasRecurring) {
       return NextResponse.json(
         {
           error: 'missing-requests',
-          message: 'Provide at least one date or recurring day to request.',
+          message: 'Provide at least one date (dateRequests) or recurring day to request.',
         },
         { status: 400 }
       );
@@ -189,37 +181,26 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
       saturday: [],
     };
 
-    // Handle specific dates
-    for (const raw of dates || []) {
-      const dateStr = String(raw);
-      const dateObj = new Date(dateStr);
-      if (Number.isNaN(dateObj.getTime())) {
-        continue;
-      }
+    // Handle specific dates (date + dayKey from client)
+    if (hasDateRequests) {
+      for (const { date: dateStr, dayKey } of dateRequests) {
+        if (!dateStr || !DAY_KEYS.includes(dayKey)) continue;
+        const dateObj = new Date(dateStr);
+        if (Number.isNaN(dateObj.getTime())) continue;
+        if (dateObj < shiftStart || dateObj > shiftEnd) continue;
 
-      // Ensure date is within shift range
-      if (dateObj < shiftStart || dateObj > shiftEnd) {
-        continue;
-      }
-
-      const dayKey = getDayKeyFromDate(dateStr);
-      if (!dayKey) continue;
-
-      const existing = existingByDay[dayKey] || [];
-      const alreadyExists = existing.some((entry) => {
-        if (typeof entry === 'string') {
-          // legacy recurring assignment; treat as covering all dates
-          return entry === applicantId;
-        }
-        return entry.employeeId === applicantId && entry.date === dateStr;
-      });
-
-      if (!alreadyExists) {
-        toAddByDay[dayKey].push({
-          employeeId: applicantId,
-          date: dateStr,
-          status: 'pending',
+        const existing = existingByDay[dayKey] || [];
+        const alreadyExists = existing.some((entry) => {
+          if (typeof entry === 'string') return entry === applicantId;
+          return entry.employeeId === applicantId && entry.date === dateStr;
         });
+        if (!alreadyExists) {
+          toAddByDay[dayKey].push({
+            employeeId: applicantId,
+            date: dateStr,
+            status: 'pending',
+          });
+        }
       }
     }
 
@@ -350,12 +331,13 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
         [firstName, lastName].filter(Boolean).join(' ') ||
         'Employee';
       const shiftName = (shift as { shiftName?: string }).shiftName || shiftSlug;
+      const requestedDatesList = dateRequests.map((r) => r.date);
       const dateLabels =
-        (dates?.length ?? 0) > 0
-          ? (dates || [])
+        (requestedDatesList?.length ?? 0) > 0
+          ? (requestedDatesList || [])
               .slice(0, 10)
               .map((d) => new Date(d).toLocaleDateString('en-US', { dateStyle: 'medium' }))
-              .join(', ') + ((dates?.length ?? 0) > 10 ? ` and ${(dates?.length ?? 0) - 10} more` : '')
+              .join(', ') + ((requestedDatesList?.length ?? 0) > 10 ? ` and ${(requestedDatesList?.length ?? 0) - 10} more` : '')
           : '';
       const requestedSummary = dateLabels || 'See schedule';
       const subject = `Shift request: ${employeeName} – ${job.title || 'Job'}`;
