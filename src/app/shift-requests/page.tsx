@@ -89,6 +89,9 @@ function getTodayInUserTz(): Date {
   }
 }
 
+/** Display status: approved only when roster entry has status 'approved'; admin-added (no status) = 'scheduled'. */
+type MyRequestStatus = RequestStatus | 'scheduled';
+
 type MyRequestRow = {
   id: string;
   jobId: string;
@@ -98,7 +101,7 @@ type MyRequestRow = {
   dayOfWeek: DayKey;
   date: string | null;
   isRecurring: boolean;
-  status: RequestStatus;
+  status: MyRequestStatus;
   source: 'schedule' | 'request';
   windowLabel: string;
   /** Used for table actions column */
@@ -147,37 +150,15 @@ function buildMyRequests(jobs: GignologyJob[] | undefined, applicantId: string) 
         if (!roster?.length) continue;
 
         for (const entry of roster) {
-          if (typeof entry === 'string') {
-            if (entry !== applicantId) continue;
-
-            // Legacy recurring approved assignment
-            const start = parseISO(shift.shiftStartDate);
-            const end = parseISO(shift.shiftEndDate);
-
-            const windowLabel = `${dayLabel(dayKey)} • ${format(
-              start,
-              'MMM d, yyyy'
-            )} - ${format(end, 'MMM d, yyyy')}`;
-
-            rows.push({
-              id: `schedule-${job._id}-${shift.slug}-${dayKey}-recurring`,
-              jobId: job._id,
-              shiftSlug: shift.slug,
-              jobTitle: job.title,
-              shiftName: shift.shiftName,
-              dayOfWeek: dayKey,
-              date: null,
-              isRecurring: true,
-              status: 'approved',
-              source: 'schedule',
-              windowLabel,
-            });
+          // Only object roster entries (legacy string IDs not handled)
+          if (typeof entry !== 'object' || !entry || !('employeeId' in entry))
             continue;
-          }
-
           if (entry.employeeId !== applicantId) continue;
 
-          const status: RequestStatus = (entry.status ?? 'approved') as RequestStatus;
+          // Approved only when entry has explicit status 'approved'; no status = admin-added = scheduled
+          const status: MyRequestStatus = entry.status
+            ? (entry.status as RequestStatus)
+            : 'scheduled';
           const isRecurring = !entry.date;
 
           let windowLabel: string;
@@ -195,7 +176,7 @@ function buildMyRequests(jobs: GignologyJob[] | undefined, applicantId: string) 
 
           rows.push({
             id: `request-${job._id}-${shift.slug}-${dayKey}-${entry.date ?? 'recurring'}-${
-              status || 'approved'
+              status || 'scheduled'
             }`,
             jobId: job._id,
             shiftSlug: shift.slug,
@@ -232,7 +213,7 @@ function buildMyRequests(jobs: GignologyJob[] | undefined, applicantId: string) 
   );
 }
 
-function statusBadge(status: RequestStatus | 'scheduled') {
+function statusBadge(status: MyRequestStatus) {
   switch (status) {
     case 'pending':
       return (
@@ -241,10 +222,15 @@ function statusBadge(status: RequestStatus | 'scheduled') {
         </Badge>
       );
     case 'approved':
-    case 'scheduled':
       return (
         <Badge variant="outline" className="border-emerald-500 text-emerald-700">
           Approved
+        </Badge>
+      );
+    case 'scheduled':
+      return (
+        <Badge variant="outline" className="border-slate-400 text-slate-700">
+          Scheduled
         </Badge>
       );
     case 'rejected':
@@ -682,9 +668,24 @@ export default function ShiftRequestsPage() {
     [userData?.jobs, applicantId]
   );
 
+  // My Requests tab shows only requests you submitted (pending + approved). Admin-added "Scheduled" rows are not shown here.
+  const myRequestRows = useMemo(
+    () => myRequests.filter((r) => r.source === 'request'),
+    [myRequests]
+  );
+
   const [modalOpen, setModalOpen] = useState(false);
   const [modalJob, setModalJob] = useState<GignologyJob | null>(null);
   const [modalShift, setModalShift] = useState<Shift | null>(null);
+
+  const [myRequestsStatusFilter, setMyRequestsStatusFilter] = useState<
+    'all' | 'pending' | 'approved'
+  >('all');
+
+  const myRequestsFiltered = useMemo(() => {
+    if (myRequestsStatusFilter === 'all') return myRequestRows;
+    return myRequestRows.filter((r) => r.status === myRequestsStatusFilter);
+  }, [myRequestRows, myRequestsStatusFilter]);
 
   const openModalForShift = (job: GignologyJob, shiftSlug: string) => {
     const shift = job.shifts?.find((s) => s.slug === shiftSlug) ?? null;
@@ -829,12 +830,16 @@ export default function ShiftRequestsPage() {
     );
   }
 
-  const myPendingCount = myRequests.filter((r) => r.status === 'pending').length;
-  const myApprovedCount = myRequests.filter((r) => r.status === 'approved').length;
+  const myPendingCount = myRequestRows.filter(
+    (r) => r.status === 'pending'
+  ).length;
+  const myApprovedCount = myRequestRows.filter(
+    (r) => r.status === 'approved'
+  ).length;
   const myRequestsTooltip =
-    myRequests.length > 0
-      ? `Total: ${myRequests.length} • Pending: ${myPendingCount} • Approved: ${myApprovedCount}`
-      : 'No requests yet';
+    myRequestRows.length > 0
+      ? `${myRequestRows.length} request(s) • Pending: ${myPendingCount} • Approved: ${myApprovedCount}`
+      : 'No shift requests yet';
 
   const myColumns: TableColumn<MyRequestRow>[] = [
     {
@@ -852,22 +857,13 @@ export default function ShiftRequestsPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (value) => statusBadge(value as RequestStatus | 'scheduled'),
-    },
-    {
-      key: 'source',
-      header: 'Source',
-      render: (value, row) => (
-        <span className="text-xs text-slate-600">
-          {row.source === 'schedule' ? 'Scheduled' : 'Request'}
-        </span>
-      ),
+      render: (value) => statusBadge(value as MyRequestStatus),
     },
     {
       key: 'actions',
       header: '',
       render: (value, row) =>
-        row.source === 'request' && row.status === 'pending' ? (
+        row.status === 'pending' ? (
           <Button
             type="button"
             variant="outline"
@@ -1056,29 +1052,76 @@ export default function ShiftRequestsPage() {
                 <Clock className="h-5 w-5 text-appPrimary" />
                 <div>
                   <CardTitle className="text-base">
-                    My Shift Requests & Schedule
+                    My Shift Requests
                   </CardTitle>
                   <p className="text-xs text-slate-600">
-                    Pending and approved rows come from your jobs&apos; shift
-                    rosters.
+                    Requests you&apos;ve submitted. Pending requests await
+                    manager approval.
                   </p>
                 </div>
               </div>
+              {myRequestRows.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200 mt-2">
+                  <span className="text-xs text-slate-600 whitespace-nowrap">
+                    Show:
+                  </span>
+                  <ToggleGroup
+                    type="single"
+                    value={myRequestsStatusFilter}
+                    onValueChange={(v) =>
+                      v &&
+                      setMyRequestsStatusFilter(
+                        v as 'all' | 'pending' | 'approved'
+                      )
+                    }
+                    className="flex flex-wrap gap-1"
+                  >
+                    <ToggleGroupItem
+                      value="all"
+                      aria-label="All"
+                      className="text-xs px-2 py-1 h-7"
+                    >
+                      All
+                    </ToggleGroupItem>
+                    <ToggleGroupItem
+                      value="pending"
+                      aria-label="Pending"
+                      className="text-xs px-2 py-1 h-7"
+                    >
+                      Pending
+                    </ToggleGroupItem>
+                    <ToggleGroupItem
+                      value="approved"
+                      aria-label="Approved"
+                      className="text-xs px-2 py-1 h-7"
+                    >
+                      Approved
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
+              )}
             </CardHeader>
             <CardContent>
-              {myRequests.length === 0 ? (
+              {myRequestRows.length === 0 ? (
                 <p className="text-sm text-slate-600">
-                  You do not have any shift requests yet.
+                  You don&apos;t have any shift requests yet. Request shifts from
+                  the Available Shifts tab.
+                </p>
+              ) : myRequestsFiltered.length === 0 ? (
+                <p className="text-sm text-slate-600">
+                  No requests match the selected filter.
                 </p>
               ) : (
-                <Table
-                  columns={myColumns}
-                  data={myRequests}
-                  showPagination={true}
-                  selectable={false}
-                  className="w-full"
-                  emptyMessage="No shift requests found."
-                />
+                <div className="overflow-y-auto h-[calc(100vh-23rem)] max-h-[calc(100vh-23rem)] min-h-0 pr-1 -mr-1">
+                  <Table
+                    columns={myColumns}
+                    data={myRequestsFiltered}
+                    showPagination={false}
+                    selectable={false}
+                    className="w-full"
+                    emptyMessage="No shift requests found."
+                  />
+                </div>
               )}
             </CardContent>
           </Card>
