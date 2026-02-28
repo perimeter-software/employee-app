@@ -22,13 +22,11 @@ export default function CalendarBodyDay({
   const badges = dayBadges?.[dateKey];
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Use the auto-scroll hook: scroll to first upcoming/today shift and center it in the viewport
+  // Use the auto-scroll hook
   useCalendarAutoScroll({
     scrollContainerRef,
     date,
     events,
-    scrollToCenter: true,
-    stickyHeaderOffset: 72,
   });
 
   return (
@@ -96,7 +94,7 @@ export default function CalendarBodyDay({
             ref={scrollContainerRef}
             className="flex flex-col flex-1 overflow-y-auto"
           >
-            <div className="relative flex flex-1">
+            <div className="relative flex">
               <CalendarBodyMarginDayMargin />
               <CalendarBodyDayContent date={date} hideHeader={true} />
             </div>

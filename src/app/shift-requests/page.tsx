@@ -705,10 +705,15 @@ export default function ShiftRequestsPage() {
     recurringDays: DayKey[];
   }) => {
     if (!modalJob || !modalShift) return;
+    // Send date + dayKey from client so the API uses correct day (no server timezone guess).
+    const dateRequests = args.dates.map((date) => ({
+      date,
+      dayKey: DAY_KEYS[getDay(parseISO(date))] as DayKey,
+    }));
     const body = {
       jobId: modalJob._id,
       shiftSlug: modalShift.slug,
-      dates: args.dates,
+      dateRequests,
       recurringDays: args.recurringDays,
     };
 
