@@ -10,7 +10,7 @@ import {
 } from 'date-fns';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
 import { calculateDistance } from '@/lib/utils/location-utils';
-import { Punch, PunchNoId } from '../types';
+import { Punch, PunchNoId, PunchUpdateHistoryEntry } from '../types';
 import type { GignologyJob, Shift } from '@/domains/job/types';
 import type { ClockInCoordinates } from '@/domains/job/types/location.types';
 import {
@@ -156,6 +156,47 @@ export async function updatePunch(db: Db, punch: Punch): Promise<Punch | null> {
     return convertToJSON(result) as Punch;
   } catch (e) {
     console.error('Error updating punch:', e);
+    throw e;
+  }
+}
+
+/**
+ * Update punch and append one entry to updateHistory (same document, same collection).
+ * Use when an admin updates a punch so we can show that there are updates and what changed.
+ */
+export async function updatePunchWithHistory(
+  db: Db,
+  punch: Punch,
+  historyEntry: PunchUpdateHistoryEntry
+): Promise<Punch | null> {
+  const updatedPunch = {
+    ...punch,
+    timeOut: punch.timeOut ? punch.timeOut : null,
+    modifiedDate: punch.modifiedDate || new Date().toISOString(),
+  };
+  const { _id, updateHistory: _unused, ...punchData } = updatedPunch as Punch & { updateHistory?: PunchUpdateHistoryEntry[] };
+  void _unused; // exclude from $set so we only $push
+  const punchID = new ObjectIdFunction(_id);
+
+  try {
+    const result = await db
+      .collection('timecard')
+      .findOneAndUpdate(
+        { _id: punchID },
+        {
+          $set: punchData as Document,
+          $push: { updateHistory: { ...historyEntry } },
+        } as unknown as UpdateFilter<Document>,
+        { returnDocument: 'after' }
+      );
+
+    if (!result) {
+      return null;
+    }
+
+    return convertToJSON(result) as Punch;
+  } catch (e) {
+    console.error('Error updating punch with history:', e);
     throw e;
   }
 }
