@@ -3001,7 +3001,10 @@ export function EmployeeTimeAttendanceTable({
         </div>
         <div
           className="relative flex min-h-0 flex-1 flex-col overflow-y-auto border border-gray-200 rounded-md"
-          style={{ height: 'calc(100vh - 36rem)', maxHeight: 'calc(100vh - 36rem)' }}
+          style={{
+            height: viewType === 'table' ? 'calc(100vh - 36rem)' : 'calc(100vh - 32.5rem)',
+            maxHeight: viewType === 'table' ? 'calc(100vh - 36rem)' : 'calc(100vh - 32.5rem)',
+          }}
         >
           {/* Loading overlay when refetching (not initial load) */}
           {isFetching && !isLoading && (

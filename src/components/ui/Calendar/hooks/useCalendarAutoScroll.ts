@@ -35,12 +35,33 @@ export function useCalendarAutoScroll({
 
     if (relevantEvents.length === 0) return;
 
-    // Generic: find the earliest event (no filtering, no prioritization)
-    const earliestEvent = relevantEvents.reduce((earliest, current) =>
-      current.start < earliest.start ? current : earliest
-    );
+    // Day view: earliest event by timestamp. Week view: earliest by time-of-day (topmost on grid)
+    const toDate = (d: Date | string) => (d instanceof Date ? d : new Date(d));
+    const timeOfDayHours = (d: Date | string) => {
+      const date = toDate(d);
+      return date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+    };
 
-    // Scroll to first event minus 1 hour (completely generic)
+    const earliestEvent = weekDays
+      ? (() => {
+          let minTod = Infinity;
+          let best = relevantEvents[0];
+          for (const e of relevantEvents) {
+            const tod = timeOfDayHours(e.start);
+            if (tod < minTod) {
+              minTod = tod;
+              best = e;
+            }
+          }
+          return best;
+        })()
+      : relevantEvents.reduce((earliest, current) =>
+          toDate(current.start).getTime() < toDate(earliest.start).getTime()
+            ? current
+            : earliest
+        );
+
+    // Scroll to first event minus 1 hour
     const earliestDate = new Date(earliestEvent.start);
     let targetTime = new Date(earliestDate.getTime() - 1 * 60 * 60 * 1000);
 
@@ -52,7 +73,7 @@ export function useCalendarAutoScroll({
       targetTime = periodStart;
     }
 
-    // Calculate fractional hours for sub-hour precision (relative to midnight)
+    // Fractional hours for scroll position (relative to midnight)
     const targetHours =
       targetTime.getHours() +
       targetTime.getMinutes() / 60 +
