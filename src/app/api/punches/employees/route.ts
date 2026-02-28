@@ -724,15 +724,16 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
                 // Get roster for this day - only employees explicitly assigned to this date
                 const rawRoster: Array<string | { employeeId: string; date?: string } | { _id: string }> = (daySchedule.roster || []) as Array<string | { employeeId: string; date?: string } | { _id: string }>;
                 
-                // Filter roster entries to only those that match the current date.
-                // Someone is "scheduled" only when added to the roster with a date for that day.
-                // Entries with a date must match dateKey; entries without a date are not used (no date = not scheduled for a specific day).
+                // Filter roster entries to only those that match the current date and are not pending.
+                // Someone is "scheduled" only when added to the roster with a date for that day (approved or legacy).
+                // Exclude status: 'pending' so scheduled/future punches are only created for approved roster entries.
                 const roster = rawRoster.filter((entry) => {
                   if (typeof entry === 'string') {
                     return false; // String IDs have no date - don't treat as scheduled for this day
                   }
                   if (entry && typeof entry === 'object' && 'employeeId' in entry) {
-                    const e = entry as { employeeId: string; date?: string };
+                    const e = entry as { employeeId: string; date?: string; status?: string };
+                    if (e.status === 'pending') return false;
                     return e.date === dateKey;
                   }
                   return false;

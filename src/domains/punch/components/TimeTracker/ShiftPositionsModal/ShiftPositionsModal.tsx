@@ -104,6 +104,7 @@ export function ShiftPositionsModal({
         const timeSlot = formatTimeSlot(daySchedule.start || '', daySchedule.end || '');
 
         daySchedule.roster.forEach((entry: RosterEntry) => {
+          if (entry.status === 'pending') return;
           if (entry.date && entry.employeeId && isDateInRange(entry.date)) {
             const employee = employeeMap.get(entry.employeeId);
             const employeeName = employee
