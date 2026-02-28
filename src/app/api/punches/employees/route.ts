@@ -818,11 +818,24 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
                     continue;
                   }
 
-                  // For future punches, use noon UTC for the calendar date so it displays correctly in all client timezones.
-                  // (Midnight UTC would show as the previous day when the client formats in local time, e.g. US Pacific.)
-                  const timeIn = `${dateKey}T12:00:00.000Z`;
+                  // Use the shift's scheduled start/end for this day; combine dateKey with time from daySchedule (UTC components).
+                  const scheduleStart = new Date(daySchedule.start);
+                  const scheduleEnd = new Date(daySchedule.end);
+                  const pad2 = (n: number) => String(n).padStart(2, '0');
+                  const timeIn =
+                    `${dateKey}T${pad2(scheduleStart.getUTCHours())}:${pad2(scheduleStart.getUTCMinutes())}:${pad2(scheduleStart.getUTCSeconds())}.000Z`;
+                  // Scheduled end: same date; if end is before start (overnight), use next day for timeOut
+                  const endBeforeStart =
+                    scheduleEnd.getUTCHours() < scheduleStart.getUTCHours() ||
+                    (scheduleEnd.getUTCHours() === scheduleStart.getUTCHours() &&
+                      scheduleEnd.getUTCMinutes() <= scheduleStart.getUTCMinutes());
+                  const endDateKey = endBeforeStart
+                    ? format(new Date(parseISO(dateKey).getTime() + 24 * 60 * 60 * 1000), 'yyyy-MM-dd')
+                    : dateKey;
+                  const timeOut =
+                    `${endDateKey}T${pad2(scheduleEnd.getUTCHours())}:${pad2(scheduleEnd.getUTCMinutes())}:${pad2(scheduleEnd.getUTCSeconds())}.000Z`;
 
-                  // Only include if timeIn falls within the requested range (e.g. week Feb 9–15 ends at Feb 16 05:59 UTC, so exclude Feb 16 noon).
+                  // Only include if timeIn falls within the requested range (e.g. week Feb 9–15 ends at Feb 16 05:59 UTC, so exclude Feb 16).
                   const timeInMs = parseISO(timeIn).getTime();
                   if (timeInMs < startDateTime.getTime() || timeInMs > endDateTime.getTime()) {
                     continue;
@@ -841,7 +854,7 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
                     applicantId: employeeId,
                     jobId: job._id,
                     timeIn,
-                    timeOut: null, // Future punches have no clock out
+                    timeOut, // Scheduled end so calendar shows full shift block
                     status: 'scheduled',
                     shiftSlug: shift.slug,
                     shiftName: shift.shiftName || null,
