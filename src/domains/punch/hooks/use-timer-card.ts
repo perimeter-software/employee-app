@@ -173,7 +173,9 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
           if (!Array.isArray(roster)) continue;
           for (const entry of roster) {
             if (entry && typeof entry === 'object' && 'employeeId' in entry && 'date' in entry) {
-              const e = entry as { employeeId: string; date: string };
+              const e = entry as { employeeId: string; date: string; status?: string };
+              // Exclude pending roster entries so main panel only shows shifts user is approved for
+              if (e.status === 'pending') continue;
               if (e.employeeId === applicantId && e.date) {
                 const rosterDay = startOfDay(parseISO(e.date));
                 if (isAfter(rosterDay, todayStart)) return true;

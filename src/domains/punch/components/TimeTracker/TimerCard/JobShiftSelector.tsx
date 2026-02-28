@@ -210,8 +210,10 @@ export function JobShiftSelector({
                 if (!Array.isArray(roster)) continue;
                 for (const entry of roster) {
                   if (entry && typeof entry === 'object' && 'employeeId' in entry && 'date' in entry) {
-                    const empId = (entry as { employeeId: string; date: string }).employeeId;
-                    const dateStr = (entry as { employeeId: string; date: string }).date;
+                    const e = entry as { employeeId: string; date: string; status?: string };
+                    if (e.status === 'pending') continue;
+                    const empId = e.employeeId;
+                    const dateStr = e.date;
                     if (empId === applicantId && dateStr) {
                       try {
                         const rosterDay = startOfDay(parseISO(dateStr));
@@ -347,8 +349,10 @@ export function JobShiftSelector({
             if (!Array.isArray(roster)) continue;
             for (const entry of roster) {
               if (entry && typeof entry === 'object' && 'employeeId' in entry && 'date' in entry) {
-                const empId = (entry as { employeeId: string; date: string }).employeeId;
-                const dateStr = (entry as { employeeId: string; date: string }).date;
+                const e = entry as { employeeId: string; date: string; status?: string };
+                if (e.status === 'pending') continue;
+                const empId = e.employeeId;
+                const dateStr = e.date;
                 if (empId === applicantId && dateStr) {
                   try {
                     const rosterDay = startOfDay(parseISO(dateStr));

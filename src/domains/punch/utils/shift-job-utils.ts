@@ -27,13 +27,17 @@ export const isUserInRoster = (
     return result;
   }
 
-  // Handle new format (array of objects with employeeId and date)
+  // Handle new format (array of objects with employeeId, date, status)
+  // Only treat as "in roster" when status is approved or legacy (undefined). Exclude pending so
+  // time and attendance does not show shifts that are only requested (pending).
   const rosterEntries = roster as RosterEntry[];
+  const isApprovedOrLegacy = (entry: RosterEntry) =>
+    entry.status === undefined || entry.status === 'approved';
 
   if (!targetDate) {
     // If no target date provided, check if user is in roster for any date
     const result = rosterEntries.some(
-      (entry) => entry.employeeId === applicantId
+      (entry) => entry.employeeId === applicantId && isApprovedOrLegacy(entry)
     );
     console.log('  - No target date, checking any date, result:', result);
     return result;
@@ -45,7 +49,10 @@ export const isUserInRoster = (
   console.log('  - Target date string (YYYY-MM-DD):', targetDateStr);
 
   const result = rosterEntries.some(
-    (entry) => entry.employeeId === applicantId && entry.date === targetDateStr
+    (entry) =>
+      entry.employeeId === applicantId &&
+      entry.date === targetDateStr &&
+      isApprovedOrLegacy(entry)
   );
 
   console.log('  - Checking entries:');
