@@ -8,8 +8,10 @@ interface UseCalendarAutoScrollProps {
   events: CalendarEvent[];
   weekDays?: Date[]; // For week view
   enableAutoScroll?: boolean; // Allow disabling auto-scroll
-  /** Pixels to leave at top so the first shift appears below sticky header (week/day view). */
+  /** Pixels to leave at top when not using scrollToCenter (so first shift appears below sticky header). */
   stickyHeaderOffset?: number;
+  /** When true, scroll so the first shift appears in the middle of the viewport. */
+  scrollToCenter?: boolean;
 }
 
 // Extended event interface that matches the actual events passed from calendars
@@ -35,6 +37,7 @@ export function useCalendarAutoScroll({
   weekDays,
   enableAutoScroll = true,
   stickyHeaderOffset = 0,
+  scrollToCenter = false,
 }: UseCalendarAutoScrollProps) {
   useEffect(() => {
     if (!enableAutoScroll || !events?.length) return;
@@ -90,27 +93,11 @@ export function useCalendarAutoScroll({
       current.start < earliest.start ? current : earliest
     );
 
-    // Calculate 1 hour before the earliest punch
+    // Target: the row where the first shift starts (so we can center it or place it below header)
     const targetTime = new Date(earliestEvent.start);
     const originalHour = targetTime.getHours();
-    const oneHourBefore = Math.max(0, originalHour - 1);
-
-    // Smart scrolling logic:
-    // - For very early punches (before 7 AM), scroll to 6 AM
-    // - For normal work hours, scroll to 1 hour before
-    // - For late punches (after 10 PM), scroll to 6 PM
-    let scrollToHour: number;
-    if (originalHour <= 7) {
-      scrollToHour = 6;
-    } else if (originalHour >= 22) {
-      scrollToHour = 18; // 6 PM
-    } else {
-      scrollToHour = oneHourBefore;
-    }
-
-    // Match calendar hour row height (CalendarBodyDayContent / CalendarBodyWeek use h-20 sm:h-24 lg:h-32 = 80/96/128px)
     const hourHeight = 128;
-    const scrollPosition = Math.max(0, scrollToHour * hourHeight - stickyHeaderOffset);
+    const contentOffset = originalHour * hourHeight;
 
     // Returns true if a scroll was performed (so we can skip the retry when layout was ready)
     const runScroll = (): boolean => {
@@ -118,7 +105,12 @@ export function useCalendarAutoScroll({
       if (!refEl) return false;
       let el: HTMLElement | null = refEl;
       let maxScroll = el.scrollHeight - el.clientHeight;
-      let top = scrollPosition;
+      const viewportHeight = el.clientHeight;
+      // Scroll so target is at top (with optional offset) or centered in viewport
+      const topForRef = scrollToCenter
+        ? contentOffset - viewportHeight / 2
+        : contentOffset - stickyHeaderOffset;
+      let top = Math.max(0, topForRef);
       // If this element isn't scrollable (e.g. parent has overflow), use nearest scrollable ancestor
       if (maxScroll <= 0) {
         let parent: HTMLElement | null = refEl.parentElement;
@@ -130,7 +122,11 @@ export function useCalendarAutoScroll({
             if (parentMax > 0) {
               el = parent;
               maxScroll = parentMax;
-              top = refEl.offsetTop + scrollPosition;
+              const parentViewport = parent.clientHeight;
+              top = scrollToCenter
+                ? refEl.offsetTop + contentOffset - parentViewport / 2
+                : refEl.offsetTop + contentOffset - stickyHeaderOffset;
+              top = Math.max(0, top);
               break;
             }
           }
@@ -138,7 +134,7 @@ export function useCalendarAutoScroll({
         }
         if (!el || maxScroll <= 0) return false;
       }
-      top = Math.min(Math.max(0, top), maxScroll);
+      top = Math.min(top, maxScroll);
       el.scrollTo({ top, behavior: 'smooth' });
       return true;
     };
@@ -155,7 +151,7 @@ export function useCalendarAutoScroll({
       clearTimeout(timeoutId);
       if (retryId !== undefined) clearTimeout(retryId);
     };
-  }, [scrollContainerRef, date, events, weekDays, enableAutoScroll, stickyHeaderOffset]);
+  }, [scrollContainerRef, date, events, weekDays, enableAutoScroll, stickyHeaderOffset, scrollToCenter]);
 
   const scrollToTime = useCallback(
     (hour: number) => {

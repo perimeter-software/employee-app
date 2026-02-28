@@ -1380,6 +1380,9 @@ export function EmployeeTimeAttendanceTable({
 
     const events = allEmployeePunches.map((punch) => {
       const punchStart = new Date(punch.timeIn);
+      const now = Date.now();
+      const isFuturePunch = punchStart.getTime() > now || punch._id?.startsWith('future-');
+      // API now returns timeIn/timeOut for future (scheduled) punches; active punches have no timeOut → use now
       const punchEnd = punch.timeOut ? new Date(punch.timeOut) : new Date();
 
       // Determine color based on status
@@ -1391,7 +1394,7 @@ export function EmployeeTimeAttendanceTable({
       }
 
       // Check if this is a future event
-      const isFuture = punchStart.getTime() > Date.now();
+      const isFuture = isFuturePunch;
       // Use light blue for future events
       const eventColor = isFuture ? 'blue' : color;
 
@@ -1562,6 +1565,12 @@ export function EmployeeTimeAttendanceTable({
       const punch = employeePunches.find((p) => p._id === selectedEvent.id);
 
       if (punch) {
+        // Don't open edit modal for future/scheduled punches (read-only; no DB record to update)
+        const isFuture = punch._id?.startsWith('future-');
+        if (isFuture) {
+          return; // keep calendar open so user can click a past event to edit
+        }
+
         // Mark as processing immediately to prevent duplicate calls
         isProcessingRef.current = true;
         lastProcessedRef.current = {

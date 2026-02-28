@@ -24,12 +24,13 @@ export default function CalendarBodyWeek({
   // Memoize day names - only recalculate when weekStartsOn changes
   const adjustedDayNames = useMemo(() => getDayNamesFromWeekStartsOn(weekStartsOn), [weekStartsOn]);
 
-  // Use the auto-scroll hook for week view (offset so first shift appears below sticky header)
+  // Use the auto-scroll hook for week view: first shift in the middle of the viewport
   useCalendarAutoScroll({
     scrollContainerRef,
     date,
     events,
     weekDays,
+    scrollToCenter: true,
     stickyHeaderOffset: 72,
   });
 
