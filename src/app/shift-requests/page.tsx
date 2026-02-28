@@ -464,7 +464,7 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl">
+      <DialogContent className="w-[60vw] max-w-[60vw]">
         <DialogHeader>
           <DialogTitle className="text-lg">Request shift</DialogTitle>
           <DialogDescription className="text-sm">
@@ -664,8 +664,6 @@ export default function ShiftRequestsPage() {
       : selectedJob?.title ||
         (assignedJobs.length > 0 ? 'Select job' : 'No jobs available');
 
-  const [pageIndex, setPageIndex] = useState(0);
-  const pageSize = 10;
   const shiftSummariesWithJob: ShiftWithJob[] = useMemo(() => {
     if (selectedJobId === ALL_JOBS_ID) {
       return assignedJobs.flatMap((job) =>
@@ -676,11 +674,6 @@ export default function ShiftRequestsPage() {
     if (!job) return [];
     return buildShiftSummaries(job).map((summary) => ({ job, summary }));
   }, [assignedJobs, selectedJobId]);
-
-  const pagedShifts = shiftSummariesWithJob.slice(
-    pageIndex * pageSize,
-    pageIndex * pageSize + pageSize
-  );
 
   const applicantId = userData?.applicantId;
   const myRequests = useMemo(
@@ -794,7 +787,7 @@ export default function ShiftRequestsPage() {
   if (currentUserLoading || isInitialJobsLoading) {
     return (
       <Layout>
-        <div className="flex min-h-screen items-center justify-center">
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 flex min-h-[50vh] items-center justify-center">
           <p className="text-sm text-slate-600">Loading shift requests…</p>
         </div>
       </Layout>
@@ -804,7 +797,7 @@ export default function ShiftRequestsPage() {
   if (userJobsError) {
     return (
       <Layout>
-        <div className="flex min-h-screen items-center justify-center">
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 flex min-h-[50vh] items-center justify-center">
           <p className="text-sm text-red-600">
             Failed to load your jobs. Please refresh the page.
           </p>
@@ -888,8 +881,8 @@ export default function ShiftRequestsPage() {
   ];
 
   return (
-    <Layout title="Shift Requests">
-      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 space-y-6">
+    <Layout>
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 space-y-6 h-[calc(100vh-11rem)] max-h-[calc(100vh-11rem)] overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">
@@ -970,10 +963,7 @@ export default function ShiftRequestsPage() {
                   <div className="min-w-[200px]">
                     <Select
                       value={selectedJobId || undefined}
-                      onValueChange={(v) => {
-                        setSelectedJobId(v);
-                        setPageIndex(0);
-                      }}
+                      onValueChange={setSelectedJobId}
                     >
                       <SelectTrigger>
                         <SelectValue
@@ -994,60 +984,23 @@ export default function ShiftRequestsPage() {
                     </Select>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  {shiftSummariesWithJob.length > 0 && (
                     <span className="text-xs text-slate-600 whitespace-nowrap">
-                      {shiftSummariesWithJob.length === 0
-                        ? '0 shifts'
-                        : `${pageIndex * pageSize + 1}–${Math.min(
-                            pageIndex * pageSize + pageSize,
-                            shiftSummariesWithJob.length
-                          )} of ${shiftSummariesWithJob.length}`}
+                      {shiftSummariesWithJob.length} shift{shiftSummariesWithJob.length !== 1 ? 's' : ''}
                     </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-8 disabled:opacity-100"
-                      disabled={pageIndex === 0}
-                      onClick={() =>
-                        setPageIndex((prev) => Math.max(prev - 1, 0))
-                      }
-                    >
-                      <span className="text-base leading-none text-slate-700">
-                        ‹
-                      </span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-8 disabled:opacity-100"
-                      disabled={
-                        (pageIndex + 1) * pageSize >= shiftSummariesWithJob.length
-                      }
-                      onClick={() =>
-                        setPageIndex((prev) =>
-                          (prev + 1) * pageSize < shiftSummariesWithJob.length
-                            ? prev + 1
-                            : prev
-                        )
-                      }
-                    >
-                      <span className="text-base leading-none text-slate-700">
-                        ›
-                      </span>
-                    </Button>
-                  </div>
+                  )}
                 </div>
               </div>
             </CardHeader>
 
             <CardContent className="space-y-3">
-              {pagedShifts.length === 0 ? (
+              {shiftSummariesWithJob.length === 0 ? (
                 <p className="text-sm text-slate-600">
-                  No shifts found for the selected job(s).
+                  No shifts found for the selected filters.
                 </p>
               ) : (
-                <div className="space-y-3">
-                  {pagedShifts.map(({ job, summary }) => {
+                <div className="space-y-3 overflow-y-auto h-[calc(100vh-23rem)] max-h-[calc(100vh-23rem)] min-h-0 pr-1 -mr-1">
+                  {shiftSummariesWithJob.map(({ job, summary }) => {
                     const shift = job.shifts?.find((s) => s.slug === summary.slug) ?? null;
                     if (!shift) return null;
 
