@@ -22,11 +22,13 @@ export default function CalendarBodyDay({
   const badges = dayBadges?.[dateKey];
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Use the auto-scroll hook
+  // Use the auto-scroll hook: scroll to first upcoming/today shift and center it in the viewport
   useCalendarAutoScroll({
     scrollContainerRef,
     date,
     events,
+    scrollToCenter: true,
+    stickyHeaderOffset: 72,
   });
 
   return (
