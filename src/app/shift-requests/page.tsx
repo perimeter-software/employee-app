@@ -471,6 +471,11 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
             .
           </div>
 
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+            You will be notified if you are added to this shift. You may not work
+            this shift unless you are notified.
+          </div>
+
           {minSelectable && shiftEnd && (
             <div className="space-y-3">
               <div className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
@@ -1056,7 +1061,8 @@ export default function ShiftRequestsPage() {
                   </CardTitle>
                   <p className="text-xs text-slate-600">
                     Requests you&apos;ve submitted. Pending requests await
-                    manager approval.
+                    manager approval. You will be notified if added; do not
+                    work a shift unless you have been notified.
                   </p>
                 </div>
               </div>
@@ -1112,13 +1118,13 @@ export default function ShiftRequestsPage() {
                   No requests match the selected filter.
                 </p>
               ) : (
-                <div className="overflow-y-auto h-[calc(100vh-23rem)] max-h-[calc(100vh-23rem)] min-h-0 pr-1 -mr-1">
+                <div className="flex flex-col h-[calc(100vh-25rem)] min-h-0 pr-1 -mr-1">
                   <Table
                     columns={myColumns}
                     data={myRequestsFiltered}
                     showPagination={false}
                     selectable={false}
-                    className="w-full"
+                    className="w-full flex-1 min-h-0"
                     emptyMessage="No shift requests found."
                   />
                 </div>
