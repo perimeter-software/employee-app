@@ -15,10 +15,10 @@ export default function CalendarBody({
   const noHeaderSpacing = hideHeaderActions && hideHeaderDate;
 
   return (
-    <>
+    <div className="h-full">
       {mode === "day" && <CalendarBodyDay noHeaderSpacing={noHeaderSpacing} />}
       {mode === "week" && <CalendarBodyWeek noHeaderSpacing={noHeaderSpacing} />}
       {mode === "month" && <CalendarBodyMonth noHeaderSpacing={noHeaderSpacing} />}
-    </>
+    </div>
   );
 }

@@ -24,14 +24,12 @@ export default function CalendarBodyWeek({
   // Memoize day names - only recalculate when weekStartsOn changes
   const adjustedDayNames = useMemo(() => getDayNamesFromWeekStartsOn(weekStartsOn), [weekStartsOn]);
 
-  // Use the auto-scroll hook for week view: first shift in the middle of the viewport
+  // Use the auto-scroll hook for week view
   useCalendarAutoScroll({
     scrollContainerRef,
     date,
     events,
     weekDays,
-    scrollToCenter: true,
-    stickyHeaderOffset: 72,
   });
 
   return (
@@ -108,7 +106,7 @@ export default function CalendarBodyWeek({
           ref={scrollContainerRef}
           className="flex flex-1 overflow-y-auto overflow-x-auto"
         >
-          <div className="flex flex-1 min-w-max">
+          <div className="flex min-w-max">
             {/* Time column */}
             <div className="w-12 sm:w-16 xl:w-20 bg-background border-r border-gray-200 flex-shrink-0">
               {/* Time labels */}

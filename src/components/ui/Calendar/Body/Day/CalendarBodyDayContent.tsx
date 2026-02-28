@@ -54,11 +54,11 @@ const CalendarBodyDayContent = memo(function CalendarBodyDayContent({
   }, [events, date, mode]);
 
   return (
-    <div className="flex flex-col flex-grow">
+    <div className="flex flex-col w-full">
       {/* Only show header in day mode, hide in week mode */}
       {!hideHeader && mode !== 'week' && <CalendarBodyHeader date={date} />}
 
-      <div className="flex-1 relative">
+      <div className="relative w-full">
         {/* Hour grid lines - responsive height */}
         {hours.map((hour) => (
           <div
