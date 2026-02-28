@@ -1,7 +1,6 @@
 'use client';
-import DOMPurify from 'dompurify';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
 import {
@@ -88,9 +87,16 @@ export const NotificationDetailModal: React.FC<
     }
   };
 
-  // Helper function to safely render HTML content
+  // DOMPurify is loaded client-side only (uses window)
+  const [purify, setPurify] = useState<{ sanitize: (html: string) => string } | null>(null);
+  useEffect(() => {
+    import('dompurify').then((mod) => setPurify(mod.default));
+  }, []);
+
+  // Helper function to safely render HTML content (render nothing until DOMPurify has loaded)
   const createMarkup = (html: string) => {
-    return { __html: DOMPurify.sanitize(html) };
+    if (!purify) return { __html: '' };
+    return { __html: purify.sanitize(html) };
   };
 
   // Use body field directly since that's where the content is
