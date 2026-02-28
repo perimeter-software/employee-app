@@ -5,6 +5,16 @@ import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { findJobByjobId } from '@/domains/user/utils/mongo-user-utils';
 import type { RosterEntry, RosterEntryStatus } from '@/domains/job/types/schedule.types';
+import { emailService } from '@/lib/services/email-service';
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 type DayKey =
   | 'sunday'
@@ -319,6 +329,74 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
         },
         { status: 500 }
       );
+    }
+
+    // Notify manager(s) by email (same recipients as event manager notifications)
+    type ManagerRecipient = {
+      userId?: string;
+      applicantId?: string;
+      firstName?: string;
+      lastName?: string;
+      fullName?: string;
+      email?: string;
+    };
+    const configRecipients = (job?.additionalConfig as { eventManagerNotificationRecipients?: ManagerRecipient[] })
+      ?.eventManagerNotificationRecipients;
+    if (Array.isArray(configRecipients) && configRecipients.length > 0) {
+      const firstName = user.given_name ?? user.firstName ?? '';
+      const lastName = user.family_name ?? user.lastName ?? '';
+      const employeeName =
+        (user.name as string | undefined)?.trim() ||
+        [firstName, lastName].filter(Boolean).join(' ') ||
+        'Employee';
+      const shiftName = (shift as { shiftName?: string }).shiftName || shiftSlug;
+      const dateLabels =
+        (dates?.length ?? 0) > 0
+          ? (dates || [])
+              .slice(0, 10)
+              .map((d) => new Date(d).toLocaleDateString('en-US', { dateStyle: 'medium' }))
+              .join(', ') + ((dates?.length ?? 0) > 10 ? ` and ${(dates?.length ?? 0) - 10} more` : '')
+          : '';
+      const requestedSummary = dateLabels || 'See schedule';
+      const subject = `Shift request: ${employeeName} – ${job.title || 'Job'}`;
+      const text = [
+        'An employee has submitted a shift request.',
+        '',
+        `Employee: ${employeeName}`,
+        `Job: ${job.title || 'N/A'}`,
+        `Shift: ${shiftName}`,
+        `Requested: ${requestedSummary}`,
+        '',
+        'Please review and approve or reject in the Weekly Schedule Configuration for this shift.',
+        '',
+        'This is an automated notification from the Employee App.',
+      ].join('\n');
+      const html = [
+        '<div style="font-family:\'Segoe UI\',Tahoma,Geneva,Verdana,sans-serif; max-width:560px; margin:0 auto; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;">',
+        '<div style="background:#0d9488; color:#fff; padding:14px 20px; font-size:18px; font-weight:600;">Shift request submitted</div>',
+        '<div style="padding:20px;">',
+        '<p style="margin:0 0 16px; color:#374151; font-size:14px;">An employee has submitted a shift request.</p>',
+        '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:20px; border:1px solid #e5e7eb; border-radius:6px;">',
+        '<tr style="background:#f9fafb;"><td colspan="2" style="padding:10px 14px; font-weight:600; color:#374151; border-bottom:1px solid #e5e7eb;">Request details</td></tr>',
+        `<tr><td style="padding:10px 14px; color:#6b7280; width:140px; border-bottom:1px solid #f3f4f6;">Employee</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">${escapeHtml(employeeName)}</td></tr>`,
+        `<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">Job</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">${escapeHtml(job.title || 'N/A')}</td></tr>`,
+        `<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">Shift</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">${escapeHtml(shiftName)}</td></tr>`,
+        `<tr><td style="padding:10px 14px; color:#6b7280;">Requested</td><td style="padding:10px 14px; color:#111827;">${escapeHtml(requestedSummary)}</td></tr>`,
+        '</table>',
+        '<p style="margin:0; color:#6b7280; font-size:13px;">Please review and approve or reject in the Weekly Schedule Configuration for this shift.</p>',
+        '</div>',
+        '<div style="padding:12px 20px; background:#f9fafb; border-top:1px solid #e5e7eb; font-size:12px; color:#6b7280;">This is an automated notification from the Employee App.</div>',
+        '</div>',
+      ].join('');
+      for (const r of configRecipients) {
+        const to = r?.email?.trim();
+        if (!to) continue;
+        try {
+          await emailService.sendEmail({ to, subject, html, text });
+        } catch (emailErr) {
+          console.error('[Shift Requests API] Error sending manager email to', to, emailErr);
+        }
+      }
     }
 
     return NextResponse.json(
