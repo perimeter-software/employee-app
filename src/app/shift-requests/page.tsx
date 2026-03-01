@@ -60,6 +60,47 @@ const DAY_KEYS: DayKey[] = [
 const dayLabel = (day: DayKey) =>
   day.charAt(0).toUpperCase() + day.slice(1).toLowerCase();
 
+/** Format ISO time string to "9:30 AM" in local time. */
+function formatScheduleTime(iso: string): string {
+  try {
+    const d = parseISO(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return formatTimeTz(d, 'h:mm a');
+  } catch {
+    return '';
+  }
+}
+
+type ShiftSchedulePart = {
+  day: DayKey;
+  dayLabel: string;
+  start: string;
+  end: string;
+};
+
+/**
+ * Returns structured day/time parts for a shift (for rendering in day boxes).
+ */
+function getShiftScheduleParts(shift: Shift): ShiftSchedulePart[] {
+  const parts: ShiftSchedulePart[] = [];
+  for (const dayKey of DAY_KEYS) {
+    const schedule = shift.defaultSchedule?.[dayKey];
+    if (schedule?.start && schedule?.end) {
+      const startStr = formatScheduleTime(schedule.start);
+      const endStr = formatScheduleTime(schedule.end);
+      if (startStr && endStr) {
+        parts.push({
+          day: dayKey,
+          dayLabel: dayLabel(dayKey).slice(0, 3),
+          start: startStr,
+          end: endStr,
+        });
+      }
+    }
+  }
+  return parts;
+}
+
 type RequestStatus = RosterEntryStatus;
 
 const DEFAULT_TZ = 'America/Chicago';
@@ -104,6 +145,8 @@ type MyRequestRow = {
   status: MyRequestStatus;
   source: 'schedule' | 'request';
   windowLabel: string;
+  /** Day and time for this request (e.g. "9:30 AM – 5:00 PM") */
+  timeLabel: string;
   /** Used for table actions column */
   actions?: unknown;
 };
@@ -174,6 +217,11 @@ function buildMyRequests(jobs: GignologyJob[] | undefined, applicantId: string) 
             )} - ${format(end, 'MMM d, yyyy')}`;
           }
 
+          const timeLabel =
+            schedule.start && schedule.end
+              ? `${formatScheduleTime(schedule.start)} – ${formatScheduleTime(schedule.end)}`
+              : '';
+
           rows.push({
             id: `request-${job._id}-${shift.slug}-${dayKey}-${entry.date ?? 'recurring'}-${
               status || 'scheduled'
@@ -188,6 +236,7 @@ function buildMyRequests(jobs: GignologyJob[] | undefined, applicantId: string) 
             status,
             source: entry.status ? 'request' : 'schedule',
             windowLabel,
+            timeLabel,
           });
         }
       }
@@ -861,6 +910,9 @@ export default function ShiftRequestsPage() {
             {row.jobTitle} — {row.shiftName}
           </div>
           <div className="text-xs text-slate-600">{row.windowLabel}</div>
+          {row.timeLabel && (
+            <div className="text-xs text-slate-500">{row.timeLabel}</div>
+          )}
         </div>
       ),
     },
@@ -1012,6 +1064,7 @@ export default function ShiftRequestsPage() {
 
                     const start = parseISO(shift.shiftStartDate);
                     const end = parseISO(shift.shiftEndDate);
+                    const scheduleParts = getShiftScheduleParts(shift);
 
                     return (
                       <div
@@ -1032,9 +1085,25 @@ export default function ShiftRequestsPage() {
                             </Badge>
                           </div>
                           <p className="text-xs text-slate-600">
-                            You can request specific dates or recurring days
-                            within this range.
+                            You can request specific dates within this range.
                           </p>
+                          {scheduleParts.length > 0 && (
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              {scheduleParts.map((part) => (
+                                <div
+                                  key={part.day}
+                                  className="rounded-md border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 min-w-[7rem]"
+                                >
+                                  <div className="font-medium text-[13px] text-slate-900">
+                                    {part.dayLabel}
+                                  </div>
+                                  <div className="text-[11px] text-slate-500 mt-0.5">
+                                    {part.start} to {part.end}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2">
