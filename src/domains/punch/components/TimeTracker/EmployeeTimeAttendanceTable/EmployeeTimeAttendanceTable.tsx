@@ -142,6 +142,61 @@ export function EmployeeTimeAttendanceTable({
   // Shift positions modal state
   const [showShiftPositionsModal, setShowShiftPositionsModal] = useState(false);
 
+  // ---- Position capacity helpers (date -> day -> default) ----
+
+  type DayKeyInternal =
+    | 'sunday'
+    | 'monday'
+    | 'tuesday'
+    | 'wednesday'
+    | 'thursday'
+    | 'friday'
+    | 'saturday';
+
+  type PositionWithOverrides = {
+    numberPositions?: string | number;
+    numberPositionsByDay?: Partial<
+      Record<DayKeyInternal, string | number | null>
+    >;
+    numberPositionsByDate?: Record<string, string | number | null>;
+  };
+
+  const parseNonNegativeInt = useCallback((value: unknown): number => {
+    const n = parseInt(String(value ?? ''), 10);
+    if (Number.isNaN(n) || n < 0) return 0;
+    return n;
+  }, []);
+
+  const getPositionTotalForDayInternal = useCallback(
+    (position: PositionWithOverrides, dayName: DayKeyInternal): number => {
+      if (
+        position.numberPositionsByDay &&
+        position.numberPositionsByDay[dayName] != null
+      ) {
+        return parseNonNegativeInt(position.numberPositionsByDay[dayName]);
+      }
+      return parseNonNegativeInt(position.numberPositions);
+    },
+    [parseNonNegativeInt]
+  );
+
+  const getPositionTotalForDateInternal = useCallback(
+    (
+      position: PositionWithOverrides,
+      dayName: DayKeyInternal,
+      dateKey: string
+    ): number => {
+      if (
+        position.numberPositionsByDate &&
+        position.numberPositionsByDate[dateKey] != null
+      ) {
+        return parseNonNegativeInt(position.numberPositionsByDate[dateKey]);
+      }
+      return getPositionTotalForDayInternal(position, dayName);
+    },
+    [getPositionTotalForDayInternal, parseNonNegativeInt]
+  );
+
   // Base date for navigation
   const [baseDate, setBaseDate] = useState(() => {
     const now = new Date();
@@ -1654,83 +1709,151 @@ export function EmployeeTimeAttendanceTable({
     return allAvailableShifts.find((s) => s.slug === selectedShiftSlug) ?? null;
   }, [selectedShiftSlug, allAvailableShifts]);
 
-  // Compute position badges for each day when a shift is selected – only dates within date filter range
-  // Position is "filled" only when assigned to someone (see stadium-people WeeklyScheduleConfigurationModal)
+  // Compute position badges for each day when a shift is selected – only dates within date filter range.
+  // Capacity for each date uses: numberPositionsByDate -> numberPositionsByDay -> numberPositions.
   const dayBadges = useMemo(() => {
-    if (!currentlySelectedShift || !currentlySelectedShift.positions || !currentlySelectedShift.defaultSchedule || !dateRange?.startDate || !dateRange?.endDate) {
+    if (
+      !currentlySelectedShift ||
+      !currentlySelectedShift.positions ||
+      !currentlySelectedShift.defaultSchedule ||
+      !dateRange?.startDate ||
+      !dateRange?.endDate
+    ) {
       return {};
     }
 
-    // Compare date keys (yyyy-MM-dd) so timezone doesn't exclude days at range boundaries
-    const rangeStartKey = format(parseISO(dateRange.startDate), 'yyyy-MM-dd');
+    const rangeStartKey = format(
+      parseISO(dateRange.startDate),
+      'yyyy-MM-dd'
+    );
     const rangeEndKey = format(parseISO(dateRange.endDate), 'yyyy-MM-dd');
     const isDateInRange = (dateKey: string) =>
       dateKey >= rangeStartKey && dateKey <= rangeEndKey;
 
-    const badges: Record<string, Array<{ value: number; color: string; textColor?: string; label?: string }>> = {};
+    type Badge = {
+      value: number;
+      color: string;
+      textColor?: string;
+      label?: string;
+    };
 
-    // Calculate total requested positions (sum of numberPositions from all positions)
-    const totalRequested = currentlySelectedShift.positions.reduce((sum: number, pos) => {
-      const num = parseInt(pos.numberPositions?.toString() || '0', 10);
-      return sum + (isNaN(num) ? 0 : num);
-    }, 0);
+    const badges: Record<string, Badge[]> = {};
 
-    const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+    const daysOfWeek: DayKeyInternal[] = [
+      'sunday',
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+    ];
+
     const dateFilled: Record<string, number> = {};
-    const dateSeen: Record<string, boolean> = {};
+    const dateTotalRequested: Record<string, number> = {};
 
     daysOfWeek.forEach((dayOfWeek) => {
       const daySchedule = currentlySelectedShift.defaultSchedule[dayOfWeek];
       if (!daySchedule?.roster?.length) return;
 
       daySchedule.roster.forEach((entry) => {
-        if (!entry.date || !isDateInRange(entry.date)) return;
-        // Exclude pending roster entries from position counts
+        const dateKey = entry.date;
+        if (!dateKey || !isDateInRange(dateKey)) return;
         const status = (entry as { status?: string }).status;
         if (status === 'pending') return;
-        dateSeen[entry.date] = true;
-        // Count as filled only when assigned to a position (assignedPosition set)
-        const isAssigned = Boolean(entry.employeeId && (entry as { assignedPosition?: string }).assignedPosition);
+
+        if (dateTotalRequested[dateKey] == null) {
+          const totalForDate = (currentlySelectedShift.positions ?? []).reduce(
+            (sum: number, pos: unknown) =>
+              sum +
+              getPositionTotalForDateInternal(
+                pos as PositionWithOverrides,
+                dayOfWeek,
+                dateKey
+              ),
+            0
+          );
+          dateTotalRequested[dateKey] = totalForDate;
+        }
+
+        const isAssigned = Boolean(
+          entry.employeeId &&
+            (entry as { assignedPosition?: string }).assignedPosition
+        );
         if (isAssigned) {
-          dateFilled[entry.date] = (dateFilled[entry.date] ?? 0) + 1;
+          dateFilled[dateKey] = (dateFilled[dateKey] ?? 0) + 1;
         }
       });
     });
 
-    Object.keys(dateSeen).forEach((dateKey) => {
+    Object.keys(dateTotalRequested).forEach((dateKey) => {
+      const totalRequested = dateTotalRequested[dateKey] ?? 0;
       const filled = dateFilled[dateKey] ?? 0;
       const unfilled = Math.max(0, totalRequested - filled);
       badges[dateKey] = [
-        { value: totalRequested, color: 'bg-blue-500', textColor: 'text-white', label: 'Requested positions' },
-        { value: filled, color: 'bg-successGreen', textColor: 'text-white', label: 'Filled positions' },
-        { value: unfilled, color: 'bg-red-500', textColor: 'text-white', label: 'Unfilled positions' },
+        {
+          value: totalRequested,
+          color: 'bg-blue-500',
+          textColor: 'text-white',
+          label: 'Requested positions',
+        },
+        {
+          value: filled,
+          color: 'bg-successGreen',
+          textColor: 'text-white',
+          label: 'Filled positions',
+        },
+        {
+          value: unfilled,
+          color: 'bg-red-500',
+          textColor: 'text-white',
+          label: 'Unfilled positions',
+        },
       ];
     });
 
     return badges;
-  }, [currentlySelectedShift, dateRange?.startDate, dateRange?.endDate]);
+  }, [
+    currentlySelectedShift,
+    dateRange?.startDate,
+    dateRange?.endDate,
+    getPositionTotalForDateInternal,
+  ]);
 
-  // Compute position summary for the selected shift (for position summary card) – only dates within date filter range
+  // Compute position summary for the selected shift (for position summary card) – only dates within date filter range.
+  // Per-date capacity again uses: numberPositionsByDate -> numberPositionsByDay -> numberPositions.
   const shiftPositionSummary = useMemo(() => {
-    if (!currentlySelectedShift || !currentlySelectedShift.defaultSchedule || !dateRange?.startDate || !dateRange?.endDate) {
+    if (
+      !currentlySelectedShift ||
+      !currentlySelectedShift.defaultSchedule ||
+      !dateRange?.startDate ||
+      !dateRange?.endDate
+    ) {
       return null;
     }
 
-    // Compare date keys (yyyy-MM-dd) so timezone doesn't exclude days at range boundaries
-    const rangeStartKey = format(parseISO(dateRange.startDate), 'yyyy-MM-dd');
+    const rangeStartKey = format(
+      parseISO(dateRange.startDate),
+      'yyyy-MM-dd'
+    );
     const rangeEndKey = format(parseISO(dateRange.endDate), 'yyyy-MM-dd');
     const isDateInRange = (dateKey: string) =>
       dateKey >= rangeStartKey && dateKey <= rangeEndKey;
 
-    // Calculate total requested positions (0 when positions array is empty or missing)
-    const totalRequested = (currentlySelectedShift.positions ?? []).reduce((sum: number, pos) => {
-      const num = parseInt(pos.numberPositions?.toString() || '0', 10);
-      return sum + (isNaN(num) ? 0 : num);
-    }, 0);
+    const dateDetails: Record<
+      string,
+      { filled: number; unassigned: number; totalRequested: number }
+    > = {};
 
-    // Aggregate filled (assigned to position) and unassigned (on shift but no position) per date – only dates in range
-    const dateDetails: Record<string, { filled: number; unassigned: number; totalRequested: number }> = {};
-    const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+    const daysOfWeek: DayKeyInternal[] = [
+      'sunday',
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+    ];
 
     daysOfWeek.forEach((dayOfWeek) => {
       const daySchedule = currentlySelectedShift.defaultSchedule[dayOfWeek];
@@ -1738,30 +1861,54 @@ export function EmployeeTimeAttendanceTable({
         daySchedule.roster.forEach((entry) => {
           const status = (entry as { status?: string }).status;
           if (status === 'pending') return;
-          if (entry.date && entry.employeeId && isDateInRange(entry.date)) {
-            if (!dateDetails[entry.date]) {
-              dateDetails[entry.date] = { filled: 0, unassigned: 0, totalRequested };
+          const dateKey = entry.date;
+          if (dateKey && entry.employeeId && isDateInRange(dateKey)) {
+            if (!dateDetails[dateKey]) {
+              const totalForDate = (currentlySelectedShift.positions ?? []).reduce(
+                (sum: number, pos: unknown) =>
+                  sum +
+                  getPositionTotalForDateInternal(
+                    pos as PositionWithOverrides,
+                    dayOfWeek,
+                    dateKey
+                  ),
+                0
+              );
+              dateDetails[dateKey] = {
+                filled: 0,
+                unassigned: 0,
+                totalRequested: totalForDate,
+              };
             }
-            const hasPosition = Boolean((entry as { assignedPosition?: string }).assignedPosition);
+            const hasPosition = Boolean(
+              (entry as { assignedPosition?: string }).assignedPosition
+            );
             if (hasPosition) {
-              dateDetails[entry.date].filled++;
+              dateDetails[dateKey].filled++;
             } else {
-              dateDetails[entry.date].unassigned++;
+              dateDetails[dateKey].unassigned++;
             }
           }
         });
       }
     });
 
-    const numDates = Object.keys(dateDetails).length;
-    const totalFilled = Object.values(dateDetails).reduce((sum, d) => sum + d.filled, 0);
-    const totalUnassigned = Object.values(dateDetails).reduce((sum, d) => sum + d.unassigned, 0);
-    // Total position-slots across all dates (positions per day × number of dates); 0 when no dates
-    const totalSlots = totalRequested * numDates;
+    const totalSlots = Object.values(dateDetails).reduce(
+      (sum, d) => sum + d.totalRequested,
+      0
+    );
+    const totalFilled = Object.values(dateDetails).reduce(
+      (sum, d) => sum + d.filled,
+      0
+    );
+    const totalUnassigned = Object.values(dateDetails).reduce(
+      (sum, d) => sum + d.unassigned,
+      0
+    );
     const totalUnfilled = Math.max(0, totalSlots - totalFilled);
 
     return {
-      totalRequested,
+      totalRequested: totalSlots,
       totalSlots,
       totalFilled,
       totalUnassigned,
@@ -1769,7 +1916,12 @@ export function EmployeeTimeAttendanceTable({
       dateDetails,
       shiftName: currentlySelectedShift.shiftName,
     };
-  }, [currentlySelectedShift, dateRange?.startDate, dateRange?.endDate]);
+  }, [
+    currentlySelectedShift,
+    dateRange?.startDate,
+    dateRange?.endDate,
+    getPositionTotalForDateInternal,
+  ]);
 
   // Get shift data for the selected punch (for modal)
   const selectedShift = useMemo(() => {
