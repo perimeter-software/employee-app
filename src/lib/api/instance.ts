@@ -1,9 +1,10 @@
 import { ApiClient } from './client';
 
 // Create singleton instance with configuration
+// Timeout 60s: employee punches API can take ~30s (auth + tenant + aggregation); client must wait longer than server duration to avoid Request timeout
 export const baseInstance = new ApiClient({
   baseUrl: process.env.NEXT_PUBLIC_API_URL || '',
-  timeout: 10000,
+  timeout: 60000,
 });
 
 // Add 401 redirect interceptor
