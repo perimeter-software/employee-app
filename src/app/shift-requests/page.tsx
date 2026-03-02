@@ -147,6 +147,8 @@ type MyRequestRow = {
   windowLabel: string;
   /** Day and time for this request (e.g. "9:30 AM – 5:00 PM") */
   timeLabel: string;
+   /** Optional notes attached to this request (e.g. rejection reason). */
+  notes?: string;
   /** Used for table actions column */
   actions?: unknown;
 };
@@ -222,6 +224,15 @@ function buildMyRequests(jobs: GignologyJob[] | undefined, applicantId: string) 
               ? `${formatScheduleTime(schedule.start)} – ${formatScheduleTime(schedule.end)}`
               : '';
 
+          // Normalise optional notes (may be a string or string[] coming from backend)
+          let notes: string | undefined;
+          const rawNotes = (entry as unknown as { notes?: string | string[] }).notes;
+          if (typeof rawNotes === 'string') {
+            notes = rawNotes;
+          } else if (Array.isArray(rawNotes)) {
+            notes = rawNotes.join('\n\n');
+          }
+
           rows.push({
             id: `request-${job._id}-${shift.slug}-${dayKey}-${entry.date ?? 'recurring'}-${
               status || 'scheduled'
@@ -237,6 +248,7 @@ function buildMyRequests(jobs: GignologyJob[] | undefined, applicantId: string) 
             source: entry.status ? 'request' : 'schedule',
             windowLabel,
             timeLabel,
+            notes,
           });
         }
       }
@@ -741,6 +753,15 @@ export default function ShiftRequestsPage() {
     return myRequestRows.filter((r) => r.status === myRequestsStatusFilter);
   }, [myRequestRows, myRequestsStatusFilter]);
 
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [notesModalRow, setNotesModalRow] = useState<MyRequestRow | null>(null);
+
+  const openNotesModal = (row: MyRequestRow) => {
+    if (!row.notes) return;
+    setNotesModalRow(row);
+    setNotesModalOpen(true);
+  };
+
   const openModalForShift = (job: GignologyJob, shiftSlug: string) => {
     const shift = job.shifts?.find((s) => s.slug === shiftSlug) ?? null;
     if (!shift) return;
@@ -919,7 +940,22 @@ export default function ShiftRequestsPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (value) => statusBadge(value as MyRequestStatus),
+      render: (value, row) => (
+        <div className="flex items-center gap-2">
+          {statusBadge(value as MyRequestStatus)}
+          {row.status === 'rejected' && row.notes && (
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              className="text-xs"
+              onClick={() => openNotesModal(row)}
+            >
+              View notes
+            </Button>
+          )}
+        </div>
+      ),
     },
     {
       key: 'actions',
@@ -1216,6 +1252,41 @@ export default function ShiftRequestsPage() {
         applicantId={userData?.applicantId}
         onSubmit={handleSubmitRequests}
       />
+
+      <Dialog
+        open={notesModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setNotesModalOpen(false);
+            setNotesModalRow(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[70vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Manager notes</DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Additional details about why this shift request was rejected.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-3 space-y-2">
+            {notesModalRow && (
+              <div className="text-xs text-slate-600">
+                <div className="font-medium text-slate-900">
+                  {notesModalRow.jobTitle} — {notesModalRow.shiftName}
+                </div>
+                <div className="text-slate-500">
+                  {notesModalRow.windowLabel}
+                  {notesModalRow.timeLabel && ` • ${notesModalRow.timeLabel}`}
+                </div>
+              </div>
+            )}
+            <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 whitespace-pre-wrap">
+              {notesModalRow?.notes || 'No notes provided.'}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
