@@ -84,11 +84,6 @@ export function ShiftPositionsModal({
   const dataByDate = useMemo(() => {
     if (!shift?.defaultSchedule) return [];
 
-    const perDayTotal = shift?.positions?.reduce((sum, pos) => {
-      const num = parseInt(pos.numberPositions?.toString() || '0', 10);
-      return sum + (isNaN(num) ? 0 : num);
-    }, 0) ?? 0;
-
     const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
     const dateMap = new Map<string, {
       date: string;
@@ -114,7 +109,7 @@ export function ShiftPositionsModal({
             const assignedPosition = entry.assignedPosition?.trim() || 'Unassigned';
 
             if (!dateMap.has(entry.date)) {
-              const details = dateDetails[entry.date] ?? { filled: 0, unassigned: 0, totalRequested: perDayTotal };
+              const details = dateDetails[entry.date] ?? { filled: 0, unassigned: 0, totalRequested: 0 };
               dateMap.set(entry.date, {
                 date: entry.date,
                 filled: details.filled,
@@ -153,15 +148,18 @@ export function ShiftPositionsModal({
     return employees.sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
   }, [dataByDate]);
 
-  const totalRequestedPerDay = shift?.positions?.reduce((sum, pos) => {
-    const num = parseInt(pos.numberPositions?.toString() || '0', 10);
-    return sum + (isNaN(num) ? 0 : num);
-  }, 0) || 0;
-
-  const numDates = Object.keys(dateDetails).length;
-  const totalSlots = totalRequestedPerDay * numDates;
-  const totalFilled = Object.values(dateDetails).reduce((sum, d) => sum + d.filled, 0);
-  const totalUnassigned = Object.values(dateDetails).reduce((sum, d) => sum + (d.unassigned ?? 0), 0);
+  const totalSlots = Object.values(dateDetails).reduce(
+    (sum, d) => sum + d.totalRequested,
+    0
+  );
+  const totalFilled = Object.values(dateDetails).reduce(
+    (sum, d) => sum + d.filled,
+    0
+  );
+  const totalUnassigned = Object.values(dateDetails).reduce(
+    (sum, d) => sum + (d.unassigned ?? 0),
+    0
+  );
 
   const dateRangeTitle = useMemo(() => {
     if (!dateRangeStart || !dateRangeEnd) return null;
@@ -191,7 +189,7 @@ export function ShiftPositionsModal({
                 )}
               </DialogTitle>
               <div className="text-sm text-gray-600 flex flex-wrap items-center gap-x-3 gap-y-1">
-                {totalRequestedPerDay === 0 ? (
+                {totalSlots === 0 ? (
                   <>
                     <span>No positions configured</span>
                     {totalUnassigned > 0 && (
