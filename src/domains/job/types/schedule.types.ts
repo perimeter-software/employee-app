@@ -21,6 +21,11 @@ export type RosterEntry = {
    * When missing, the entry is treated as approved for backwards compatibility.
    */
   status?: RosterEntryStatus;
+  /**
+   * Optional free-form notes attached to this roster entry
+   * (e.g. manager's reason when a request is rejected).
+   */
+  notes?: string | string[];
 };
 
 export type ScheduleEntry = {
