@@ -940,50 +940,62 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
     // Check which timecards are in submitted payroll batches
     try {
       const PayrollBatches = db.collection('payroll-batches');
-      
-      // Find all submitted payroll batches in the date range
-      const submittedBatches = await PayrollBatches.find({
-        payrollStatus: 'Submitted',
-        $or: [
-          {
-            startDate: { $lte: endDateISO },
-            endDate: { $gte: startDateISO },
+
+      // Use aggregation to get only (timecardId_applicantId) keys from submitted batches
+      // instead of loading 280+ full documents with huge submittedJobTimecards arrays (~295s).
+      const completedKeysResult = await PayrollBatches.aggregate<{ keys: string[] }>([
+        {
+          $match: {
+            payrollStatus: 'Submitted',
+            $or: [
+              { startDate: { $lte: endDateISO }, endDate: { $gte: startDateISO } },
+            ],
           },
-        ],
-      }).toArray();
+        },
+        { $project: { submittedJobTimecards: 1 } },
+        { $unwind: '$submittedJobTimecards' },
+        { $replaceRoot: { newRoot: '$submittedJobTimecards' } },
+        {
+          $match: {
+            applicantId: { $exists: true, $ne: null },
+            $or: [
+              { _id: { $exists: true, $ne: null } },
+              { timecardId: { $exists: true, $ne: null } },
+            ],
+          },
+        },
+        {
+          $project: {
+            key: {
+              $concat: [
+                { $toString: { $ifNull: ['$timecardId', '$_id'] } },
+                '_',
+                { $toString: '$applicantId' },
+              ],
+            },
+          },
+        },
+        { $group: { _id: '$key' } },
+        { $group: { _id: null, keys: { $push: '$_id' } } },
+      ]).toArray();
 
-      // Create a Set of timecardId+applicantId combinations that are completed
-      const completedTimecards = new Set<string>();
-      
-      submittedBatches.forEach((batch) => {
-        if (batch.submittedJobTimecards && Array.isArray(batch.submittedJobTimecards)) {
-          batch.submittedJobTimecards.forEach((timecard) => {
-            if (timecard._id && timecard.applicantId) {
-              // Use timecardId + applicantId as the key
-              const timecardId = timecard._id.toString();
-              const applicantId = timecard.applicantId.toString();
-              const key = `${timecardId}_${applicantId}`;
-              completedTimecards.add(key);
-            }
-          });
-        }
-      });
+      const keysArray = completedKeysResult[0]?.keys;
+      const completedTimecards = new Set<string>(
+        Array.isArray(keysArray) ? keysArray : []
+      );
 
-      // Update status to "completed" for timecards in submitted batches
-      finalPunches.forEach((punch) => {
+      for (const punch of finalPunches) {
         if (punch._id && punch.applicantId) {
           const key = `${punch._id}_${punch.applicantId}`;
           if (completedTimecards.has(key)) {
             punch.status = 'completed';
           }
         }
-      });
-
+      }
       if (process.env.NODE_ENV === 'development') {
         console.log('[Employee Punches API] Payroll batch status check:', {
-          submittedBatchesCount: submittedBatches.length,
           completedTimecardsCount: completedTimecards.size,
-          punchesUpdated: finalPunches.filter(p => p.status === 'completed').length,
+          punchesMarkedCompleted: finalPunches.filter((p) => p.status === 'completed').length,
         });
       }
     } catch (error) {
