@@ -56,6 +56,7 @@ export type EnhancedUser = {
   employmentStatus?: string;
   isApplicantOnly?: boolean; // True if this is an applicant-only session
   isLimitedAccess?: boolean; // True if user/applicant has limited access
+  hideEmployeesDetails?: boolean; // When true (Client only), employee email/phone are hidden
   [key: string]: unknown;
 };
 

@@ -143,6 +143,7 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
       employmentStatus,
       isLimitedAccess,
       isApplicantOnly: false,
+      hideEmployeesDetails: !!userExists?.hideEmployeesDetails,
     };
 
     return NextResponse.json({
