@@ -57,4 +57,6 @@ export interface EmployeePunch extends Record<string, unknown> {
 export interface EmployeeTimeAttendanceTableProps {
   startDate?: string;
   endDate?: string;
+  /** When true (Client with hideEmployeesDetails), contact columns/lines are hidden and a single explanation is shown. */
+  hideEmployeesDetails?: boolean;
 }

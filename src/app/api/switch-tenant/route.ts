@@ -123,6 +123,7 @@ async function switchTenantHandler(request: AuthenticatedRequest) {
         userType: userInNewTenant.userType,
         employeeType: userInNewTenant.employeeType,
         status: userInNewTenant.status,
+        hideEmployeesDetails: !!userInNewTenant.hideEmployeesDetails,
       }
     };
 

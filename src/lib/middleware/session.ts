@@ -212,6 +212,7 @@ export function withEnhancedAuthAPI<T = unknown>(
             userType: parsedUser.userType,
             employeeType: parsedUser.employeeType,
             status: parsedUser.status,
+            hideEmployeesDetails: parsedUser.hideEmployeesDetails,
             tenant: parsedUser.tenant,
             availableTenants: parsedUser.availableTenants,
           } as Auth0SessionUser;
@@ -397,6 +398,7 @@ export function withEnhancedAuthAPI<T = unknown>(
             userType: userExists.userType,
             employeeType: userExists.employeeType,
             status: userExists.status,
+            hideEmployeesDetails: !!userExists.hideEmployeesDetails,
 
             // Tenant data (if available)
             tenant: userMasterRecord?.tenant || undefined,

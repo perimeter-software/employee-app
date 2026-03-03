@@ -27,6 +27,7 @@ export async function checkUserExistsByEmail(
           employeeType: 1,
           status: 1,
           tenant: 1,
+          hideEmployeesDetails: 1,
         },
       }
     );
@@ -42,6 +43,7 @@ export async function checkUserExistsByEmail(
           employeeType: userExists.employeeType,
           status: userExists.status,
           tenant: userExists.tenant,
+          hideEmployeesDetails: !!userExists.hideEmployeesDetails,
         }
       : undefined;
   } catch (e) {

@@ -230,6 +230,18 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
 
     const activeCount = result.length;
 
+    // When client has hideEmployeesDetails, redact employee email and phone (UI shows explanation; no placeholders)
+    const hideDetails = !!user.hideEmployeesDetails;
+    const employees = includeList
+      ? hideDetails
+        ? (result as Array<{ employeeEmail?: string; phoneNumber?: string; [k: string]: unknown }>).map((e) => ({
+            ...e,
+            employeeEmail: '',
+            phoneNumber: '',
+          }))
+        : result
+      : undefined;
+
     // Log result for debugging (only in development)
     if (process.env.NODE_ENV === 'development') {
       console.log('[Active Employee Count API] Result:', {
@@ -239,9 +251,7 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
     }
 
     // Return response - if includeList=true, include employees array
-    const responseData = includeList
-      ? { count: activeCount, employees: result }
-      : { count: activeCount };
+    const responseData = includeList ? { count: activeCount, employees: employees ?? result } : { count: activeCount };
 
     return NextResponse.json(
       {

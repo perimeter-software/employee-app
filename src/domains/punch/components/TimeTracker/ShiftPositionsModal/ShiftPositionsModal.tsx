@@ -46,6 +46,8 @@ interface ShiftPositionsModalProps {
   /** When set, only show positions for dates within this range (ISO strings) */
   dateRangeStart?: string;
   dateRangeEnd?: string;
+  /** When true, hide email column and show a single explanation. */
+  hideContactDetails?: boolean;
 }
 
 type ViewMode = 'by-date' | 'all-employees';
@@ -58,6 +60,7 @@ export function ShiftPositionsModal({
   shiftRoster,
   dateRangeStart,
   dateRangeEnd,
+  hideContactDetails = false,
 }: ShiftPositionsModalProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('by-date');
 
@@ -278,50 +281,54 @@ export function ShiftPositionsModal({
                           <div className="text-sm text-gray-500 italic">No employees scheduled</div>
                         ) : (
                           <table className="w-full">
-                            <thead>
-                              <tr className="text-left">
-                                <th className="text-xs font-semibold text-gray-600 uppercase tracking-wider pb-2">
-                                  Employee Name
-                                </th>
-                                <th className="text-xs font-semibold text-gray-600 uppercase tracking-wider pb-2">
-                                  Email
-                                </th>
-                                <th className="text-xs font-semibold text-gray-600 uppercase tracking-wider pb-2">
-                                  Position
-                                </th>
-                                <th className="text-xs font-semibold text-gray-600 uppercase tracking-wider pb-2">
-                                  Time Slot
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {dateData.employees.map((employee, idx) => (
-                                <tr
-                                  key={`${employee.id}-${idx}`}
-                                  className="border-t border-gray-100 first:border-t-0"
-                                >
-                                  <td className="py-2 pr-4">
-                                    <span className="text-sm font-medium text-gray-900">
-                                      {employee.name}
-                                    </span>
-                                  </td>
-                                  <td className="py-2 pr-4">
-                                    <span className="text-sm text-gray-600 truncate block max-w-[250px]">
-                                      {employee.email}
-                                    </span>
-                                  </td>
-                                  <td className="py-2 pr-4">
-                                    <span className={employee.assignedPosition === 'Unassigned' ? 'text-amber-600 font-medium' : 'text-gray-900'}>
-                                      {employee.assignedPosition}
-                                    </span>
-                                  </td>
-                                  <td className="py-2">
-                                    <span className="text-sm text-gray-900">{employee.timeSlot}</span>
-                                  </td>
+                              <thead>
+                                <tr className="text-left">
+                                  <th className="text-xs font-semibold text-gray-600 uppercase tracking-wider pb-2">
+                                    Employee Name
+                                  </th>
+                                  {!hideContactDetails && (
+                                    <th className="text-xs font-semibold text-gray-600 uppercase tracking-wider pb-2">
+                                      Email
+                                    </th>
+                                  )}
+                                  <th className="text-xs font-semibold text-gray-600 uppercase tracking-wider pb-2">
+                                    Position
+                                  </th>
+                                  <th className="text-xs font-semibold text-gray-600 uppercase tracking-wider pb-2">
+                                    Time Slot
+                                  </th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody>
+                                {dateData.employees.map((employee, idx) => (
+                                  <tr
+                                    key={`${employee.id}-${idx}`}
+                                    className="border-t border-gray-100 first:border-t-0"
+                                  >
+                                    <td className="py-2 pr-4">
+                                      <span className="text-sm font-medium text-gray-900">
+                                        {employee.name}
+                                      </span>
+                                    </td>
+                                    {!hideContactDetails && (
+                                      <td className="py-2 pr-4">
+                                        <span className="text-sm text-gray-600 truncate block max-w-[250px]">
+                                          {employee.email}
+                                        </span>
+                                      </td>
+                                    )}
+                                    <td className="py-2 pr-4">
+                                      <span className={employee.assignedPosition === 'Unassigned' ? 'text-amber-600 font-medium' : 'text-gray-900'}>
+                                        {employee.assignedPosition}
+                                      </span>
+                                    </td>
+                                    <td className="py-2">
+                                      <span className="text-sm text-gray-900">{employee.timeSlot}</span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                         )}
                       </div>
                     ))}
@@ -329,73 +336,77 @@ export function ShiftPositionsModal({
                 ) : (
                   // All Employees View (Flat list)
                   <table className="w-full min-w-[600px] border-collapse">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="border-b border-gray-200 bg-gray-50 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
-                        <th
-                          scope="col"
-                          className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4"
-                        >
-                          Date
-                        </th>
-                        <th
-                          scope="col"
-                          className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4"
-                        >
-                          Employee Name
-                        </th>
-                        <th
-                          scope="col"
-                          className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4"
-                        >
-                          Email
-                        </th>
-                        <th
-                          scope="col"
-                          className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4"
-                        >
-                          Position
-                        </th>
-                        <th
-                          scope="col"
-                          className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4 whitespace-nowrap"
-                        >
-                          Time Slot
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {allEmployees.map((employee, idx) => (
-                        <tr
-                          key={`${employee.id}-${employee.date}-${idx}`}
-                          className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/80 transition-colors"
-                        >
-                          <td className="py-2.5 px-4 whitespace-nowrap">
-                            <span className="text-sm font-medium text-gray-900">
-                              {format(parseISO(employee.date), 'MMM d, yyyy')}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-4">
-                            <span className="text-sm font-medium text-gray-900">
-                              {employee.name}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-4">
-                            <div className="truncate max-w-[250px] text-sm text-gray-600" title={employee.email}>
-                              {employee.email}
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-4">
-                            <span className={employee.assignedPosition === 'Unassigned' ? 'text-sm text-amber-600 font-medium' : 'text-sm text-gray-900'}>
-                              {employee.assignedPosition}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-4 whitespace-nowrap">
-                            <span className="text-sm text-gray-900">{employee.timeSlot}</span>
-                          </td>
+                      <thead className="sticky top-0 z-10">
+                        <tr className="border-b border-gray-200 bg-gray-50 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                          <th
+                            scope="col"
+                            className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4"
+                          >
+                            Date
+                          </th>
+                          <th
+                            scope="col"
+                            className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4"
+                          >
+                            Employee Name
+                          </th>
+                          {!hideContactDetails && (
+                            <th
+                              scope="col"
+                              className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4"
+                            >
+                              Email
+                            </th>
+                          )}
+                          <th
+                            scope="col"
+                            className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4"
+                          >
+                            Position
+                          </th>
+                          <th
+                            scope="col"
+                            className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-3 px-4 whitespace-nowrap"
+                          >
+                            Time Slot
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {allEmployees.map((employee, idx) => (
+                          <tr
+                            key={`${employee.id}-${employee.date}-${idx}`}
+                            className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/80 transition-colors"
+                          >
+                            <td className="py-2.5 px-4 whitespace-nowrap">
+                              <span className="text-sm font-medium text-gray-900">
+                                {format(parseISO(employee.date), 'MMM d, yyyy')}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4">
+                              <span className="text-sm font-medium text-gray-900">
+                                {employee.name}
+                              </span>
+                            </td>
+                            {!hideContactDetails && (
+                              <td className="py-2.5 px-4">
+                                <div className="truncate max-w-[250px] text-sm text-gray-600" title={employee.email}>
+                                  {employee.email}
+                                </div>
+                              </td>
+                            )}
+                            <td className="py-2.5 px-4">
+                              <span className={employee.assignedPosition === 'Unassigned' ? 'text-sm text-amber-600 font-medium' : 'text-sm text-gray-900'}>
+                                {employee.assignedPosition}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 whitespace-nowrap">
+                              <span className="text-sm text-gray-900">{employee.timeSlot}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                 )}
               </div>
             )}
