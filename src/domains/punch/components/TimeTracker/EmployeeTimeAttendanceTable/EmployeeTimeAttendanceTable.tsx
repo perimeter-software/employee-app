@@ -87,6 +87,7 @@ const calculateTotalHours = (timeIn: string, timeOut: string | null) => {
 export function EmployeeTimeAttendanceTable({
   startDate: propStartDate,
   endDate: propEndDate,
+  hideEmployeesDetails = false,
 }: EmployeeTimeAttendanceTableProps) {
   const { weekStartsOn, isLoading: companyLoading } = useCompanyWorkWeek();
   const { data: primaryCompany } = usePrimaryCompany();
@@ -2031,7 +2032,7 @@ export function EmployeeTimeAttendanceTable({
             <div className="font-medium">
               {row.lastName?.trim() || 'N/A'}
             </div>
-            {row.phoneNumber && (
+            {!hideEmployeesDetails && row.phoneNumber && (
               <div className="text-xs text-gray-500">
                 {formatPhoneNumber(row.phoneNumber)}
               </div>
@@ -2066,7 +2067,7 @@ export function EmployeeTimeAttendanceTable({
                 <div className="font-medium">
                   {row.firstName?.trim() || 'N/A'}
                 </div>
-                {row.employeeEmail && (
+                {!hideEmployeesDetails && row.employeeEmail && (
                   <div className="text-xs text-gray-500">{row.employeeEmail}</div>
                 )}
               </div>
@@ -2300,7 +2301,7 @@ export function EmployeeTimeAttendanceTable({
         className: 'w-16 text-center',
       },
     ],
-    [handleOpenPunchModal, getAvatarUrl, isFutureEvent]
+    [handleOpenPunchModal, getAvatarUrl, isFutureEvent, hideEmployeesDetails]
   );
 
   // Show loading state only on initial load (company/jobs loading)
@@ -3245,6 +3246,7 @@ export function EmployeeTimeAttendanceTable({
           // Refetch data after successful update will be handled by queryClient
           // The modal component will handle the refetch
         }}
+        hideContactDetails={hideEmployeesDetails}
       />
 
       {/* Active Employees Modal */}
@@ -3254,6 +3256,7 @@ export function EmployeeTimeAttendanceTable({
         employees={activeClockedInEmployees}
         activeCount={activeCount}
         isLoading={activeEmployeesLoading}
+        hideContactDetails={hideEmployeesDetails}
       />
 
       <ShiftPositionsModal
@@ -3264,6 +3267,7 @@ export function EmployeeTimeAttendanceTable({
         shiftRoster={(currentlySelectedShift?.shiftRoster || []) as (RosterApplicant | Applicant)[]}
         dateRangeStart={dateRange?.startDate}
         dateRangeEnd={dateRange?.endDate}
+        hideContactDetails={hideEmployeesDetails}
       />
 
       {/* Overflow Dropdown - Custom positioned */}

@@ -28,6 +28,8 @@ interface EmployeePunchDetailsModalProps {
   onSuccess?: () => void;
   shift?: Shift; // Optional shift data for validation
   job?: { additionalConfig?: { earlyClockInMinutes?: number } }; // Optional job data for early clock-in config
+  /** When true, hide email/phone and show a single explanation. */
+  hideContactDetails?: boolean;
 }
 
 // Helper to get shift schedule for a specific day
@@ -225,6 +227,7 @@ export function EmployeePunchDetailsModal({
   onSuccess,
   shift,
   job,
+  hideContactDetails = false,
 }: EmployeePunchDetailsModalProps) {
   // ERROR-PROOF: All hooks must be called before any conditional returns
   // This ensures hooks are always called in the same order
@@ -459,16 +462,20 @@ export function EmployeePunchDetailsModal({
 
           {/* Employee Info */}
           <div className="bg-gray-50 rounded-md p-3 space-y-1">
-            <div className="text-sm">
-              <span className="font-medium text-gray-700">Email:</span>{' '}
-              <span className="text-gray-600">{punch.employeeEmail || 'N/A'}</span>
-            </div>
-            <div className="text-sm">
-              <span className="font-medium text-gray-700">Phone:</span>{' '}
-              <span className="text-gray-600">
-                {formatPhoneNumber(punch.phoneNumber)}
-              </span>
-            </div>
+            {!hideContactDetails && (
+              <>
+                <div className="text-sm">
+                  <span className="font-medium text-gray-700">Email:</span>{' '}
+                  <span className="text-gray-600">{punch.employeeEmail || 'N/A'}</span>
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium text-gray-700">Phone:</span>{' '}
+                  <span className="text-gray-600">
+                    {formatPhoneNumber(punch.phoneNumber)}
+                  </span>
+                </div>
+              </>
+            )}
             <div className="text-sm">
               <span className="font-medium text-gray-700">Location:</span>{' '}
               <span className="text-gray-600">{punch.location || punch.jobSite || 'N/A'}</span>

@@ -94,16 +94,27 @@ async function getEmployeesListHandler(request: AuthenticatedRequest) {
         status: 'Employee',
         'venues.venueSlug': { $in: clientOrgSlugs },
       })
-      .project({ _id: 1, firstName: 1, lastName: 1, email: 1 })
+      .project({ _id: 1, firstName: 1, lastName: 1, email: 1, phone: 1 })
       .sort({ firstName: 1, lastName: 1 })
       .toArray();
+
+    const hideDetails = !!user.hideEmployeesDetails;
+    const data = hideDetails
+      ? applicants.map((a) => ({
+          _id: a._id,
+          firstName: a.firstName,
+          lastName: a.lastName,
+          email: '',
+          phone: '',
+        }))
+      : applicants;
 
     return NextResponse.json(
       {
         success: true,
         message: 'Employees list retrieved successfully',
-        count: applicants.length,
-        data: applicants,
+        count: data.length,
+        data,
       },
       { status: 200 }
     );

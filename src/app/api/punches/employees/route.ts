@@ -1003,12 +1003,22 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
       // Don't fail the request if payroll batch check fails
     }
 
+    // When client has hideEmployeesDetails, redact employee email and phone (UI shows explanation; no placeholders)
+    const hideDetails = user.userType === 'Client' && !!user.hideEmployeesDetails;
+    const data = hideDetails
+      ? finalPunches.map((p) => ({
+          ...p,
+          employeeEmail: '',
+          phoneNumber: '',
+        }))
+      : finalPunches;
+
     return NextResponse.json(
       {
         success: true,
         message: 'Employee punches retrieved successfully',
-        count: finalPunches.length,
-        data: finalPunches,
+        count: data.length,
+        data,
       },
       { status: 200 }
     );

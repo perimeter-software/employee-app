@@ -129,9 +129,10 @@ export const TimeTrackerContainer = () => {
     if (auth0Loading || companyLoading || currentUserLoading) {
       return <LoadingState />;
     }
+    const hideEmployeesDetails = !!currentUser?.hideEmployeesDetails;
     return (
       <div className="max-w-6xl mx-auto space-y-6">
-        <EmployeeTimeAttendanceTable />
+        <EmployeeTimeAttendanceTable hideEmployeesDetails={hideEmployeesDetails} />
       </div>
     );
   }
