@@ -149,6 +149,8 @@ type MyRequestRow = {
   timeLabel: string;
    /** Optional notes attached to this request (e.g. rejection reason). */
   notes?: string;
+  /** Employee's call-off reason (when status is 'called_off'). */
+  callOffReason?: string;
   /** Used for table actions column */
   actions?: unknown;
 };
@@ -233,6 +235,8 @@ function buildMyRequests(jobs: GignologyJob[] | undefined, applicantId: string) 
             notes = rawNotes.join('\n\n');
           }
 
+          const callOffReason = (entry as RosterEntry).callOffReason;
+
           rows.push({
             id: `request-${job._id}-${shift.slug}-${dayKey}-${entry.date ?? 'recurring'}-${
               status || 'scheduled'
@@ -249,6 +253,7 @@ function buildMyRequests(jobs: GignologyJob[] | undefined, applicantId: string) 
             windowLabel,
             timeLabel,
             notes,
+            callOffReason,
           });
         }
       }
@@ -304,6 +309,12 @@ function statusBadge(status: MyRequestStatus) {
       return (
         <Badge variant="outline" className="border-gray-300 text-gray-600">
           Cancelled
+        </Badge>
+      );
+    case 'called_off':
+      return (
+        <Badge variant="outline" className="border-amber-400 text-amber-700">
+          Called off
         </Badge>
       );
     default:
@@ -745,7 +756,7 @@ export default function ShiftRequestsPage() {
   const [modalShift, setModalShift] = useState<Shift | null>(null);
 
   const [myRequestsStatusFilter, setMyRequestsStatusFilter] = useState<
-    'all' | 'pending' | 'approved'
+    'all' | 'pending' | 'approved' | 'called_off'
   >('all');
 
   const myRequestsFiltered = useMemo(() => {
@@ -757,7 +768,10 @@ export default function ShiftRequestsPage() {
   const [notesModalRow, setNotesModalRow] = useState<MyRequestRow | null>(null);
 
   const openNotesModal = (row: MyRequestRow) => {
-    if (!row.notes) return;
+    const hasContent =
+      (row.status === 'rejected' && row.notes) ||
+      (row.status === 'called_off' && row.callOffReason);
+    if (!hasContent) return;
     setNotesModalRow(row);
     setNotesModalOpen(true);
   };
@@ -952,6 +966,17 @@ export default function ShiftRequestsPage() {
               onClick={() => openNotesModal(row)}
             >
               View notes
+            </Button>
+          )}
+          {row.status === 'called_off' && row.callOffReason && (
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              className="text-xs"
+              onClick={() => openNotesModal(row)}
+            >
+              View reason
             </Button>
           )}
         </div>
@@ -1187,7 +1212,7 @@ export default function ShiftRequestsPage() {
                     onValueChange={(v) =>
                       v &&
                       setMyRequestsStatusFilter(
-                        v as 'all' | 'pending' | 'approved'
+                        v as 'all' | 'pending' | 'approved' | 'called_off'
                       )
                     }
                     className="flex flex-wrap gap-1"
@@ -1212,6 +1237,13 @@ export default function ShiftRequestsPage() {
                       className="text-xs px-2 py-1 h-7"
                     >
                       Approved
+                    </ToggleGroupItem>
+                    <ToggleGroupItem
+                      value="called_off"
+                      aria-label="Called off"
+                      className="text-xs px-2 py-1 h-7"
+                    >
+                      Called off
                     </ToggleGroupItem>
                   </ToggleGroup>
                 </div>
@@ -1264,9 +1296,15 @@ export default function ShiftRequestsPage() {
       >
         <DialogContent className="max-w-lg max-h-[70vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Manager notes</DialogTitle>
+            <DialogTitle>
+              {notesModalRow?.status === 'called_off'
+                ? 'Call-off reason'
+                : 'Manager notes'}
+            </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              Additional details about why this shift request was rejected.
+              {notesModalRow?.status === 'called_off'
+                ? 'Reason you provided when calling off this shift.'
+                : 'Additional details about why this shift request was rejected.'}
             </DialogDescription>
           </DialogHeader>
           <div className="mt-3 space-y-2">
@@ -1282,7 +1320,9 @@ export default function ShiftRequestsPage() {
               </div>
             )}
             <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 whitespace-pre-wrap">
-              {notesModalRow?.notes || 'No notes provided.'}
+              {notesModalRow?.status === 'called_off'
+                ? (notesModalRow.callOffReason || 'No reason provided.')
+                : (notesModalRow?.notes || 'No notes provided.')}
             </div>
           </div>
         </DialogContent>

@@ -4,7 +4,8 @@ export type RosterEntryStatus =
   | 'pending'
   | 'approved'
   | 'rejected'
-  | 'cancelled';
+  | 'cancelled'
+  | 'called_off';
 
 export type RosterEntry = {
   employeeId: string;
@@ -26,6 +27,10 @@ export type RosterEntry = {
    * (e.g. manager's reason when a request is rejected).
    */
   notes?: string | string[];
+  /**
+   * Employee's reason for calling off the shift (when status is 'called_off').
+   */
+  callOffReason?: string;
 };
 
 export type ScheduleEntry = {

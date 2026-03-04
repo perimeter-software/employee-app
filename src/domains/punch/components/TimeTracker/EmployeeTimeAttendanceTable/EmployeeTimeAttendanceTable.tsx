@@ -53,6 +53,7 @@ import { ActiveEmployeesModal } from '../ActiveEmployeesModal';
 import { ShiftPositionsModal } from '../ShiftPositionsModal';
 import { formatPhoneNumber } from '@/lib/utils';
 import { useActiveEmployeeCount, useActiveEmployees, useEmployeePunches } from '@/domains/punch/hooks';
+import { isApprovedOrLegacyRosterEntry } from '@/domains/punch/utils/shift-job-utils';
 import type {
   EmployeePunch,
   EmployeeTimeAttendanceTableProps,
@@ -1760,8 +1761,7 @@ export function EmployeeTimeAttendanceTable({
       daySchedule.roster.forEach((entry) => {
         const dateKey = entry.date;
         if (!dateKey || !isDateInRange(dateKey)) return;
-        const status = (entry as { status?: string }).status;
-        if (status === 'pending') return;
+        if (!isApprovedOrLegacyRosterEntry(entry as { status?: string })) return;
 
         if (dateTotalRequested[dateKey] == null) {
           const totalForDate = (currentlySelectedShift.positions ?? []).reduce(
@@ -1860,8 +1860,7 @@ export function EmployeeTimeAttendanceTable({
       const daySchedule = currentlySelectedShift.defaultSchedule[dayOfWeek];
       if (daySchedule?.roster?.length > 0) {
         daySchedule.roster.forEach((entry) => {
-          const status = (entry as { status?: string }).status;
-          if (status === 'pending') return;
+          if (!isApprovedOrLegacyRosterEntry(entry as { status?: string })) return;
           const dateKey = entry.date;
           if (dateKey && entry.employeeId && isDateInRange(dateKey)) {
             if (!dateDetails[dateKey]) {

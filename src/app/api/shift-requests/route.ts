@@ -6,6 +6,7 @@ import type { AuthenticatedRequest } from '@/domains/user/types';
 import { findJobByjobId } from '@/domains/user/utils/mongo-user-utils';
 import type { RosterEntry, RosterEntryStatus } from '@/domains/job/types/schedule.types';
 import { emailService } from '@/lib/services/email-service';
+import { getShiftStartOnDate } from '@/domains/punch/utils/shift-job-utils';
 
 function escapeHtml(s: string): string {
   return s
@@ -40,6 +41,15 @@ type DeleteShiftRequestBody = {
   dayKey: DayKey;
   /** Specific date to cancel (YYYY-MM-DD) or null for recurring entry */
   date?: string | null;
+};
+
+type CallOffRequestBody = {
+  jobId: string;
+  shiftSlug: string;
+  date: string;
+  dayKey: DayKey;
+  /** Required reason for the call off (stored in roster entry callOffReason). */
+  reason: string;
 };
 
 const DAY_KEYS: DayKey[] = [
@@ -331,13 +341,12 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
         [firstName, lastName].filter(Boolean).join(' ') ||
         'Employee';
       const shiftName = (shift as { shiftName?: string }).shiftName || shiftSlug;
+      // Use body dates as-is (YYYY-MM-DD), no timezone conversion
       const requestedDatesList = dateRequests.map((r) => r.date);
       const dateLabels =
         (requestedDatesList?.length ?? 0) > 0
-          ? (requestedDatesList || [])
-              .slice(0, 10)
-              .map((d) => new Date(d).toLocaleDateString('en-US', { dateStyle: 'medium' }))
-              .join(', ') + ((requestedDatesList?.length ?? 0) > 10 ? ` and ${(requestedDatesList?.length ?? 0) - 10} more` : '')
+          ? (requestedDatesList || []).slice(0, 10).join(', ') +
+            ((requestedDatesList?.length ?? 0) > 10 ? ` and ${(requestedDatesList?.length ?? 0) - 10} more` : '')
           : '';
       const requestedSummary = dateLabels || 'See schedule';
       const subject = `Shift request: ${employeeName} – ${job.title || 'Job'}`;
@@ -402,6 +411,317 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
 }
 
 export const POST = withEnhancedAuthAPI(createShiftRequestsHandler, {
+  requireDatabaseUser: true,
+  requireTenant: true,
+});
+
+function callOffBeforeToMinutes(
+  callOffBefore: number,
+  unit: string
+): number {
+  if (unit === 'days') return callOffBefore * 1440;
+  if (unit === 'hours') return callOffBefore * 60;
+  return callOffBefore;
+}
+
+// PATCH /api/shift-requests
+// Call off an approved date-specific shift for the current employee.
+// Only date-specific roster entries are supported (recurring/legacy not supported).
+async function callOffShiftHandler(request: AuthenticatedRequest) {
+  try {
+    const user = request.user;
+
+    if (user.userType === 'Client') {
+      return NextResponse.json(
+        {
+          error: 'unauthorized',
+          message: 'Access denied. Employee account required.',
+        },
+        { status: 403 }
+      );
+    }
+
+    const applicantId = getApplicantIdFromUser(user);
+    if (!applicantId) {
+      return NextResponse.json(
+        {
+          error: 'missing-identifiers',
+          message: 'Missing applicant id for call off.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const body = (await request.json()) as CallOffRequestBody;
+    const { jobId, shiftSlug, date, dayKey, reason } = body;
+
+    if (!jobId || !shiftSlug || !date || !dayKey) {
+      return NextResponse.json(
+        {
+          error: 'missing-parameters',
+          message: 'jobId, shiftSlug, date and dayKey are required.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const reasonTrimmed = typeof reason === 'string' ? reason.trim() : '';
+    if (!reasonTrimmed) {
+      return NextResponse.json(
+        {
+          error: 'missing-reason',
+          message: 'A reason for the call off is required.',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!DAY_KEYS.includes(dayKey)) {
+      return NextResponse.json(
+        {
+          error: 'invalid-day',
+          message: 'Invalid day of week.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const { db } = await getTenantAwareConnection(request);
+
+    const job = await findJobByjobId(db, jobId);
+    if (!job) {
+      return NextResponse.json(
+        { error: 'job-not-found', message: 'Job not found.' },
+        { status: 404 }
+      );
+    }
+
+    const shift = (job.shifts || []).find((s) => s.slug === shiftSlug);
+    if (!shift) {
+      return NextResponse.json(
+        { error: 'shift-not-found', message: 'Shift not found.' },
+        { status: 404 }
+      );
+    }
+
+    const additionalConfig = job.additionalConfig as
+      | { allowCallOff?: boolean; callOffBefore?: number; callOffBeforeUnit?: string }
+      | undefined;
+    if (!additionalConfig?.allowCallOff) {
+      return NextResponse.json(
+        {
+          error: 'call-off-not-allowed',
+          message: 'Call off is not allowed for this job.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const schedule = shift.defaultSchedule?.[dayKey];
+    const roster = (schedule?.roster ?? []) as Array<
+      string | (RosterEntry & { status?: RosterEntryStatus })
+    >;
+
+    const entry = roster.find((e) => {
+      if (typeof e === 'string') return false;
+      return e.employeeId === applicantId && e.date === date;
+    }) as (RosterEntry & { status?: RosterEntryStatus }) | undefined;
+
+    if (!entry || typeof entry === 'string') {
+      return NextResponse.json(
+        {
+          error: 'roster-entry-not-found',
+          message: 'No date-specific roster entry found for this shift and date.',
+        },
+        { status: 404 }
+      );
+    }
+
+    if (!entry.date) {
+      return NextResponse.json(
+        {
+          error: 'recurring-not-supported',
+          message: 'Call off is only supported for date-specific shifts.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const status = entry.status;
+    if (status === 'called_off' || status === 'cancelled') {
+      return NextResponse.json(
+        {
+          error: 'already-called-off',
+          message: 'This shift is already called off or cancelled.',
+        },
+        { status: 400 }
+      );
+    }
+    if (status !== 'approved' && status !== undefined) {
+      return NextResponse.json(
+        {
+          error: 'invalid-status',
+          message: 'Only approved shifts can be called off.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const callOffBefore = Number(additionalConfig?.callOffBefore) || 0;
+    const callOffBeforeUnit =
+      additionalConfig?.callOffBeforeUnit ?? 'minutes';
+    const requiredMinutesBefore =
+      callOffBefore > 0
+        ? callOffBeforeToMinutes(callOffBefore, callOffBeforeUnit)
+        : 0;
+
+    if (requiredMinutesBefore > 0 && schedule?.start) {
+      const shiftStart = getShiftStartOnDate(schedule.start, date);
+      const now = new Date();
+      if (!shiftStart) {
+        return NextResponse.json(
+          {
+            error: 'invalid-schedule',
+            message: 'Invalid shift start time.',
+          },
+          { status: 400 }
+        );
+      }
+      const minutesUntilStart =
+        (shiftStart.getTime() - now.getTime()) / (60 * 1000);
+      if (minutesUntilStart < requiredMinutesBefore) {
+        return NextResponse.json(
+          {
+            error: 'too-late-to-call-off',
+            message: `Call off must be at least ${callOffBefore} ${callOffBeforeUnit} before shift start.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const statusPath = `shifts.$[shift].defaultSchedule.${dayKey}.roster.$[entry].status`;
+    const callOffReasonPath = `shifts.$[shift].defaultSchedule.${dayKey}.roster.$[entry].callOffReason`;
+    const updateResult = await db.collection('jobs').updateOne(
+      { _id: new ObjectId(jobId) },
+      {
+        $set: {
+          [statusPath]: 'called_off',
+          [callOffReasonPath]: reasonTrimmed,
+        },
+      },
+      {
+        arrayFilters: [
+          { 'shift.slug': shiftSlug },
+          { 'entry.employeeId': applicantId, 'entry.date': date },
+        ],
+      }
+    );
+
+    if (!updateResult.acknowledged) {
+      return NextResponse.json(
+        {
+          error: 'update-failed',
+          message: 'Failed to call off shift.',
+        },
+        { status: 500 }
+      );
+    }
+
+    if (updateResult.modifiedCount === 0) {
+      return NextResponse.json(
+        {
+          error: 'update-failed',
+          message: 'No matching roster entry found to update.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Notify event manager(s) by email (same recipients as shift request notifications)
+    type ManagerRecipient = {
+      userId?: string;
+      applicantId?: string;
+      firstName?: string;
+      lastName?: string;
+      fullName?: string;
+      email?: string;
+    };
+    const configRecipients = (job?.additionalConfig as { eventManagerNotificationRecipients?: ManagerRecipient[] })
+      ?.eventManagerNotificationRecipients;
+    if (Array.isArray(configRecipients) && configRecipients.length > 0) {
+      const firstName = user.given_name ?? user.firstName ?? '';
+      const lastName = user.family_name ?? user.lastName ?? '';
+      const employeeName =
+        (user.name as string | undefined)?.trim() ||
+        [firstName, lastName].filter(Boolean).join(' ') ||
+        'Employee';
+      const shiftName = (shift as { shiftName?: string }).shiftName || shiftSlug;
+      // Use body date and dayKey as-is, no timezone conversion
+      const dayLabel = dayKey.charAt(0).toUpperCase() + dayKey.slice(1).toLowerCase();
+      const subject = `Shift call-off: ${employeeName} – ${job.title || 'Job'}`;
+      const text = [
+        'An employee has called off a shift.',
+        '',
+        `Employee: ${employeeName}`,
+        `Job: ${job.title || 'N/A'}`,
+        `Shift: ${shiftName}`,
+        `Day: ${dayLabel}`,
+        `Date: ${date}`,
+        `Reason: ${reasonTrimmed}`,
+        '',
+        'This is an automated notification from the Employee App.',
+      ].join('\n');
+      const html = [
+        '<div style="font-family:\'Segoe UI\',Tahoma,Geneva,Verdana,sans-serif; max-width:560px; margin:0 auto; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;">',
+        '<div style="background:#b45309; color:#fff; padding:14px 20px; font-size:18px; font-weight:600;">Shift call-off</div>',
+        '<div style="padding:20px;">',
+        '<p style="margin:0 0 16px; color:#374151; font-size:14px;">An employee has called off a shift.</p>',
+        '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:20px; border:1px solid #e5e7eb; border-radius:6px;">',
+        '<tr style="background:#f9fafb;"><td colspan="2" style="padding:10px 14px; font-weight:600; color:#374151; border-bottom:1px solid #e5e7eb;">Call-off details</td></tr>',
+        `<tr><td style="padding:10px 14px; color:#6b7280; width:140px; border-bottom:1px solid #f3f4f6;">Employee</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">${escapeHtml(employeeName)}</td></tr>`,
+        `<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">Job</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">${escapeHtml(job.title || 'N/A')}</td></tr>`,
+        `<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">Shift</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">${escapeHtml(shiftName)}</td></tr>`,
+        `<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">Day</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">${escapeHtml(dayLabel)}</td></tr>`,
+        `<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">Date</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">${escapeHtml(date)}</td></tr>`,
+        `<tr><td style="padding:10px 14px; color:#6b7280;">Reason</td><td style="padding:10px 14px; color:#111827;">${escapeHtml(reasonTrimmed)}</td></tr>`,
+        '</table>',
+        '</div>',
+        '<div style="padding:12px 20px; background:#f9fafb; border-top:1px solid #e5e7eb; font-size:12px; color:#6b7280;">This is an automated notification from the Employee App.</div>',
+        '</div>',
+      ].join('');
+      for (const r of configRecipients) {
+        const to = r?.email?.trim();
+        if (!to) continue;
+        try {
+          await emailService.sendEmail({ to, subject, html, text });
+        } catch (emailErr) {
+          console.error('[Shift Requests API] Error sending call-off email to', to, emailErr);
+        }
+      }
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Shift called off successfully.',
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('[Shift Requests API] PATCH error:', error);
+    return NextResponse.json(
+      {
+        error: 'internal-error',
+        message: 'Internal server error',
+        details: (error as Error).message,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export const PATCH = withEnhancedAuthAPI(callOffShiftHandler, {
   requireDatabaseUser: true,
   requireTenant: true,
 });

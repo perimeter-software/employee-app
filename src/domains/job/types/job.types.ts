@@ -42,6 +42,9 @@ export type JobShiftSettings = {
     allowNegativeLeave: boolean;
     negativeHoursLimit: number;
     autoClockoutShiftEnd: boolean;
+    allowCallOff?: boolean;
+    callOffBefore?: number;
+    callOffBeforeUnit?: 'minutes' | 'hours' | 'days';
   };
   defaultSchedule: DefaultSchedule;
   jobShiftRoster: RosterApplicant[];
@@ -59,6 +62,9 @@ export type AdditionalConfiguration = {
   allowNegativeLeave: boolean;
   negativeHoursLimit: number;
   autoClockoutShiftEnd: boolean;
+  allowCallOff?: boolean;
+  callOffBefore?: number;
+  callOffBeforeUnit?: 'minutes' | 'hours' | 'days';
 };
 
 export type GignologyJob = {

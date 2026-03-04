@@ -18,6 +18,7 @@ import {
   getUserShiftForToday,
   handleShiftJobClockInTime,
   combineCurrentDateWithTimeFromDateObject,
+  isApprovedOrLegacyRosterEntry,
 } from '@/domains/punch/utils/shift-job-utils';
 import { PunchWithJobInfo } from '@/domains/punch/types';
 
@@ -211,7 +212,7 @@ export function JobShiftSelector({
                 for (const entry of roster) {
                   if (entry && typeof entry === 'object' && 'employeeId' in entry && 'date' in entry) {
                     const e = entry as { employeeId: string; date: string; status?: string };
-                    if (e.status === 'pending') continue;
+                    if (!isApprovedOrLegacyRosterEntry(e)) continue;
                     const empId = e.employeeId;
                     const dateStr = e.date;
                     if (empId === applicantId && dateStr) {
@@ -350,7 +351,7 @@ export function JobShiftSelector({
             for (const entry of roster) {
               if (entry && typeof entry === 'object' && 'employeeId' in entry && 'date' in entry) {
                 const e = entry as { employeeId: string; date: string; status?: string };
-                if (e.status === 'pending') continue;
+                if (!isApprovedOrLegacyRosterEntry(e)) continue;
                 const empId = e.employeeId;
                 const dateStr = e.date;
                 if (empId === applicantId && dateStr) {
