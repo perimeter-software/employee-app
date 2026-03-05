@@ -11,6 +11,7 @@ import {
   getClientOrgSlugsForInvoices,
   requireClientUser,
 } from '../lib/client-orgs';
+import { hideInvoiceIfNoPOFilter } from '../lib/invoice-filters';
 
 async function reportHandler(request: AuthenticatedRequest) {
   if (!requireClientUser(request)) {
@@ -66,6 +67,7 @@ async function reportHandler(request: AuthenticatedRequest) {
     venueSlug: { $in: venueSlugs },
     startDate: { $lte: endDate },
     endDate: { $gte: startDate },
+    ...hideInvoiceIfNoPOFilter(),
   };
 
   const total = await db.collection('invoice-batches').countDocuments(filter);
