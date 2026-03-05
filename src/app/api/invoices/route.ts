@@ -13,6 +13,7 @@ import {
   getClientOrgSlugsForInvoices,
   requireClientUser,
 } from './lib/client-orgs';
+import { hideInvoiceIfNoPOFilter } from './lib/invoice-filters';
 
 async function getInvoicesHandler(request: AuthenticatedRequest) {
   if (!requireClientUser(request)) {
@@ -52,6 +53,7 @@ async function getInvoicesHandler(request: AuthenticatedRequest) {
 
   const filter: Record<string, unknown> = {
     venueSlug: { $in: [...clientOrgSlugs] },
+    ...hideInvoiceIfNoPOFilter(),
   };
   // Period: filter by pay period (invoice startDate/endDate) overlapping the selected period (same as sp1-api/stadium-people).
   if (startDateParam && endDateParam) {
