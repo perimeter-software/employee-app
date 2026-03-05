@@ -42,6 +42,7 @@ export type JobShiftSettings = {
     allowNegativeLeave: boolean;
     negativeHoursLimit: number;
     autoClockoutShiftEnd: boolean;
+    autoAddWaitlistedStaff: boolean;
     allowCallOff?: boolean;
     callOffBefore?: number;
     callOffBeforeUnit?: 'minutes' | 'hours' | 'days';
@@ -62,6 +63,7 @@ export type AdditionalConfiguration = {
   allowNegativeLeave: boolean;
   negativeHoursLimit: number;
   autoClockoutShiftEnd: boolean;
+  autoAddWaitlistedStaff: boolean;
   allowCallOff?: boolean;
   callOffBefore?: number;
   callOffBeforeUnit?: 'minutes' | 'hours' | 'days';

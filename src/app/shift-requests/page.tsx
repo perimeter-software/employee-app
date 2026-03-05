@@ -328,7 +328,7 @@ type RequestModalProps = {
   job: GignologyJob | null;
   shift: Shift | null;
   applicantId: string | undefined;
-  onSubmit: (args: { dates: string[]; recurringDays: DayKey[] }) => Promise<void>;
+  onSubmit: (args: { dates: string[]; positionName?: string }) => Promise<void>;
 };
 
 const RequestShiftModal: React.FC<RequestModalProps> = ({
@@ -340,7 +340,7 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
   onSubmit,
 }) => {
   const [dates, setDates] = useState<string[]>([]);
-  const [recurringDays, setRecurringDays] = useState<DayKey[]>([]);
+  const [selectedPosition, setSelectedPosition] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [currentWeekStartMs, setCurrentWeekStartMs] = useState<number>(0);
 
@@ -462,7 +462,7 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
   useEffect(() => {
     if (!open) return;
     setDates([]);
-    setRecurringDays([]);
+    setSelectedPosition(null);
   }, [open, job?._id, shift?.slug]);
 
   // Single week to display: use data from full grid or empty row for that week.
@@ -504,19 +504,29 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
 
   const handleSubmit = async () => {
     if (dates.length === 0) return;
+    const hasPositions = Array.isArray(shift?.positions) && shift.positions.length > 0;
+    if (hasPositions && !selectedPosition) {
+      toast.error('Please select a position.');
+      return;
+    }
 
     setSubmitting(true);
     try {
-      await onSubmit({ dates, recurringDays });
+      await onSubmit({
+        dates,
+        positionName: selectedPosition ?? undefined,
+      });
       setDates([]);
-      setRecurringDays([]);
+      setSelectedPosition(null);
       onOpenChange(false);
     } finally {
       setSubmitting(false);
     }
   };
 
+  const hasPositions = Array.isArray(shift?.positions) && shift.positions.length > 0;
   const hasAnySelection = dates.length > 0;
+  const canSubmit = hasAnySelection && (!hasPositions || !!selectedPosition);
 
   if (!job || !shift) return null;
 
@@ -547,6 +557,27 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
             You will be notified if you are added to this shift. You may not work
             this shift unless you are notified.
           </div>
+
+          {Array.isArray(shift.positions) && shift.positions.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Position</label>
+              <Select
+                value={selectedPosition ?? ''}
+                onValueChange={(v) => setSelectedPosition(v === '' ? null : v)}
+              >
+                <SelectTrigger className="w-full max-w-xs">
+                  <SelectValue placeholder="Select position" />
+                </SelectTrigger>
+                <SelectContent>
+                  {shift.positions.map((p) => (
+                    <SelectItem key={p.positionName} value={p.positionName}>
+                      {p.positionName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {minSelectable && shiftEnd && (
             <div className="space-y-3">
@@ -673,7 +704,7 @@ const RequestShiftModal: React.FC<RequestModalProps> = ({
             <Button
               type="button"
               onClick={handleSubmit}
-              disabled={!hasAnySelection || submitting}
+              disabled={!canSubmit || submitting}
             >
               {submitting ? 'Submitting...' : 'Submit request'}
             </Button>
@@ -786,7 +817,7 @@ export default function ShiftRequestsPage() {
 
   const handleSubmitRequests = async (args: {
     dates: string[];
-    recurringDays: DayKey[];
+    positionName?: string;
   }) => {
     if (!modalJob || !modalShift) return;
     // Send date + dayKey from client so the API uses correct day (no server timezone guess).
@@ -798,7 +829,7 @@ export default function ShiftRequestsPage() {
       jobId: modalJob._id,
       shiftSlug: modalShift.slug,
       dateRequests,
-      recurringDays: args.recurringDays,
+      ...(args.positionName ? { positionName: args.positionName } : {}),
     };
 
     const loadingToastId = toast.loading('Submitting shift request...', {

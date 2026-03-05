@@ -15,8 +15,10 @@ export type RosterEntry = {
    * across the shift's date range.
    */
   date?: string;
-  /** Position is filled when assigned to someone (see stadium-people WeeklyScheduleConfigurationModal) */
+  /** Position assigned when approved; used for capacity/filled count. */
   assignedPosition?: string;
+  /** Position requested when status is pending; not used for capacity until approved. */
+  requestedPosition?: string;
   /**
    * Optional workflow status for shift requests.
    * When missing, the entry is treated as approved for backwards compatibility.
