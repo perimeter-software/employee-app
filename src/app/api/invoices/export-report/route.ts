@@ -11,6 +11,7 @@ import {
   getClientOrgSlugsForInvoices,
   requireClientUser,
 } from '../lib/client-orgs';
+import { hideInvoiceIfNoPOFilter } from '../lib/invoice-filters';
 import * as XLSX from 'xlsx';
 
 async function exportReportHandler(request: AuthenticatedRequest) {
@@ -68,6 +69,7 @@ async function exportReportHandler(request: AuthenticatedRequest) {
     venueSlug: { $in: venueSlugs },
     startDate: { $lte: endDate },
     endDate: { $gte: startDate },
+    ...hideInvoiceIfNoPOFilter(),
   };
 
   const invoices = await db
