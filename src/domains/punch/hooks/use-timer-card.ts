@@ -20,6 +20,7 @@ import {
   getCalculatedTimeIn,
   combineCurrentDateWithTimeFromDateObject,
   handleShiftJobClockInTime,
+  isApprovedOrLegacyRosterEntry,
 } from '@/domains/punch/utils/shift-job-utils';
 
 interface UseTimerCardProps {
@@ -174,8 +175,8 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
           for (const entry of roster) {
             if (entry && typeof entry === 'object' && 'employeeId' in entry && 'date' in entry) {
               const e = entry as { employeeId: string; date: string; status?: string };
-              // Exclude pending roster entries so main panel only shows shifts user is approved for
-              if (e.status === 'pending') continue;
+              // Exclude pending, rejected, cancelled, called_off — only count approved or legacy
+              if (!isApprovedOrLegacyRosterEntry(e)) continue;
               if (e.employeeId === applicantId && e.date) {
                 const rosterDay = startOfDay(parseISO(e.date));
                 if (isAfter(rosterDay, todayStart)) return true;

@@ -1,14 +1,15 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Table } from '@/components/ui/Table';
 import { TableColumn } from '@/components/ui/Table/types';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ClockInValidationModal } from '../ClockInValidationModal';
+import { CallOffConfirmModal } from '../CallOffConfirmModal';
 import { Clock, MapPin } from 'lucide-react';
 
 // Import your existing hook and utilities
-import { useTimerCard } from '@/domains/punch/hooks';
+import { useTimerCard, useCallOffShift } from '@/domains/punch/hooks';
 import { useFindPunches } from '@/domains/punch/hooks';
 import type { PunchWithJobInfo } from '@/domains/punch/types';
 import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
@@ -18,6 +19,7 @@ import {
   handleShiftJobClockInTime,
   isJobGeoFenced,
   isUserInRoster,
+  canCallOffShift,
 } from '@/domains/punch/utils/shift-job-utils';
 
 interface ShiftRowData extends Record<string, unknown> {
@@ -46,6 +48,11 @@ interface ShiftRowData extends Record<string, unknown> {
   shiftHasEnded: boolean;
   isSelectedShift: boolean;
   isCurrentOpenPunchShift: boolean;
+  dateYyyyMmDd?: string;
+  dayKey?: string;
+  canCallOff?: boolean;
+  /** Shown on hover when Call off button is disabled */
+  callOffDisabledReason?: string;
 }
 
 interface ShiftsTableProps {
@@ -60,6 +67,8 @@ interface ShiftsTableProps {
   };
 }
 
+const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+
 // Helper functions to replace date-fns
 const formatDate = (date: Date, format: string) => {
   if (format === 'MM/dd/yyyy') {
@@ -67,6 +76,9 @@ const formatDate = (date: Date, format: string) => {
       .getDate()
       .toString()
       .padStart(2, '0')}/${date.getFullYear()}`;
+  }
+  if (format === 'yyyy-MM-dd') {
+    return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
   }
   if (format === 'hh:mm a') {
     return date.toLocaleTimeString('en-US', {
@@ -118,6 +130,26 @@ export function ShiftsTable({
     cancelClockIn,
     performClockIn,
   } = useTimerCard({ userData, openPunches });
+
+  const callOffMutation = useCallOffShift(userData._id || userData.applicantId || '');
+  const [callOffConfirmRow, setCallOffConfirmRow] = useState<ShiftRowData | null>(null);
+
+  const confirmCallOff = useCallback(
+    (reason: string) => {
+      if (!callOffConfirmRow?.dateYyyyMmDd || !callOffConfirmRow?.dayKey || !reason.trim()) return;
+      callOffMutation.mutate(
+        {
+          jobId: callOffConfirmRow.jobId,
+          shiftSlug: callOffConfirmRow.shift.slug,
+          date: callOffConfirmRow.dateYyyyMmDd,
+          dayKey: callOffConfirmRow.dayKey,
+          reason: reason.trim(),
+        },
+        { onSettled: () => setCallOffConfirmRow(null) }
+      );
+    },
+    [callOffConfirmRow, callOffMutation]
+  );
 
   // Get job IDs for the user
   const jobIds = useMemo(() => {
@@ -471,6 +503,20 @@ export function ShiftsTable({
             (isOvernightShift && isInDayRoster); // Show overnight shifts from previous day
 
           if (shouldShowRow) {
+            const dateYyyyMmDd = formatDate(currentDate, 'yyyy-MM-dd');
+            const dayKey = DAY_KEYS[currentDate.getDay()];
+            const callOffCheck = canCallOffShift(job, shift, dateYyyyMmDd, dayKey);
+            const canCallOff =
+              todayPunches.length === 0 &&
+              callOffCheck.allowed &&
+              Boolean(job.additionalConfig?.allowCallOff);
+            const callOffDisabledReason =
+              job.additionalConfig?.allowCallOff && !canCallOff
+                ? todayPunches.length > 0
+                  ? 'You have already clocked in for this shift.'
+                  : callOffCheck.reason ?? 'Call off is not available.'
+                : undefined;
+
             rows.push({
               date: formatDate(currentDate, 'MM/dd/yyyy'),
               dateObj: new Date(currentDate),
@@ -492,6 +538,10 @@ export function ShiftsTable({
               shiftHasEnded,
               isSelectedShift,
               isCurrentOpenPunchShift: hasActivePunchForThisShift,
+              dateYyyyMmDd,
+              dayKey,
+              canCallOff,
+              callOffDisabledReason,
             } as ShiftRowData & {
               isSelectedShift: boolean;
               isCurrentOpenPunchShift: boolean;
@@ -636,9 +686,21 @@ export function ShiftsTable({
         render: (value, row) => {
           const isDisabled = loading;
           const shiftEnded = row.shiftHasEnded;
+          const isCallOffLoading = callOffMutation.isPending;
+          const canCallOff = Boolean(
+            row.canCallOff &&
+              row.dateYyyyMmDd &&
+              row.dayKey &&
+              row.punches.length === 0
+          );
+
+          const openCallOffConfirm = () => {
+            if (!row.dateYyyyMmDd || !row.dayKey) return;
+            setCallOffConfirmRow(row);
+          };
 
           return (
-            <div className="flex space-x-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 size="sm"
                 variant="outline"
@@ -665,12 +727,28 @@ export function ShiftsTable({
                   'Clock Out'
                 )}
               </Button>
+              {row.job?.additionalConfig?.allowCallOff === true && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={openCallOffConfirm}
+                  disabled={isCallOffLoading || !canCallOff}
+                  title={!canCallOff ? row.callOffDisabledReason : undefined}
+                  className="border-amber-500 text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+                >
+                  {isCallOffLoading ? (
+                    <Clock className="h-3 w-3 animate-spin" />
+                  ) : (
+                    'Call off'
+                  )}
+                </Button>
+              )}
             </div>
           );
         },
       },
     ],
-    [loading, handleShiftClockIn, handleShiftClockOut]
+    [loading, handleShiftClockIn, handleShiftClockOut, callOffMutation.isPending]
   );
 
   // Show loading state while fetching punches
@@ -763,6 +841,22 @@ export function ShiftsTable({
         title="Clock-In Confirmation"
         confirmText="Proceed with Clock-In"
         cancelText="Cancel"
+      />
+
+      <CallOffConfirmModal
+        isOpen={!!callOffConfirmRow}
+        onClose={() => setCallOffConfirmRow(null)}
+        onConfirm={confirmCallOff}
+        loading={callOffMutation.isPending}
+        shiftInfo={
+          callOffConfirmRow
+            ? {
+                date: callOffConfirmRow.date,
+                jobTitle: callOffConfirmRow.jobTitle,
+                shiftName: callOffConfirmRow.shiftName,
+              }
+            : null
+        }
       />
 
       <Table

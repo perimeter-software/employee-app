@@ -10,6 +10,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import type { Shift } from '@/domains/job/types/job.types';
 import type { RosterApplicant, RosterEntry } from '@/domains/job/types/schedule.types';
 import type { Applicant } from '@/domains/user/types/applicant.types';
+import { isApprovedOrLegacyRosterEntry } from '@/domains/punch/utils/shift-job-utils';
 
 /** Parse a time string (ISO, HH:mm, or HH:mm:ss) and format as US human-readable (e.g. "9:00 AM") */
 function formatTimeSlotPart(timeStr: string): string {
@@ -102,7 +103,7 @@ export function ShiftPositionsModal({
         const timeSlot = formatTimeSlot(daySchedule.start || '', daySchedule.end || '');
 
         daySchedule.roster.forEach((entry: RosterEntry) => {
-          if (entry.status === 'pending') return;
+          if (!isApprovedOrLegacyRosterEntry(entry)) return;
           if (entry.date && entry.employeeId && isDateInRange(entry.date)) {
             const employee = employeeMap.get(entry.employeeId);
             const employeeName = employee

@@ -5,6 +5,16 @@ import { getUserTimeZone } from '@/lib/utils'; // ✅ Updated import path
 import { Punch, PunchDetail } from '@/domains/punch'; // ✅ Add missing imports
 import type { RosterEntry } from '@/domains/job/types/schedule.types';
 
+/**
+ * True only when the roster entry should be counted as "scheduled" / "in roster".
+ * Excludes pending, rejected, cancelled, and called_off.
+ */
+export function isApprovedOrLegacyRosterEntry(entry: {
+  status?: string;
+}): boolean {
+  return entry.status === undefined || entry.status === 'approved';
+}
+
 // Utility function to check if user is in roster (supports both old string[] and new RosterEntry[] formats)
 export const isUserInRoster = (
   roster: string[] | RosterEntry[] | undefined,
@@ -28,11 +38,11 @@ export const isUserInRoster = (
   }
 
   // Handle new format (array of objects with employeeId, date, status)
-  // Only treat as "in roster" when status is approved or legacy (undefined). Exclude pending so
-  // time and attendance does not show shifts that are only requested (pending).
+  // Only treat as "in roster" when status is approved or legacy (undefined). Exclude pending,
+  // rejected, cancelled, and called_off (they fail the check below).
   const rosterEntries = roster as RosterEntry[];
   const isApprovedOrLegacy = (entry: RosterEntry) =>
-    entry.status === undefined || entry.status === 'approved';
+    isApprovedOrLegacyRosterEntry(entry);
 
   if (!targetDate) {
     // If no target date provided, check if user is in roster for any date
@@ -111,6 +121,84 @@ export const doesJobAllowManualEdits = (job: GignologyJob): boolean => {
   }
   return job?.additionalConfig?.allowManualPunches || false; // ✅ Added null safety
 };
+
+/** Minutes before shift start that call-off is allowed. Returns 0 if call-off not allowed or no limit. */
+export function callOffBeforeToMinutes(job: GignologyJob): number {
+  const ac = job?.additionalConfig;
+  if (!ac?.allowCallOff) return 0;
+  const value = Number(ac.callOffBefore) || 0;
+  if (value <= 0) return 0;
+  const unit = ac.callOffBeforeUnit ?? 'minutes';
+  if (unit === 'days') return value * 1440;
+  if (unit === 'hours') return value * 60;
+  return value;
+}
+
+export type CanCallOffResult = { allowed: boolean; reason?: string };
+
+/**
+ * Resolve schedule start string to a Date on the given calendar date (YYYY-MM-DD).
+ * - Full ISO datetime (e.g. "2026-02-22T22:00:00.068Z"): uses that moment's local time-of-day on dateStr.
+ * - Time-only (e.g. "22:00" or "22:00:00"): interprets as local time on dateStr.
+ * Returns null if parsing fails.
+ */
+export function getShiftStartOnDate(startStr: string, dateStr: string): Date | null {
+  if (!startStr?.trim() || !dateStr) return null;
+  const trimmed = startStr.trim();
+  const isIso =
+    /^\d{4}-\d{2}-\d{2}T\d/.test(trimmed) ||
+    (trimmed.includes('T') && (trimmed.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(trimmed)));
+  if (isIso) {
+    const ref = new Date(trimmed);
+    if (Number.isNaN(ref.getTime())) return null;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d, ref.getHours(), ref.getMinutes(), ref.getSeconds(), ref.getMilliseconds());
+  }
+  const combined = `${dateStr}T${trimmed}`;
+  const d = new Date(combined);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Whether the employee can call off this shift on the given date.
+ * Uses dateStr (YYYY-MM-DD) and dayKey for local-time shift start.
+ * Handles both ISO and time-only schedule.start values.
+ */
+export function canCallOffShift(
+  job: GignologyJob,
+  shift: Shift,
+  dateStr: string,
+  dayKey: string,
+  now: Date = new Date()
+): CanCallOffResult {
+  const ac = job?.additionalConfig;
+  if (!ac?.allowCallOff) {
+    return { allowed: false, reason: 'Call off is not allowed for this job.' };
+  }
+
+  const requiredMinutesBefore = callOffBeforeToMinutes(job);
+  if (requiredMinutesBefore <= 0) return { allowed: true };
+
+  const schedule = shift?.defaultSchedule?.[dayKey as keyof typeof shift.defaultSchedule];
+  const startStr = schedule?.start;
+  if (!startStr) return { allowed: true };
+
+  const shiftStartLocal = getShiftStartOnDate(startStr, dateStr);
+  if (!shiftStartLocal) {
+    return { allowed: false, reason: 'Invalid shift start time.' };
+  }
+  const minutesUntilStart =
+    (shiftStartLocal.getTime() - now.getTime()) / (60 * 1000);
+  if (minutesUntilStart < requiredMinutesBefore) {
+    const unit = ac.callOffBeforeUnit ?? 'minutes';
+    return {
+      allowed: false,
+      reason: `Call off must be at least ${Number(ac.callOffBefore) || 0} ${unit} before shift start.`,
+    };
+  }
+  return { allowed: true };
+}
 
 export const giveJobGeoCoords = (job: GignologyJob) => {
   return {

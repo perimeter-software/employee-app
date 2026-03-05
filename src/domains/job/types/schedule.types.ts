@@ -4,7 +4,8 @@ export type RosterEntryStatus =
   | 'pending'
   | 'approved'
   | 'rejected'
-  | 'cancelled';
+  | 'cancelled'
+  | 'called_off';
 
 export type RosterEntry = {
   employeeId: string;
@@ -14,8 +15,10 @@ export type RosterEntry = {
    * across the shift's date range.
    */
   date?: string;
-  /** Position is filled when assigned to someone (see stadium-people WeeklyScheduleConfigurationModal) */
+  /** Position assigned when approved; used for capacity/filled count. */
   assignedPosition?: string;
+  /** Position requested when status is pending; not used for capacity until approved. */
+  requestedPosition?: string;
   /**
    * Optional workflow status for shift requests.
    * When missing, the entry is treated as approved for backwards compatibility.
@@ -26,6 +29,10 @@ export type RosterEntry = {
    * (e.g. manager's reason when a request is rejected).
    */
   notes?: string | string[];
+  /**
+   * Employee's reason for calling off the shift (when status is 'called_off').
+   */
+  callOffReason?: string;
 };
 
 export type ScheduleEntry = {
