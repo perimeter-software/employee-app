@@ -87,6 +87,24 @@ function rangeLabel(mode: DateMode, base: Date, weekStartsOn: number) {
   return format(base, 'MMMM yyyy');
 }
 
+/** Format YYYY-MM-DD as local date (avoids UTC midnight showing as previous day). */
+function formatDateOnly(dateStr: string | undefined): string {
+  if (!dateStr) return '';
+  const match = String(dateStr).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) {
+    try {
+      return format(new Date(dateStr), 'MMM d, yyyy');
+    } catch {
+      return dateStr;
+    }
+  }
+  const [, y, m, d] = match;
+  const month = Math.max(0, parseInt(m, 10) - 1);
+  const day = parseInt(d, 10);
+  const year = parseInt(y, 10);
+  return format(new Date(year, month, day), 'MMM d, yyyy');
+}
+
 export default function InvoicesPage() {
   const router = useRouter();
   const { data: currentUser } = useCurrentUser();
@@ -278,17 +296,17 @@ export default function InvoicesPage() {
       render: (_v, row) => (row.jobSlug ? 'Shift Job' : 'Event'),
     },
     {
-      key: 'createdDate',
-      header: 'Date Created',
+      key: 'startDate',
+      header: 'Period',
       sortable: true,
       render: (_v, row) => {
-        const d = row.createdDate;
-        if (!d) return '–';
-        try {
-          return format(new Date(d), 'yyyy-MM-dd');
-        } catch {
-          return '–';
+        const start = row.startDate;
+        const end = row.endDate;
+        if (!start && !end) return '–';
+        if (start && end && start !== end) {
+          return `${formatDateOnly(start)} – ${formatDateOnly(end)}`;
         }
+        return formatDateOnly(start) || formatDateOnly(end) || '–';
       },
     },
     {
@@ -365,7 +383,7 @@ export default function InvoicesPage() {
 
   return (
     <Layout title="Invoices">
-      <div className="p-4 md:p-6 space-y-4">
+      <div className="px-4 pt-4 space-y-4">
         <h1 className="text-xl font-semibold text-gray-900">Invoices</h1>
         <p className="text-sm text-gray-600">
           View and download invoices for your venues. Read-only.
@@ -467,9 +485,10 @@ export default function InvoicesPage() {
         </div>
 
         {/* Email selected (if we add row selection later) - for now single email from row */}
-        {/* Table */}
-        <div className="border rounded-lg bg-white">
+        {/* Table: wrapper has fixed height and no overflow so Table scrolls internally → sticky header works */}
+        <div className="border rounded-lg bg-white h-[calc(100vh-27.5rem)] max-h-[calc(100vh-27.5rem)] flex flex-col min-h-0">
           <Table
+            className="flex-1 min-h-0"
             title=""
             description=""
             columns={columns}

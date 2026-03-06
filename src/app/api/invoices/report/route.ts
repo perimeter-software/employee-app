@@ -65,8 +65,7 @@ async function reportHandler(request: AuthenticatedRequest) {
   const venueSlugs = [...clientOrgSlugs];
   const filter: Record<string, unknown> = {
     venueSlug: { $in: venueSlugs },
-    startDate: { $lte: endDate },
-    endDate: { $gte: startDate },
+    startDate: { $gte: startDate, $lte: endDate },
     ...hideInvoiceIfNoPOFilter(),
   };
 
