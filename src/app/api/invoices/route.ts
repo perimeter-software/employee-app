@@ -55,10 +55,9 @@ async function getInvoicesHandler(request: AuthenticatedRequest) {
     venueSlug: { $in: [...clientOrgSlugs] },
     ...hideInvoiceIfNoPOFilter(),
   };
-  // Period: filter by pay period (invoice startDate/endDate) overlapping the selected period (same as sp1-api/stadium-people).
+  // Period: filter by invoice period start date within the selected range (so "March" shows invoices that start in March).
   if (startDateParam && endDateParam) {
-    filter.startDate = { $lte: endDateParam };
-    filter.endDate = { $gte: startDateParam };
+    filter.startDate = { $gte: startDateParam, $lte: endDateParam };
   }
 
   const total = await coll.countDocuments(filter);
