@@ -18,9 +18,11 @@ import { findJobByjobId, getUserType } from '@/domains/user/utils';
 import {
   giveJobAllowedGeoDistance,
   giveJobGeoCoords,
+  giveJobPolygon,
   isJobGeoFenced,
   jobHasShiftForUser,
 } from '@/domains/punch/utils/shift-job-utils';
+import { isPointInPolygon } from '@/lib/utils/location-utils';
 import { Punch, PunchNoId } from '@/domains/punch';
 import { createNotification } from '@/domains/notification/utils/mongo-notification-utils';
 import type {
@@ -182,49 +184,71 @@ async function createPunchHandler(
       }
 
       usersCurrentCoordinates = { ...coordinateResults };
-      const jobsCoordinates = giveJobGeoCoords(job);
 
-      if (jobsCoordinates?.lat === 0 || jobsCoordinates?.long === 0) {
-        return NextResponse.json(
-          {
-            error: 'missing-job-coordinates',
-            message: 'Missing required job coordinates',
-          },
-          { status: 404 }
+      const jobPolygon = giveJobPolygon(job);
+
+      if (jobPolygon) {
+        // Polygon-based geofence check
+        const insidePolygon = isPointInPolygon(
+          usersCurrentCoordinates.latitude,
+          usersCurrentCoordinates.longitude,
+          jobPolygon
         );
-      }
+        if (!insidePolygon) {
+          return NextResponse.json(
+            {
+              error: 'outside-geofence',
+              message:
+                'Unauthorized: Not within allowable distance of job location',
+            },
+            { status: 400 }
+          );
+        }
+      } else {
+        // Circle-based geofence check (fallback)
+        const jobsCoordinates = giveJobGeoCoords(job);
 
-      // coordinates is where user is now, and then we pull lat & lng from job.location.geocoordinates
-      const currentDistance = calculateDistance(
-        usersCurrentCoordinates.latitude,
-        usersCurrentCoordinates.longitude,
-        jobsCoordinates.lat,
-        jobsCoordinates.long
-      );
+        if (jobsCoordinates?.lat === 0 || jobsCoordinates?.long === 0) {
+          return NextResponse.json(
+            {
+              error: 'missing-job-coordinates',
+              message: 'Missing required job coordinates',
+            },
+            { status: 404 }
+          );
+        }
 
-      if (
-        !job.location?.graceDistanceFeet ||
-        !job.location.geocoordinates?.geoFenceRadius
-      ) {
-        return NextResponse.json(
-          {
-            error: 'missing-job-coordinates',
-            message: 'Missing required job coordinates',
-          },
-          { status: 404 }
+        if (
+          !job.location?.graceDistanceFeet ||
+          !job.location.geocoordinates?.geoFenceRadius
+        ) {
+          return NextResponse.json(
+            {
+              error: 'missing-job-coordinates',
+              message: 'Missing required job coordinates',
+            },
+            { status: 404 }
+          );
+        }
+
+        const currentDistance = calculateDistance(
+          usersCurrentCoordinates.latitude,
+          usersCurrentCoordinates.longitude,
+          jobsCoordinates.lat,
+          jobsCoordinates.long
         );
-      }
 
-      const allowedDistance = giveJobAllowedGeoDistance(job);
-      if (currentDistance > allowedDistance) {
-        return NextResponse.json(
-          {
-            error: 'outside-geofence',
-            message:
-              'Unauthorized: Not within allowable distance of job location',
-          },
-          { status: 400 }
-        );
+        const allowedDistance = giveJobAllowedGeoDistance(job);
+        if (currentDistance > allowedDistance) {
+          return NextResponse.json(
+            {
+              error: 'outside-geofence',
+              message:
+                'Unauthorized: Not within allowable distance of job location',
+            },
+            { status: 400 }
+          );
+        }
       }
     } else {
       // For non-geofenced jobs or admin/master users, try to parse coordinates if provided but don't require them

@@ -16,7 +16,9 @@ import type { ClockInCoordinates } from '@/domains/job/types/location.types';
 import {
   giveJobGeoCoords,
   giveJobAllowedGeoDistance,
+  giveJobPolygon,
 } from '@/domains/punch/utils/shift-job-utils';
+import { isPointInPolygon } from '@/lib/utils/location-utils';
 import { UpdateFilter, Document } from 'mongodb';
 
 export async function createPunchIn(db: Db, punch: PunchNoId): Promise<Punch> {
@@ -247,36 +249,45 @@ export async function updatePunchUserCoordinates(
     }
 
     const parsedJob = convertToJSON(job) as GignologyJob;
-
-    const jobsCoordinates = giveJobGeoCoords(parsedJob);
-
-    if (jobsCoordinates?.lat === 0 || jobsCoordinates?.long === 0) {
-      console.log('Missing required job coordinates');
-      return null;
-    }
-
-    const currentDistance = calculateDistance(
-      location.latitude,
-      location.longitude,
-      jobsCoordinates.lat,
-      jobsCoordinates.long
-    );
-
-    if (
-      !job.location?.graceDistanceFeet ||
-      !job.location.geocoordinates?.geoFenceRadius
-    ) {
-      console.log('Missing required job coordinates');
-      return null;
-    }
     let isWithinGeofence = true;
 
-    const allowedDistance = giveJobAllowedGeoDistance(parsedJob);
-    if (currentDistance > allowedDistance) {
-      console.log(
-        'Unauthorized: Not within allowable distance of job location'
+    const jobPolygon = giveJobPolygon(parsedJob);
+
+    if (jobPolygon) {
+      // Polygon-based geofence check
+      isWithinGeofence = isPointInPolygon(
+        location.latitude,
+        location.longitude,
+        jobPolygon
       );
-      isWithinGeofence = false;
+    } else {
+      // Circle-based geofence check (fallback)
+      const jobsCoordinates = giveJobGeoCoords(parsedJob);
+
+      if (jobsCoordinates?.lat === 0 || jobsCoordinates?.long === 0) {
+        console.log('Missing required job coordinates');
+        return null;
+      }
+
+      if (
+        !job.location?.graceDistanceFeet ||
+        !job.location.geocoordinates?.geoFenceRadius
+      ) {
+        console.log('Missing required job coordinates');
+        return null;
+      }
+
+      const currentDistance = calculateDistance(
+        location.latitude,
+        location.longitude,
+        jobsCoordinates.lat,
+        jobsCoordinates.long
+      );
+
+      const allowedDistance = giveJobAllowedGeoDistance(parsedJob);
+      if (currentDistance > allowedDistance) {
+        isWithinGeofence = false;
+      }
     }
 
     // Step 5: Push new coordinates to the punch's userCoordinates array

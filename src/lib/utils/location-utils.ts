@@ -134,6 +134,32 @@ export const calculateDistance = (
   return distance;
 };
 
+/**
+ * Ray casting algorithm to check if a point is inside a polygon.
+ * @param lat - user latitude
+ * @param lng - user longitude
+ * @param polygon - array of [lng, lat] pairs (GeoJSON format, as stored in DB)
+ */
+export const isPointInPolygon = (
+  lat: number,
+  lng: number,
+  polygon: number[][]
+): boolean => {
+  let inside = false;
+  const n = polygon.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = polygon[i][0]; // lng
+    const yi = polygon[i][1]; // lat
+    const xj = polygon[j][0]; // lng
+    const yj = polygon[j][1]; // lat
+    const intersect =
+      yi > lat !== yj > lat &&
+      lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+};
+
 export const parseClockInCoordinates = (
   clockInCoordinates: string | GigLocation
 ): ClockInCoordinates | null => {
