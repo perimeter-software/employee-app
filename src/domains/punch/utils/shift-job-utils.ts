@@ -214,6 +214,12 @@ export const giveJobAllowedGeoDistance = (job: GignologyJob): number => {
   );
 };
 
+export const giveJobPolygon = (job: GignologyJob): number[][] | null => {
+  const polygon = job?.location?.geocoordinates?.polygon;
+  if (Array.isArray(polygon) && polygon.length >= 3) return polygon;
+  return null;
+};
+
 export const getShiftsForCalendarDay = (
   jobs: GignologyJob[], // All jobs
   applicantId: string, // Current user's ID
