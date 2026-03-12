@@ -1,8 +1,6 @@
 import type { GignologyJob, Shift } from '@/domains/job'; // ✅ Consistent naming
 import { parseISO, isAfter, format } from 'date-fns';
-import { format as formatTz } from 'date-fns-tz';
-import { getUserTimeZone } from '@/lib/utils'; // ✅ Updated import path
-import { Punch, PunchDetail } from '@/domains/punch'; // ✅ Add missing imports
+import type { Punch } from '@/domains/punch';
 import type { RosterEntry } from '@/domains/job/types/schedule.types';
 
 /**
@@ -214,176 +212,6 @@ export const giveJobAllowedGeoDistance = (job: GignologyJob): number => {
   );
 };
 
-export const getShiftsForCalendarDay = (
-  jobs: GignologyJob[], // All jobs
-  applicantId: string, // Current user's ID
-  specificDate: string, // The specific date for the calendar day
-  weekStart: string, // Start of the selected week
-  weekEnd: string, // End of the selected week
-  includeUnassigned = false // Show unassigned shifts,
-): {
-  assignedShifts: {
-    title: string;
-    start: string;
-    end: string;
-    jobId: string;
-  }[];
-  unassignedShifts: {
-    title: string;
-    start: string;
-    end: string;
-    jobId: string;
-  }[];
-} => {
-  const day = new Date(specificDate);
-  const daysOfWeek = [
-    'sunday',
-    'monday',
-    'tuesday',
-    'wednesday',
-    'thursday',
-    'friday',
-    'saturday',
-  ] as const;
-  const currentDay = daysOfWeek[day.getDay()];
-
-  const weekStartDate = new Date(weekStart);
-  const weekEndDate = new Date(weekEnd);
-
-  const assignedShifts: {
-    title: string;
-    start: string;
-    end: string;
-    jobId: string;
-  }[] = [];
-
-  const unassignedShifts: {
-    title: string;
-    start: string;
-    end: string;
-    jobId: string;
-  }[] = [];
-
-  jobs.forEach((job) => {
-    if (!job.shifts || !job.shifts.length) return;
-
-    job.shifts.forEach((shift) => {
-      const todaySchedule = shift.defaultSchedule?.[currentDay];
-      const shiftStartDate = new Date(shift.shiftStartDate);
-      const shiftEndDate = new Date(shift.shiftEndDate);
-
-      const hasValidOverlap =
-        shiftStartDate <= weekEndDate && // Shift starts before or on week end
-        shiftEndDate >= weekStartDate && // Shift ends on or after week start
-        shiftEndDate >= day; // Shift hasn't ended yet
-
-      if (hasValidOverlap) {
-        const isInShiftRoster = shift.shiftRoster?.some(
-          (rosterEntry) => rosterEntry._id === applicantId
-        );
-
-        const isInDayRoster = isUserInRoster(
-          todaySchedule?.roster,
-          applicantId,
-          specificDate
-        );
-
-        const shiftDetails = {
-          title: `${job.title} - ${shift.shiftName}`,
-          start: todaySchedule?.start
-            ? format(new Date(todaySchedule.start), 'p')
-            : 'N/A',
-          end: todaySchedule?.end
-            ? format(new Date(todaySchedule.end), 'p')
-            : 'N/A',
-          jobId: job._id,
-        };
-
-        if (shiftDetails.start !== 'N/A' && shiftDetails.end !== 'N/A') {
-          if (isInShiftRoster && isInDayRoster) {
-            // Assigned shifts
-            assignedShifts.push(shiftDetails);
-          } else if (isInShiftRoster && includeUnassigned) {
-            // Unassigned shifts
-            unassignedShifts.push(shiftDetails);
-          }
-        }
-      }
-    });
-  });
-
-  return { assignedShifts, unassignedShifts };
-};
-
-export const getDetailedUserShiftsForToday = (
-  applicantId: string,
-  currentTime: string,
-  shift: Shift,
-  specificDate: Date // Add parameter for specific date
-) => {
-  // If no specific date is provided, use current date
-  const targetDate = specificDate || new Date(currentTime);
-
-  const daysOfWeek = [
-    'sunday',
-    'monday',
-    'tuesday',
-    'wednesday',
-    'thursday',
-    'friday',
-    'saturday',
-  ] as const;
-  const currentDay = daysOfWeek[targetDate.getDay()];
-
-  if (!shift) return { start: null, end: null };
-
-  const todaySchedule = shift.defaultSchedule?.[currentDay];
-  const shiftStartDate = new Date(shift.shiftStartDate);
-  const shiftEndDate = new Date(shift.shiftEndDate);
-
-  // Check if the shift is valid for this date
-  const hasValidOverlap =
-    shiftStartDate <= targetDate && // Shift has started
-    shiftEndDate >= targetDate; // Shift hasn't ended
-
-  if (!hasValidOverlap) return { start: null, end: null };
-
-  // Check if user is in both roster lists
-  const isInShiftRoster = shift.shiftRoster?.some(
-    (rosterEntry) => rosterEntry._id === applicantId
-  );
-  const isInDayRoster = isUserInRoster(
-    todaySchedule?.roster,
-    applicantId,
-    targetDate.toISOString()
-  );
-
-  if (
-    isInShiftRoster &&
-    isInDayRoster &&
-    todaySchedule?.start &&
-    todaySchedule?.end
-  ) {
-    // Create Date objects for the specific day
-    const shiftStart = new Date(todaySchedule.start);
-    const shiftEnd = new Date(todaySchedule.end);
-
-    // Set the correct date while keeping the time
-    const startDate = new Date(targetDate);
-    startDate.setHours(shiftStart.getHours(), shiftStart.getMinutes());
-
-    const endDate = new Date(targetDate);
-    endDate.setHours(shiftEnd.getHours(), shiftEnd.getMinutes());
-
-    return {
-      start: startDate,
-      end: endDate,
-    };
-  }
-
-  return { start: null, end: null };
-};
-
 export const getUserShiftsForToday = (
   job: GignologyJob,
   applicantId: string,
@@ -512,11 +340,12 @@ export const getUserShiftForToday = (
       return {
         start: new Date(todaySchedule.start),
         end: new Date(todaySchedule.end),
+        isOvernightFromPreviousDay: false,
       };
     }
   }
 
-  // FIXED: Check for overnight shifts from previous day
+  // Check for overnight shifts from previous day
   const daysOfWeek = [
     'sunday',
     'monday',
@@ -576,7 +405,8 @@ export const getUserShiftForToday = (
         (endHour === startHour && endMin < startMin);
 
       if (isOvernightShift) {
-        // This is an overnight shift, so it continues into today
+        // This shift started yesterday and continues into today.
+        // isOvernightFromPreviousDay tells consumers to use yesterday's date for start.
         console.log('Found overnight shift from previous day:', {
           shiftName: shift.shiftName,
           start: startTime.toISOString(),
@@ -586,6 +416,7 @@ export const getUserShiftForToday = (
         return {
           start: new Date(previousDaySchedule.start),
           end: new Date(previousDaySchedule.end),
+          isOvernightFromPreviousDay: true,
         };
       }
     }
@@ -595,6 +426,7 @@ export const getUserShiftForToday = (
   return {
     start: null,
     end: null,
+    isOvernightFromPreviousDay: false,
   };
 };
 
@@ -906,305 +738,16 @@ export const handleShiftJobClockInTime = (
   return false;
 };
 
-export const getMinutesUntilClockIn = (
-  job: GignologyJob,
-  applicantId: string,
-  currentTime: string,
-  shift?: Shift
-): number | null => {
-  // Get the early clock-in minutes, defaulting to 0 if not specified
-  const earlyClockInMinutes = job.additionalConfig?.earlyClockInMinutes ?? 0;
-
-  // Use the exact early clock-in window from job configuration
-  // Don't override with a minimum of 2 minutes - respect the job's setting
-  const earlyClockInWindow = earlyClockInMinutes;
-
-  const now = new Date(currentTime);
-  const { currentDay, usersShifts } = getUserShiftsForToday(
-    job,
-    applicantId,
-    currentTime,
-    shift
-  );
-
-  let earliestClockInTime: Date | null = null;
-
-  for (const shift of usersShifts) {
-    const todaySchedule = shift.defaultSchedule[currentDay];
-    if (!todaySchedule || !todaySchedule.start || todaySchedule.start === '') {
-      continue;
-    }
-
-    // Parse the shift start time (assumes time is stored without date info)
-    const shiftStartTime = new Date(todaySchedule.start);
-
-    // Get current date and combine with shift start time
-    const combinedShiftStartTime = combineCurrentDateWithTimeFromDateObject(
-      shiftStartTime,
-      currentTime
-    );
-
-    const earliestAllowedTime = new Date(
-      combinedShiftStartTime.getTime() - earlyClockInWindow * 60000
-    );
-
-    if (
-      earliestClockInTime === null ||
-      earliestAllowedTime < earliestClockInTime
-    ) {
-      earliestClockInTime = earliestAllowedTime;
-    }
-  }
-
-  if (earliestClockInTime === null) {
-    return null; // No valid shifts found for today
-  }
-
-  const timeDifference = earliestClockInTime.getTime() - now.getTime();
-  const minutesUntilClockIn = Math.ceil(timeDifference / 60000);
-
-  return Math.max(0, minutesUntilClockIn); // Return 0 if it's already time to clock in
-};
-
-export function isToday(date: Date, shift?: Shift): boolean {
-  const today = new Date();
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  // Basic same-day check
-  const isSameDay =
-    date.getDate() === today.getDate() &&
-    date.getMonth() === today.getMonth() &&
-    date.getFullYear() === today.getFullYear();
-
-  // If no shift provided or it's the same day, use regular check
-  if (!shift || isSameDay) {
-    return isSameDay;
-  }
-
-  // Get the day of week for the date we're checking
-  const daysOfWeek = [
-    'sunday',
-    'monday',
-    'tuesday',
-    'wednesday',
-    'thursday',
-    'friday',
-    'saturday',
-  ] as const;
-  const dayName = daysOfWeek[date.getDay()];
-
-  // Get the schedule for this day
-  const schedule = shift.defaultSchedule[dayName];
-  if (!schedule?.start || !schedule?.end) {
-    return isSameDay;
-  }
-
-  // Create Date objects for shift start and end times
-  const startTime = new Date(schedule.start);
-  const endTime = new Date(schedule.end);
-
-  // Overnight shift: end time is earlier in the day than start time (in 24h)
-  const startHour = startTime.getHours();
-  const startMin = startTime.getMinutes();
-  const endHour = endTime.getHours();
-  const endMin = endTime.getMinutes();
-  const isOvernight =
-    endHour < startHour ||
-    (endHour === startHour && endMin < startMin);
-
-  if (isOvernight) {
-    // For overnight shifts, also return true if:
-    // 1. It's tomorrow but before the shift end time
-    const isTomorrow =
-      date.getDate() === tomorrow.getDate() &&
-      date.getMonth() === tomorrow.getMonth() &&
-      date.getFullYear() === tomorrow.getFullYear();
-
-    if (isTomorrow) {
-      const currentTime = new Date();
-      return (
-        currentTime.getHours() < endTime.getHours() ||
-        (currentTime.getHours() === endTime.getHours() &&
-          currentTime.getMinutes() <= endTime.getMinutes())
-      );
-    }
-  }
-
-  return isSameDay;
-}
-
-export function isShiftWithinRange(
-  shift: Shift,
-  job: GignologyJob,
-  applicantId: string,
-  currentDate: Date,
-  punchDay: string,
-  shiftDate: Date
-): boolean {
-  if (!isToday(shiftDate)) {
-    return false;
-  }
-
-  const currentDay = formatTz(currentDate, 'eee', {
-    timeZone: getUserTimeZone(),
-  });
-
-  if (punchDay !== currentDay) {
-    return false;
-  }
-
-  // Check if current date falls within the shift's overall date range
-  const shiftStartDate = new Date(shift.shiftStartDate);
-  const shiftEndDate = new Date(shift.shiftEndDate);
-  shiftEndDate.setHours(23, 59, 59, 999);
-  const isWithinShiftDates =
-    currentDate >= shiftStartDate && currentDate <= shiftEndDate;
-
-  if (!isWithinShiftDates) {
-    return false;
-  }
-
-  // Map short day names to full day names
-  const dayMapping = {
-    Sun: 'sunday',
-    Mon: 'monday',
-    Tue: 'tuesday',
-    Wed: 'wednesday',
-    Thu: 'thursday',
-    Fri: 'friday',
-    Sat: 'saturday',
-  };
-
-  const mappedDay = dayMapping[punchDay as keyof typeof dayMapping];
-  const todaySchedule =
-    shift.defaultSchedule?.[mappedDay as keyof typeof shift.defaultSchedule];
-
-  // Early return if no schedule for this day
-  if (!todaySchedule?.start || !todaySchedule?.end) {
-    return false;
-  }
-
-  // Check if user is in the overall shift roster
-  const isUserInShiftRoster = shift.shiftRoster?.some(
-    (rosterEntry) => rosterEntry._id === applicantId
-  );
-
-  if (!isUserInShiftRoster) {
-    return false;
-  }
-
-  // Check if user is in the roster for this specific day.
-  // Only allow when user is in that day's roster list; null/undefined or empty roster = not in roster.
-  const isInTodayRoster =
-    todaySchedule.roster != null && todaySchedule.roster.length > 0
-      ? isUserInRoster(
-          todaySchedule.roster,
-          applicantId,
-          shiftDate.toISOString()
-        )
-      : false;
-
-  if (!isInTodayRoster) {
-    return false;
-  }
-
-  // Convert schedule times to comparable times in current date context
-  const scheduleStart = new Date(todaySchedule.start);
-  const scheduleEnd = new Date(todaySchedule.end);
-
-  const localCurrentDate = new Date(currentDate);
-
-  // Use combineCurrentDateWithTimeFromDateObject for consistent time comparison
-  const adjustedScheduleStart = combineCurrentDateWithTimeFromDateObject(
-    scheduleStart,
-    localCurrentDate.toISOString()
-  );
-
-  const adjustedScheduleEnd = combineCurrentDateWithTimeFromDateObject(
-    scheduleEnd,
-    localCurrentDate.toISOString(),
-    scheduleStart
-  );
-
-  // Add buffer for early clock in (if configured)
-  const earlyBuffer = job.additionalConfig?.earlyClockInMinutes || 0;
-  adjustedScheduleStart.setMinutes(
-    adjustedScheduleStart.getMinutes() - earlyBuffer
-  );
-
-  // Check if current time falls within the shift window
-  return (
-    localCurrentDate >= adjustedScheduleStart &&
-    localCurrentDate <= adjustedScheduleEnd
-  );
-}
-
-// Helper function to check if a punch exists for the current day and shift
-export function hasExistingPunchForShift(
-  punches: Punch[],
-  shiftName: string,
-  punchDay: string
-): boolean {
-  const dayPunch = punches.find((p) => p.day === punchDay);
-  if (!dayPunch || !dayPunch.details) return false; // ✅ Added null check
-
-  return dayPunch.details?.some(
-    (detail: PunchDetail) =>
-      detail.originalPunch.shiftName === shiftName &&
-      !detail.originalPunch.timeOut
-  );
-}
-
-export function isPastClockOutTime(
-  shift: Shift,
-  job: GignologyJob,
-  applicantId: string,
-  currentDate: Date
-) {
-  const { end } = getUserShiftForToday(
-    job,
-    applicantId,
-    currentDate.toISOString(),
-    shift
-  );
-
-  if (end) {
-    return currentDate > end; // Check if current time is past the shift's end time
-  }
-  return false;
-}
-
-export function isFutureShift(
-  shift: Shift,
-  job: GignologyJob,
-  applicantId: string,
-  currentDate: Date
-) {
-  const { start } = getUserShiftForToday(
-    job,
-    applicantId,
-    currentDate.toISOString(),
-    shift
-  );
-
-  if (start) {
-    return currentDate < start; // Check if current time is before the shift's start time
-  }
-  return false;
-}
-
 export const getCalculatedTimeIn = (
   job: GignologyJob,
   applicantId: string,
   currentTime: string,
   shift?: Shift
 ): string => {
-  const { start } = getUserShiftForToday(job, applicantId, currentTime, shift);
-  const newStartDate = combineCurrentDateWithTimeFromDateObject(
-    start as Date,
-    currentTime
-  );
+  const { start, end, isOvernightFromPreviousDay } = getUserShiftForToday(job, applicantId, currentTime, shift);
+  const { shiftStartTime: newStartDate } = start && end
+    ? resolveShiftDates(start, end, currentTime, isOvernightFromPreviousDay)
+    : { shiftStartTime: null };
   const earlyClockInMinutes = job.additionalConfig?.earlyClockInMinutes ?? 0;
   const autoAdjustEarlyClockIn =
     job.additionalConfig?.autoAdjustEarlyClockIn ?? false;
@@ -1283,18 +826,6 @@ export const hasForgottenToClockOut = (
   return true;
 };
 
-export const getTotalSecondsFromDate = (date: Date): number => {
-  // Extract the hours, minutes, and seconds from the date
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const seconds = date.getSeconds();
-
-  // Convert the time to total seconds since midnight
-  const totalSeconds = hours * 3600 + minutes * 60 + seconds;
-
-  return totalSeconds;
-};
-
 export function combineCurrentDateWithTimeFromDateObject(
   timeObj: Date,
   currentTime: string,
@@ -1341,4 +872,29 @@ export function combineCurrentDateWithTimeFromDateObject(
   }
 
   return result;
+}
+
+/**
+ * Correctly resolves absolute start/end Date objects for a shift returned by getUserShiftForToday.
+ *
+ * When the shift came from the previous-day overnight path (isOvernightFromPreviousDay=true),
+ * the start must be placed on YESTERDAY's date and the end on TODAY's date.
+ * For all other shifts, standard combineCurrentDateWithTimeFromDateObject logic applies.
+ */
+export function resolveShiftDates(
+  start: Date,
+  end: Date,
+  currentTime: string,
+  isOvernightFromPreviousDay: boolean
+): { shiftStartTime: Date; shiftEndTime: Date } {
+  if (isOvernightFromPreviousDay) {
+    const yesterday = new Date(currentTime);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const shiftStartTime = combineCurrentDateWithTimeFromDateObject(start, yesterday.toISOString());
+    const shiftEndTime = combineCurrentDateWithTimeFromDateObject(end, currentTime);
+    return { shiftStartTime, shiftEndTime };
+  }
+  const shiftStartTime = combineCurrentDateWithTimeFromDateObject(start, currentTime);
+  const shiftEndTime = combineCurrentDateWithTimeFromDateObject(end, currentTime, start);
+  return { shiftStartTime, shiftEndTime };
 }
