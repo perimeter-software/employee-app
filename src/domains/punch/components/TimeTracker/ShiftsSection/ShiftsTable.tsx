@@ -53,6 +53,10 @@ interface ShiftRowData extends Record<string, unknown> {
   canCallOff?: boolean;
   /** Shown on hover when Call off button is disabled */
   callOffDisabledReason?: string;
+  /** True when the shift crosses midnight (start day row only) */
+  isOvernightShift?: boolean;
+  /** Formatted end date (MM/dd/yyyy) for overnight shifts, e.g. "01/21/2025" */
+  endDateDisplay?: string;
 }
 
 interface ShiftsTableProps {
@@ -204,7 +208,6 @@ export function ShiftsTable({
     [handleClockInOut]
   );
 
-  // FIXED: Generate shift rows from user data - now shows ALL scheduled shifts AND existing punches
   const shiftRows = useMemo((): ShiftRowData[] => {
     if (!userData?.jobs) return [];
 
@@ -214,7 +217,6 @@ export function ShiftsTable({
     // Track processed shift-date combinations to avoid duplicates
     const processedShifts = new Set<string>();
 
-    // FIXED: Generate dates for the ENTIRE date range, not just punch days
     const currentDate = new Date(startDate);
     while (currentDate <= endDate) {
       const dayOfWeek = [
@@ -230,7 +232,6 @@ export function ShiftsTable({
       const isToday = isSameDay(currentDate, now);
 
       userData.jobs.forEach((job: GignologyJob) => {
-        // FIXED: Check if user has ANY shifts for this job
         if (!job.shifts || !jobHasShiftForUser(job, userData.applicantId)) {
           return;
         }
@@ -261,12 +262,10 @@ export function ShiftsTable({
                 : ('active' as const),
             }));
 
-          // FIXED: Check if user is in shift roster
           const isUserInShiftRoster = shift.shiftRoster?.some(
             (rosterEntry) => rosterEntry._id === userData.applicantId
           );
 
-          // FIXED: If user has existing punches for this shift-date, show it regardless of roster
           const hasExistingPunches = todayPunches.length > 0;
 
           // Skip if user is not in roster AND has no existing punches
@@ -277,12 +276,10 @@ export function ShiftsTable({
           // Mark this shift-date as processed
           processedShifts.add(shiftKey);
 
-          // FIXED: Enhanced day schedule detection for overnight shifts
           let daySchedule:
             | Shift['defaultSchedule'][keyof Shift['defaultSchedule']]
             | undefined = undefined;
           let isInDayRoster = false;
-          let isOvernightShift = false;
 
           if (isUserInShiftRoster) {
             // First, check the current day's schedule
@@ -303,7 +300,8 @@ export function ShiftsTable({
               );
             }
 
-            // FIXED: For overnight shifts, also check the previous day's schedule
+            // If no current-day schedule or user not in day roster, check previous day
+            // for an overnight shift starting yesterday that ends today — skip that end-day row.
             if (!daySchedule?.start || !isInDayRoster) {
               const previousDay = new Date(currentDate);
               previousDay.setDate(previousDay.getDate() - 1);
@@ -326,81 +324,59 @@ export function ShiftsTable({
                 const prevStartTime = new Date(previousDaySchedule.start);
                 const prevEndTime = new Date(previousDaySchedule.end);
 
-                // Check if this is an overnight shift (end time is before start time)
-                if (prevEndTime.getHours() < prevStartTime.getHours()) {
-                  isOvernightShift = true;
-                  daySchedule = previousDaySchedule;
-
-                  // Check if user is in roster for the previous day (which covers today's overnight shift).
-                  // Only allow when user is in that day's roster list; null/undefined or empty roster = not in roster.
-                  if (daySchedule?.roster == null || daySchedule.roster.length === 0) {
-                    isInDayRoster = false;
-                  } else {
-                    isInDayRoster = isUserInRoster(
-                      daySchedule.roster,
-                      userData.applicantId,
-                      previousDay.toISOString()
-                    );
-                  }
+                // Check if this is an overnight shift (end time of day is before start time of day,
+                // including same-hour cases where only minutes differ — e.g. 23:45 → 23:30).
+                const prevEndMinutes = prevEndTime.getHours() * 60 + prevEndTime.getMinutes();
+                const prevStartMinutes = prevStartTime.getHours() * 60 + prevStartTime.getMinutes();
+                if (prevEndMinutes < prevStartMinutes) {
+                  // This is the end-day of an overnight shift. The start-day row already
+                  // covers this shift, so skip creating a duplicate row here.
+                  return;
                 }
               }
             }
           }
 
-          // For existing punches without roster enrollment, we'll estimate shift times
           let todayShiftStart: Date;
           let todayShiftEnd: Date;
+
+          let isOvernightStartDay = false;
 
           if (daySchedule?.start && daySchedule?.end && isInDayRoster) {
             // Use scheduled shift times
             const shiftStartTime = new Date(daySchedule.start);
             const shiftEndTime = new Date(daySchedule.end);
 
-            if (isOvernightShift) {
-              // FIXED: For overnight shifts, start time is on previous day, end time is on current day
-              const previousDay = new Date(currentDate);
-              previousDay.setDate(previousDay.getDate() - 1);
+            todayShiftStart = new Date(currentDate);
+            todayShiftStart.setHours(
+              shiftStartTime.getHours(),
+              shiftStartTime.getMinutes(),
+              0,
+              0
+            );
 
-              todayShiftStart = new Date(previousDay);
-              todayShiftStart.setHours(
-                shiftStartTime.getHours(),
-                shiftStartTime.getMinutes(),
-                0,
-                0
-              );
+            todayShiftEnd = new Date(currentDate);
+            todayShiftEnd.setHours(
+              shiftEndTime.getHours(),
+              shiftEndTime.getMinutes(),
+              0,
+              0
+            );
 
-              todayShiftEnd = new Date(currentDate);
-              todayShiftEnd.setHours(
-                shiftEndTime.getHours(),
-                shiftEndTime.getMinutes(),
-                0,
-                0
-              );
-            } else {
-              // Regular shift on the same day
-              todayShiftStart = new Date(currentDate);
-              todayShiftStart.setHours(
-                shiftStartTime.getHours(),
-                shiftStartTime.getMinutes(),
-                0,
-                0
-              );
-
-              todayShiftEnd = new Date(currentDate);
-              todayShiftEnd.setHours(
-                shiftEndTime.getHours(),
-                shiftEndTime.getMinutes(),
-                0,
-                0
-              );
-
-              // Handle overnight shifts on the same day
-              if (todayShiftEnd <= todayShiftStart) {
-                todayShiftEnd.setDate(todayShiftEnd.getDate() + 1);
-              }
+            // Detect overnight: end time-of-day is before start time-of-day (crosses midnight).
+            // Use hours+minutes so e.g. 23:00 -> 23:30 next day is detected.
+            const startH = shiftStartTime.getHours();
+            const startM = shiftStartTime.getMinutes();
+            const endH = shiftEndTime.getHours();
+            const endM = shiftEndTime.getMinutes();
+            const endBeforeStart =
+              endH < startH || (endH === startH && endM < startM);
+            if (endBeforeStart) {
+              todayShiftEnd.setDate(todayShiftEnd.getDate() + 1);
+              isOvernightStartDay = true;
             }
           } else if (hasExistingPunches) {
-            // FIXED: For existing punches without roster, estimate shift times from punch data
+            // For punches without a roster schedule, estimate times from the punch data itself
             const firstPunch = todayPunches[0];
             const lastPunch = todayPunches[todayPunches.length - 1];
 
@@ -437,11 +413,13 @@ export function ShiftsTable({
             }
           }
 
-          const isWithinShift =
-            isToday && now >= todayShiftStart && now <= todayShiftEnd;
-          const shiftHasEnded = isToday && now > todayShiftEnd;
+          // For overnight shifts the window spans two calendar days; treat the row
+          // as "today" whenever now falls anywhere inside [shiftStart, shiftEnd].
+          const effectiveIsToday =
+            isToday || (isOvernightStartDay && now >= todayShiftStart && now <= todayShiftEnd);
+          const isWithinShift = effectiveIsToday && now >= todayShiftStart && now <= todayShiftEnd;
+          const shiftHasEnded = effectiveIsToday && now > todayShiftEnd;
 
-          // FIXED: Check for active punch more accurately
           const hasActivePunchForThisShift = todayPunches.some(
             (punch) => punch.status === 'active'
           );
@@ -463,9 +441,8 @@ export function ShiftsTable({
             return sum;
           }, 0);
 
-          // FIXED: Enhanced clock-in logic - only allow if user is in roster and shift is active
           const canClockIn =
-            isToday &&
+            effectiveIsToday &&
             !hasActivePunchForThisShift &&
             !shiftHasEnded &&
             isUserInShiftRoster &&
@@ -479,7 +456,6 @@ export function ShiftsTable({
               shift
             );
 
-          // FIXED: Clock out logic
           const canClockOut = hasActivePunchForThisShift;
 
           const allowBreaks = job.additionalConfig?.allowBreaks ?? true;
@@ -488,19 +464,13 @@ export function ShiftsTable({
           const isSelectedShift =
             selectedJob?._id === job._id && selectedShift?.slug === shift.slug;
 
-          // FIXED: Show rows for:
-          // 1. Active/future shifts where user is enrolled
-          // 2. Any shifts where user has existing punches (regardless of enrollment)
-          // 3. Past shifts with punches
-          // 4. Overnight shifts from previous day that are still active
           const shouldShowRow =
             hasExistingPunches || // Always show if there are punches
             (isUserInShiftRoster &&
               daySchedule?.start &&
               daySchedule?.end &&
               isInDayRoster) || // Show if enrolled and scheduled
-            (!shiftHasEnded && isUserInShiftRoster) || // Show future enrolled shifts
-            (isOvernightShift && isInDayRoster); // Show overnight shifts from previous day
+            (!shiftHasEnded && isUserInShiftRoster); // Show future enrolled shifts
 
           if (shouldShowRow) {
             const dateYyyyMmDd = formatDate(currentDate, 'yyyy-MM-dd');
@@ -534,7 +504,7 @@ export function ShiftsTable({
               allowBreaks,
               isWithinShift,
               hasActivePunch: hasActivePunchForThisShift,
-              isToday,
+              isToday: effectiveIsToday,
               shiftHasEnded,
               isSelectedShift,
               isCurrentOpenPunchShift: hasActivePunchForThisShift,
@@ -542,6 +512,8 @@ export function ShiftsTable({
               dayKey,
               canCallOff,
               callOffDisabledReason,
+              isOvernightShift: isOvernightStartDay,
+              endDateDisplay: isOvernightStartDay ? formatDate(todayShiftEnd, 'MM/dd/yyyy') : undefined,
             } as ShiftRowData & {
               isSelectedShift: boolean;
               isCurrentOpenPunchShift: boolean;
@@ -584,7 +556,7 @@ export function ShiftsTable({
         header: 'Date & Shift Time',
         render: (value, row) => (
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {String(value)}
               {row.isToday && (
                 <Badge
@@ -599,9 +571,17 @@ export function ShiftsTable({
                   Ended
                 </Badge>
               )}
+              {row.isOvernightShift && (
+                <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700">
+                  Overnight
+                </Badge>
+              )}
             </div>
             <div className="text-xs text-gray-600">
-              Scheduled: {row.startTime} - {row.endTime}
+              Scheduled: {row.startTime} – {row.endTime}
+              {row.isOvernightShift && row.endDateDisplay && (
+                <span className="text-purple-600 ml-1">(ends {row.endDateDisplay})</span>
+              )}
             </div>
           </div>
         ),

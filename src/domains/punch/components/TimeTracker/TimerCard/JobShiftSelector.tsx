@@ -17,8 +17,8 @@ import { GignologyUser } from '@/domains/user/types';
 import {
   getUserShiftForToday,
   handleShiftJobClockInTime,
-  combineCurrentDateWithTimeFromDateObject,
   isApprovedOrLegacyRosterEntry,
+  resolveShiftDates,
 } from '@/domains/punch/utils/shift-job-utils';
 import { PunchWithJobInfo } from '@/domains/punch/types';
 
@@ -58,7 +58,7 @@ export function JobShiftSelector({
 
       for (const shift of job.shifts) {
         // Check if user has this shift today
-        const { start, end } = getUserShiftForToday(
+        const { start, end, isOvernightFromPreviousDay } = getUserShiftForToday(
           job,
           userData.applicantId,
           currentTime,
@@ -67,15 +67,12 @@ export function JobShiftSelector({
 
         if (!start || !end) continue;
 
-        // Get actual shift times for today
-        const shiftStartTime = combineCurrentDateWithTimeFromDateObject(
-          start as Date,
-          currentTime
-        );
-        const shiftEndTime = combineCurrentDateWithTimeFromDateObject(
-          end as Date,
+        // Use resolveShiftDates so overnight-from-previous-day shifts get yesterday's date for start
+        const { shiftStartTime, shiftEndTime } = resolveShiftDates(
+          start,
+          end,
           currentTime,
-          start as Date
+          isOvernightFromPreviousDay
         );
 
         const shiftStart = new Date(shiftStartTime);
@@ -119,7 +116,7 @@ export function JobShiftSelector({
       if (!job.shifts) continue;
 
       for (const shift of job.shifts) {
-        const { start, end } = getUserShiftForToday(
+        const { start, end, isOvernightFromPreviousDay } = getUserShiftForToday(
           job,
           userData.applicantId,
           currentTime,
@@ -128,14 +125,11 @@ export function JobShiftSelector({
 
         if (!start || !end) continue;
 
-        const shiftStartTime = combineCurrentDateWithTimeFromDateObject(
-          start as Date,
-          currentTime
-        );
-        const shiftEndTime = combineCurrentDateWithTimeFromDateObject(
-          end as Date,
+        const { shiftStartTime, shiftEndTime } = resolveShiftDates(
+          start,
+          end,
           currentTime,
-          start as Date
+          isOvernightFromPreviousDay
         );
 
         const shiftStart = new Date(shiftStartTime);
