@@ -160,18 +160,16 @@ const nextConfig = {
     optimizeCss: true,
   },
 
-  // TypeScript optimizations
+  // TypeScript: skip type-check during next build to avoid memory spike on EB (t3/t4g.medium).
+  // Run `yarn type-check` in CI or locally before deploy.
   typescript: {
-    // Don't type-check during build in dev (faster, but less safe)
-    // You can still run `tsc --noEmit` separately
-    ignoreBuildErrors: isDev,
+    ignoreBuildErrors: true,
   },
 
-  // ESLint optimizations
+  // ESLint: skip lint during next build to avoid memory spike on EB (t3/t4g.medium).
+  // Run `yarn lint` in CI or locally before deploy.
   eslint: {
-    // Don't run ESLint during builds in dev (faster)
-    // You can still run `npm run lint` separately
-    ignoreDuringBuilds: isDev,
+    ignoreDuringBuilds: true,
   },
 };
 
