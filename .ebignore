@@ -15,5 +15,8 @@ scripts/
 yarn.json
 npm-shrinkwrap.json
 
+# Dependencies (installed on the instance by yarn hook)
+node_modules/
+
 # Local artifacts
 *.log
