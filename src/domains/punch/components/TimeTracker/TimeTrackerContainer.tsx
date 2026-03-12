@@ -4,7 +4,6 @@ import { useUser } from '@auth0/nextjs-auth0/client';
 import { useUserApplicantJob } from '@/domains/job/hooks';
 import { useAllOpenPunches, useFindPunches } from '@/domains/punch/hooks';
 import { useCurrentUser } from '@/domains/user';
-import { useRosterEvents } from '@/domains/event/hooks';
 import { ErrorState, LoadingState } from './States';
 import { TimerCard } from './TimerCard';
 import { ShiftsSection } from './ShiftsSection';
@@ -97,31 +96,6 @@ export const TimeTrackerContainer = () => {
     return ids;
   }, [userData?.jobs]);
 
-  // Check if user has any rostered events in the next 6 months
-  const rosterCheckRange = useMemo(() => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setMonth(end.getMonth() + 6);
-    end.setHours(23, 59, 59, 999);
-    return { startDate: start.toISOString(), endDate: end.toISOString() };
-  }, []);
-
-  const { data: rosterCheckEvents } = useRosterEvents({
-    applicantId: userData?.applicantId || '',
-    startDate: rosterCheckRange.startDate,
-    endDate: rosterCheckRange.endDate,
-  });
-
-  const hasRosterEvents = useMemo(() => {
-    if (!rosterCheckEvents?.length || !userData?.applicantId) return false;
-    return rosterCheckEvents.some((event) =>
-      event.applicants?.some(
-        (a) => a.id === userData.applicantId && a.status === 'Roster'
-      )
-    );
-  }, [rosterCheckEvents, userData?.applicantId]);
-
   // Still need open punches for the timer card (only enabled for non-Client users)
   const { data: openPunches } = useAllOpenPunches(userData?._id || '');
 
@@ -158,9 +132,7 @@ export const TimeTrackerContainer = () => {
     const hideEmployeesDetails = !!currentUser?.hideEmployeesDetails;
     return (
       <div className="max-w-6xl mx-auto space-y-6">
-        <EmployeeTimeAttendanceTable
-          hideEmployeesDetails={hideEmployeesDetails}
-        />
+        <EmployeeTimeAttendanceTable hideEmployeesDetails={hideEmployeesDetails} />
       </div>
     );
   }
@@ -181,11 +153,7 @@ export const TimeTrackerContainer = () => {
   // For regular users, show the normal time tracker with TimerCard and ShiftsSection
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <TimerCard
-        userData={userData}
-        openPunches={openPunches}
-        hasRosterEvents={hasRosterEvents}
-      />
+      <TimerCard userData={userData} openPunches={openPunches} />
 
       <ShiftsSection
         userData={userData}
@@ -196,7 +164,6 @@ export const TimeTrackerContainer = () => {
         onViewTypeChange={handleViewTypeChange}
         onDateNavigation={handleDateNavigation}
         currentViewType={currentViewType}
-        hasRosterEvents={hasRosterEvents}
       />
     </div>
   );

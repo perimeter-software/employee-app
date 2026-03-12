@@ -18,18 +18,18 @@ interface EventPosition {
 }
 
 // Check if two events overlap in time and are on the same day
-function eventsOverlap(
-  event1: CalendarEventType,
-  event2: CalendarEventType
-): boolean {
+function eventsOverlap(event1: CalendarEventType, event2: CalendarEventType): boolean {
   if (event1.id === event2.id) return false;
-
+  
   // Check if events are on the same day
   if (!isSameDay(event1.start, event2.start)) return false;
-
+  
   // Check if events overlap in time
   // Two events overlap if: event1.start < event2.end AND event1.end > event2.start
-  return event1.start < event2.end && event1.end > event2.start;
+  return (
+    event1.start < event2.end &&
+    event1.end > event2.start
+  );
 }
 
 // Find all events that overlap with the current event, including transitive overlaps
@@ -42,15 +42,15 @@ function getOverlappingEvents(
   const visited = new Set<string>();
   const queue: CalendarEventType[] = [currentEvent];
   visited.add(currentEvent.id);
-
+  
   // Use BFS to find all connected overlapping events
   while (queue.length > 0) {
     const current = queue.shift()!;
-
+    
     // Check all events to find ones that overlap with current
     for (const event of events) {
       if (visited.has(event.id)) continue;
-
+      
       if (eventsOverlap(current, event)) {
         result.push(event);
         visited.add(event.id);
@@ -58,7 +58,7 @@ function getOverlappingEvents(
       }
     }
   }
-
+  
   return result;
 }
 
@@ -98,7 +98,7 @@ function calculateEventPosition(
   } else {
     // Multiple events - use column-based layout with better spacing
     const visiblePosition = Math.min(position, MAX_VISIBLE_COLUMNS - 1);
-
+    
     // Hide events beyond the visible columns
     if (position >= MAX_VISIBLE_COLUMNS) {
       hidden = true;
@@ -109,22 +109,21 @@ function calculateEventPosition(
     const totalGapPercent = (effectiveColumns - 1) * COLUMN_GAP_PERCENT;
     const totalMarginPercent = BASE_LEFT_PERCENT * 2;
     const availableWidthPercent = 100 - totalMarginPercent - totalGapPercent;
-
+    
     // Calculate width per column, ensuring minimum readability
     // For week view, prioritize readability over showing more columns
     const columnWidthPercent = Math.max(
       availableWidthPercent / effectiveColumns,
       MIN_COLUMN_WIDTH_PERCENT
     );
-
+    
     width = `${columnWidthPercent}%`;
-
+    
     // Calculate left position based on column (percentage-based for better responsiveness)
-    const leftPercent =
-      BASE_LEFT_PERCENT +
-      visiblePosition * (columnWidthPercent + COLUMN_GAP_PERCENT);
+    const leftPercent = BASE_LEFT_PERCENT + 
+                       visiblePosition * (columnWidthPercent + COLUMN_GAP_PERCENT);
     left = `${leftPercent}%`;
-
+    
     zIndex = MAX_VISIBLE_COLUMNS - visiblePosition; // Higher z-index for leftmost columns
 
     // Calculate overflow count: total events minus visible columns
@@ -171,42 +170,27 @@ type ColorKey =
   | 'pink'
   | 'orange'
   | 'yellow'
-  | 'indigo'
-  | 'gray';
+  | 'indigo';
 
 const getEventStyles = (color: string, isMonth: boolean = false) => {
   const colorMap = {
-    // Solid-fill colors (bg = border = same color → no visible separate border)
     blue: {
       bg: isMonth ? 'bg-appPrimary' : 'bg-appPrimary border-appPrimary',
       border: isMonth ? 'border-l-appPrimary' : 'border-l-appPrimary',
       text: isMonth ? 'text-white' : 'text-white',
       shadow: 'shadow-appPrimary',
     },
-    green: {
-      bg: isMonth ? 'bg-green-500' : 'bg-green-500 border-green-500',
-      border: isMonth ? 'border-l-green-500' : 'border-l-green-500',
-      text: isMonth ? 'text-white' : 'text-white',
-      shadow: 'shadow-green-500',
-    },
-    orange: {
-      bg: isMonth ? 'bg-orange-400' : 'bg-orange-400 border-orange-400',
-      border: isMonth ? 'border-l-orange-400' : 'border-l-orange-400',
-      text: isMonth ? 'text-white' : 'text-white',
-      shadow: 'shadow-orange-400',
-    },
-    gray: {
-      bg: isMonth ? 'bg-gray-400' : 'bg-gray-400 border-gray-400',
-      border: isMonth ? 'border-l-gray-400' : 'border-l-gray-400',
-      text: isMonth ? 'text-white' : 'text-white',
-      shadow: 'shadow-gray-400',
-    },
-    // Light-background colors (used by other calendar consumers)
     red: {
       bg: isMonth ? 'bg-red-100' : 'bg-red-100 border-red-300',
       border: isMonth ? 'border-l-red-500' : 'border-l-red-500',
       text: isMonth ? 'text-red-700' : 'text-red-800',
       shadow: 'shadow-red-100',
+    },
+    green: {
+      bg: isMonth ? 'bg-green-100' : 'bg-green-100 border-green-300',
+      border: isMonth ? 'border-l-green-500' : 'border-l-green-500',
+      text: isMonth ? 'text-green-700' : 'text-green-800',
+      shadow: 'shadow-green-100',
     },
     purple: {
       bg: isMonth ? 'bg-purple-100' : 'bg-purple-100 border-purple-300',
@@ -219,6 +203,12 @@ const getEventStyles = (color: string, isMonth: boolean = false) => {
       border: isMonth ? 'border-l-pink-500' : 'border-l-pink-500',
       text: isMonth ? 'text-pink-700' : 'text-pink-800',
       shadow: 'shadow-pink-100',
+    },
+    orange: {
+      bg: isMonth ? 'bg-orange-100' : 'bg-orange-100 border-orange-300',
+      border: isMonth ? 'border-l-orange-500' : 'border-l-orange-500',
+      text: isMonth ? 'text-orange-700' : 'text-orange-800',
+      shadow: 'shadow-orange-100',
     },
     yellow: {
       bg: isMonth ? 'bg-yellow-100' : 'bg-yellow-100 border-yellow-300',
@@ -246,21 +236,13 @@ const CalendarEvent = memo(function CalendarEvent({
   month?: boolean;
   className?: string;
 }) {
-  const {
-    events,
-    setSelectedEvent,
-    setManageEventDialogOpen,
-    date,
-    mode,
-    onOverflowClick,
-  } = useCalendarContext();
+  const { events, setSelectedEvent, setManageEventDialogOpen, date, mode, onOverflowClick } =
+    useCalendarContext();
   const isWeekView = mode === 'week';
-
+  
   // Memoize expensive calculations
   const style = useMemo(() => {
-    return month
-      ? { zIndex: 1 }
-      : calculateEventPosition(event, events, isWeekView);
+    return month ? { zIndex: 1 } : calculateEventPosition(event, events, isWeekView);
   }, [month, event, events, isWeekView]);
 
   // Get all overlapping events for overflow dropdown (including hidden ones)
@@ -270,38 +252,31 @@ const CalendarEvent = memo(function CalendarEvent({
     // Use the same getOverlappingEvents function to ensure consistency
     return getOverlappingEvents(event, events);
   }, [month, event, events]);
-
-  const eventStyles = useMemo(
-    () => getEventStyles(event.color, month),
-    [event.color, month]
-  );
-
+  
+  const eventStyles = useMemo(() => getEventStyles(event.color, month), [event.color, month]);
+  
   // Store isWeekView for use in the render section
   const weekViewContext = isWeekView;
-
+  
   // Override styles for future events to use light blue background
-  const isFuture = !!event.isFuture;
-
+  const isFuture = useMemo(() => {
+    return event.isFuture || new Date(event.start).getTime() > Date.now();
+  }, [event.isFuture, event.start]);
+  
   const futureStyles = useMemo(() => {
-    return isFuture
-      ? {
-          bg: month ? 'bg-blue-50' : 'bg-blue-50 border-blue-200',
-          border: month ? 'border-l-blue-300' : 'border-l-blue-300',
-          text: month ? 'text-blue-700' : 'text-blue-800',
-          shadow: 'shadow-blue-50',
-        }
-      : null;
+    return isFuture ? {
+      bg: month ? 'bg-blue-50' : 'bg-blue-50 border-blue-200',
+      border: month ? 'border-l-blue-300' : 'border-l-blue-300',
+      text: month ? 'text-blue-700' : 'text-blue-800',
+      shadow: 'shadow-blue-50',
+    } : null;
   }, [isFuture, month]);
 
   // Generate a unique key that includes the current month to prevent animation conflicts
-  const isEventInCurrentMonth = useMemo(
-    () => isSameMonth(event.start, date),
-    [event.start, date]
-  );
-  const animationKey = useMemo(
-    () => `${event.id}-${isEventInCurrentMonth ? 'current' : 'adjacent'}`,
-    [event.id, isEventInCurrentMonth]
-  );
+  const isEventInCurrentMonth = useMemo(() => isSameMonth(event.start, date), [event.start, date]);
+  const animationKey = useMemo(() => `${event.id}-${
+    isEventInCurrentMonth ? 'current' : 'adjacent'
+  }`, [event.id, isEventInCurrentMonth]);
 
   // Safety check for event data
   const safeTitle = event.title || 'Untitled Event';
@@ -330,9 +305,7 @@ const CalendarEvent = memo(function CalendarEvent({
               });
               setSelectedEvent(event);
               setManageEventDialogOpen(true);
-              console.log(
-                '✅ CalendarEvent (month): setSelectedEvent and setManageEventDialogOpen called'
-              );
+              console.log('✅ CalendarEvent (month): setSelectedEvent and setManageEventDialogOpen called');
             }}
             initial={{
               opacity: 0,
@@ -390,19 +363,19 @@ const CalendarEvent = memo(function CalendarEvent({
   return (
     <MotionConfig reducedMotion="user">
       <AnimatePresence mode="wait">
-        <motion.div
-          className={clsxm(
-            weekViewContext
-              ? 'px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-200 border border-l-4'
-              : 'px-2 sm:px-2.5 lg:px-3 py-1.5 lg:py-2 rounded-lg cursor-pointer transition-all duration-200 border border-l-4',
-            futureStyles ? futureStyles.bg : eventStyles.bg,
-            futureStyles ? futureStyles.border : eventStyles.border,
-            futureStyles ? futureStyles.text : eventStyles.text,
-            futureStyles ? futureStyles.shadow : eventStyles.shadow,
-            'hover:shadow-md hover:scale-[1.01] hover:brightness-105',
-            'absolute overflow-visible backdrop-blur-sm',
-            className
-          )}
+          <motion.div
+            className={clsxm(
+              weekViewContext 
+                ? 'px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-200 border border-l-4'
+                : 'px-2 sm:px-2.5 lg:px-3 py-1.5 lg:py-2 rounded-lg cursor-pointer transition-all duration-200 border border-l-4',
+              futureStyles ? futureStyles.bg : eventStyles.bg,
+              futureStyles ? futureStyles.border : eventStyles.border,
+              futureStyles ? futureStyles.text : eventStyles.text,
+              futureStyles ? futureStyles.shadow : eventStyles.shadow,
+              'hover:shadow-md hover:scale-[1.01] hover:brightness-105',
+              'absolute overflow-visible backdrop-blur-sm',
+              className
+            )}
           style={{
             ...style,
             zIndex: style.zIndex, // Calendar events have z-index 1-4, dropdown will be 9999
@@ -415,9 +388,7 @@ const CalendarEvent = memo(function CalendarEvent({
             });
             setSelectedEvent(event);
             setManageEventDialogOpen(true);
-            console.log(
-              '✅ CalendarEvent: setSelectedEvent and setManageEventDialogOpen called'
-            );
+            console.log('✅ CalendarEvent: setSelectedEvent and setManageEventDialogOpen called');
           }}
           initial={{
             opacity: 0,
@@ -478,14 +449,10 @@ const CalendarEvent = memo(function CalendarEvent({
             )}
 
             {/* Event content with avatar */}
-            <div
-              className={`flex items-start gap-1.5 w-full min-w-0 ${weekViewContext ? 'flex-row' : 'flex-row'}`}
-            >
+            <div className={`flex items-start gap-1.5 w-full min-w-0 ${weekViewContext ? 'flex-row' : 'flex-row'}`}>
               {/* Avatar */}
               {event.profileImg && (
-                <Avatar
-                  className={`${weekViewContext ? 'h-5 w-5 flex-shrink-0' : 'h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0'}`}
-                >
+                <Avatar className={`${weekViewContext ? 'h-5 w-5 flex-shrink-0' : 'h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0'}`}>
                   <Image
                     src={event.profileImg}
                     alt={event.title}
@@ -496,39 +463,27 @@ const CalendarEvent = memo(function CalendarEvent({
                 </Avatar>
               )}
               {!event.profileImg && event.firstName && event.lastName && (
-                <Avatar
-                  className={`${weekViewContext ? 'h-5 w-5 flex-shrink-0' : 'h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0'}`}
-                >
-                  <div
-                    className={`h-full w-full bg-gray-200 flex items-center justify-center text-gray-500 ${weekViewContext ? 'text-[10px]' : 'text-[10px] sm:text-xs'} font-medium`}
-                  >
+                <Avatar className={`${weekViewContext ? 'h-5 w-5 flex-shrink-0' : 'h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0'}`}>
+                  <div className={`h-full w-full bg-gray-200 flex items-center justify-center text-gray-500 ${weekViewContext ? 'text-[10px]' : 'text-[10px] sm:text-xs'} font-medium`}>
                     {event.firstName[0]}
                     {event.lastName[0]}
                   </div>
                 </Avatar>
               )}
-
+              
               {/* Name and time - stacked vertically in week view for better space usage */}
-              <div
-                className={`flex flex-col min-w-0 flex-1 ${weekViewContext ? 'gap-0' : 'gap-0.5'}`}
-              >
+              <div className={`flex flex-col min-w-0 flex-1 ${weekViewContext ? 'gap-0' : 'gap-0.5'}`}>
                 {/* Title - allow wrapping in week view */}
                 <span
                   className={`font-semibold ${weekViewContext ? 'text-xs leading-tight break-words' : 'text-xs sm:text-sm leading-tight truncate'} block min-w-0`}
                   title={safeTitle}
-                  style={
-                    weekViewContext
-                      ? { wordBreak: 'break-word', overflowWrap: 'break-word' }
-                      : {}
-                  }
+                  style={weekViewContext ? { wordBreak: 'break-word', overflowWrap: 'break-word' } : {}}
                 >
                   {safeTitle}
                 </span>
 
                 {/* Time display - smaller and on separate line */}
-                <span
-                  className={`${weekViewContext ? 'text-[9px] leading-tight' : 'text-[10px] sm:text-xs leading-tight'} opacity-90 font-medium`}
-                >
+                <span className={`${weekViewContext ? 'text-[9px] leading-tight' : 'text-[10px] sm:text-xs leading-tight'} opacity-90 font-medium`}>
                   {format(safeStart, 'h:mm a')} - {format(safeEnd, 'h:mm a')}
                 </span>
               </div>
