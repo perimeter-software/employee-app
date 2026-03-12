@@ -11,13 +11,15 @@ import CalendarProvider from '@/components/ui/Calendar/CalendarProvider';
 import Calendar from '@/components/ui/Calendar/Calendar';
 import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
 import { ShiftsTable } from './ShiftsTable';
+import { EventsTable } from './EventsTable';
 import { ShiftDetailsModal } from '../ShiftDetailsModal';
 import type { GignologyUser } from '@/domains/user/types';
 import type { PunchWithJobInfo } from '@/domains/punch/types';
 import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
 import { clsxm } from '@/lib/utils';
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
-import { startOfWeek, endOfWeek } from 'date-fns';
+import { useRosterEvents } from '@/domains/event/hooks';
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 
 interface ShiftsSectionProps {
   userData: GignologyUser;
@@ -31,6 +33,7 @@ interface ShiftsSectionProps {
   onViewTypeChange?: (viewType: 'table' | 'calendar') => void;
   onDateNavigation?: (direction: number) => void;
   currentViewType?: 'table' | 'calendar';
+  hasRosterEvents?: boolean;
 }
 
 // Enhanced CalendarEvent interface for shift data
@@ -132,16 +135,14 @@ const CalendarEventHandler = ({
   useEffect(() => {
     // When calendar selects an event and opens the dialog
     if (selectedEvent && manageEventDialogOpen) {
-      // Find the corresponding shift event
+      // Always close the calendar's default dialog
+      setManageEventDialogOpen(false);
+
+      // Only open the custom shift modal for punch events
       const shiftEvent = shiftEvents.find(
         (event) => event.id === selectedEvent.id
       );
-
       if (shiftEvent) {
-        // Close the calendar's default dialog
-        setManageEventDialogOpen(false);
-
-        // Open our custom shift modal
         onShiftClick(shiftEvent);
       }
     }
@@ -165,6 +166,7 @@ export function ShiftsSection({
   onViewTypeChange,
   onDateNavigation,
   currentViewType: parentViewType,
+  hasRosterEvents,
 }: ShiftsSectionProps) {
   // Get company work week settings
   const { weekStartsOn, isLoading: companyLoading } = useCompanyWorkWeek();
@@ -273,7 +275,7 @@ export function ShiftsSection({
     );
   }, [userData, dateRange.startDate, dateRange.endDate, allPunches]);
 
-  // Convert to regular CalendarEvent for the calendar component
+  // Convert punch events to CalendarEvent for the calendar component
   const calendarEvents = useMemo(() => {
     return shiftEvents.map((event) => ({
       id: event.id,
@@ -284,12 +286,94 @@ export function ShiftsSection({
     }));
   }, [shiftEvents]);
 
+  // Compute visible date range for the calendar based on current mode and date
+  const calendarViewRange = useMemo(() => {
+    if (viewType !== 'calendar') return null;
+
+    let start: Date;
+    let end: Date;
+
+    if (mode === 'month') {
+      // Include partial weeks from adjacent months
+      start = startOfMonth(calendarDate);
+      start = startOfWeek(start, { weekStartsOn: weekStartsOn || 0 });
+      end = endOfMonth(calendarDate);
+      end = endOfWeek(end, { weekStartsOn: weekStartsOn || 0 });
+    } else if (mode === 'week') {
+      start = startOfWeek(calendarDate, { weekStartsOn: weekStartsOn || 0 });
+      end = endOfWeek(calendarDate, { weekStartsOn: weekStartsOn || 0 });
+    } else {
+      // day mode
+      start = new Date(calendarDate);
+      start.setHours(0, 0, 0, 0);
+      end = new Date(calendarDate);
+      end.setHours(23, 59, 59, 999);
+    }
+
+    return { startDate: start.toISOString(), endDate: end.toISOString() };
+  }, [viewType, mode, calendarDate, weekStartsOn]);
+
+  // Fetch roster events for the visible calendar range (only when calendar view is active)
+  const { data: calendarRosterEvents } = useRosterEvents({
+    applicantId:
+      hasRosterEvents && calendarViewRange ? userData.applicantId || '' : '',
+    startDate: calendarViewRange?.startDate ?? '',
+    endDate: calendarViewRange?.endDate ?? '',
+  });
+
+  // Convert roster events to CalendarEvent entries (orange = scheduled, green = active)
+  const rosterCalendarEvents = useMemo((): CalendarEvent[] => {
+    if (!calendarRosterEvents?.length || !userData.applicantId) return [];
+
+    return calendarRosterEvents.flatMap((event): CalendarEvent[] => {
+      const applicantEntry = event.applicants?.find(
+        (a) => a.id === userData.applicantId && a.status === 'Roster'
+      );
+      if (!applicantEntry) return [];
+
+      let start: Date;
+      let end: Date;
+      let color: string;
+
+      if (applicantEntry.timeIn && applicantEntry.timeOut) {
+        // Completed: use actual clock-in/out times
+        start = new Date(applicantEntry.timeIn);
+        end = new Date(applicantEntry.timeOut);
+        color = 'gray';
+      } else if (applicantEntry.timeIn) {
+        // Active: actual clock-in → scheduled end (or now if no end)
+        start = new Date(applicantEntry.timeIn);
+        end = event.eventEndTime ? new Date(event.eventEndTime) : new Date();
+        color = 'green';
+      } else {
+        // Not started: full scheduled duration
+        start = new Date(applicantEntry.reportTime ?? event.eventDate);
+        end = event.eventEndTime
+          ? new Date(event.eventEndTime)
+          : new Date(start.getTime() + 2 * 60 * 60 * 1000);
+        color = 'orange';
+      }
+
+      return [
+        {
+          id: `roster-${event._id}`,
+          title: event.venueName
+            ? `${event.eventName} @ ${event.venueName}`
+            : event.eventName,
+          color,
+          start,
+          end,
+        },
+      ];
+    });
+  }, [calendarRosterEvents, userData.applicantId]);
+
   const [events, setEvents] = useState<CalendarEvent[]>([]);
 
-  // Update calendar events when shift events change
+  // Update calendar events when punch events or roster events change
   useEffect(() => {
-    setEvents(calendarEvents);
-  }, [calendarEvents]);
+    setEvents([...calendarEvents, ...rosterCalendarEvents]);
+  }, [calendarEvents, rosterCalendarEvents]);
 
   // Handle data refresh after successful operations
   const handleDataRefresh = () => {
@@ -429,9 +513,9 @@ export function ShiftsSection({
               </CalendarProvider>
             )
           ) : (
-            /* Table view remains the same */
+            /* Table view */
             <div className="overflow-x-auto -mx-3 sm:-mx-4 lg:-mx-6">
-              <div className="min-w-full px-3 sm:px-4 lg:px-6">
+              <div className="min-w-full pb-3 px-3 sm:px-4 lg:px-6">
                 <ShiftsTable
                   userData={userData}
                   openPunches={openPunches}
@@ -443,6 +527,20 @@ export function ShiftsSection({
                     displayRange: dateRange.displayRange,
                   }}
                 />
+                {hasRosterEvents && (
+                  <EventsTable
+                    applicantId={userData.applicantId}
+                    userId={userData._id}
+                    agentName={[userData.firstName, userData.lastName]
+                      .filter(Boolean)
+                      .join(' ')}
+                    dateRange={{
+                      startDate: dateRange.startDate.toISOString(),
+                      endDate: dateRange.endDate.toISOString(),
+                      displayRange: dateRange.displayRange,
+                    }}
+                  />
+                )}
               </div>
             </div>
           )}
