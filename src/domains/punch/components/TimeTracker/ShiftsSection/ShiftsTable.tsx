@@ -111,6 +111,43 @@ const formatTime = (date: Date) => {
   });
 };
 
+/** True if punch time segment [timeIn, timeOut ?? now] overlaps [windowStart, windowEnd]. */
+function punchOverlapsWindow(
+  punch: { timeIn: string; timeOut: string | null },
+  windowStart: Date,
+  windowEnd: Date,
+  now: Date
+): boolean {
+  const punchStart = new Date(punch.timeIn);
+  const punchEnd = punch.timeOut ? new Date(punch.timeOut) : now;
+  return punchStart < windowEnd && punchEnd > windowStart;
+}
+
+/** True if timeIn falls inside [windowStart, windowEnd] (inclusive). */
+function isTimeInInsideWindow(
+  timeIn: Date,
+  windowStart: Date,
+  windowEnd: Date
+): boolean {
+  const t = timeIn.getTime();
+  return t >= windowStart.getTime() && t <= windowEnd.getTime();
+}
+
+/** Map raw punch to row punch shape. */
+function toRowPunch(punch: PunchWithJobInfo): {
+  id: string;
+  timeIn: string;
+  timeOut: string | null;
+  status: 'active' | 'completed';
+} {
+  return {
+    id: punch._id,
+    timeIn: punch.timeIn,
+    timeOut: punch.timeOut,
+    status: punch.timeOut ? ('completed' as const) : ('active' as const),
+  };
+}
+
 export function ShiftsTable({
   userData,
   openPunches,
@@ -211,11 +248,29 @@ export function ShiftsTable({
   const shiftRows = useMemo((): ShiftRowData[] => {
     if (!userData?.jobs) return [];
 
-    const rows: ShiftRowData[] = [];
     const now = new Date();
-
-    // Track processed shift-date combinations to avoid duplicates
     const processedShifts = new Set<string>();
+
+    type RowPunch = {
+      id: string;
+      timeIn: string;
+      timeOut: string | null;
+      status: 'active' | 'completed';
+    };
+    interface RowInput {
+      currentDate: Date;
+      job: GignologyJob;
+      shift: Shift;
+      daySchedule: Shift['defaultSchedule'][keyof Shift['defaultSchedule']] | undefined;
+      isInDayRoster: boolean;
+      isUserInShiftRoster: boolean;
+      todayShiftStart: Date;
+      todayShiftEnd: Date;
+      isOvernightStartDay: boolean;
+      rawOverlappingPunches: RowPunch[];
+      isTodayDate: boolean;
+    }
+    const rowInputs: RowInput[] = [];
 
     const currentDate = new Date(startDate);
     while (currentDate <= endDate) {
@@ -239,42 +294,13 @@ export function ShiftsTable({
         job.shifts.forEach((shift: Shift) => {
           const shiftKey = `${job._id}-${shift.slug}-${formatDate(currentDate, 'MM/dd/yyyy')}`;
 
-          // Skip if we already processed this shift for this date
           if (processedShifts.has(shiftKey)) {
             return;
           }
 
-          // Find punches for this job and date from allPunches
-          const todayPunches = (allPunches || [])
-            .filter(
-              (punch) =>
-                punch.jobId === job._id &&
-                (punch.shiftSlug === shift.slug ||
-                  punch.shiftName === shift.shiftName) &&
-                isSameDay(new Date(punch.timeIn), currentDate)
-            )
-            .map((punch) => ({
-              id: punch._id,
-              timeIn: punch.timeIn,
-              timeOut: punch.timeOut,
-              status: punch.timeOut
-                ? ('completed' as const)
-                : ('active' as const),
-            }));
-
           const isUserInShiftRoster = shift.shiftRoster?.some(
             (rosterEntry) => rosterEntry._id === userData.applicantId
           );
-
-          const hasExistingPunches = todayPunches.length > 0;
-
-          // Skip if user is not in roster AND has no existing punches
-          if (!isUserInShiftRoster && !hasExistingPunches) {
-            return;
-          }
-
-          // Mark this shift-date as processed
-          processedShifts.add(shiftKey);
 
           let daySchedule:
             | Shift['defaultSchedule'][keyof Shift['defaultSchedule']]
@@ -282,14 +308,11 @@ export function ShiftsTable({
           let isInDayRoster = false;
 
           if (isUserInShiftRoster) {
-            // First, check the current day's schedule
             daySchedule =
               shift.defaultSchedule?.[
                 dayOfWeek as keyof typeof shift.defaultSchedule
               ];
 
-            // Check if user is in roster for this specific day.
-            // Only show shift when user is in that day's roster list; null/undefined or empty roster = not in roster.
             if (daySchedule?.roster == null || daySchedule.roster.length === 0) {
               isInDayRoster = false;
             } else {
@@ -300,8 +323,7 @@ export function ShiftsTable({
               );
             }
 
-            // If no current-day schedule or user not in day roster, check previous day
-            // for an overnight shift starting yesterday that ends today — skip that end-day row.
+            // Skip creating a row for the end-day of an overnight shift (start-day row already covers it)
             if (!daySchedule?.start || !isInDayRoster) {
               const previousDay = new Date(currentDate);
               previousDay.setDate(previousDay.getDate() - 1);
@@ -323,27 +345,21 @@ export function ShiftsTable({
               if (previousDaySchedule?.start && previousDaySchedule?.end) {
                 const prevStartTime = new Date(previousDaySchedule.start);
                 const prevEndTime = new Date(previousDaySchedule.end);
-
-                // Check if this is an overnight shift (end time of day is before start time of day,
-                // including same-hour cases where only minutes differ — e.g. 23:45 → 23:30).
                 const prevEndMinutes = prevEndTime.getHours() * 60 + prevEndTime.getMinutes();
                 const prevStartMinutes = prevStartTime.getHours() * 60 + prevStartTime.getMinutes();
                 if (prevEndMinutes < prevStartMinutes) {
-                  // This is the end-day of an overnight shift. The start-day row already
-                  // covers this shift, so skip creating a duplicate row here.
                   return;
                 }
               }
             }
           }
 
+          // Compute shift window first (before punch matching)
           let todayShiftStart: Date;
           let todayShiftEnd: Date;
-
           let isOvernightStartDay = false;
 
           if (daySchedule?.start && daySchedule?.end && isInDayRoster) {
-            // Use scheduled shift times
             const shiftStartTime = new Date(daySchedule.start);
             const shiftEndTime = new Date(daySchedule.end);
 
@@ -363,8 +379,6 @@ export function ShiftsTable({
               0
             );
 
-            // Detect overnight: end time-of-day is before start time-of-day (crosses midnight).
-            // Use hours+minutes so e.g. 23:00 -> 23:30 next day is detected.
             const startH = shiftStartTime.getHours();
             const startM = shiftStartTime.getMinutes();
             const endH = shiftEndTime.getHours();
@@ -375,156 +389,305 @@ export function ShiftsTable({
               todayShiftEnd.setDate(todayShiftEnd.getDate() + 1);
               isOvernightStartDay = true;
             }
-          } else if (hasExistingPunches) {
-            // For punches without a roster schedule, estimate times from the punch data itself
-            const firstPunch = todayPunches[0];
-            const lastPunch = todayPunches[todayPunches.length - 1];
-
-            todayShiftStart = new Date(firstPunch.timeIn);
-
-            if (lastPunch.timeOut) {
-              todayShiftEnd = new Date(lastPunch.timeOut);
-            } else {
-              // For active punches, estimate end time as start + 8 hours (or use current time)
-              todayShiftEnd = new Date(todayShiftStart);
-              todayShiftEnd.setHours(todayShiftStart.getHours() + 8);
-            }
           } else {
-            // This shouldn't happen given our filtering above, but safety check
+            // No schedule: infer window from candidates (job+shift, timeIn in currentDate ± 1 day)
+            const candidateStart = new Date(currentDate);
+            candidateStart.setDate(candidateStart.getDate() - 1);
+            candidateStart.setHours(0, 0, 0, 0);
+            const candidateEnd = new Date(currentDate);
+            candidateEnd.setDate(candidateEnd.getDate() + 1);
+            candidateEnd.setHours(23, 59, 59, 999);
+
+            const candidates = (allPunches || []).filter(
+              (p) =>
+                p.jobId === job._id &&
+                (p.shiftSlug === shift.slug || p.shiftName === shift.shiftName) &&
+                new Date(p.timeIn).getTime() >= candidateStart.getTime() &&
+                new Date(p.timeIn).getTime() <= candidateEnd.getTime()
+            );
+
+            if (candidates.length === 0 && !isUserInShiftRoster) {
+              return;
+            }
+            if (candidates.length === 0 && isUserInShiftRoster) {
+              return;
+            }
+
+            // Only create a no-schedule row when at least one punch's clock-in is on currentDate.
+            // Otherwise we get ghost rows (e.g. row for March 13) when punches from the previous
+            // day fall in the ±1 day candidate range and are later assigned to the real overnight row.
+            const atLeastOneCandidateOnCurrentDay = candidates.some((c) =>
+              isSameDay(new Date(c.timeIn), currentDate)
+            );
+            if (!atLeastOneCandidateOnCurrentDay) {
+              return;
+            }
+
+            const minStart = Math.min(
+              ...candidates.map((c) => new Date(c.timeIn).getTime())
+            );
+            todayShiftStart = new Date(minStart);
+            const maxEnd = Math.max(
+              ...candidates.map((c) =>
+                c.timeOut ? new Date(c.timeOut).getTime() : now.getTime()
+              )
+            );
+            todayShiftEnd = new Date(maxEnd);
+          }
+
+          // Overlap-based punch match: punch belongs to this row if it overlaps the shift window
+          const rawOverlappingPunches = (allPunches || [])
+            .filter(
+              (punch) =>
+                punch.jobId === job._id &&
+                (punch.shiftSlug === shift.slug ||
+                  punch.shiftName === shift.shiftName) &&
+                punchOverlapsWindow(
+                  punch,
+                  todayShiftStart,
+                  todayShiftEnd,
+                  now
+                )
+            )
+            .map(toRowPunch);
+
+          const hasExistingPunches = rawOverlappingPunches.length > 0;
+
+          if (!isUserInShiftRoster && !hasExistingPunches) {
             return;
           }
 
-          // Check if shift is active during this date (only for roster-based shifts)
+          processedShifts.add(shiftKey);
+
           if (isUserInShiftRoster && daySchedule?.start && daySchedule?.end) {
             const shiftStartDate = new Date(shift.shiftStartDate);
             const shiftEndDate = new Date(shift.shiftEndDate);
-
             const dayStart = new Date(currentDate);
             dayStart.setHours(0, 0, 0, 0);
             const dayEnd = new Date(currentDate);
             dayEnd.setHours(23, 59, 59, 999);
-
             const isShiftActiveForDay =
               shiftStartDate <= dayEnd && shiftEndDate >= dayStart;
-
-            // Skip if shift is not active for this day and no existing punches
             if (!isShiftActiveForDay && !hasExistingPunches) {
               return;
             }
           }
 
-          // For overnight shifts the window spans two calendar days; treat the row
-          // as "today" whenever now falls anywhere inside [shiftStart, shiftEnd].
-          const effectiveIsToday =
-            isToday || (isOvernightStartDay && now >= todayShiftStart && now <= todayShiftEnd);
-          const isWithinShift = effectiveIsToday && now >= todayShiftStart && now <= todayShiftEnd;
-          const shiftHasEnded = effectiveIsToday && now > todayShiftEnd;
-
-          const hasActivePunchForThisShift = todayPunches.some(
-            (punch) => punch.status === 'active'
-          );
-
-          const totalHours = todayPunches.reduce((sum, punch) => {
-            if (punch.timeOut) {
-              const hours =
-                (new Date(punch.timeOut).getTime() -
-                  new Date(punch.timeIn).getTime()) /
-                (1000 * 60 * 60);
-              return sum + hours;
-            }
-            if (punch.status === 'active') {
-              const hours =
-                (now.getTime() - new Date(punch.timeIn).getTime()) /
-                (1000 * 60 * 60);
-              return sum + hours;
-            }
-            return sum;
-          }, 0);
-
-          const canClockIn =
-            effectiveIsToday &&
-            !hasActivePunchForThisShift &&
-            !shiftHasEnded &&
-            isUserInShiftRoster &&
-            daySchedule?.start &&
-            daySchedule?.end &&
-            isInDayRoster &&
-            handleShiftJobClockInTime(
-              job,
-              userData.applicantId,
-              now.toISOString(),
-              shift
-            );
-
-          const canClockOut = hasActivePunchForThisShift;
-
-          const allowBreaks = job.additionalConfig?.allowBreaks ?? true;
-
-          // Visual indicators based on timer card state
-          const isSelectedShift =
-            selectedJob?._id === job._id && selectedShift?.slug === shift.slug;
-
-          const shouldShowRow =
-            hasExistingPunches || // Always show if there are punches
-            (isUserInShiftRoster &&
-              daySchedule?.start &&
-              daySchedule?.end &&
-              isInDayRoster) || // Show if enrolled and scheduled
-            (!shiftHasEnded && isUserInShiftRoster); // Show future enrolled shifts
-
-          if (shouldShowRow) {
-            const dateYyyyMmDd = formatDate(currentDate, 'yyyy-MM-dd');
-            const dayKey = DAY_KEYS[currentDate.getDay()];
-            const callOffCheck = canCallOffShift(job, shift, dateYyyyMmDd, dayKey);
-            const canCallOff =
-              todayPunches.length === 0 &&
-              callOffCheck.allowed &&
-              Boolean(job.additionalConfig?.allowCallOff);
-            const callOffDisabledReason =
-              job.additionalConfig?.allowCallOff && !canCallOff
-                ? todayPunches.length > 0
-                  ? 'You have already clocked in for this shift.'
-                  : callOffCheck.reason ?? 'Call off is not available.'
-                : undefined;
-
-            rows.push({
-              date: formatDate(currentDate, 'MM/dd/yyyy'),
-              dateObj: new Date(currentDate),
-              jobId: job._id,
-              jobTitle: job.title,
-              job: job,
-              shift: shift,
-              shiftName: shift.shiftName || shift.slug,
-              startTime: formatTime(todayShiftStart),
-              endTime: formatTime(todayShiftEnd),
-              totalHours: Math.round(totalHours * 100) / 100,
-              punches: todayPunches,
-              canClockIn,
-              canClockOut,
-              allowBreaks,
-              isWithinShift,
-              hasActivePunch: hasActivePunchForThisShift,
-              isToday: effectiveIsToday,
-              shiftHasEnded,
-              isSelectedShift,
-              isCurrentOpenPunchShift: hasActivePunchForThisShift,
-              dateYyyyMmDd,
-              dayKey,
-              canCallOff,
-              callOffDisabledReason,
-              isOvernightShift: isOvernightStartDay,
-              endDateDisplay: isOvernightStartDay ? formatDate(todayShiftEnd, 'MM/dd/yyyy') : undefined,
-            } as ShiftRowData & {
-              isSelectedShift: boolean;
-              isCurrentOpenPunchShift: boolean;
-              shiftHasEnded: boolean;
-            });
-          }
+          rowInputs.push({
+            currentDate: new Date(currentDate),
+            job,
+            shift,
+            daySchedule,
+            isInDayRoster,
+            isUserInShiftRoster,
+            todayShiftStart,
+            todayShiftEnd,
+            isOvernightStartDay,
+            rawOverlappingPunches,
+            isTodayDate: isToday,
+          });
         });
       });
 
       currentDate.setDate(currentDate.getDate() + 1);
     }
+
+    // Tie-breaker: when a punch overlaps multiple rows (same job+shift), assign only to the row
+    // where clock-in time is inside that row's window; otherwise (e.g. early clock-in) to the row
+    // with earliest shift start
+    const punchIdToRowIndices = new Map<string, number[]>();
+    rowInputs.forEach((row, idx) => {
+      row.rawOverlappingPunches.forEach((p) => {
+        const list = punchIdToRowIndices.get(p.id) ?? [];
+        list.push(idx);
+        punchIdToRowIndices.set(p.id, list);
+      });
+    });
+
+    const assignedPunchIdToRowIndex = new Map<string, number>();
+    punchIdToRowIndices.forEach((rowIndices, punchId) => {
+      if (rowIndices.length === 1) {
+        assignedPunchIdToRowIndex.set(punchId, rowIndices[0]);
+      } else {
+        const punch = rowInputs[rowIndices[0]].rawOverlappingPunches.find(
+          (p) => p.id === punchId
+        );
+        if (!punch) return;
+        const timeInDate = new Date(punch.timeIn);
+        const rowsWithTimeInInside = rowIndices.filter((idx) =>
+          isTimeInInsideWindow(
+            timeInDate,
+            rowInputs[idx].todayShiftStart,
+            rowInputs[idx].todayShiftEnd
+          )
+        );
+        if (rowsWithTimeInInside.length > 0) {
+          // Prefer the row whose shift start is earliest (deterministic; handles overnight vs next-day)
+          const winningIdx =
+            rowsWithTimeInInside.length === 1
+              ? rowsWithTimeInInside[0]
+              : rowsWithTimeInInside.reduce(
+                  (best, idx) =>
+                    rowInputs[idx].todayShiftStart.getTime() <
+                    rowInputs[best].todayShiftStart.getTime()
+                      ? idx
+                      : best,
+                  rowsWithTimeInInside[0]
+                );
+          assignedPunchIdToRowIndex.set(punchId, winningIdx);
+        } else {
+          // Early clock-in: timeIn not inside any window; assign to row with earliest shift start
+          const earliestIdx = rowIndices.reduce(
+            (best, idx) =>
+              rowInputs[idx].todayShiftStart.getTime() <
+              rowInputs[best].todayShiftStart.getTime()
+                ? idx
+                : best,
+            rowIndices[0]
+          );
+          assignedPunchIdToRowIndex.set(punchId, earliestIdx);
+        }
+      }
+    });
+
+    // Build final rows with resolved todayPunches
+    const rows: ShiftRowData[] = [];
+    rowInputs.forEach((input, rowIndex) => {
+      const assignedToThisRow = input.rawOverlappingPunches.filter(
+        (p) => assignedPunchIdToRowIndex.get(p.id) === rowIndex
+      );
+      // Dedupe by punch id (robust against duplicate entries in allPunches)
+      const seenPunchIds = new Set<string>();
+      const todayPunches = assignedToThisRow.filter((p) => {
+        if (seenPunchIds.has(p.id)) return false;
+        seenPunchIds.add(p.id);
+        return true;
+      });
+
+      const hasExistingPunches = todayPunches.length > 0;
+      const effectiveIsToday =
+        input.isTodayDate ||
+        (input.isOvernightStartDay &&
+          now >= input.todayShiftStart &&
+          now <= input.todayShiftEnd);
+      const shiftHasEnded =
+        effectiveIsToday && now > input.todayShiftEnd;
+      const hasActivePunchForThisShift = todayPunches.some(
+        (p) => p.status === 'active'
+      );
+
+      const totalHours = todayPunches.reduce((sum, punch) => {
+        if (punch.timeOut) {
+          return (
+            sum +
+            (new Date(punch.timeOut).getTime() -
+              new Date(punch.timeIn).getTime()) /
+              (1000 * 60 * 60)
+          );
+        }
+        if (punch.status === 'active') {
+          return (
+            sum +
+            (now.getTime() - new Date(punch.timeIn).getTime()) /
+              (1000 * 60 * 60)
+          );
+        }
+        return sum;
+      }, 0);
+
+      const canClockIn =
+        effectiveIsToday &&
+        !hasActivePunchForThisShift &&
+        !shiftHasEnded &&
+        input.isUserInShiftRoster &&
+        input.daySchedule?.start &&
+        input.daySchedule?.end &&
+        input.isInDayRoster &&
+        handleShiftJobClockInTime(
+          input.job,
+          userData.applicantId,
+          now.toISOString(),
+          input.shift
+        );
+
+      const canClockOut = hasActivePunchForThisShift;
+      const allowBreaks = input.job.additionalConfig?.allowBreaks ?? true;
+      const isSelectedShift =
+        selectedJob?._id === input.job._id &&
+        selectedShift?.slug === input.shift.slug;
+
+      // No-schedule rows (no daySchedule for this day) only show when they have punches.
+      // Otherwise we'd show empty "ghost" rows after the tie-breaker moved punches to another row.
+      const hasScheduleForThisDay =
+        Boolean(input.daySchedule?.start && input.daySchedule?.end) &&
+        input.isInDayRoster;
+      const shouldShowRow =
+        hasExistingPunches ||
+        (input.isUserInShiftRoster &&
+          input.daySchedule?.start &&
+          input.daySchedule?.end &&
+          input.isInDayRoster) ||
+        (!shiftHasEnded && input.isUserInShiftRoster && hasScheduleForThisDay);
+
+      if (shouldShowRow) {
+        const dateYyyyMmDd = formatDate(input.currentDate, 'yyyy-MM-dd');
+        const dayKey = DAY_KEYS[input.currentDate.getDay()];
+        const callOffCheck = canCallOffShift(
+          input.job,
+          input.shift,
+          dateYyyyMmDd,
+          dayKey
+        );
+        const canCallOff =
+          todayPunches.length === 0 &&
+          callOffCheck.allowed &&
+          Boolean(input.job.additionalConfig?.allowCallOff);
+        const callOffDisabledReason =
+          input.job.additionalConfig?.allowCallOff && !canCallOff
+            ? todayPunches.length > 0
+              ? 'You have already clocked in for this shift.'
+              : callOffCheck.reason ?? 'Call off is not available.'
+            : undefined;
+
+        rows.push({
+          date: formatDate(input.currentDate, 'MM/dd/yyyy'),
+          dateObj: new Date(input.currentDate),
+          jobId: input.job._id,
+          jobTitle: input.job.title,
+          job: input.job,
+          shift: input.shift,
+          shiftName: input.shift.shiftName || input.shift.slug,
+          startTime: formatTime(input.todayShiftStart),
+          endTime: formatTime(input.todayShiftEnd),
+          totalHours: Math.round(totalHours * 100) / 100,
+          punches: todayPunches,
+          canClockIn,
+          canClockOut,
+          allowBreaks,
+          isWithinShift:
+            effectiveIsToday &&
+            now >= input.todayShiftStart &&
+            now <= input.todayShiftEnd,
+          hasActivePunch: hasActivePunchForThisShift,
+          isToday: effectiveIsToday,
+          shiftHasEnded,
+          isSelectedShift,
+          isCurrentOpenPunchShift: hasActivePunchForThisShift,
+          dateYyyyMmDd,
+          dayKey,
+          canCallOff,
+          callOffDisabledReason,
+          isOvernightShift: input.isOvernightStartDay,
+          endDateDisplay: input.isOvernightStartDay
+            ? formatDate(input.todayShiftEnd, 'MM/dd/yyyy')
+            : undefined,
+        } as ShiftRowData & {
+          isSelectedShift: boolean;
+          isCurrentOpenPunchShift: boolean;
+          shiftHasEnded: boolean;
+        });
+      }
+    });
 
     return rows.sort((a, b) => {
       // Sort by date (oldest first - ascending order)
