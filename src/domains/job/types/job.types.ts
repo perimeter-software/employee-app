@@ -3,6 +3,13 @@ import { DefaultSchedule, RosterApplicant } from './schedule.types';
 import { JobLocation } from './location.types';
 import { LeaveRequest, Punch, PunchWJobInfoDayHours } from '@/domains/punch';
 
+export type Position = {
+  positionName: string;
+  numberPositions: string | number;
+  payRate?: string | number;
+  billRate?: string | number;
+};
+
 export type Shift = {
   defaultSchedule: DefaultSchedule;
   billRate: number;
@@ -13,6 +20,7 @@ export type Shift = {
   shiftRoster: Applicant[] | RosterApplicant[];
   exceptions: unknown[];
   slug: string;
+  positions?: Position[];
 };
 
 export type JobShiftSettings = {
@@ -34,6 +42,10 @@ export type JobShiftSettings = {
     allowNegativeLeave: boolean;
     negativeHoursLimit: number;
     autoClockoutShiftEnd: boolean;
+    autoAddWaitlistedStaff: boolean;
+    allowCallOff?: boolean;
+    callOffBefore?: number;
+    callOffBeforeUnit?: 'minutes' | 'hours' | 'days';
   };
   defaultSchedule: DefaultSchedule;
   jobShiftRoster: RosterApplicant[];
@@ -51,6 +63,10 @@ export type AdditionalConfiguration = {
   allowNegativeLeave: boolean;
   negativeHoursLimit: number;
   autoClockoutShiftEnd: boolean;
+  autoAddWaitlistedStaff: boolean;
+  allowCallOff?: boolean;
+  callOffBefore?: number;
+  callOffBeforeUnit?: 'minutes' | 'hours' | 'days';
 };
 
 export type GignologyJob = {
@@ -79,4 +95,9 @@ export type GignologyJob = {
 
 export type DisplayJob = GignologyJob & {
   punches: PunchWJobInfoDayHours[];
+};
+
+/** Params for jobs-with-shifts API (Client time & attendance). */
+export type JobsWithShiftsParams = {
+  includeHiddenJobs?: boolean;
 };

@@ -3,7 +3,7 @@ import { Formik, Form, Field, FieldInputProps } from 'formik';
 import * as Yup from 'yup';
 import { Save, MapPin } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import {
   Dialog,
   DialogContent,
@@ -16,9 +16,10 @@ import { Label } from '@/components/ui/Label';
 import { Textarea } from '@/components/ui/Textarea';
 import { MapModal } from '../MapModal';
 import { toast } from 'sonner';
-import type { EmployeePunch } from './types';
+import type { EmployeePunch } from '@/domains/punch/types/employee-punches.types';
 import type { Shift } from '@/domains/job/types/job.types';
 import { formatPhoneNumber } from '@/lib/utils';
+import { punchQueryKeys } from '@/domains/punch/services';
 
 interface EmployeePunchDetailsModalProps {
   isOpen: boolean;
@@ -27,6 +28,8 @@ interface EmployeePunchDetailsModalProps {
   onSuccess?: () => void;
   shift?: Shift; // Optional shift data for validation
   job?: { additionalConfig?: { earlyClockInMinutes?: number } }; // Optional job data for early clock-in config
+  /** When true, hide email/phone and show a single explanation. */
+  hideContactDetails?: boolean;
 }
 
 // Helper to get shift schedule for a specific day
@@ -224,6 +227,7 @@ export function EmployeePunchDetailsModal({
   onSuccess,
   shift,
   job,
+  hideContactDetails = false,
 }: EmployeePunchDetailsModalProps) {
   // ERROR-PROOF: All hooks must be called before any conditional returns
   // This ensures hooks are always called in the same order
@@ -341,17 +345,22 @@ export function EmployeePunchDetailsModal({
 
       toast.success('Punch updated successfully!');
       
-      // ERROR-PROOF: Invalidate queries with pattern matching to refetch all employeePunches queries
-      // This ensures all date ranges and filters get fresh data
-      queryClient.invalidateQueries({ 
-        queryKey: ['employeePunches'],
-        exact: false, // Match all queries that start with 'employeePunches'
+      // Invalidate punch-domain queries so table and active card refetch (same keys as useEmployeePunches / useActiveEmployeeCount)
+      queryClient.invalidateQueries({
+        queryKey: [...punchQueryKeys.all, 'employeePunches'],
+        exact: false,
       });
-      queryClient.invalidateQueries({ queryKey: ['activeEmployeeCount'] });
-      
-      // Refetch immediately to ensure fresh data is available
-      await queryClient.refetchQueries({ 
-        queryKey: ['employeePunches'],
+      queryClient.invalidateQueries({
+        queryKey: [...punchQueryKeys.all, 'activeCount'],
+        exact: false,
+      });
+      queryClient.invalidateQueries({
+        queryKey: [...punchQueryKeys.all, 'activeEmployees'],
+        exact: false,
+      });
+
+      await queryClient.refetchQueries({
+        queryKey: [...punchQueryKeys.all, 'employeePunches'],
         exact: false,
       });
       
@@ -366,6 +375,29 @@ export function EmployeePunchDetailsModal({
       );
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  // Same date-time format as Time In / Time Out fields (for correction "Previous" display)
+  const formatTimeField = (iso: string) => {
+    if (!iso || typeof iso !== 'string') return '—';
+    try {
+      const d = parseISO(iso);
+      if (isNaN(d.getTime())) return '—';
+      return format(d, "yyyy-MM-dd 'at' h:mm a");
+    } catch {
+      return '—';
+    }
+  };
+
+  const formatModifiedAt = (iso: string | undefined) => {
+    if (!iso || typeof iso !== 'string') return '—';
+    try {
+      const d = parseISO(iso);
+      if (isNaN(d.getTime())) return '—';
+      return format(d, 'MMM d, yyyy \'at\' h:mm a');
+    } catch {
+      return '—';
     }
   };
 
@@ -430,16 +462,20 @@ export function EmployeePunchDetailsModal({
 
           {/* Employee Info */}
           <div className="bg-gray-50 rounded-md p-3 space-y-1">
-            <div className="text-sm">
-              <span className="font-medium text-gray-700">Email:</span>{' '}
-              <span className="text-gray-600">{punch.employeeEmail || 'N/A'}</span>
-            </div>
-            <div className="text-sm">
-              <span className="font-medium text-gray-700">Phone:</span>{' '}
-              <span className="text-gray-600">
-                {formatPhoneNumber(punch.phoneNumber)}
-              </span>
-            </div>
+            {!hideContactDetails && (
+              <>
+                <div className="text-sm">
+                  <span className="font-medium text-gray-700">Email:</span>{' '}
+                  <span className="text-gray-600">{punch.employeeEmail || 'N/A'}</span>
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium text-gray-700">Phone:</span>{' '}
+                  <span className="text-gray-600">
+                    {formatPhoneNumber(punch.phoneNumber)}
+                  </span>
+                </div>
+              </>
+            )}
             <div className="text-sm">
               <span className="font-medium text-gray-700">Location:</span>{' '}
               <span className="text-gray-600">{punch.location || punch.jobSite || 'N/A'}</span>
@@ -484,6 +520,40 @@ export function EmployeePunchDetailsModal({
                   {touched.timeIn && errors.timeIn && (
                     <p className="text-sm text-red-600">{errors.timeIn}</p>
                   )}
+                  {punch.updateHistory && punch.updateHistory.length > 0 && (() => {
+                    type Entry = {
+                      timeIn: string;
+                      timeInBefore?: string;
+                      modifiedByName?: string;
+                      modifiedDate: string;
+                    };
+                    const entriesThatChangedTimeIn = punch.updateHistory!.filter((entry) => {
+                      const e = entry as Entry;
+                      return e.timeInBefore != null && e.timeInBefore !== e.timeIn;
+                    }) as Entry[];
+                    if (entriesThatChangedTimeIn.length === 0) return null;
+                    return (
+                      <div className="space-y-2">
+                        {entriesThatChangedTimeIn.map((entry, i) => {
+                          const by = entry.modifiedByName?.trim() || (punch as { modifiedByName?: string }).modifiedByName?.trim() || '—';
+                          const at = formatModifiedAt(entry.modifiedDate);
+                          const previous = entry.timeInBefore
+                            ? formatTimeField(entry.timeInBefore)
+                            : '—';
+                          return (
+                            <div key={i} className="rounded-md bg-amber-50 border border-amber-200/60 p-2 text-xs text-gray-700">
+                              <div className="font-medium text-amber-800">
+                                <span className="text-red-600">Correction</span> (by {by} {at})
+                              </div>
+                              <div className="mt-1 text-gray-600">
+                                Previous: <span className="text-red-600">{previous}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="space-y-2">
@@ -571,6 +641,42 @@ export function EmployeePunchDetailsModal({
                   {touched.timeOut && errors.timeOut && (
                     <p className="text-sm text-red-600">{errors.timeOut}</p>
                   )}
+                  {punch.updateHistory && punch.updateHistory.length > 0 && (() => {
+                    type Entry = {
+                      timeOut: string | null;
+                      timeOutBefore?: string | null;
+                      modifiedByName?: string;
+                      modifiedDate: string;
+                    };
+                    const outBefore = (e: Entry) => e.timeOutBefore?.trim() || null;
+                    const outAfter = (e: Entry) => e.timeOut?.trim() || null;
+                    const entriesThatChangedTimeOut = punch.updateHistory!.filter((entry) => {
+                      const e = entry as Entry;
+                      return outBefore(e) !== outAfter(e);
+                    }) as Entry[];
+                    if (entriesThatChangedTimeOut.length === 0) return null;
+                    return (
+                      <div className="space-y-2">
+                        {entriesThatChangedTimeOut.map((entry, i) => {
+                          const by = entry.modifiedByName?.trim() || (punch as { modifiedByName?: string }).modifiedByName?.trim() || '—';
+                          const at = formatModifiedAt(entry.modifiedDate);
+                          const previous = entry.timeOutBefore != null && entry.timeOutBefore !== ''
+                            ? formatTimeField(entry.timeOutBefore)
+                            : '—';
+                          return (
+                            <div key={i} className="rounded-md bg-amber-50 border border-amber-200/60 p-2 text-xs text-gray-700">
+                              <div className="font-medium text-amber-800">
+                                <span className="text-red-600">Correction</span> (by {by} {at})
+                              </div>
+                              <div className="mt-1 text-gray-600">
+                                Previous: <span className="text-red-600">{previous}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="space-y-2">

@@ -230,7 +230,9 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                   {/* User Info - Hidden on mobile */}
                   <div className="text-right hidden md:block">
                     <p className="text-sm font-medium text-gray-900">
-                      {displayUser?.name || displayUser?.given_name || 'User'}
+                      {displayUser?.firstName && displayUser?.lastName
+                        ? `${displayUser.firstName} ${displayUser.lastName}`
+                        : displayUser?.firstName || displayUser?.name || displayUser?.given_name || 'User'}
                     </p>
                     <p className="text-xs text-gray-500">
                       {displayUser?.email || ''}
@@ -251,11 +253,11 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                   ) : (
                     <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
                       <span className="text-white font-medium text-sm">
-                        {(
-                          displayUser?.name ||
-                          displayUser?.given_name ||
-                          'U'
-                        ).charAt(0)}
+                        {displayUser?.firstName?.[0] || 
+                         displayUser?.lastName?.[0] ||
+                         displayUser?.name?.[0] ||
+                         displayUser?.given_name?.[0] ||
+                         'U'}
                       </span>
                     </div>
                   )}

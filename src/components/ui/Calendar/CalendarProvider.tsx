@@ -2,6 +2,8 @@ import { CalendarContext } from './CalendarContext';
 import { CalendarEvent, Mode } from './types';
 import { useState } from 'react';
 
+import type { CalendarDayBadges } from './types';
+
 export default function CalendarProvider({
   events,
   setEvents,
@@ -11,6 +13,7 @@ export default function CalendarProvider({
   setDate,
   calendarIconIsToday = true,
   weekStartsOn = 0,
+  dayBadges,
   onOverflowClick,
   children,
 }: {
@@ -22,6 +25,7 @@ export default function CalendarProvider({
   setDate: (date: Date) => void;
   calendarIconIsToday: boolean;
   weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  dayBadges?: Record<string, CalendarDayBadges>;
   onOverflowClick?: (event: CalendarEvent, allEvents: CalendarEvent[]) => void;
   children: React.ReactNode;
 }) {
@@ -42,6 +46,7 @@ export default function CalendarProvider({
         setDate,
         calendarIconIsToday,
         weekStartsOn,
+        dayBadges,
         newEventDialogOpen,
         setNewEventDialogOpen,
         manageEventDialogOpen,

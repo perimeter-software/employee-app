@@ -6,6 +6,8 @@ import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { clsxm } from "@/lib/utils";
+import { useApplicantRouteProtection } from "@/lib/hooks/use-applicant-route-protection";
+import { AuthLoadingState } from "@/components/shared/PageProtection/AuthLoadingState";
 
 interface LayoutProps {
   children: ReactNode;
@@ -52,6 +54,9 @@ const Layout: React.FC<LayoutProps> = ({
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Protect routes for applicant-only sessions and get loading state
+  const { isLoading: isAuthLoading } = useApplicantRouteProtection();
+
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
   };
@@ -74,6 +79,13 @@ const Layout: React.FC<LayoutProps> = ({
     noindex ? "noindex" : "index",
     nofollow ? "nofollow" : "follow",
   ].join(", ");
+
+  // Show loading state while user and company data are loading
+  if (isAuthLoading) {
+    return (
+      <AuthLoadingState title="Loading" message="Preparing your account..." />
+    );
+  }
 
   return (
     <>

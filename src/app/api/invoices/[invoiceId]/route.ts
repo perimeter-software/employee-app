@@ -144,8 +144,7 @@ async function getInvoiceByIdHandler(
     zip: customer.zip ?? '',
     attn: customer.attn ?? '',
   };
-  const purchaseOrder =
-    raw.purchaseOrder ?? info.purchaseOrder ?? '';
+  const purchaseOrder = info.purchaseOrder?.trim() ?? '';
   const invoiceDateDisplay = info.date ?? formatInvoiceDate(raw.invoiceDate) ?? raw.startDate ?? '';
   const dueDate = info.dueDate ?? '';
   const notes = remittance.notes ?? '';

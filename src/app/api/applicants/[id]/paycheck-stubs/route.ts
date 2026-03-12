@@ -50,9 +50,10 @@ async function getPaycheckStubsHandler(
   }
 }
 
-// Export with enhanced auth wrapper
+// Export with applicant-aware auth wrapper (allows both users and applicants)
 export const GET = withEnhancedAuthAPI(getPaycheckStubsHandler, {
   requireDatabaseUser: true,
   requireTenant: true,
+  allowApplicants: true,
 });
 

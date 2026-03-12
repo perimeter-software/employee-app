@@ -56,7 +56,7 @@ export function usePageAuth(
     onAuthError?: (error: Error) => void;
   } = {}
 ) {
-  const { requireAuth, redirectTo = '/api/auth/login', onAuthError } = options;
+  const { requireAuth, redirectTo = '/', onAuthError } = options;
 
   const { user, isLoading, error } = useUser();
   const pathname = usePathname();
@@ -71,7 +71,10 @@ export function usePageAuth(
 
     // If not loading and no user and no error, redirect to login
     if (!isLoading && !user && !error) {
-      const returnUrl = encodeURIComponent(pathname);
+      // Include query parameters in returnUrl to preserve them (e.g., ?stubId=...)
+      const searchParams = typeof window !== 'undefined' ? window.location.search : '';
+      const fullPath = pathname + searchParams;
+      const returnUrl = encodeURIComponent(fullPath);
       const loginUrl = `${redirectTo}?returnTo=${returnUrl}`;
       window.location.href = loginUrl;
       return;

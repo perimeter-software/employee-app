@@ -15,6 +15,7 @@ import {
   MessageCircleQuestion,
   Receipt,
   X,
+  CalendarDays,
 } from 'lucide-react';
 import { clsxm } from '@/lib/utils';
 import { Button } from '@/components/ui/Button/Button';
@@ -86,6 +87,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
         href: '/pto',
         icon: CalendarClock,
         current: pathname === '/pto' || pathname.startsWith('/pto'),
+      });
+    }
+
+    // Employee shift requests (non-client users)
+    if (!isClient) {
+      baseNavigation.push({
+        name: 'Shift Requests',
+        href: '/shift-requests',
+        icon: CalendarDays,
+        current:
+          pathname === '/shift-requests' ||
+          pathname.startsWith('/shift-requests'),
       });
     }
 

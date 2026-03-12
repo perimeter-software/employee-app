@@ -2,6 +2,7 @@ export type InvoiceListItem = {
   _id: string;
   invoiceNumber?: number | string;
   startDate?: string;
+  endDate?: string;
   createdDate?: string | Date;
   eventName?: string;
   jobName?: string;

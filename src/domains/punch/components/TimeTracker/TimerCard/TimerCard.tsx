@@ -82,10 +82,6 @@ export function TimerCard({ userData, openPunches }: TimerCardProps) {
     );
   }
 
-  {
-    console.log('shiftInfo: ', shiftInfo);
-  }
-
   return (
     <>
       <ClockInValidationModal
@@ -147,7 +143,7 @@ export function TimerCard({ userData, openPunches }: TimerCardProps) {
                 !selectedJob ||
                 !selectedShift ||
                 (!!currentOpenPunch && openPunchOtherJob) ||
-                false
+                !shiftInfo.canClockInNow
               }
               // Only pass countdown info - simplified
               timeUntilShift={shiftInfo.timeUntilShift}

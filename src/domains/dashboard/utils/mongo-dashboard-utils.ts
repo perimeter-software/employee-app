@@ -81,14 +81,8 @@ export async function calculateDashboardStats(
     };
 
     if (selectedEmployeeId) {
-      // Filter by specific employee
-      const selectedUser = await db
-        .collection('users')
-        .findOne({ _id: new ObjectId(selectedEmployeeId) });
-      if (selectedUser?.applicantId) {
-        // Try string first (most common), MongoDB will match both formats
-        punchQuery.applicantId = selectedUser.applicantId.toString();
-      }
+      // Client dashboard sends applicant _id from /api/employees/list; use directly as applicantId
+      punchQuery.applicantId = selectedEmployeeId;
     } else if (userType === 'Client') {
       // For Client users viewing all employees, don't filter by applicantId
       // This will get all punches in the date range
@@ -132,7 +126,7 @@ export async function calculateDashboardStats(
     const userJobIds = [
       ...new Set(punches.map((punch) => punch.jobId).filter(Boolean)),
     ];
-    
+
     // Batch fetch all jobs with location data (reuse for absences calculation too)
     const jobs = await db
       .collection('jobs')
@@ -148,18 +142,18 @@ export async function calculateDashboardStats(
         location: 1,
       })
       .toArray();
-    
+
     // Create job map for quick lookup
     const jobGeofenceMap = new Map();
     jobs.forEach((job) => {
       jobGeofenceMap.set(job._id.toString(), job);
     });
-    
+
     // Calculate geofence violations in memory (much faster)
     let geofenceViolations = 0;
     for (const punch of punches) {
       if (!punch.clockInCoordinates || !punch.jobId) continue;
-      
+
       const job = jobGeofenceMap.get(punch.jobId.toString());
       if (!job || !job.venueCoordinates) {
         // Fallback: use accuracy check
@@ -168,7 +162,7 @@ export async function calculateDashboardStats(
         }
         continue;
       }
-      
+
       // Calculate distance in memory
       const distance = calculateDistanceInFeet(
         punch.clockInCoordinates.latitude,
@@ -176,7 +170,7 @@ export async function calculateDashboardStats(
         job.venueCoordinates.latitude,
         job.venueCoordinates.longitude
       );
-      
+
       const geofenceRadiusFeet = 100; // Default radius
       if (distance > geofenceRadiusFeet) {
         geofenceViolations++;
@@ -292,12 +286,7 @@ export async function calculateDashboardStats(
       };
 
       if (selectedEmployeeId) {
-        const selectedUser = await db
-          .collection('users')
-          .findOne({ _id: new ObjectId(selectedEmployeeId) });
-        if (selectedUser?.applicantId) {
-          previousPunchQuery.applicantId = selectedUser.applicantId.toString();
-        }
+        previousPunchQuery.applicantId = selectedEmployeeId;
       } else if (userType !== 'Client') {
         if (applicantId) {
           previousPunchQuery.applicantId = applicantId.toString();
@@ -334,7 +323,7 @@ export async function calculateDashboardStats(
       const prevUniqueJobIds = [
         ...new Set(previousPunches.map((punch) => punch.jobId).filter(Boolean)),
       ];
-      
+
       const prevJobsForGeofence = await db
         .collection('jobs')
         .find({
@@ -345,16 +334,16 @@ export async function calculateDashboardStats(
           venueCoordinates: 1,
         })
         .toArray();
-      
+
       const prevJobGeofenceMap = new Map();
       prevJobsForGeofence.forEach((job) => {
         prevJobGeofenceMap.set(job._id.toString(), job);
       });
-      
+
       let prevGeofenceViolations = 0;
       for (const punch of previousPunches) {
         if (!punch.clockInCoordinates || !punch.jobId) continue;
-        
+
         const job = prevJobGeofenceMap.get(punch.jobId.toString());
         if (!job || !job.venueCoordinates) {
           if (punch.clockInCoordinates.accuracy > 50) {
@@ -362,14 +351,14 @@ export async function calculateDashboardStats(
           }
           continue;
         }
-        
+
         const distance = calculateDistanceInFeet(
           punch.clockInCoordinates.latitude,
           punch.clockInCoordinates.longitude,
           job.venueCoordinates.latitude,
           job.venueCoordinates.longitude
         );
-        
+
         if (distance > 100) {
           prevGeofenceViolations++;
         }
@@ -393,7 +382,7 @@ export async function calculateDashboardStats(
     };
   } catch (error) {
     console.error('Error calculating dashboard stats:', error);
-    
+
     // If it's a timeout error, return empty stats instead of crashing
     if (error && typeof error === 'object' && 'codeName' in error) {
       const mongoError = error as { codeName?: string; code?: number };
@@ -414,7 +403,7 @@ export async function calculateDashboardStats(
         };
       }
     }
-    
+
     throw error;
   }
 }
@@ -450,19 +439,12 @@ export async function getAttendanceData(
 
     const userType = (user as { userType?: string }).userType;
     const applicantId = user.applicantId;
-    
+
     // Determine which applicantId to use for filtering
     let filterApplicantId: string | undefined;
     if (selectedEmployeeId) {
-      // Filter by specific employee
-      const selectedUser = await db
-        .collection('users')
-        .findOne({ _id: new ObjectId(selectedEmployeeId) });
-      if (selectedUser?.applicantId) {
-        filterApplicantId = selectedUser.applicantId.toString();
-      }
+      filterApplicantId = selectedEmployeeId;
     } else if (userType !== 'Client') {
-      // For non-Client users, filter by their own applicantId
       filterApplicantId = applicantId;
     }
     // For Client users viewing all employees, don't filter by applicantId (undefined)
@@ -497,7 +479,7 @@ export async function getAttendanceData(
       if (filterApplicantId) {
         monthQuery.applicantId = filterApplicantId;
       }
-      
+
       const monthPunches = await db
         .collection('timecard')
         .find(monthQuery)
@@ -538,7 +520,7 @@ export async function getAttendanceData(
       if (filterApplicantId) {
         prevYearQuery.applicantId = filterApplicantId;
       }
-      
+
       const prevYearPunches = await db
         .collection('timecard')
         .find(prevYearQuery)
@@ -593,7 +575,7 @@ export async function getAttendanceData(
       if (filterApplicantId) {
         dayQuery.applicantId = filterApplicantId;
       }
-      
+
       const dayPunches = await db
         .collection('timecard')
         .find(dayQuery)
@@ -626,7 +608,7 @@ export async function getAttendanceData(
     };
   } catch (error) {
     console.error('Error getting attendance data:', error);
-    
+
     // If it's a timeout error, return empty data instead of crashing
     if (error && typeof error === 'object' && 'codeName' in error) {
       const mongoError = error as { codeName?: string; code?: number };
@@ -638,7 +620,7 @@ export async function getAttendanceData(
         };
       }
     }
-    
+
     throw error;
   }
 }
@@ -680,17 +662,11 @@ export async function getPerformanceMetrics(
     const userType = (user as { userType?: string }).userType;
     const applicantId = user.applicantId;
     const dateRange = getDateRange('weekly', startDate, endDate, weekStartsOn);
-    
+
     // Determine which applicantId to use for filtering
     let filterApplicantId: string | undefined;
     if (selectedEmployeeId) {
-      // Filter by specific employee
-      const selectedUser = await db
-        .collection('users')
-        .findOne({ _id: new ObjectId(selectedEmployeeId) });
-      if (selectedUser?.applicantId) {
-        filterApplicantId = selectedUser.applicantId.toString();
-      }
+      filterApplicantId = selectedEmployeeId;
     } else if (userType !== 'Client') {
       // For non-Client users, filter by their own applicantId
       filterApplicantId = applicantId;
@@ -791,7 +767,7 @@ export async function getPerformanceMetrics(
     const uniqueJobIdsForGeofence = [
       ...new Set(punches.map((punch) => punch.jobId).filter(Boolean)),
     ];
-    
+
     const jobsForGeofence = await db
       .collection('jobs')
       .find({
@@ -804,12 +780,12 @@ export async function getPerformanceMetrics(
         venueCoordinates: 1,
       })
       .toArray();
-    
+
     const jobGeofenceMap = new Map();
     jobsForGeofence.forEach((job) => {
       jobGeofenceMap.set(job._id.toString(), job);
     });
-    
+
     // Also populate map from aggregation result's jobInfo if available
     punches.forEach((punch) => {
       if (punch.jobInfo && punch.jobInfo._id) {
@@ -836,11 +812,11 @@ export async function getPerformanceMetrics(
         }
       }
     });
-    
+
     let geofenceViolations = 0;
     for (const punch of punches) {
       if (!punch.clockInCoordinates || !punch.jobId) continue;
-      
+
       const job = jobGeofenceMap.get(punch.jobId.toString());
       if (!job || !job.venueCoordinates) {
         if (punch.clockInCoordinates.accuracy > 50) {
@@ -848,14 +824,14 @@ export async function getPerformanceMetrics(
         }
         continue;
       }
-      
+
       const distance = calculateDistanceInFeet(
         punch.clockInCoordinates.latitude,
         punch.clockInCoordinates.longitude,
         job.venueCoordinates.latitude,
         job.venueCoordinates.longitude
       );
-      
+
       if (distance > 100) {
         geofenceViolations++;
       }
@@ -990,12 +966,12 @@ export async function getPerformanceMetrics(
     const shiftDetailsJobIds = [
       ...new Set(completedPunches.map((punch) => punch.jobId).filter(Boolean)),
     ];
-    
+
     // Fetch jobs that aren't already in jobGeofenceMap
     const missingJobIds = shiftDetailsJobIds.filter(
       (id) => !jobGeofenceMap.has(id.toString())
     );
-    
+
     if (missingJobIds.length > 0) {
       const additionalJobs = await db
         .collection('jobs')
@@ -1009,7 +985,7 @@ export async function getPerformanceMetrics(
           venueCoordinates: 1,
         })
         .toArray();
-      
+
       additionalJobs.forEach((job) => {
         jobGeofenceMap.set(job._id.toString(), job);
       });
@@ -1028,7 +1004,7 @@ export async function getPerformanceMetrics(
       // Use jobInfo from aggregation result first, then fall back to jobGeofenceMap
       let isOutsideGeofence = false;
       let jobSite = 'Unknown Job';
-      
+
       // Try to get job info from aggregation result first (has title/venueName)
       let job = null;
       if (punch.jobInfo && punch.jobInfo._id) {
@@ -1036,18 +1012,18 @@ export async function getPerformanceMetrics(
         job = punch.jobInfo;
       } else if (punch.jobId) {
         // Fall back to jobGeofenceMap - handle both ObjectId and string
-        const jobIdStr = typeof punch.jobId === 'string' 
-          ? punch.jobId 
+        const jobIdStr = typeof punch.jobId === 'string'
+          ? punch.jobId
           : punch.jobId?.toString() || '';
         if (jobIdStr) {
           job = jobGeofenceMap.get(jobIdStr);
         }
       }
-      
+
       if (job) {
         // Get job name - prefer title, then venueName
         jobSite = (job.title || job.venueName || 'Unknown Job').toString();
-        
+
         // Check geofence using job data
         if (punch.clockInCoordinates && job.venueCoordinates) {
           const distance = calculateDistanceInFeet(
@@ -1091,7 +1067,7 @@ export async function getPerformanceMetrics(
     };
   } catch (error) {
     console.error('Error getting performance metrics:', error);
-    
+
     // If it's a timeout error, return empty data instead of crashing
     if (error && typeof error === 'object' && 'codeName' in error) {
       const mongoError = error as { codeName?: string; code?: number };
@@ -1109,7 +1085,7 @@ export async function getPerformanceMetrics(
         };
       }
     }
-    
+
     throw error;
   }
 }

@@ -14,7 +14,8 @@ export default function Calendar({
   hideHeaderDate?: boolean;
 }) {
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col h-full">
+      {!hideHeaderDate && !hideHeaderActions && (
       <CalendarHeader>
         {!hideHeaderDate && <CalendarHeaderDate />}
         {!hideHeaderActions && (
@@ -23,8 +24,13 @@ export default function Calendar({
         </CalendarHeaderActions>
         )}
       </CalendarHeader>
-      <div className="flex-1">
-        <CalendarBody hideTotalColumn={hideTotalColumn} />
+      )}
+      <div className="flex-1 min-h-0">
+        <CalendarBody
+          hideTotalColumn={hideTotalColumn}
+          hideHeaderActions={hideHeaderActions}
+          hideHeaderDate={hideHeaderDate}
+        />
       </div>
     </div>
   );

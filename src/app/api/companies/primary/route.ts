@@ -5,7 +5,7 @@ import { findPrimaryCompany } from '@/domains/company';
 
 async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
   try {
-    // Connect to databases
+    // Connect to databases (works for both users and applicants)
     const { db } = await getTenantAwareConnection(request);
 
     // Get primary company
@@ -47,8 +47,10 @@ async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
   }
 }
 
-// Export with enhanced auth wrapper (validates database user AND tenant)
+// Export with applicant-aware auth wrapper (allows both users and applicants)
+// This endpoint doesn't require a database user, just tenant access
 export const GET = withEnhancedAuthAPI(getPrimaryCompanyHandler, {
   requireDatabaseUser: true,
   requireTenant: true,
+  allowApplicants: true,
 });

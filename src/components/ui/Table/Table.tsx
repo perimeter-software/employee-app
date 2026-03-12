@@ -172,17 +172,17 @@ export function Table<T extends Record<string, unknown>>({
   );
 
   return (
-    <Card className={className}>
+    <Card className={`flex flex-col min-h-0 ${className || ""}`.trim()}>
       {(title || description) && (
         <CardHeader>
           {title && <CardTitle className="text-lg">{title}</CardTitle>}
           {description && <CardDescription>{description}</CardDescription>}
         </CardHeader>
       )}
-      <CardContent>
-        <div className="overflow-x-auto">
+      <CardContent className="flex flex-col min-h-0 flex-1">
+        <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
           <table className="min-w-full text-sm text-left">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
               <tr className="bg-gray-50 border-b border-gray-200">
                 {selectable && (
                   <th className="px-4 py-3 font-medium text-gray-600">
