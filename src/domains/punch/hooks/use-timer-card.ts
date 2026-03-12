@@ -18,9 +18,9 @@ import { format, parseISO, startOfDay, isAfter } from 'date-fns';
 import {
   getUserShiftForToday,
   getCalculatedTimeIn,
-  combineCurrentDateWithTimeFromDateObject,
   handleShiftJobClockInTime,
   isApprovedOrLegacyRosterEntry,
+  resolveShiftDates,
 } from '@/domains/punch/utils/shift-job-utils';
 
 interface UseTimerCardProps {
@@ -143,18 +143,14 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       if (!startStr || !endStr) return false;
 
       // 1) Today: employee has this shift today and it hasn't ended
-      const { start, end } = getUserShiftForToday(
+      const { start, end, isOvernightFromPreviousDay } = getUserShiftForToday(
         selectedJob,
         applicantId,
         currentTime,
         shift
       );
       if (start && end) {
-        const shiftEndTime = combineCurrentDateWithTimeFromDateObject(
-          end as Date,
-          currentTime,
-          start as Date
-        );
+        const { shiftEndTime } = resolveShiftDates(start, end, currentTime, isOvernightFromPreviousDay);
         if (shiftEndTime > now) return true;
       }
 
@@ -488,23 +484,18 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
 
         // Use your shift validation utilities to get proper times
         const currentTime = new Date().toISOString();
-        const { start, end } = getUserShiftForToday(
+        const { start, end, isOvernightFromPreviousDay } = getUserShiftForToday(
           targetJob,
           userData.applicantId,
           currentTime,
           targetShift
         );
 
-        // Use the proper function to combine current date with shift times
-        const newStartDate = combineCurrentDateWithTimeFromDateObject(
-          start as Date,
-          currentTime
-        );
-        const newEndDate = combineCurrentDateWithTimeFromDateObject(
-          end as Date,
-          currentTime,
-          start as Date
-        );
+        // Use resolveShiftDates so overnight-from-previous-day shifts get yesterday's date for start
+        const { shiftStartTime: newStartDate, shiftEndTime: newEndDate } =
+          start && end
+            ? resolveShiftDates(start, end, currentTime, isOvernightFromPreviousDay)
+            : { shiftStartTime: new Date(currentTime), shiftEndTime: new Date(currentTime) };
 
         const timeIn = getCalculatedTimeIn(
           targetJob,
@@ -756,7 +747,7 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
     const now = new Date();
     const currentTime = now.toISOString();
 
-    const { start, end } = getUserShiftForToday(
+    const { start, end, isOvernightFromPreviousDay } = getUserShiftForToday(
       selectedJob,
       userData.applicantId,
       currentTime,
@@ -769,18 +760,16 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         shiftStartTime: undefined,
         shiftEndTime: undefined,
         shiftDurationMinutes: undefined,
+        canClockInNow: false,
       };
     }
 
-    // Use the proper function to combine current date with shift times
-    const shiftStartTime = combineCurrentDateWithTimeFromDateObject(
-      start as Date,
-      currentTime
-    );
-    const shiftEndTime = combineCurrentDateWithTimeFromDateObject(
-      end as Date,
+    // Use resolveShiftDates so overnight-from-previous-day shifts get yesterday's date for start
+    const { shiftStartTime, shiftEndTime } = resolveShiftDates(
+      start,
+      end,
       currentTime,
-      start as Date
+      isOvernightFromPreviousDay
     );
 
     const shiftStart = new Date(shiftStartTime);
@@ -799,11 +788,20 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
       );
     }
 
+    // canClockInNow uses the same validation as ShiftsTable's canClockIn check
+    const canClockInNow = handleShiftJobClockInTime(
+      selectedJob,
+      userData.applicantId,
+      currentTime,
+      selectedShift
+    );
+
     return {
       timeUntilShift,
       shiftStartTime: shiftStartTime.toISOString(),
       shiftEndTime: shiftEndTime.toISOString(),
       shiftDurationMinutes,
+      canClockInNow,
     };
   }, [selectedJob, selectedShift, userData.applicantId]);
 
