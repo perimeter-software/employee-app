@@ -11,6 +11,8 @@ import { escapeHtml } from '@/lib/utils/format-utils';
 import { getApplicantId } from '@/domains/venue/utils/mongo-venue-utils';
 import { logActivity, createActivityLogData } from '@/lib/services/activity-logger';
 import { buildEmailFromTemplate } from '@/lib/services/email-template-service';
+import { enqueueFirebaseTopicJob } from '@/lib/services/firebase-queue';
+import { getVenueTopics, getEventTopics } from '@/domains/venue/utils/venue-topic-utils';
 
 const TEMPLATE_NAMES = {
   venueRequest: 'Employee Venue Request',
@@ -186,6 +188,31 @@ async function requestVenueHandler(
       }
     }
 
+    // Push Firebase topic jobs (fire-and-forget; errors must not block the response)
+    try {
+      const topicRecs = getVenueTopics(venueSlug, 'Pending');
+      if (topicRecs.length > 0) {
+        const userDoc = await db
+          .collection('users')
+          .findOne(
+            { applicantId },
+            { projection: { userDeviceToken: 1 } }
+          );
+        const fcmToken = userDoc?.userDeviceToken as string | undefined;
+        if (fcmToken) {
+          for (const rec of topicRecs) {
+            await enqueueFirebaseTopicJob({
+              jobType: rec.action === 'delete' ? 'unsubscribe' : 'subscribe',
+              topicName: rec.topic,
+              fcmTokens: [fcmToken],
+            });
+          }
+        }
+      }
+    } catch (queueErr) {
+      console.error('[Venue Request] Error enqueuing Firebase topic job:', queueErr);
+    }
+
     return NextResponse.json(
       { success: true, message: 'Venue request submitted' },
       { status: 200 }
@@ -286,10 +313,11 @@ async function cancelVenueRequestHandler(
     );
 
     // For StaffingPool removals, mirror changeVenue status=Delete side effects
+    let futureEvents: { _id: ObjectId; applicants: { id: string }[] }[] = [];
     if (existing.status === 'StaffingPool') {
       // Remove applicant from future events at this venue
       try {
-        const futureEvents = await db
+        futureEvents = (await db
           .collection('events')
           .find(
             {
@@ -299,7 +327,7 @@ async function cancelVenueRequestHandler(
             },
             { projection: { _id: 1, applicants: 1 } }
           )
-          .toArray();
+          .toArray()) as typeof futureEvents;
 
         for (const event of futureEvents) {
           const updatedApplicants = (
@@ -366,6 +394,36 @@ async function cancelVenueRequestHandler(
           );
         }
       }
+    }
+
+    // Push Firebase topic unsubscribe jobs (fire-and-forget)
+    try {
+      const topicRecs = getVenueTopics(venueSlug, existing.status === 'StaffingPool' ? 'Delete' : existing.status);
+      const eventTopics = existing.status === 'StaffingPool'
+        ? futureEvents.flatMap((evt) => getEventTopics(evt._id.toString()))
+        : [];
+      const allTopics = [...topicRecs, ...eventTopics];
+
+      if (allTopics.length > 0) {
+        const userDoc = await db
+          .collection('users')
+          .findOne(
+            { applicantId },
+            { projection: { userDeviceToken: 1 } }
+          );
+        const fcmToken = userDoc?.userDeviceToken as string | undefined;
+        if (fcmToken) {
+          for (const rec of allTopics) {
+            await enqueueFirebaseTopicJob({
+              jobType: rec.action === 'delete' ? 'unsubscribe' : 'subscribe',
+              topicName: rec.topic,
+              fcmTokens: [fcmToken],
+            });
+          }
+        }
+      }
+    } catch (queueErr) {
+      console.error('[Venue Remove] Error enqueuing Firebase topic job:', queueErr);
     }
 
     const message =
