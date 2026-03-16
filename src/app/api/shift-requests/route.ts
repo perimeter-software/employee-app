@@ -7,15 +7,7 @@ import { findJobByjobId } from '@/domains/user/utils/mongo-user-utils';
 import type { RosterEntry, RosterEntryStatus } from '@/domains/job/types/schedule.types';
 import { emailService } from '@/lib/services/email-service';
 import { getShiftStartOnDate } from '@/domains/punch/utils/shift-job-utils';
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import { escapeHtml } from '@/lib/utils/format-utils';
 
 type DayKey =
   | 'sunday'
