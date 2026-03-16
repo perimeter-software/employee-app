@@ -9,6 +9,13 @@ import type {
 import { emailService } from '@/lib/services/email-service';
 import { escapeHtml } from '@/lib/utils/format-utils';
 import { getApplicantId } from '@/domains/venue/utils/mongo-venue-utils';
+import { logActivity, createActivityLogData } from '@/lib/services/activity-logger';
+import { buildEmailFromTemplate } from '@/lib/services/email-template-service';
+
+const TEMPLATE_NAMES = {
+  venueRequest: 'Employee Venue Request',
+  venueRemoval: 'Employee Venue Removal',
+};
 
 // POST — request to join a venue (adds Pending entry to applicant's venues array)
 async function requestVenueHandler(
@@ -64,7 +71,7 @@ async function requestVenueHandler(
       .collection('applicants')
       .findOne(
         { _id: new ObjectId(applicantId) },
-        { projection: { venues: 1 } }
+        { projection: { venues: 1, firstName: 1, lastName: 1, email: 1 } }
       );
 
     const existing = (applicantDoc?.venues ?? []).find(
@@ -115,7 +122,20 @@ async function requestVenueHandler(
         );
     }
 
-    // Send notification email to venue contacts (mirrors staffingPoolStatusChange for status=Pending)
+    await logActivity(
+      db,
+      createActivityLogData(
+        'Venue Request',
+        `${agentName} requested to join venue ${venueSlug}`,
+        {
+          applicantId,
+          agent: agentName,
+          details: { venueSlug, newEntry },
+        }
+      )
+    );
+
+    // Send notification email to venue contacts
     const contactEmails = [
       venue.venueContact1?.email,
       venue.venueContact2?.email,
@@ -123,36 +143,39 @@ async function requestVenueHandler(
 
     if (contactEmails.length > 0) {
       const venueName = venue.name ?? venueSlug;
-      const subject = `New Venue Request — ${venueName}`;
-      const text = [
-        `${agentName} has submitted a request to join ${venueName}.`,
-        '',
-        `Employee: ${agentName}`,
-        `Venue: ${venueName}`,
-        '',
-        'Please log in to the admin portal to review this request.',
-        '',
-        'This is an automated notification from the Employee App.',
-      ].join('\n');
-      const html = [
-        '<div style="font-family:\'Segoe UI\',Tahoma,Geneva,Verdana,sans-serif; max-width:560px; margin:0 auto; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;">',
-        '<div style="background:#0d9488; color:#fff; padding:14px 20px; font-size:18px; font-weight:600;">New venue request</div>',
-        '<div style="padding:20px;">',
-        '<p style="margin:0 0 16px; color:#374151; font-size:14px;">An employee has submitted a request to join your venue.</p>',
-        '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:20px; border:1px solid #e5e7eb; border-radius:6px;">',
-        '<tr style="background:#f9fafb;"><td colspan="2" style="padding:10px 14px; font-weight:600; color:#374151; border-bottom:1px solid #e5e7eb;">Request details</td></tr>',
-        `<tr><td style="padding:10px 14px; color:#6b7280; width:120px; border-bottom:1px solid #f3f4f6;">Employee</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">${escapeHtml(agentName)}</td></tr>`,
-        `<tr><td style="padding:10px 14px; color:#6b7280;">Venue</td><td style="padding:10px 14px; color:#111827;">${escapeHtml(venueName)}</td></tr>`,
-        '</table>',
-        '<p style="margin:0; color:#6b7280; font-size:13px;">Please log in to the admin portal to review this request.</p>',
-        '</div>',
-        '<div style="padding:12px 20px; background:#f9fafb; border-top:1px solid #e5e7eb; font-size:12px; color:#6b7280;">This is an automated notification from the Employee App.</div>',
-        '</div>',
-      ].join('');
+
+      // Try template first; fall back to hardcoded HTML
+      const built = await buildEmailFromTemplate(
+        db,
+        TEMPLATE_NAMES.venueRequest,
+        {
+          applicant: applicantDoc as Record<string, unknown>,
+          venue: venue as Record<string, unknown>,
+        }
+      );
+
+      const subject = built?.subject ?? `New Venue Request — ${venueName}`;
+      const html =
+        built?.html ??
+        [
+          '<div style="font-family:\'Segoe UI\',Tahoma,Geneva,Verdana,sans-serif; max-width:560px; margin:0 auto; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;">',
+          '<div style="background:#0d9488; color:#fff; padding:14px 20px; font-size:18px; font-weight:600;">New venue request</div>',
+          '<div style="padding:20px;">',
+          '<p style="margin:0 0 16px; color:#374151; font-size:14px;">An employee has submitted a request to join your venue.</p>',
+          '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:20px; border:1px solid #e5e7eb; border-radius:6px;">',
+          '<tr style="background:#f9fafb;"><td colspan="2" style="padding:10px 14px; font-weight:600; color:#374151; border-bottom:1px solid #e5e7eb;">Request details</td></tr>',
+          `<tr><td style="padding:10px 14px; color:#6b7280; width:120px; border-bottom:1px solid #f3f4f6;">Employee</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">${escapeHtml(agentName)}</td></tr>`,
+          `<tr><td style="padding:10px 14px; color:#6b7280;">Venue</td><td style="padding:10px 14px; color:#111827;">${escapeHtml(venueName)}</td></tr>`,
+          '</table>',
+          '<p style="margin:0; color:#6b7280; font-size:13px;">Please log in to the admin portal to review this request.</p>',
+          '</div>',
+          '<div style="padding:12px 20px; background:#f9fafb; border-top:1px solid #e5e7eb; font-size:12px; color:#6b7280;">This is an automated notification from the Employee App.</div>',
+          '</div>',
+        ].join('');
 
       for (const to of contactEmails) {
         try {
-          await emailService.sendEmail({ to, subject, html, text });
+          await emailService.sendEmail({ to, subject, html });
         } catch (emailErr) {
           console.error(
             '[Venue Request] Error sending notification to',
@@ -209,7 +232,7 @@ async function cancelVenueRequestHandler(
       .collection('applicants')
       .findOne(
         { _id: new ObjectId(applicantId) },
-        { projection: { venues: 1 } }
+        { projection: { venues: 1, firstName: 1, lastName: 1, email: 1 } }
       );
 
     const existing = (applicantDoc?.venues ?? []).find(
@@ -239,6 +262,28 @@ async function cancelVenueRequestHandler(
         { status: 404 }
       );
     }
+
+    const agentName =
+      [user.firstName, user.lastName].filter(Boolean).join(' ') ||
+      user.name ||
+      user.email ||
+      'Employee';
+
+    const action =
+      existing.status === 'StaffingPool' ? 'Venue Leave' : 'Venue Request Cancel';
+
+    await logActivity(
+      db,
+      createActivityLogData(
+        action,
+        `${agentName} ${existing.status === 'StaffingPool' ? 'left' : 'cancelled request for'} venue ${venueSlug}`,
+        {
+          applicantId,
+          agent: agentName,
+          details: { venueSlug, previousStatus: existing.status },
+        }
+      )
+    );
 
     // For StaffingPool removals, mirror changeVenue status=Delete side effects
     if (existing.status === 'StaffingPool') {
@@ -285,32 +330,35 @@ async function cancelVenueRequestHandler(
         try {
           const venue = await db
             .collection('venues')
-            .findOne({ slug: venueSlug }, { projection: { name: 1 } });
+            .findOne({ slug: venueSlug }, { projection: { _id: 1, name: 1 } });
           const venueName = venue?.name ?? venueSlug;
-          const subject = `You have been removed from ${venueName}`;
-          const text = [
-            `You have been removed from the staffing pool for ${venueName}.`,
-            '',
-            'If you believe this was a mistake, please contact your event manager.',
-            '',
-            'This is an automated notification from the Employee App.',
-          ].join('\n');
-          const html = [
-            '<div style="font-family:\'Segoe UI\',Tahoma,Geneva,Verdana,sans-serif; max-width:560px; margin:0 auto; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;">',
-            '<div style="background:#0d9488; color:#fff; padding:14px 20px; font-size:18px; font-weight:600;">Venue removal notification</div>',
-            '<div style="padding:20px;">',
-            `<p style="margin:0 0 12px; color:#374151; font-size:14px;">You have been removed from the staffing pool for <strong>${escapeHtml(venueName)}</strong>.</p>`,
-            '<p style="margin:0; color:#6b7280; font-size:13px;">If you believe this was a mistake, please contact your event manager.</p>',
-            '</div>',
-            '<div style="padding:12px 20px; background:#f9fafb; border-top:1px solid #e5e7eb; font-size:12px; color:#6b7280;">This is an automated notification from the Employee App.</div>',
-            '</div>',
-          ].join('');
-          await emailService.sendEmail({
-            to: recipientEmail,
-            subject,
-            html,
-            text,
-          });
+
+          // Try template first; fall back to hardcoded HTML
+          const built = await buildEmailFromTemplate(
+            db,
+            TEMPLATE_NAMES.venueRemoval,
+            {
+              applicant: applicantDoc as Record<string, unknown>,
+              venue: venue as Record<string, unknown>,
+            }
+          );
+
+          const subject =
+            built?.subject ?? `You have been removed from ${venueName}`;
+          const html =
+            built?.html ??
+            [
+              '<div style="font-family:\'Segoe UI\',Tahoma,Geneva,Verdana,sans-serif; max-width:560px; margin:0 auto; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;">',
+              '<div style="background:#0d9488; color:#fff; padding:14px 20px; font-size:18px; font-weight:600;">Venue removal notification</div>',
+              '<div style="padding:20px;">',
+              `<p style="margin:0 0 12px; color:#374151; font-size:14px;">You have been removed from the staffing pool for <strong>${escapeHtml(venueName)}</strong>.</p>`,
+              '<p style="margin:0; color:#6b7280; font-size:13px;">If you believe this was a mistake, please contact your event manager.</p>',
+              '</div>',
+              '<div style="padding:12px 20px; background:#f9fafb; border-top:1px solid #e5e7eb; font-size:12px; color:#6b7280;">This is an automated notification from the Employee App.</div>',
+              '</div>',
+            ].join('');
+
+          await emailService.sendEmail({ to: recipientEmail, subject, html });
         } catch (emailErr) {
           console.error(
             '[Venue Remove] Error sending removal email:',
