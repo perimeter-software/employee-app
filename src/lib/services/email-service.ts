@@ -12,6 +12,8 @@ interface EmailOptions {
   html: string;
   text?: string;
   from?: string;
+  cc?: string[];
+  additionalRecipients?: string[];
 }
 
 /** In-memory attachment (replicates sp1-api queue attachment shape; we use content instead of path). */
@@ -22,7 +24,7 @@ export interface EmailAttachment {
 
 /** Options for sending email with attachments (same conceptual flow as sp1-api sendmessage + queue). */
 export interface SendEmailWithAttachmentsOptions {
-  from: string;
+  from?: string;
   fromDisplayName?: string;
   to: string | string[];
   subject: string;
@@ -86,9 +88,10 @@ class EmailService {
   private buildRawMimeMessage(options: SendEmailWithAttachmentsOptions): Buffer {
     const toList = Array.isArray(options.to) ? options.to : [options.to];
     const toLine = toList.join(', ');
+    const resolvedFrom = options.from ?? this.defaultFromEmail;
     const fromDisplay = options.fromDisplayName
-      ? `${options.fromDisplayName} <${options.from}>`
-      : options.from;
+      ? `${options.fromDisplayName} <${resolvedFrom}>`
+      : resolvedFrom;
     const boundary = `----=_Part_${Date.now()}`;
     const lines: string[] = [
       `From: ${fromDisplay}`,
@@ -165,7 +168,7 @@ class EmailService {
    * Credentials are automatically retrieved from environment variables via AWS SDK default provider chain
    */
   async sendEmail(options: EmailOptions): Promise<void> {
-    const { to, subject, html, text, from } = options;
+    const { to, subject, html, text, from, cc, additionalRecipients } = options;
     const fromEmail = from || this.defaultFromEmail;
 
     // In development, log the email instead of sending (unless explicitly enabled)
@@ -201,7 +204,8 @@ class EmailService {
       const params = {
         Source: formattedSource,
         Destination: {
-          ToAddresses: [to],
+          ToAddresses: [to, ...(additionalRecipients ?? [])],
+          ...(cc?.length && { CcAddresses: cc }),
         },
         Message: {
           Subject: {

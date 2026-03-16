@@ -60,3 +60,12 @@ export function formatPhoneNumber(phoneNumber: string | undefined): string {
   // Fallback: return original if we can't determine format
   return phoneNumber;
 }
+
+export function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}

@@ -12,7 +12,7 @@ import {
   getTotalWorkedHoursForWeek,
 } from '@/domains/punch/utils';
 import { ObjectId as ObjectIdFunction } from 'mongodb';
-import { parseClockInCoordinates } from '@/lib/utils';
+import { parseClockInCoordinates, escapeHtml } from '@/lib/utils';
 import { ClockInCoordinates, Shift } from '@/domains/job';
 import { findJobByjobId, getUserType } from '@/domains/user/utils';
 import {
@@ -51,14 +51,6 @@ const calculateDistance = (
   const distance = R * c; // Distance in km
   return distance;
 };
-
-function escapeHtml(s: string): string {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 function createNewPunch(
   userId: string,

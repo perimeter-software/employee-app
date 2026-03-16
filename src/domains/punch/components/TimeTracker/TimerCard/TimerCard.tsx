@@ -1,31 +1,39 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import { CircularTimer } from './CircularTimer';
 import { ElapsedTime } from './ElapsedTime';
 import { JobShiftSelector } from './JobShiftSelector';
 import { ClockControls } from './ClockControls';
 import { ClockInValidationModal } from '../ClockInValidationModal';
+import { EventTimerCardContent } from '../EventTimerCard/EventTimerCard';
 import { useTimerCard } from '@/domains/punch/hooks';
 import { usePunchViewerStore } from '@/domains/punch/stores/punch-viewer-store';
 import { PunchWithJobInfo } from '@/domains/punch/types';
 import { GignologyUser } from '@/domains/user/types';
+import { clsxm } from '@/lib/utils';
 import { noop } from '@tanstack/react-query';
 
 interface TimerCardProps {
   userData: GignologyUser;
   openPunches: PunchWithJobInfo[] | undefined;
+  hasRosterEvents?: boolean;
 }
 
-export function TimerCard({ userData, openPunches }: TimerCardProps) {
+export function TimerCard({
+  userData,
+  openPunches,
+  hasRosterEvents,
+}: TimerCardProps) {
   const { initializeFromServerData } = usePunchViewerStore();
+  const [activeTab, setActiveTab] = useState<'jobs' | 'events'>('jobs');
 
   // Initialize store from server data when component mounts or data changes
   useEffect(() => {
     if (openPunches && userData) {
-      // Always initialize from server data since we no longer persist
       initializeFromServerData(openPunches, userData);
     }
   }, [openPunches, userData, initializeFromServerData]);
@@ -102,64 +110,108 @@ export function TimerCard({ userData, openPunches }: TimerCardProps) {
         {/* REMOVED: Location Display - no more showing coordinates at the top */}
 
         <CardContent className="py-8 px-8">
-          {/* Job and Shift Selection */}
-          <JobShiftSelector
-            userData={userData}
-            selectedJob={selectedJob}
-            selectedShift={selectedShift}
-            availableShifts={availableShifts}
-            blockJobSelection={blockJobSelection}
-            onJobSelect={handleJobSelection}
-            onShiftSelect={handleShiftSelection}
-            currentOpenPunch={currentOpenPunch || undefined}
-            isClocked={isClocked}
-          />
-
-          {/* Timer Display - Show elapsed time when clocked in, circular timer when not */}
-          {isClocked && currentOpenPunch ? (
-            <ElapsedTime
-              startTime={currentOpenPunch.timeIn}
-              onClick={() =>
-                selectedJob && selectedShift
-                  ? handleClockInOut(selectedJob, selectedShift)
-                  : noop
-              }
-              // Pass shift timing information for accurate progress calculation
-              shiftStartTime={shiftInfo.shiftStartTime}
-              shiftEndTime={shiftInfo.shiftEndTime}
-              shiftDurationMinutes={shiftInfo.shiftDurationMinutes}
-            />
-          ) : (
-            <CircularTimer
-              time={currentTime}
-              isActive={isClocked}
-              onClick={() =>
-                selectedJob && selectedShift
-                  ? handleClockInOut(selectedJob, selectedShift)
-                  : noop
-              }
-              disabled={
-                loading ||
-                !selectedJob ||
-                !selectedShift ||
-                (!!currentOpenPunch && openPunchOtherJob) ||
-                !shiftInfo.canClockInNow
-              }
-              // Only pass countdown info - simplified
-              timeUntilShift={shiftInfo.timeUntilShift}
-            />
+          {/* Tab selector — only shown when user has rostered events */}
+          {hasRosterEvents && (
+            <div className="flex justify-center mb-6">
+              <ToggleGroup
+                type="single"
+                value={activeTab}
+                onValueChange={(value) => {
+                  if (value) setActiveTab(value as 'jobs' | 'events');
+                }}
+                className="inline-flex rounded-lg border border-gray-300 p-1 shadow-sm"
+              >
+                <ToggleGroupItem
+                  value="jobs"
+                  className={clsxm(
+                    'rounded-md px-4 py-1.5 text-sm font-medium transition-all',
+                    activeTab === 'jobs' &&
+                      'bg-appPrimary text-white shadow-md',
+                    activeTab === 'events' &&
+                      'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+                  )}
+                >
+                  Jobs
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="events"
+                  className={clsxm(
+                    'rounded-md px-4 py-1.5 text-sm font-medium transition-all',
+                    activeTab === 'events' &&
+                      'bg-appPrimary text-white shadow-md',
+                    activeTab === 'jobs' &&
+                      'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+                  )}
+                >
+                  Events
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
           )}
+          {(hasRosterEvents ? activeTab : 'jobs') === 'jobs' ? (
+            <>
+              {/* Job and Shift Selection */}
+              <JobShiftSelector
+                userData={userData}
+                selectedJob={selectedJob}
+                selectedShift={selectedShift}
+                availableShifts={availableShifts}
+                blockJobSelection={blockJobSelection}
+                onJobSelect={handleJobSelection}
+                onShiftSelect={handleShiftSelection}
+                currentOpenPunch={currentOpenPunch || undefined}
+                isClocked={isClocked}
+              />
 
-          {/* Clock Controls - This includes the View Map button */}
-          <ClockControls
-            currentDate={currentDate}
-            totalHours={totalHours}
-            openPunchOtherJob={openPunchOtherJob || false}
-            openPunchOtherJobTitle={openPunchOtherJobTitle}
-            selectedJob={selectedJob}
-            isClocked={isClocked}
-            userLocation={location}
-          />
+              {/* Timer Display - Show elapsed time when clocked in, circular timer when not */}
+              {isClocked && currentOpenPunch ? (
+                <ElapsedTime
+                  startTime={currentOpenPunch.timeIn}
+                  onClick={() =>
+                    selectedJob && selectedShift
+                      ? handleClockInOut(selectedJob, selectedShift)
+                      : noop
+                  }
+                  // Pass shift timing information for accurate progress calculation
+                  shiftStartTime={shiftInfo.shiftStartTime}
+                  shiftEndTime={shiftInfo.shiftEndTime}
+                  shiftDurationMinutes={shiftInfo.shiftDurationMinutes}
+                />
+              ) : (
+                <CircularTimer
+                  time={currentTime}
+                  isActive={isClocked}
+                  onClick={() =>
+                    selectedJob && selectedShift
+                      ? handleClockInOut(selectedJob, selectedShift)
+                      : noop
+                  }
+                  disabled={
+                    loading ||
+                    !selectedJob ||
+                    !selectedShift ||
+                    (!!currentOpenPunch && openPunchOtherJob) ||
+                    !shiftInfo.canClockInNow
+                  }
+                  // Only pass countdown info - simplified
+                  timeUntilShift={shiftInfo.timeUntilShift}
+                />
+              )}
+
+              {/* Clock Controls - This includes the View Map button */}
+              <ClockControls
+                currentDate={currentDate}
+                totalHours={totalHours}
+                openPunchOtherJob={openPunchOtherJob || false}
+                openPunchOtherJobTitle={openPunchOtherJobTitle}
+                selectedJob={selectedJob}
+                isClocked={isClocked}
+                userLocation={location}
+              />
+            </>
+          ) : (
+            <EventTimerCardContent userData={userData} />
+          )}
         </CardContent>
       </Card>
     </>

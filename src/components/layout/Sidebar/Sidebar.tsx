@@ -16,6 +16,7 @@ import {
   Receipt,
   X,
   CalendarDays,
+  MapPin,
 } from 'lucide-react';
 import { clsxm } from '@/lib/utils';
 import { Button } from '@/components/ui/Button/Button';
@@ -99,6 +100,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
         current:
           pathname === '/shift-requests' ||
           pathname.startsWith('/shift-requests'),
+      });
+
+      baseNavigation.push({
+        name: 'Venues',
+        href: '/venue-requests',
+        icon: MapPin,
+        current:
+          pathname === '/venue-requests' ||
+          pathname.startsWith('/venue-requests'),
       });
     }
 
