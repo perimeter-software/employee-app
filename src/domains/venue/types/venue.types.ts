@@ -21,4 +21,5 @@ export type VenueWithStatus = {
   venueContact1?: VenueContact;
   location?: { coordinates?: [number, number] }; // [longitude, latitude]
   otherUrls?: string[];
+  videoUrls?: string[];
 };

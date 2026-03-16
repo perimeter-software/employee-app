@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/Dialog';
 import { baseInstance } from '@/lib/api/instance';
 import { VenueMap } from '../VenueMap';
+import { VenueVideo } from '../VenueVideo';
 import { venueBadge, stripHtml, DESCRIPTION_LIMIT } from '../../utils';
 import type { VenueWithStatus } from '../../types';
 
@@ -246,6 +247,18 @@ export const VenueDetailModal = ({
           {/* Map */}
           {venue.location?.coordinates && (
             <VenueMap coordinates={venue.location.coordinates} />
+          )}
+
+          {/* Videos */}
+          {venue.videoUrls && venue.videoUrls.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-slate-700 mb-2">Videos</h4>
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {venue.videoUrls.map((url, i) => (
+                  <VenueVideo key={i} url={url} />
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Attachments */}

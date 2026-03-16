@@ -11,9 +11,7 @@ async function getVenueDetailHandler(
   context?: Record<string, unknown>
 ) {
   try {
-    const params = (await context?.params) as
-      | { venueSlug: string }
-      | undefined;
+    const params = (await context?.params) as { venueSlug: string } | undefined;
     const venueSlug = params?.venueSlug;
 
     if (!venueSlug) {
@@ -45,6 +43,7 @@ async function getVenueDetailHandler(
           venueContact1: 1,
           location: 1,
           otherUrls: 1,
+          videoUrls: 1,
         },
       }
     );
