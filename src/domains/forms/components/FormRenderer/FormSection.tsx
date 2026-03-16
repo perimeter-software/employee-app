@@ -1,5 +1,9 @@
 import React from 'react';
-import { FormSection as FormSectionType, FormFieldValue } from '@/domains/forms/types/form.types';
+import {
+  FormSection as FormSectionType,
+  FormField as FormFieldType,
+  FormFieldValue,
+} from '@/domains/forms/types/form.types';
 import { FormField } from './FormField';
 
 interface FormSectionProps {
@@ -39,22 +43,39 @@ export const FormSection: React.FC<FormSectionProps> = ({
           </div>
         ))}
 
-      {/* Form Rows */}
+      {/* Form Rows - match stadium-people: each row is a grid with N columns (from row.columns) */}
       <div className="space-y-6">
         {section.rows?.map((row, rowIndex) => {
-          const columnCount = row.columns?.length || 1;
-          const gridCols = columnCount === 1
-            ? 'grid-cols-1'
-            : columnCount === 2
-            ? 'grid-cols-1 md:grid-cols-2'
-            : columnCount === 3
-            ? 'grid-cols-1 md:grid-cols-3'
-            : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4';
+          // Normalize: ensure columns is always an array (API/DB may sometimes return single object)
+          const rawColumns = row.columns;
+          const columnsArray: FormFieldType[] = Array.isArray(rawColumns)
+            ? rawColumns
+            : rawColumns && typeof rawColumns === 'object' && 'id' in rawColumns
+              ? [rawColumns as FormFieldType]
+              : [];
+          const visibleColumns = columnsArray.filter((field) => !field.hidden);
+          if (visibleColumns.length === 0) return null;
+          const columnCount = visibleColumns.length;
+          // Responsive grid: show multiple columns from sm (640px) so layout matches stadium-people
+          const gridCols =
+            columnCount === 1
+              ? 'grid-cols-1'
+              : columnCount === 2
+                ? 'grid-cols-1 sm:grid-cols-2'
+                : columnCount === 3
+                  ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3'
+                  : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4';
+
+          const rowKey =
+            visibleColumns.map((f) => f.id || f.name).join('-') || `row-${rowIndex}`;
 
           return (
-            <div key={rowIndex} className={`grid ${gridCols} gap-6`}>
-              {row.columns?.map((field) => (
-                <div key={field.id}>
+            <div
+              key={`${section.title ?? 'section'}-${rowKey}`}
+              className={`grid ${gridCols} gap-4`}
+            >
+              {visibleColumns.map((field) => (
+                <div key={field.id} className="min-w-0">
                   <FormField
                     field={field}
                     value={formValues[field.id]}

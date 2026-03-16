@@ -45,7 +45,7 @@ async function getFormsListHandler(request: AuthenticatedRequest) {
     const formsListItems = forms.map((form) => ({
       _id: form._id.toString(),
       name: form.name,
-      shortName: form.shortName,
+      shortName: (form as any).metadata?.shortName ?? (form as any).shortName,
       title: form.formData?.form?.title || form.name,
       subtitle: form.formData?.form?.subtitle,
       metadata: form.metadata,

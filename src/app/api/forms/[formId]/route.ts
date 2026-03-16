@@ -56,10 +56,12 @@ async function getFormHandler(
       );
     }
 
-    // Convert ObjectId to string for JSON serialization
+    // Convert ObjectId to string for JSON serialization; shortName lives in metadata
+    const shortName = (form as any).metadata?.shortName ?? (form as any).shortName;
     const formData = {
       ...form,
       _id: form._id.toString(),
+      shortName: shortName ?? '',
     };
 
     return NextResponse.json(

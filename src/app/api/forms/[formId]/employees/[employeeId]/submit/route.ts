@@ -1,3 +1,4 @@
+import path from 'path';
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
@@ -5,13 +6,18 @@ import type { AuthenticatedRequest } from '@/domains/user/types';
 import { ObjectId } from 'mongodb';
 import { validateForm } from '@/domains/forms/utils/formValidator';
 import { getAllFieldsFromSections } from '@/domains/forms/utils/formMapper';
+import { writeFilledPdfAndBuildAttachment } from '@/lib/pdf/generate-filled-form-pdf';
+import { findPrimaryCompany } from '@/domains/company';
 
 // POST Handler for Submitting Form
 async function submitFormHandler(
   request: AuthenticatedRequest,
-  { params }: { params: { formId: string; employeeId: string } }
+  context: { params: Promise<Record<string, string | string[] | undefined>> }
 ) {
   try {
+    const params = await context.params;
+    const formId = typeof params.formId === 'string' ? params.formId : '';
+    const employeeId = typeof params.employeeId === 'string' ? params.employeeId : '';
     const user = request.user;
 
     // Only Client users can access forms
@@ -26,7 +32,12 @@ async function submitFormHandler(
       );
     }
 
-    const { formId, employeeId } = params;
+    if (!user._id) {
+      return NextResponse.json(
+        { success: false, error: 'bad-request', message: 'User ID is required.' },
+        { status: 400 }
+      );
+    }
 
     if (!ObjectId.isValid(formId) || !ObjectId.isValid(employeeId)) {
       return NextResponse.json(
@@ -109,7 +120,7 @@ async function submitFormHandler(
     }
 
     // Verify client has access to this employee
-    const userObjectId = new ObjectId(user._id.toString());
+    const userObjectId = new ObjectId(user._id);
     const clientUser = await db.collection('users').findOne({ _id: userObjectId });
     
     if (!clientUser) {
@@ -142,7 +153,17 @@ async function submitFormHandler(
       );
     }
 
-    const shortName = form.shortName;
+    const shortName = (form as any).metadata?.shortName ?? (form as any).shortName;
+    if (!shortName) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'bad-request',
+          message: 'Form does not have a short name in metadata.',
+        },
+        { status: 400 }
+      );
+    }
 
     // Prepare form response data
     const now = new Date();
@@ -153,7 +174,7 @@ async function submitFormHandler(
         lastSavedAt: now,
         submittedAt: now,
         completedBy: `${user.firstName} ${user.lastName}`,
-        completedById: user._id.toString(),
+        completedById: String(user._id),
       },
     };
 
@@ -178,6 +199,46 @@ async function submitFormHandler(
       );
     }
 
+    // Generate filled PDF and attach to employee (same as sp1 generateFilledPdfForApplicant)
+    let pdfGenerated = false;
+    if (form.filePath && form.formData?.form?.sections?.length) {
+      try {
+        const primaryCompany = await findPrimaryCompany(db);
+        const uploadBasePath =
+          process.env.UPLOAD_PATH || path.join(process.cwd(), 'public', 'uploads');
+        const companyPathSegment =
+          (primaryCompany as { uploadPath?: string } | null)?.uploadPath || 'sp';
+
+        const { attachment } = await writeFilledPdfAndBuildAttachment(
+          form as any,
+          {
+            _id: employeeId,
+            firstName: (employee as any).firstName,
+            lastName: (employee as any).lastName,
+            i9Form: (employee as any).i9Form,
+          },
+          formValues,
+          {
+            uploadBasePath,
+            companyPathSegment,
+            signatureBasePath: path.join(uploadBasePath, companyPathSegment, 'applicants'),
+          }
+        );
+
+        await db.collection('applicants').updateOne(
+          { _id: employeeObjectId },
+          {
+            $push: { attachments: attachment } as any,
+            $set: { updatedAt: new Date() },
+          }
+        );
+        pdfGenerated = true;
+      } catch (pdfError) {
+        console.error('Error generating filled PDF for form submit:', pdfError);
+        // Form was already saved; do not fail the request
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -185,6 +246,7 @@ async function submitFormHandler(
         data: {
           shortName,
           metadata: formResponse._metadata,
+          pdfGenerated,
         },
       },
       { status: 200 }

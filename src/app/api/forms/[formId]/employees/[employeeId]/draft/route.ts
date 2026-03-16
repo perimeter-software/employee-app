@@ -122,7 +122,17 @@ async function saveDraftHandler(
       );
     }
 
-    const shortName = form.shortName;
+    const shortName = (form as any).metadata?.shortName ?? (form as any).shortName;
+    if (!shortName) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'bad-request',
+          message: 'Form does not have a short name in metadata.',
+        },
+        { status: 400 }
+      );
+    }
 
     // Prepare form response data
     const formResponse = {

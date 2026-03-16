@@ -11,7 +11,7 @@ import { useFormsList } from '@/domains/forms/hooks/use-forms-list';
 export default function FormsPage() {
   usePageAuth({ requireAuth: true });
 
-  const [viewMode, setViewMode] = useState<FormsViewMode>('card');
+  const [viewMode, setViewMode] = useState<FormsViewMode>('table');
   const { data: forms = [], isLoading, isError, error } = useFormsList();
 
   const errorMessage =

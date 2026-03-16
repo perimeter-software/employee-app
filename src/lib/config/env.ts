@@ -58,6 +58,9 @@ export const env = {
     sendInDev: process.env.SES_SEND_IN_DEV === 'true',
   },
 
+  // File upload base path for form PDFs (hardcoded for now; same as current)
+  uploadPath: process.env.UPLOAD_PATH || '/images',
+
   // Environment Detection
   isDevelopment: process.env.NODE_ENV === "development",
   isProduction: process.env.NODE_ENV === "production",

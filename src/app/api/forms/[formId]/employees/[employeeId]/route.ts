@@ -115,7 +115,17 @@ async function getFormWithEmployeeDataHandler(
     const preFilledValues = mapEmployeeToFormFields(employee, fields);
 
     // Check if there's an existing draft or submitted response
-    const shortName = form.shortName;
+    const shortName = (form as any).metadata?.shortName ?? (form as any).shortName;
+    if (!shortName) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'bad-request',
+          message: 'Form does not have a short name in metadata.',
+        },
+        { status: 400 }
+      );
+    }
     const existingResponse = (employee as any).dynamicForms?.[shortName];
 
     // Merge pre-filled values with existing response (existing takes precedence)
@@ -125,10 +135,11 @@ async function getFormWithEmployeeDataHandler(
       formValues = { ...preFilledValues, ...existingFieldValues };
     }
 
-    // Convert ObjectId to string for JSON serialization
+    // Convert ObjectId to string for JSON serialization; shortName lives in metadata
     const formData = {
       ...form,
       _id: form._id.toString(),
+      shortName: shortName ?? '',
     };
 
     return NextResponse.json(
