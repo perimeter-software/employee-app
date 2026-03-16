@@ -148,7 +148,6 @@ export function TimerCard({
               </ToggleGroup>
             </div>
           )}
-
           {(hasRosterEvents ? activeTab : 'jobs') === 'jobs' ? (
             <>
               {/* Job and Shift Selection */}
@@ -192,7 +191,7 @@ export function TimerCard({
                     !selectedJob ||
                     !selectedShift ||
                     (!!currentOpenPunch && openPunchOtherJob) ||
-                    false
+                    !shiftInfo.canClockInNow
                   }
                   // Only pass countdown info - simplified
                   timeUntilShift={shiftInfo.timeUntilShift}
