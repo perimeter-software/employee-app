@@ -14,6 +14,7 @@ import {
   CalendarClock,
   MessageCircleQuestion,
   Receipt,
+  ClipboardList,
   X,
   CalendarDays,
   MapPin,
@@ -125,15 +126,24 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       });
     }
 
-    // Add Invoices link for Client users only
+    // Add Invoices and Forms links for Client users only
     if (isClient) {
-      baseNavigation.push({
-        name: 'Invoices',
-        href: '/invoices',
-        icon: FileSpreadsheet,
-        current:
-          pathname === '/invoices' || pathname.startsWith('/invoices'),
-      });
+      baseNavigation.push(
+        {
+          name: 'Invoices',
+          href: '/invoices',
+          icon: FileSpreadsheet,
+          current:
+            pathname === '/invoices' || pathname.startsWith('/invoices'),
+        },
+        {
+          name: 'Forms',
+          href: '/forms',
+          icon: ClipboardList,
+          current:
+            pathname === '/forms' || pathname.startsWith('/forms'),
+        }
+      );
     }
 
     // Add remaining navigation items (exclude for Client users)
