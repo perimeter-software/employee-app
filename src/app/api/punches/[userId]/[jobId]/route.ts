@@ -717,7 +717,7 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
               const email = r?.email?.trim();
               if (!email) continue;
               try {
-                await emailService.sendEmail({ to: email, subject, html, text });
+                await emailService.sendEmail({ to: email, subject, html, text, db });
               } catch (emailErr) {
                 console.error('Error sending punch-update email to', email, emailErr);
               }

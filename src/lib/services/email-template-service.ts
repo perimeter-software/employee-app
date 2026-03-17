@@ -5,7 +5,10 @@
 import 'server-only';
 import type { Db } from 'mongodb';
 import { ObjectId } from 'mongodb';
-import { emailService, type EmailAttachment } from '@/lib/services/email-service';
+import {
+  emailService,
+  type EmailAttachment,
+} from '@/lib/services/email-service';
 
 export interface TemplateVars {
   applicant?: Record<string, unknown> | null;
@@ -37,7 +40,11 @@ export interface SendEmailFromTemplateOptions {
   suppressFooter?: boolean;
 }
 
-function renderTemplate(templateStr: string, vars: TemplateVars, isSubject = false): string {
+function renderTemplate(
+  templateStr: string,
+  vars: TemplateVars,
+  isSubject = false
+): string {
   const rendered = new Function('return `' + templateStr + '`;').call(vars);
   return isSubject ? rendered : `<p>${rendered}</p>`;
 }
@@ -57,7 +64,9 @@ export async function buildEmailFromTemplate(
       .findOne({ name: templateName, type: 'mailTemplate' });
 
     if (!template) {
-      console.warn(`[email-template-service] Template not found: "${templateName}"`);
+      console.warn(
+        `[email-template-service] Template not found: "${templateName}"`
+      );
       return null;
     }
 
@@ -66,7 +75,10 @@ export async function buildEmailFromTemplate(
 
     return { subject, html, templateName: template.name as string };
   } catch (err) {
-    console.error(`[email-template-service] Error rendering template "${templateName}":`, err);
+    console.error(
+      `[email-template-service] Error rendering template "${templateName}":`,
+      err
+    );
     return null;
   }
 }
@@ -134,6 +146,8 @@ export async function sendEmailFromTemplate(
   const { subject, html } = built;
 
   if (attachments?.length) {
+    // Attachments are in-memory Buffers — not compatible with the queue's
+    // path-based attachment format, so we fall back to direct send.
     await emailService.sendEmailWithAttachments({
       from: fromEmail,
       to: [toEmail, ...(additionalRecipientList ?? [])],
@@ -150,6 +164,7 @@ export async function sendEmailFromTemplate(
       from: fromEmail,
       cc: ccList,
       additionalRecipients: additionalRecipientList,
+      db,
     });
   }
 }
