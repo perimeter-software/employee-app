@@ -519,7 +519,7 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
         const to = r?.email?.trim();
         if (!to) continue;
         try {
-          await emailService.sendEmail({ to, subject, html, text });
+          await emailService.sendEmail({ to, subject, html, text, db });
         } catch (emailErr) {
           console.error('[Shift Requests API] Error sending manager email to', to, emailErr);
         }
@@ -555,7 +555,7 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
             '</div>',
           ].join('');
           try {
-            await emailService.sendEmail({ to: requesterEmail, subject, html, text: plainSummary });
+            await emailService.sendEmail({ to: requesterEmail, subject, html, text: plainSummary, db });
           } catch (emailErr) {
             console.error('[Shift Requests API] Error sending approval email to requester', emailErr);
           }
@@ -603,7 +603,7 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
           '</div>',
         ].join('');
         try {
-          await emailService.sendEmail({ to: requesterEmail, subject, html, text: plainSummary });
+          await emailService.sendEmail({ to: requesterEmail, subject, html, text: plainSummary, db });
         } catch (emailErr) {
           console.error('[Shift Requests API] Error sending pending-request email to requester', emailErr);
         }
@@ -914,7 +914,7 @@ async function callOffShiftHandler(request: AuthenticatedRequest) {
         const to = r?.email?.trim();
         if (!to) continue;
         try {
-          await emailService.sendEmail({ to, subject, html, text });
+          await emailService.sendEmail({ to, subject, html, text, db });
         } catch (emailErr) {
           console.error('[Shift Requests API] Error sending call-off email to', to, emailErr);
         }
@@ -990,7 +990,7 @@ async function callOffShiftHandler(request: AuthenticatedRequest) {
                   '</div>',
                 ].join('');
                 try {
-                  await emailService.sendEmail({ to: promotedEmail, subject, html, text: plainSummary });
+                  await emailService.sendEmail({ to: promotedEmail, subject, html, text: plainSummary, db });
                 } catch (emailErr) {
                   console.error('[Shift Requests API] Error sending approval email to promoted employee', emailErr);
                 }

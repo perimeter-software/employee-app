@@ -3,8 +3,17 @@
 // Uses AWS SDK v3 with default credential provider chain.
 // Replicates sp1-api + stadium-people email flow: same MIME structure and SendRawEmail for attachments.
 
-import { SESClient, SendEmailCommand, SendRawEmailCommand } from '@aws-sdk/client-ses';
-import { env } from '@/lib/config/env';
+import {
+  SESClient,
+  SendEmailCommand,
+  SendRawEmailCommand,
+} from '@aws-sdk/client-ses';
+import type { Db } from 'mongodb';
+import { env, getEnvironmentConfig } from '@/lib/config/env';
+import {
+  checkForStaging,
+  changeListToStaging,
+} from '@/lib/services/email-queue';
 
 interface EmailOptions {
   to: string;
@@ -14,6 +23,7 @@ interface EmailOptions {
   from?: string;
   cc?: string[];
   additionalRecipients?: string[];
+  db?: Db;
 }
 
 /** In-memory attachment (replicates sp1-api queue attachment shape; we use content instead of path). */
@@ -63,7 +73,9 @@ class EmailService {
 
   /** MIME type by extension (matches sp1-api queue/index.js attachment handling). */
   private static getMimeType(filename: string): string {
-    const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() : '';
+    const ext = filename.includes('.')
+      ? filename.split('.').pop()?.toLowerCase()
+      : '';
     switch (ext) {
       case 'pdf':
         return 'application/pdf';
@@ -85,7 +97,9 @@ class EmailService {
    * Build raw MIME message (same structure as sp1-api queue/index.js constructMimeMessage).
    * Uses multipart/mixed with boundary, HTML part, then one part per attachment (base64).
    */
-  private buildRawMimeMessage(options: SendEmailWithAttachmentsOptions): Buffer {
+  private buildRawMimeMessage(
+    options: SendEmailWithAttachmentsOptions
+  ): Buffer {
     const toList = Array.isArray(options.to) ? options.to : [options.to];
     const toLine = toList.join(', ');
     const resolvedFrom = options.from ?? this.defaultFromEmail;
@@ -127,15 +141,22 @@ class EmailService {
    * Send email with attachments using raw MIME (replicates sp1-api sendmessage + queue flow).
    * Same MIME shape as queue/index.js constructMimeMessage; attachments are in-memory (no disk paths).
    */
-  async sendEmailWithAttachments(options: SendEmailWithAttachmentsOptions): Promise<void> {
-    if (process.env.NODE_ENV === 'development' && process.env.SES_SEND_IN_DEV !== 'true') {
+  async sendEmailWithAttachments(
+    options: SendEmailWithAttachmentsOptions
+  ): Promise<void> {
+    if (
+      process.env.NODE_ENV === 'development' &&
+      process.env.SES_SEND_IN_DEV !== 'true'
+    ) {
       console.log('📧 Email with attachments (dev mode - not sent):', {
         from: options.from,
         to: options.to,
         subject: options.subject,
         attachmentCount: options.attachments.length,
       });
-      console.log('💡 To actually send in development, set SES_SEND_IN_DEV=true');
+      console.log(
+        '💡 To actually send in development, set SES_SEND_IN_DEV=true'
+      );
       return;
     }
 
@@ -154,7 +175,11 @@ class EmailService {
       });
     } catch (err) {
       const msg = (err as Error).message ?? '';
-      if (msg.includes('Credentials') || msg.includes('credentials') || msg.includes('Could not load credentials')) {
+      if (
+        msg.includes('Credentials') ||
+        msg.includes('credentials') ||
+        msg.includes('Could not load credentials')
+      ) {
         throw new Error(
           'AWS credentials not configured. Add AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY to your .env (and optionally AWS_REGION).'
         );
@@ -168,20 +193,47 @@ class EmailService {
    * Credentials are automatically retrieved from environment variables via AWS SDK default provider chain
    */
   async sendEmail(options: EmailOptions): Promise<void> {
-    const { to, subject, html, text, from, cc, additionalRecipients } = options;
+    const { to, subject, html, text, from, cc, additionalRecipients, db } =
+      options;
     const fromEmail = from || this.defaultFromEmail;
+
+    // When a db connection is provided and EMAIL_DIRECT_SEND is not set, delegate
+    // to the queue service so all emails benefit from pre-send checks and queuing.
+    // Uses a dynamic import to avoid a circular module dependency.
+    if (db && process.env.EMAIL_DIRECT_SEND !== 'true') {
+      const { sendQueuedEmail } = await import('@/lib/services/email-queue');
+      await sendQueuedEmail(
+        {
+          from: fromEmail,
+          to,
+          subject,
+          html,
+          text,
+          cc: [...(cc ?? []), ...(additionalRecipients ?? [])],
+        },
+        db
+      );
+      return;
+    }
 
     // In development, log the email instead of sending (unless explicitly enabled)
     // Per project documentation: emails are only sent when NODE_ENV is 'production' or 'staging'
-    if (process.env.NODE_ENV === 'development' && process.env.SES_SEND_IN_DEV !== 'true') {
+    if (
+      process.env.NODE_ENV === 'development' &&
+      process.env.SES_SEND_IN_DEV !== 'true'
+    ) {
       console.log('📧 Email (dev mode - not sent):', {
         from: fromEmail,
         to,
         subject,
         text: text || html.substring(0, 200) + '...',
       });
-      console.log('💡 To actually send emails in development, set SES_SEND_IN_DEV=true');
-      console.log('💡 Per project docs: emails are only sent when NODE_ENV is "production" or "staging"');
+      console.log(
+        '💡 To actually send emails in development, set SES_SEND_IN_DEV=true'
+      );
+      console.log(
+        '💡 Per project docs: emails are only sent when NODE_ENV is "production" or "staging"'
+      );
       return;
     }
 
@@ -189,23 +241,39 @@ class EmailService {
       throw new Error('SES client not initialized');
     }
 
+    // Apply staging email domain transforms in non-production environments
+    const { environment: appEnv } = getEnvironmentConfig();
+    const companyEmail = this.defaultFromEmail;
+    const resolvedTo = checkForStaging(to, companyEmail, appEnv);
+    const resolvedCc = changeListToStaging(cc, companyEmail, appEnv);
+    const resolvedAdditional = changeListToStaging(
+      additionalRecipients,
+      companyEmail,
+      appEnv
+    );
+
     try {
       // Format sender with display name for system accounts
       // AWS SES supports format: "Display Name <email@address.com>"
       let formattedSource = fromEmail;
       const normalizedFromEmail = fromEmail.toLowerCase();
-      if (normalizedFromEmail === 'job@stadiumpeople.com' || normalizedFromEmail === 'jobs@stadiumpeople.com') {
+      if (
+        normalizedFromEmail === 'job@stadiumpeople.com' ||
+        normalizedFromEmail === 'jobs@stadiumpeople.com'
+      ) {
         // Use the original email case but with display name
         formattedSource = `Employee App <${fromEmail}>`;
-        console.log(`📧 Using display name "Employee App" for email: ${fromEmail}`);
+        console.log(
+          `📧 Using display name "Employee App" for email: ${fromEmail}`
+        );
       }
 
       // Prepare email parameters for SES
       const params = {
         Source: formattedSource,
         Destination: {
-          ToAddresses: [to, ...(additionalRecipients ?? [])],
-          ...(cc?.length && { CcAddresses: cc }),
+          ToAddresses: [resolvedTo, ...resolvedAdditional],
+          ...(resolvedCc.length && { CcAddresses: resolvedCc }),
         },
         Message: {
           Subject: {
@@ -233,19 +301,20 @@ class EmailService {
 
       console.log('✅ Email sent successfully:', {
         messageId: response.MessageId,
-        to,
+        to: resolvedTo,
         subject,
       });
 
       return;
     } catch (error) {
       console.error('❌ Failed to send email via AWS SES:', error);
-      
+
       // Check for specific error types
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       const errorObj = error as { Code?: string; Error?: { Code?: string } };
       const errorCode = errorObj?.Code || errorObj?.Error?.Code;
-      
+
       // Handle email verification errors gracefully
       if (
         errorMessage.includes('Email address is not verified') ||
@@ -264,24 +333,29 @@ To fix this:
 For development, the OTP code will be logged to console instead.`;
 
         console.warn('⚠️', helpfulMessage);
-        
+
         // In development, don't throw - just log the helpful message
         if (process.env.NODE_ENV === 'development') {
-          console.log('💡 In development mode, email sending is skipped when SES email is not verified.');
+          console.log(
+            '💡 In development mode, email sending is skipped when SES email is not verified.'
+          );
           return; // Silently fail in dev mode
         }
-        
+
         // In production, throw with helpful message
         throw new Error(helpfulMessage);
       }
-      
+
       // Handle credential errors
-      if (errorMessage.includes('Credentials') || errorMessage.includes('credentials')) {
+      if (
+        errorMessage.includes('Credentials') ||
+        errorMessage.includes('credentials')
+      ) {
         throw new Error(
           'AWS credentials not found. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.'
         );
       }
-      
+
       // Re-throw other errors
       throw error;
     }
@@ -290,7 +364,7 @@ For development, the OTP code will be logged to console instead.`;
   /**
    * Send OTP code via email
    */
-  async sendOTPCode(email: string, code: string): Promise<void> {
+  async sendOTPCode(email: string, code: string, db: Db): Promise<void> {
     const html = `
       <!DOCTYPE html>
       <html>
@@ -322,10 +396,10 @@ For development, the OTP code will be logged to console instead.`;
       subject: 'Your Login Code',
       html,
       text,
+      db,
     });
   }
 }
 
 export const emailService = new EmailService();
 export default emailService;
-

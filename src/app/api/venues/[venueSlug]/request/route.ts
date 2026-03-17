@@ -9,10 +9,16 @@ import type {
 import { emailService } from '@/lib/services/email-service';
 import { escapeHtml } from '@/lib/utils/format-utils';
 import { getApplicantId } from '@/domains/venue/utils/mongo-venue-utils';
-import { logActivity, createActivityLogData } from '@/lib/services/activity-logger';
+import {
+  logActivity,
+  createActivityLogData,
+} from '@/lib/services/activity-logger';
 import { buildEmailFromTemplate } from '@/lib/services/email-template-service';
 import { enqueueFirebaseTopicJob } from '@/lib/services/firebase-queue';
-import { getVenueTopics, getEventTopics } from '@/domains/venue/utils/venue-topic-utils';
+import {
+  getVenueTopics,
+  getEventTopics,
+} from '@/domains/venue/utils/venue-topic-utils';
 
 const TEMPLATE_NAMES = {
   venueRequest: 'Employee Venue Request',
@@ -177,7 +183,7 @@ async function requestVenueHandler(
 
       for (const to of contactEmails) {
         try {
-          await emailService.sendEmail({ to, subject, html });
+          await emailService.sendEmail({ to, subject, html, db });
         } catch (emailErr) {
           console.error(
             '[Venue Request] Error sending notification to',
@@ -194,10 +200,7 @@ async function requestVenueHandler(
       if (topicRecs.length > 0) {
         const userDoc = await db
           .collection('users')
-          .findOne(
-            { applicantId },
-            { projection: { userDeviceToken: 1 } }
-          );
+          .findOne({ applicantId }, { projection: { userDeviceToken: 1 } });
         const fcmToken = userDoc?.userDeviceToken as string | undefined;
         if (fcmToken) {
           for (const rec of topicRecs) {
@@ -210,7 +213,10 @@ async function requestVenueHandler(
         }
       }
     } catch (queueErr) {
-      console.error('[Venue Request] Error enqueuing Firebase topic job:', queueErr);
+      console.error(
+        '[Venue Request] Error enqueuing Firebase topic job:',
+        queueErr
+      );
     }
 
     return NextResponse.json(
@@ -297,7 +303,9 @@ async function cancelVenueRequestHandler(
       'Employee';
 
     const action =
-      existing.status === 'StaffingPool' ? 'Venue Leave' : 'Venue Request Cancel';
+      existing.status === 'StaffingPool'
+        ? 'Venue Leave'
+        : 'Venue Request Cancel';
 
     await logActivity(
       db,
@@ -333,17 +341,15 @@ async function cancelVenueRequestHandler(
           const updatedApplicants = (
             event.applicants as { id: string }[]
           ).filter((a) => a.id !== applicantId);
-          await db
-            .collection('events')
-            .updateOne(
-              { _id: event._id },
-              {
-                $set: {
-                  applicants: updatedApplicants,
-                  modifiedDate: new Date(),
-                },
-              }
-            );
+          await db.collection('events').updateOne(
+            { _id: event._id },
+            {
+              $set: {
+                applicants: updatedApplicants,
+                modifiedDate: new Date(),
+              },
+            }
+          );
         }
       } catch (evtErr) {
         console.error(
@@ -386,7 +392,12 @@ async function cancelVenueRequestHandler(
               '</div>',
             ].join('');
 
-          await emailService.sendEmail({ to: recipientEmail, subject, html });
+          await emailService.sendEmail({
+            to: recipientEmail,
+            subject,
+            html,
+            db,
+          });
         } catch (emailErr) {
           console.error(
             '[Venue Remove] Error sending removal email:',
@@ -398,19 +409,20 @@ async function cancelVenueRequestHandler(
 
     // Push Firebase topic unsubscribe jobs (fire-and-forget)
     try {
-      const topicRecs = getVenueTopics(venueSlug, existing.status === 'StaffingPool' ? 'Delete' : existing.status);
-      const eventTopics = existing.status === 'StaffingPool'
-        ? futureEvents.flatMap((evt) => getEventTopics(evt._id.toString()))
-        : [];
+      const topicRecs = getVenueTopics(
+        venueSlug,
+        existing.status === 'StaffingPool' ? 'Delete' : existing.status
+      );
+      const eventTopics =
+        existing.status === 'StaffingPool'
+          ? futureEvents.flatMap((evt) => getEventTopics(evt._id.toString()))
+          : [];
       const allTopics = [...topicRecs, ...eventTopics];
 
       if (allTopics.length > 0) {
         const userDoc = await db
           .collection('users')
-          .findOne(
-            { applicantId },
-            { projection: { userDeviceToken: 1 } }
-          );
+          .findOne({ applicantId }, { projection: { userDeviceToken: 1 } });
         const fcmToken = userDoc?.userDeviceToken as string | undefined;
         if (fcmToken) {
           for (const rec of allTopics) {
@@ -423,7 +435,10 @@ async function cancelVenueRequestHandler(
         }
       }
     } catch (queueErr) {
-      console.error('[Venue Remove] Error enqueuing Firebase topic job:', queueErr);
+      console.error(
+        '[Venue Remove] Error enqueuing Firebase topic job:',
+        queueErr
+      );
     }
 
     const message =
