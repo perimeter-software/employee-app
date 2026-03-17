@@ -392,12 +392,7 @@ async function cancelVenueRequestHandler(
               '</div>',
             ].join('');
 
-          await emailService.sendEmail({
-            to: recipientEmail,
-            subject,
-            html,
-            db,
-          });
+          await emailService.sendEmail({ to: recipientEmail, subject, html });
         } catch (emailErr) {
           console.error(
             '[Venue Remove] Error sending removal email:',
