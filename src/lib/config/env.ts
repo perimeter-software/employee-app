@@ -103,7 +103,7 @@ export function validateEnv() {
 export function getEnvironmentConfig() {
   const baseUrl = process.env.AUTH0_BASE_URL!;
 
-  if (baseUrl.includes('localhost')) {
+  if (env.isDevelopment) {
     return {
       environment: 'development',
       isLocal: true,
