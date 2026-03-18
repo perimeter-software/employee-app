@@ -378,12 +378,23 @@ export async function sendQueuedEmail(
     html: options.html,
     ...(resolvedSender && {
       sender: {
-        fromEmail: resolvedSender.email,
+        fromEmail: fromDisplay,
         firstName: resolvedSender.firstName,
         lastName: resolvedSender.lastName,
         userId: resolvedSender.userId,
       },
     }),
+    emailProperties: {
+      mainCompanyEmail: companyRec?.companyEmail,
+      imageUrl: companyRec?.imageUrl,
+      logoUrl: companyRec?.squareLogoUrl,
+      companyEmail: companyRec?.companyEmail,
+      supportEmail: companyRec?.supportEmail,
+      companyName: companyRec?.name,
+      companyType: companyRec?.companyType,
+      uploadPath: companyRec?.uploadPath,
+      companySlug: companyRec?.slug,
+    },
   };
 
   // copySender: also CC the original sender's address
