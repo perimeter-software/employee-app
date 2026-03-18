@@ -130,12 +130,13 @@ const nextConfig = {
   },
 
   // Compiler options - only in production (Turbopack doesn't support removeConsole)
-  ...(process.env.NODE_ENV === 'production' && {
-    compiler: {
-      // Remove console logs in production builds
-      removeConsole: true,
-    },
-  }),
+  ...(process.env.NODE_ENV === 'production' &&
+    process.env.NEXT_PUBLIC_APP_ENV !== 'development' && {
+      compiler: {
+        // Remove console logs in production builds
+        removeConsole: true,
+      },
+    }),
 
   // Transpile @react-pdf/renderer so Next bundles it (it's ESM and can't be server-externalized)
   transpilePackages: ['@react-pdf/renderer'],
