@@ -5,6 +5,7 @@ import { checkUserExistsByEmail } from '@/domains/user/utils/mongo-user-utils';
 import redisService from '@/lib/cache/redis-client';
 import emailService from '@/lib/services/email-service';
 import crypto from 'crypto';
+import { env } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send OTP email:', emailError);
 
       // Always log the OTP code in development for testing
-      if (process.env.NODE_ENV === 'development') {
+      if (env.isDevelopment) {
         console.log(`🔐 OTP Code for ${normalizedEmail}: ${otpCode}`);
         console.log(
           '💡 This code is logged because email sending failed. In production, ensure SES email is verified.'

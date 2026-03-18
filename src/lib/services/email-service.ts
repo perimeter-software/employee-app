@@ -9,7 +9,7 @@ import {
   SendRawEmailCommand,
 } from '@aws-sdk/client-ses';
 import type { Db } from 'mongodb';
-import { env, getEnvironmentConfig } from '@/lib/config/env';
+import { env, getEnvironmentConfig } from '@/lib/config';
 import {
   checkForStaging,
   changeListToStaging,
@@ -144,10 +144,7 @@ class EmailService {
   async sendEmailWithAttachments(
     options: SendEmailWithAttachmentsOptions
   ): Promise<void> {
-    if (
-      process.env.NODE_ENV === 'development' &&
-      process.env.SES_SEND_IN_DEV !== 'true'
-    ) {
+    if (env.isDevelopment && process.env.SES_SEND_IN_DEV !== 'true') {
       console.log('📧 Email with attachments (dev mode - not sent):', {
         from: options.from,
         to: options.to,
@@ -218,10 +215,7 @@ class EmailService {
 
     // In development, log the email instead of sending (unless explicitly enabled)
     // Per project documentation: emails are only sent when NODE_ENV is 'production' or 'staging'
-    if (
-      process.env.NODE_ENV === 'development' &&
-      process.env.SES_SEND_IN_DEV !== 'true'
-    ) {
+    if (env.isDevelopment && process.env.SES_SEND_IN_DEV !== 'true') {
       console.log('📧 Email (dev mode - not sent):', {
         from: fromEmail,
         to,
@@ -335,7 +329,7 @@ For development, the OTP code will be logged to console instead.`;
         console.warn('⚠️', helpfulMessage);
 
         // In development, don't throw - just log the helpful message
-        if (process.env.NODE_ENV === 'development') {
+        if (env.isDevelopment) {
           console.log(
             '💡 In development mode, email sending is skipped when SES email is not verified.'
           );

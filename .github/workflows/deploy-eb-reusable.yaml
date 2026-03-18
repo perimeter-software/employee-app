@@ -110,4 +110,5 @@ jobs:
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AWS_SECRET_ACCESS_KEY,Value=${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SES_FROM_EMAIL,Value=${{ vars.SES_FROM_EMAIL }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SES_SEND_IN_DEV,Value=${{ vars.SES_SEND_IN_DEV }}" \
-                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=EMAIL_DIRECT_SEND,Value=${{ vars.EMAIL_DIRECT_SEND }}"
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=EMAIL_DIRECT_SEND,Value=${{ vars.EMAIL_DIRECT_SEND }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_APP_ENV,Value=${{ vars.NEXT_PUBLIC_APP_ENV }}"

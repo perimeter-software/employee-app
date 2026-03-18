@@ -1,6 +1,7 @@
 // src/lib/db/mongodb.ts - Updated version
-import { MongoClient, Db } from "mongodb";
-import { MongoConnection } from "./types";
+import { MongoClient, Db } from 'mongodb';
+import { MongoConnection } from './types';
+import { env } from '@/lib/config';
 
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
@@ -8,15 +9,15 @@ let cachedDbTenant: Db | null = null;
 let cachedUserDb: Db | null = null;
 
 // Check if we're running on the server side
-const isServer = typeof window === "undefined";
+const isServer = typeof window === 'undefined';
 
 // Check if we're running in Edge Runtime
-const isEdgeRuntime = process.env.NEXT_RUNTIME === "edge";
+const isEdgeRuntime = process.env.NEXT_RUNTIME === 'edge';
 
 // Default database name from environment variable, fallback to 'stadiumpeople' for backward compatibility
-const DEFAULT_DB_NAME = process.env.DEFAULT_TENANT_DB_NAME || "stadiumpeople";
-const TENANT_DB_NAME = process.env.TENANT_DB_NAME || "tenant";
-const USER_MASTER_DB_NAME = process.env.USER_MASTER_DB_NAME || "usermaster";
+const DEFAULT_DB_NAME = process.env.DEFAULT_TENANT_DB_NAME || 'stadiumpeople';
+const TENANT_DB_NAME = process.env.TENANT_DB_NAME || 'tenant';
+const USER_MASTER_DB_NAME = process.env.USER_MASTER_DB_NAME || 'usermaster';
 
 export const mongoConn = async (
   dbName = DEFAULT_DB_NAME,
@@ -25,19 +26,19 @@ export const mongoConn = async (
   // Early return for client-side or edge runtime
   if (!isServer) {
     throw new Error(
-      "MongoDB operations can only be performed on the server side"
+      'MongoDB operations can only be performed on the server side'
     );
   }
 
   if (isEdgeRuntime) {
-    throw new Error("MongoDB operations are not supported in Edge Runtime");
+    throw new Error('MongoDB operations are not supported in Edge Runtime');
   }
 
   // Use cached connections in development to prevent connection issues
   if (cachedClient && cachedDb && cachedDbTenant && cachedUserDb) {
     try {
       // Test the connection
-      await cachedClient.db("admin").command({ ping: 1 });
+      await cachedClient.db('admin').command({ ping: 1 });
 
       // If a specific dbName is requested and it's different from cached, create new connection
       if (dbName && cachedDb.databaseName !== dbName) {
@@ -57,7 +58,7 @@ export const mongoConn = async (
         userDb: cachedUserDb,
       };
     } catch (error) {
-      console.warn("Cached connection invalid, reconnecting...", error);
+      console.warn('Cached connection invalid, reconnecting...', error);
       // Clear cached connections if they're invalid
       cachedClient = null;
       cachedDb = null;
@@ -69,12 +70,12 @@ export const mongoConn = async (
   try {
     const connectionString = process.env.MONGODB_CONNECTION_STRING;
     if (!connectionString) {
-      throw new Error("MONGODB_CONNECTION_STRING is not defined");
+      throw new Error('MONGODB_CONNECTION_STRING is not defined');
     }
 
     // Only log in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log("🔄 Connecting to MongoDB...");
+    if (env.isDevelopment) {
+      console.log('🔄 Connecting to MongoDB...');
     }
 
     // Connect with specific options to avoid client-side encryption issues
@@ -110,8 +111,8 @@ export const mongoConn = async (
     cachedUserDb = userDb;
 
     // Only log in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log("✅ Connected to MongoDB databases:", {
+    if (env.isDevelopment) {
+      console.log('✅ Connected to MongoDB databases:', {
         main: db.databaseName,
         tenant: dbTenant.databaseName,
         user: userDb.databaseName,
@@ -120,17 +121,17 @@ export const mongoConn = async (
 
     return { client, db, dbTenant, userDb };
   } catch (error) {
-    console.error("❌ MongoDB connection error:", error);
+    console.error('❌ MongoDB connection error:', error);
 
     if (retries > 0) {
       console.log(`🔄 Retrying connection... (${retries} attempts left)`);
       await new Promise((resolve) => setTimeout(resolve, 1000));
       return mongoConn(dbName, retries - 1);
     } else {
-      console.error("❌ Failed to connect to MongoDB after multiple attempts");
+      console.error('❌ Failed to connect to MongoDB after multiple attempts');
       throw new Error(
         `MongoDB connection failed: ${
-          error instanceof Error ? error.message : "Unknown error"
+          error instanceof Error ? error.message : 'Unknown error'
         }`
       );
     }
@@ -141,11 +142,11 @@ export const mongoConn = async (
 export async function getDatabase(): Promise<Db> {
   if (!isServer) {
     throw new Error(
-      "MongoDB operations can only be performed on the server side"
+      'MongoDB operations can only be performed on the server side'
     );
   }
   if (isEdgeRuntime) {
-    throw new Error("MongoDB operations are not supported in Edge Runtime");
+    throw new Error('MongoDB operations are not supported in Edge Runtime');
   }
   const { db } = await mongoConn();
   return db;
@@ -154,11 +155,11 @@ export async function getDatabase(): Promise<Db> {
 export async function getTenantDatabase(): Promise<Db> {
   if (!isServer) {
     throw new Error(
-      "MongoDB operations can only be performed on the server side"
+      'MongoDB operations can only be performed on the server side'
     );
   }
   if (isEdgeRuntime) {
-    throw new Error("MongoDB operations are not supported in Edge Runtime");
+    throw new Error('MongoDB operations are not supported in Edge Runtime');
   }
   const { dbTenant } = await mongoConn();
   return dbTenant;
@@ -167,11 +168,11 @@ export async function getTenantDatabase(): Promise<Db> {
 export async function getUserMasterDatabase(): Promise<Db> {
   if (!isServer) {
     throw new Error(
-      "MongoDB operations can only be performed on the server side"
+      'MongoDB operations can only be performed on the server side'
     );
   }
   if (isEdgeRuntime) {
-    throw new Error("MongoDB operations are not supported in Edge Runtime");
+    throw new Error('MongoDB operations are not supported in Edge Runtime');
   }
   const { userDb } = await mongoConn();
   return userDb;
@@ -180,11 +181,11 @@ export async function getUserMasterDatabase(): Promise<Db> {
 export async function getAllDatabases(): Promise<MongoConnection> {
   if (!isServer) {
     throw new Error(
-      "MongoDB operations can only be performed on the server side"
+      'MongoDB operations can only be performed on the server side'
     );
   }
   if (isEdgeRuntime) {
-    throw new Error("MongoDB operations are not supported in Edge Runtime");
+    throw new Error('MongoDB operations are not supported in Edge Runtime');
   }
   return mongoConn();
 }
@@ -192,11 +193,11 @@ export async function getAllDatabases(): Promise<MongoConnection> {
 export async function closeMongoConnection() {
   if (!isServer) {
     throw new Error(
-      "MongoDB operations can only be performed on the server side"
+      'MongoDB operations can only be performed on the server side'
     );
   }
   if (isEdgeRuntime) {
-    throw new Error("MongoDB operations are not supported in Edge Runtime");
+    throw new Error('MongoDB operations are not supported in Edge Runtime');
   }
   if (cachedClient) {
     await cachedClient.close();
@@ -204,7 +205,7 @@ export async function closeMongoConnection() {
     cachedDb = null;
     cachedDbTenant = null;
     cachedUserDb = null;
-    console.log("MongoDB connection closed");
+    console.log('MongoDB connection closed');
   }
 }
 
@@ -220,10 +221,10 @@ export async function checkMongoConnection(): Promise<boolean> {
       await mongoConn();
     }
 
-    await cachedClient!.db("admin").command({ ping: 1 });
+    await cachedClient!.db('admin').command({ ping: 1 });
     return true;
   } catch (error) {
-    console.error("MongoDB health check failed:", error);
+    console.error('MongoDB health check failed:', error);
     return false;
   }
 }

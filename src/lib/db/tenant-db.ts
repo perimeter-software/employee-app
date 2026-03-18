@@ -2,6 +2,7 @@
 import { mongoConn } from './mongodb';
 import redisService from '@/lib/cache/redis-client';
 import type { AuthenticatedRequest } from '@/domains/user/types';
+import { env } from '@/lib/config';
 
 // Default database name from environment variable, fallback to 'stadiumpeople' for backward compatibility
 const DEFAULT_DB_NAME = process.env.DEFAULT_TENANT_DB_NAME || 'stadiumpeople';
@@ -146,7 +147,7 @@ export async function getTenantAwareConnection(request: AuthenticatedRequest) {
   if (userTenant?.dbName) {
     dbName = userTenant.dbName;
     // Only log in development
-    if (process.env.NODE_ENV === 'development') {
+    if (env.isDevelopment) {
       const userType = request.user.isApplicantOnly ? 'applicant' : 'user';
       console.log(
         `🎯 Using database "${dbName}" from request.user.tenant for tenant: ${userTenant.url} (${userType}: ${userEmail})`
@@ -160,7 +161,7 @@ export async function getTenantAwareConnection(request: AuthenticatedRequest) {
     }
   } else {
     // PRIORITY 2: Fall back to Redis cache lookup
-    if (process.env.NODE_ENV === 'development') {
+    if (env.isDevelopment) {
       console.log(
         `⚠️ No tenant in request.user, falling back to Redis cache for: ${userEmail}`
       );
@@ -169,7 +170,7 @@ export async function getTenantAwareConnection(request: AuthenticatedRequest) {
   }
 
   // Only log in development
-  if (process.env.NODE_ENV === 'development') {
+  if (env.isDevelopment) {
     console.log(
       `🔗 Opening tenant-aware connection to database: ${dbName} for user: ${userEmail}`
     );

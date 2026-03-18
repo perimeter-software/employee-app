@@ -4,6 +4,7 @@ import { getSession } from '@auth0/nextjs-auth0';
 import { AuthenticatedRequest, RouteHandler } from './types';
 import { Auth0SessionUser, EnhancedUser } from '@/domains/user';
 import redisService from '@/lib/cache/redis-client';
+import { env } from '@/lib/config';
 
 /**
  * Get user session from either Auth0 or OTP
@@ -61,7 +62,8 @@ async function getUserSession(
         if (user?._id) {
           const employmentStatus = user.status ?? '';
           const isLimitedAccess =
-            employmentStatus === 'Terminated' || employmentStatus === 'Inactive';
+            employmentStatus === 'Terminated' ||
+            employmentStatus === 'Inactive';
 
           const upgradedPayload = {
             userId: user._id,
@@ -193,7 +195,7 @@ export function withEnhancedAuthAPI<T = unknown>(
         try {
           const parsedUser = JSON.parse(enhancedUserHeader) as EnhancedUser;
           // Only log in development
-          if (process.env.NODE_ENV === 'development') {
+          if (env.isDevelopment) {
             console.log(`📦 Using enhanced user from middleware: ${userEmail}`);
           }
 
@@ -300,7 +302,7 @@ export function withEnhancedAuthAPI<T = unknown>(
         (options.requireDatabaseUser || options.requireTenant)
       ) {
         // Only log in development
-        if (process.env.NODE_ENV === 'development') {
+        if (env.isDevelopment) {
           console.log(
             '⚠️ No enhanced user in headers, fetching from database...'
           );
@@ -324,7 +326,7 @@ export function withEnhancedAuthAPI<T = unknown>(
             cachedTenantData?.userIdentity
           ) {
             // Only log in development
-            if (process.env.NODE_ENV === 'development') {
+            if (env.isDevelopment) {
               console.log(
                 `📦 Using cached user identity for tenant: ${cachedTenantData.tenant.dbName}`
               );
@@ -350,7 +352,7 @@ export function withEnhancedAuthAPI<T = unknown>(
 
             if (!userExists) {
               // Only log in development
-              if (process.env.NODE_ENV === 'development') {
+              if (env.isDevelopment) {
                 console.log(`❌ User not found in database: ${userEmail}`);
               }
               return NextResponse.json(
@@ -372,7 +374,7 @@ export function withEnhancedAuthAPI<T = unknown>(
 
               if (!userMasterRecord?.tenant) {
                 // Only log in development
-                if (process.env.NODE_ENV === 'development') {
+                if (env.isDevelopment) {
                   console.log(`❌ No tenant found for user: ${userEmail}`);
                 }
                 return NextResponse.json(
@@ -406,7 +408,7 @@ export function withEnhancedAuthAPI<T = unknown>(
           } as Auth0SessionUser;
 
           // Only log in development
-          if (process.env.NODE_ENV === 'development') {
+          if (env.isDevelopment) {
             console.log(`✅ Enhanced user data loaded from DB: ${userEmail}`);
           }
         } catch (dbError) {
@@ -446,7 +448,7 @@ export function withEnhancedAuthAPI<T = unknown>(
       authenticatedRequest.user = enhancedUser || (user as Auth0SessionUser);
 
       // Only log in development
-      if (process.env.NODE_ENV === 'development') {
+      if (env.isDevelopment) {
         console.log(
           `✅ Enhanced API Request authenticated: ${userEmail} → ${request.url}`
         );

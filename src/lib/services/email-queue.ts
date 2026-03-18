@@ -12,7 +12,7 @@ import {
 } from '@aws-sdk/client-ses';
 import type { Db } from 'mongodb';
 import { ObjectId } from 'mongodb';
-import { env, getEnvironmentConfig } from '@/lib/config/env';
+import { env, getEnvironmentConfig } from '@/lib/config';
 import { logActivity } from '@/lib/services/activity-logger';
 
 // ─── Staging email helpers ────────────────────────────────────────────────────
@@ -291,10 +291,7 @@ export async function sendQueuedEmail(
   db: Db
 ): Promise<{ success: boolean; message?: string }> {
   // ── 1. Dev guard (same check kept from the original emailService) ───────────
-  if (
-    process.env.NODE_ENV === 'development' &&
-    process.env.SES_SEND_IN_DEV !== 'true'
-  ) {
+  if (env.isDevelopment && process.env.SES_SEND_IN_DEV !== 'true') {
     console.log('[email-queue] Dev mode – not sending:', {
       subject: options.subject,
       to: options.to,

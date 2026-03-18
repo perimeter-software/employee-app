@@ -1,17 +1,20 @@
 // next.config.mjs
 /** @type {import('next').NextConfig} */
 
-const isDev = process.env.NODE_ENV === 'development';
+const isDev =
+  process.env.NODE_ENV === 'development' ||
+  process.env.NEXT_PUBLIC_APP_ENV === 'development';
 
 const nextConfig = {
   // Enable Turbopack for much faster dev builds (Next.js 14+)
-  ...(isDev && {
-    // Turbopack is experimental but much faster
-    // Uncomment if you want to try it (may have some compatibility issues)
-    // experimental: {
-    //   turbo: {},
-    // },
-  }),
+  ...(isDev &&
+    {
+      // Turbopack is experimental but much faster
+      // Uncomment if you want to try it (may have some compatibility issues)
+      // experimental: {
+      //   turbo: {},
+      // },
+    }),
 
   images: {
     // Disable image optimization in production to avoid permission issues

@@ -3,6 +3,7 @@ import { withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { ObjectId } from 'mongodb';
+import { env } from '@/lib/config';
 
 // POST Handler for Getting Active Employee Count (for Client role)
 // Optionally returns full list of active employees when includeList=true
@@ -70,7 +71,7 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
     const query = baseQuery;
 
     // Log query for debugging (only in development)
-    if (process.env.NODE_ENV === 'development') {
+    if (env.isDevelopment) {
       console.log('[Active Employee Count API] Query:', {
         includeList,
         jobIds: jobIds?.length || 0,
@@ -134,7 +135,15 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
             let: { jobIdObj: '$jobIdObjectId' },
             pipeline: [
               { $match: { $expr: { $eq: ['$_id', '$$jobIdObj'] } } },
-              { $project: { title: 1, venueName: 1, venueSlug: 1, location: 1, shifts: 1 } },
+              {
+                $project: {
+                  title: 1,
+                  venueName: 1,
+                  venueSlug: 1,
+                  location: 1,
+                  shifts: 1,
+                },
+              },
             ],
             as: 'job',
           },
@@ -204,7 +213,9 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
             phoneNumber: { $ifNull: ['$applicant.phone', ''] },
             jobTitle: { $ifNull: ['$job.title', ''] },
             jobSite: { $ifNull: ['$job.venueName', '$job.title', ''] },
-            location: { $ifNull: ['$job.location.locationName', '$job.venueSlug', ''] },
+            location: {
+              $ifNull: ['$job.location.locationName', '$job.venueSlug', ''],
+            },
           },
         },
         // Sort by timeIn descending (most recent first)
@@ -234,7 +245,13 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
     const hideDetails = !!user.hideEmployeesDetails;
     const employees = includeList
       ? hideDetails
-        ? (result as Array<{ employeeEmail?: string; phoneNumber?: string; [k: string]: unknown }>).map((e) => ({
+        ? (
+            result as Array<{
+              employeeEmail?: string;
+              phoneNumber?: string;
+              [k: string]: unknown;
+            }>
+          ).map((e) => ({
             ...e,
             employeeEmail: '',
             phoneNumber: '',
@@ -243,7 +260,7 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
       : undefined;
 
     // Log result for debugging (only in development)
-    if (process.env.NODE_ENV === 'development') {
+    if (env.isDevelopment) {
       console.log('[Active Employee Count API] Result:', {
         count: activeCount,
         includeList,
@@ -251,7 +268,9 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
     }
 
     // Return response - if includeList=true, include employees array
-    const responseData = includeList ? { count: activeCount, employees: employees ?? result } : { count: activeCount };
+    const responseData = includeList
+      ? { count: activeCount, employees: employees ?? result }
+      : { count: activeCount };
 
     return NextResponse.json(
       {
@@ -266,7 +285,8 @@ async function getActiveEmployeeCountHandler(request: AuthenticatedRequest) {
     );
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
-    const isClientAbort = err?.code === 'ECONNRESET' || err?.message === 'aborted';
+    const isClientAbort =
+      err?.code === 'ECONNRESET' || err?.message === 'aborted';
     if (!isClientAbort) {
       console.error('Error fetching active employee count:', error);
     }
