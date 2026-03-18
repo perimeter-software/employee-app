@@ -26,7 +26,7 @@ A comprehensive employee management application built with Next.js, featuring ti
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - Yarn package manager
 - MongoDB database
 - Redis server
@@ -35,26 +35,30 @@ A comprehensive employee management application built with Next.js, featuring ti
 ### Installation
 
 1. **Clone the repository**
+
    ```bash
    git clone <repository-url>
    cd employee-app
    ```
 
 2. **Install dependencies**
+
    ```bash
    yarn install
    ```
 
 3. **Environment Setup**
-   
+
    Copy the environment example file:
+
    ```bash
    cp .env.example .env
    ```
-   
+
    Fill in the required environment variables in `.env`:
 
    **Auth0 Configuration:**
+
    - `AUTH0_SECRET`: Your Auth0 secret key
    - `AUTH0_DOMAIN`: Your Auth0 domain
    - `AUTH0_CLIENT_ID`: Your Auth0 client ID
@@ -62,24 +66,30 @@ A comprehensive employee management application built with Next.js, featuring ti
    - `AUTH0_AUDIENCE`: Your Auth0 API audience
 
    **Database Configuration:**
+
    - `MONGODB_CONNECTION_STRING`: Your MongoDB connection string
    - `REDIS_HOST`: Redis host (default: 127.0.0.1)
    - `REDIS_PORT`: Redis port (default: 6379)
    - `REDIS_URL`: Complete Redis URL
+   - `API_REDIS_HOST`: SP1 API Redis host (default: 127.0.0.1)
+   - `API_REDIS_PORT`: SP1 API Redis port (default: 6379)
+   - `API_REDIS_URL`: SP1 API Complete Redis URL
 
    **API Keys:**
+
    - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`: Google Maps API key for frontend
    - `GOOGLE_MAPS_API_KEY_TWO`: Secondary Google Maps API key
    - `OPENAI_API_KEY`: OpenAI API key (for AI features)
    - `ANTHROPIC_API_KEY`: Anthropic API key (for AI features)
 
 4. **Run the development server**
+
    ```bash
    yarn dev
    ```
 
 5. **Open the application**
-   
+
    Navigate to [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Project Structure
@@ -127,18 +137,21 @@ This project follows Domain-Driven Design (DDD) principles:
 ### Key Features
 
 #### Dashboard
+
 - Real-time performance metrics
 - Attendance tracking and analytics
 - Calendar view with shift details
 - Insights and recommendations
 
 #### Time Tracking
+
 - GPS-based clock in/out
 - Geofence verification
 - Break tracking
 - Overtime calculation
 
 #### Shift Management
+
 - Calendar and table views
 - Real-time shift updates
 - Job site information
@@ -182,14 +195,17 @@ Ensure all environment variables are properly set in your production environment
 ### Common Issues
 
 1. **Auth0 Configuration**
+
    - Ensure callback URLs are correctly set in Auth0 dashboard
    - Verify environment variables match Auth0 application settings
 
 2. **Database Connection**
+
    - Check MongoDB connection string format
    - Ensure database user has proper permissions
 
 3. **Redis Connection**
+
    - Verify Redis server is running
    - Check Redis connection parameters
 

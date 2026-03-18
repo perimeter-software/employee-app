@@ -35,6 +35,13 @@ export const env = {
       `redis://${process.env.REDIS_HOST || '127.0.0.1'}:${
         process.env.REDIS_PORT || '6379'
       }`,
+    api_host: process.env.API_REDIS_HOST || '127.0.0.1',
+    api_port: parseInt(process.env.API_REDIS_PORT || '6379'),
+    api_url:
+      process.env.API_REDIS_URL ||
+      `redis://${process.env.API_REDIS_HOST || '127.0.0.1'}:${
+        process.env.API_REDIS_PORT || '6379'
+      }`,
   },
 
   // Google Maps API Keys

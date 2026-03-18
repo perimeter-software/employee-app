@@ -243,7 +243,7 @@ let emailQueue: Bull.Queue | null = null;
 function getEmailQueue(): Bull.Queue {
   if (!emailQueue) {
     emailQueue = new Bull('emailQueue', {
-      redis: { host: env.redis.host, port: env.redis.port },
+      redis: { host: env.redis.api_host, port: env.redis.api_port },
       defaultJobOptions: {
         removeOnComplete: true,
         removeOnFail: true,
