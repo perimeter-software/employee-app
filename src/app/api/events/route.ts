@@ -223,8 +223,6 @@ async function getEventsHandler(request: AuthenticatedRequest) {
     const totalPages = Math.ceil(total / limit);
     const hasNextPage = page < totalPages;
 
-    console.log('ITEMS', rawEvents?.length);
-
     // Nest the payload under `data` so ApiResponse<EventListPage>.data resolves correctly.
     // baseInstance.get<T>() returns ApiResponse<T> where .data = response body's "data" field.
     return NextResponse.json(
