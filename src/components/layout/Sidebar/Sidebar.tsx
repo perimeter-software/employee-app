@@ -17,6 +17,7 @@ import {
   ClipboardList,
   X,
   CalendarDays,
+  CalendarRange,
   MapPin,
 } from 'lucide-react';
 import { clsxm } from '@/lib/utils';
@@ -110,6 +111,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
         current:
           pathname === '/venue-requests' ||
           pathname.startsWith('/venue-requests'),
+      });
+
+      baseNavigation.push({
+        name: 'Events',
+        href: '/events',
+        icon: CalendarRange,
+        current: pathname === '/events' || pathname.startsWith('/events'),
       });
     }
 
