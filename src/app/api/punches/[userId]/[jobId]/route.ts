@@ -21,6 +21,7 @@ import { findJobByjobId, getUserType } from '@/domains/user/utils';
 import {
   giveJobAllowedGeoDistance,
   giveJobGeoCoords,
+  giveJobPolygon,
   isJobGeoFenced,
   jobHasShiftForUser,
 } from '@/domains/punch/utils/shift-job-utils';

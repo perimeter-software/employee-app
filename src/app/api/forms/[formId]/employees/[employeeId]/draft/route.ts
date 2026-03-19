@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { getTenantAwareConnection, DEFAULT_APPLICANT_PROJECTION } from '@/lib/db';
+import {
+  getTenantAwareConnection,
+  DEFAULT_APPLICANT_PROJECTION,
+} from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { ObjectId } from 'mongodb';
 
@@ -9,6 +12,7 @@ async function saveDraftHandler(
   request: AuthenticatedRequest,
   { params }: { params: { formId: string; employeeId: string } }
 ) {
+  try {
     const user = request.user;
 
     // Only Client users can access forms
@@ -72,10 +76,12 @@ async function saveDraftHandler(
 
     // Verify employee exists and client has access
     const employeeObjectId = new ObjectId(employeeId);
-    const employee = await db.collection('applicants').findOne(
-      { _id: employeeObjectId },
-      { projection: DEFAULT_APPLICANT_PROJECTION }
-    );
+    const employee = await db
+      .collection('applicants')
+      .findOne(
+        { _id: employeeObjectId },
+        { projection: DEFAULT_APPLICANT_PROJECTION }
+      );
 
     if (!employee) {
       return NextResponse.json(
@@ -90,8 +96,10 @@ async function saveDraftHandler(
 
     // Verify client has access to this employee
     const userObjectId = new ObjectId(user._id.toString());
-    const clientUser = await db.collection('users').findOne({ _id: userObjectId });
-    
+    const clientUser = await db
+      .collection('users')
+      .findOne({ _id: userObjectId });
+
     if (!clientUser) {
       return NextResponse.json(
         {
@@ -108,8 +116,11 @@ async function saveDraftHandler(
       .map((org: any) => org.slug)
       .filter((slug: any) => typeof slug === 'string' && slug.trim() !== '');
 
-    const employeeVenueSlugs = (employee as any)?.venues?.map((v: any) => v.venueSlug) || [];
-    const hasAccess = employeeVenueSlugs.some((slug: string) => clientOrgSlugs.includes(slug));
+    const employeeVenueSlugs =
+      (employee as any)?.venues?.map((v: any) => v.venueSlug) || [];
+    const hasAccess = employeeVenueSlugs.some((slug: string) =>
+      clientOrgSlugs.includes(slug)
+    );
 
     if (!hasAccess) {
       return NextResponse.json(
@@ -122,7 +133,8 @@ async function saveDraftHandler(
       );
     }
 
-    const shortName = (form as any).metadata?.shortName ?? (form as any).shortName;
+    const shortName =
+      (form as any).metadata?.shortName ?? (form as any).shortName;
     if (!shortName) {
       return NextResponse.json(
         {

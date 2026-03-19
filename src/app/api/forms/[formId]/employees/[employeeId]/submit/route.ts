@@ -18,6 +18,7 @@ async function submitFormHandler(
   context: { params: Promise<Record<string, string | string[] | undefined>> }
 ) {
   try {
+    const params = await context.params;
     const formId = typeof params.formId === 'string' ? params.formId : '';
     const employeeId =
       typeof params.employeeId === 'string' ? params.employeeId : '';

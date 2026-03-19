@@ -17,6 +17,7 @@ function attachmentToDocument(
   attachment: MongoAttachment,
   applicantId: string
 ): Document {
+  return {
     _id: attachment._id?.toString() || new ObjectId().toString(),
     applicantId: applicantId,
     uploadedAt: attachment.uploadDate || attachment.uploadedAt || new Date(),
@@ -46,10 +47,12 @@ export async function getAllDocuments(
   }
 
   try {
-    const applicantDoc = await db.collection('applicants').findOne(
-      { _id: new ObjectId(applicantId) },
-      { projection: DEFAULT_APPLICANT_PROJECTION }
-    );
+    const applicantDoc = await db
+      .collection('applicants')
+      .findOne(
+        { _id: new ObjectId(applicantId) },
+        { projection: DEFAULT_APPLICANT_PROJECTION }
+      );
 
     console.log('🔍 Query result:', applicantDoc ? 'Found' : 'Not found');
     console.log('🔍 Applicant result:', applicantDoc);
@@ -88,10 +91,16 @@ export async function findDocumentById(
   documentId: string
 ): Promise<Document | null> {
   try {
-    const documentDoc = await db.collection('applicants').findOne(
-      { _id: new ObjectId(documentId), status: { $ne: 'Deleted' }, isActive: true },
-      { projection: DEFAULT_APPLICANT_PROJECTION }
-    );
+    const documentDoc = await db
+      .collection('applicants')
+      .findOne(
+        {
+          _id: new ObjectId(documentId),
+          status: { $ne: 'Deleted' },
+          isActive: true,
+        },
+        { projection: DEFAULT_APPLICANT_PROJECTION }
+      );
 
     if (!documentDoc) {
       return null;

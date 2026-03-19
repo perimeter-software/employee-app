@@ -17,6 +17,7 @@ import type { ClockInCoordinates } from '@/domains/job/types/location.types';
 import {
   giveJobGeoCoords,
   giveJobAllowedGeoDistance,
+  giveJobPolygon,
 } from '@/domains/punch/utils/shift-job-utils';
 import { isPointInPolygon } from '@/lib/utils/location-utils';
 import { UpdateFilter, Document } from 'mongodb';

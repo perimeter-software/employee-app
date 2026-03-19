@@ -26,6 +26,7 @@ type DayKey =
   | 'saturday';
 
 type CreateShiftRequestsBody = {
+  jobId: string;
   shiftSlug: string;
   /** Exact dates with day-of-week from the client. Each entry is stored in shift.defaultSchedule[dayKey].roster. */
   dateRequests?: Array<{ date: string; dayKey: DayKey }>;
