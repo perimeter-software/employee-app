@@ -9,6 +9,7 @@ export async function findPrimaryCompany(db: Db): Promise<Company | null> {
       imageUrl: 1,
       timeClockSettings: 1,
       uploadPath: 1,
+      companyType: 1,
     };
 
     const companyDoc = await db

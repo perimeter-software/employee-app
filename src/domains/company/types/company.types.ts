@@ -10,4 +10,5 @@ export type Company = {
   uploadPath?: string; // Path prefix for uploaded files (e.g., 'sp')
   timeClockSettings: TimeClockSettings;
   peoIntegration?: string; // PEO integration type (e.g., 'Helm', 'Prism')
+  companyType?: string; // Company type (e.g., 'Venue')
 };

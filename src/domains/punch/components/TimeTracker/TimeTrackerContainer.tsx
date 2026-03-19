@@ -5,6 +5,7 @@ import { useUserApplicantJob } from '@/domains/job/hooks';
 import { useAllOpenPunches, useFindPunches } from '@/domains/punch/hooks';
 import { useCurrentUser } from '@/domains/user';
 import { useRosterEvents } from '@/domains/event/hooks';
+import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { ErrorState, LoadingState } from './States';
 import { TimerCard } from './TimerCard';
 import { ShiftsSection } from './ShiftsSection';
@@ -21,6 +22,10 @@ export const TimeTrackerContainer = () => {
 
   // Get current user data to check userType (this is already cached by Header component)
   const { data: currentUser, isLoading: currentUserLoading } = useCurrentUser();
+
+  // Get primary company to check companyType
+  const { data: primaryCompany } = usePrimaryCompany();
+  const isVenueCompany = primaryCompany?.companyType === 'Venue';
 
   // Check if user is Client - userType comes from API, not Auth0
   const isClient = currentUser?.userType === 'Client';
@@ -114,13 +119,14 @@ export const TimeTrackerContainer = () => {
   });
 
   const hasRosterEvents = useMemo(() => {
+    if (!isVenueCompany) return false;
     if (!rosterCheckEvents?.length || !userData?.applicantId) return false;
     return rosterCheckEvents.some((event) =>
       event.applicants?.some(
         (a) => a.id === userData.applicantId && a.status === 'Roster'
       )
     );
-  }, [rosterCheckEvents, userData?.applicantId]);
+  }, [isVenueCompany, rosterCheckEvents, userData?.applicantId]);
 
   // Still need open punches for the timer card (only enabled for non-Client users)
   const { data: openPunches } = useAllOpenPunches(userData?._id || '');

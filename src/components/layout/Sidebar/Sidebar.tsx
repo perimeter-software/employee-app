@@ -94,6 +94,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     }
 
     // Employee shift requests (non-client users)
+    const isVenueCompany = primaryCompany?.companyType === 'Venue';
+
     if (!isClient) {
       baseNavigation.push({
         name: 'Shift Requests',
@@ -104,21 +106,23 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
           pathname.startsWith('/shift-requests'),
       });
 
-      baseNavigation.push({
-        name: 'Venues',
-        href: '/venue-requests',
-        icon: MapPin,
-        current:
-          pathname === '/venue-requests' ||
-          pathname.startsWith('/venue-requests'),
-      });
+      if (isVenueCompany) {
+        baseNavigation.push({
+          name: 'Venues',
+          href: '/venue-requests',
+          icon: MapPin,
+          current:
+            pathname === '/venue-requests' ||
+            pathname.startsWith('/venue-requests'),
+        });
 
-      baseNavigation.push({
-        name: 'Events',
-        href: '/events',
-        icon: CalendarRange,
-        current: pathname === '/events' || pathname.startsWith('/events'),
-      });
+        baseNavigation.push({
+          name: 'Events',
+          href: '/events',
+          icon: CalendarRange,
+          current: pathname === '/events' || pathname.startsWith('/events'),
+        });
+      }
     }
 
     // Conditionally add Paycheck Stubs link for Prism companies (exclude for Client users)
