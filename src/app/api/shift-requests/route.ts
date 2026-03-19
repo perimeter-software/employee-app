@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { getTenantAwareConnection } from '@/lib/db';
+import {
+  getTenantAwareConnection,
+  DEFAULT_APPLICANT_PROJECTION,
+  DEFAULT_JOBS_PROJECTION,
+} from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { findJobByjobId } from '@/domains/user/utils/mongo-user-utils';
-import type { RosterEntry, RosterEntryStatus } from '@/domains/job/types/schedule.types';
+import type {
+  RosterEntry,
+  RosterEntryStatus,
+} from '@/domains/job/types/schedule.types';
 import { emailService } from '@/lib/services/email-service';
 import { getShiftStartOnDate } from '@/domains/punch/utils/shift-job-utils';
 import { escapeHtml } from '@/lib/utils/format-utils';
@@ -79,7 +86,12 @@ function getPositionTotalForDate(
 ): number {
   if (!position) return 0;
   const byDate = position.numberPositionsByDate;
-  if (byDate && typeof byDate === 'object' && dateKey && byDate[dateKey] != null) {
+  if (
+    byDate &&
+    typeof byDate === 'object' &&
+    dateKey &&
+    byDate[dateKey] != null
+  ) {
     const n = parseInt(String(byDate[dateKey]), 10);
     if (!Number.isNaN(n)) return Math.max(0, n);
   }
@@ -115,12 +127,16 @@ function getTotalForPosition(
 ): number {
   const positions = shift.positions;
   if (!Array.isArray(positions)) return 0;
-  const pos = positions.find((p) => (p as { positionName?: string }).positionName === positionName);
+  const pos = positions.find(
+    (p) => (p as { positionName?: string }).positionName === positionName
+  );
   return getPositionTotalForDate(pos, dayName, dateKey);
 }
 
 /** Normalize assignedPosition for comparison (treat undefined and empty string as same). */
-function normalizedAssignedPosition(entry: { assignedPosition?: string | null } | string): string | null {
+function normalizedAssignedPosition(
+  entry: { assignedPosition?: string | null } | string
+): string | null {
   if (typeof entry === 'string') return null;
   const p = entry.assignedPosition;
   if (p == null || p === '') return null;
@@ -128,7 +144,11 @@ function normalizedAssignedPosition(entry: { assignedPosition?: string | null } 
 }
 
 /** Position for waitlist matching: requested (pending) or assigned (approved). */
-function normalizedRequestedOrAssignedPosition(entry: { requestedPosition?: string | null; assignedPosition?: string | null } | string): string | null {
+function normalizedRequestedOrAssignedPosition(
+  entry:
+    | { requestedPosition?: string | null; assignedPosition?: string | null }
+    | string
+): string | null {
   if (typeof entry === 'string') return null;
   const p = entry.requestedPosition ?? entry.assignedPosition;
   if (p == null || p === '') return null;
@@ -139,7 +159,10 @@ function normalizedRequestedOrAssignedPosition(entry: { requestedPosition?: stri
  * Pending, rejected, called_off, and cancelled entries are excluded—so storing assignedPosition on
  * pending entries does not increase filled count anywhere. */
 function getFilledCountForPosition(
-  roster: Array<string | (RosterEntry & { status?: RosterEntryStatus; assignedPosition?: string })>,
+  roster: Array<
+    | string
+    | (RosterEntry & { status?: RosterEntryStatus; assignedPosition?: string })
+  >,
   dateKey: string,
   positionNameOrNull: string | null
 ): number {
@@ -195,7 +218,8 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
       );
     }
 
-    const hasDateRequests = Array.isArray(dateRequests) && dateRequests.length > 0;
+    const hasDateRequests =
+      Array.isArray(dateRequests) && dateRequests.length > 0;
     if (!hasDateRequests) {
       return NextResponse.json(
         {
@@ -232,7 +256,10 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
 
     const shiftStart = new Date(shift.shiftStartDate);
     const shiftEnd = new Date(shift.shiftEndDate);
-    if (Number.isNaN(shiftStart.getTime()) || Number.isNaN(shiftEnd.getTime())) {
+    if (
+      Number.isNaN(shiftStart.getTime()) ||
+      Number.isNaN(shiftEnd.getTime())
+    ) {
       return NextResponse.json(
         {
           error: 'invalid-shift-range',
@@ -243,12 +270,15 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
     }
 
     // If positionName provided, validate against shift.positions. When shift has positions, position is required.
-    const shiftHasPositions = Array.isArray(shift.positions) && shift.positions.length > 0;
+    const shiftHasPositions =
+      Array.isArray(shift.positions) && shift.positions.length > 0;
     const validPositionName =
       typeof positionName === 'string' &&
       positionName.trim() !== '' &&
       shiftHasPositions &&
-      (shift.positions as Array<{ positionName?: string }>).some((p) => p.positionName === positionName)
+      (shift.positions as Array<{ positionName?: string }>).some(
+        (p) => p.positionName === positionName
+      )
         ? positionName.trim()
         : undefined;
     if (shiftHasPositions && !validPositionName) {
@@ -312,7 +342,9 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
             date: dateStr,
             status: 'pending',
           };
-          if (validPositionName) (newEntry as Record<string, unknown>).requestedPosition = validPositionName;
+          if (validPositionName)
+            (newEntry as Record<string, unknown>).requestedPosition =
+              validPositionName;
           toAddByDay[dayKey].push(newEntry);
         }
       }
@@ -320,9 +352,12 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
 
     // Auto-approve when autoAddWaitlistedStaff is on and slot is open (position-aware, date-specific only).
     // When auto is off, entries stay pending with only requestedPosition (never assignedPosition).
-    const additionalConfig = job.additionalConfig as { autoAddWaitlistedStaff?: boolean } | undefined;
+    const additionalConfig = job.additionalConfig as
+      | { autoAddWaitlistedStaff?: boolean }
+      | undefined;
     const autoAddEnabled = additionalConfig?.autoAddWaitlistedStaff === true;
-    const hasPositions = Array.isArray(shift.positions) && shift.positions.length > 0;
+    const hasPositions =
+      Array.isArray(shift.positions) && shift.positions.length > 0;
     if (autoAddEnabled && hasPositions) {
       for (const dayKey of DAY_KEYS) {
         const roster = existingByDay[dayKey] || [];
@@ -330,20 +365,47 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
         for (const entry of entries) {
           if (!entry.date) continue; // recurring: not used for auto-add
           const dateKey = entry.date;
-          const posNorm = normalizedRequestedOrAssignedPosition(entry as { requestedPosition?: string; assignedPosition?: string });
-          const total = posNorm != null
-            ? getTotalForPosition(shift as { positions?: Array<PositionCapacity & { positionName?: string }> }, posNorm, dayKey, dateKey)
-            : getTotalPositionsForShiftDayDate(shift as { positions?: Array<PositionCapacity & { positionName?: string }> }, dayKey, dateKey);
+          const posNorm = normalizedRequestedOrAssignedPosition(
+            entry as { requestedPosition?: string; assignedPosition?: string }
+          );
+          const total =
+            posNorm != null
+              ? getTotalForPosition(
+                  shift as {
+                    positions?: Array<
+                      PositionCapacity & { positionName?: string }
+                    >;
+                  },
+                  posNorm,
+                  dayKey,
+                  dateKey
+                )
+              : getTotalPositionsForShiftDayDate(
+                  shift as {
+                    positions?: Array<
+                      PositionCapacity & { positionName?: string }
+                    >;
+                  },
+                  dayKey,
+                  dateKey
+                );
           if (total <= 0) continue;
           const filled = getFilledCountForPosition(
-            roster as Array<string | (RosterEntry & { status?: RosterEntryStatus; assignedPosition?: string })>,
+            roster as Array<
+              | string
+              | (RosterEntry & {
+                  status?: RosterEntryStatus;
+                  assignedPosition?: string;
+                })
+            >,
             dateKey,
             posNorm
           );
           if (filled < total) {
             entry.status = 'approved';
             (entry as Record<string, unknown>).approvedBy = AUTO_APPROVED_BY;
-            if (posNorm != null) (entry as Record<string, unknown>).assignedPosition = posNorm;
+            if (posNorm != null)
+              (entry as Record<string, unknown>).assignedPosition = posNorm;
           }
         }
       }
@@ -418,13 +480,11 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
       };
     }
 
-    const updateResult = await db.collection('jobs').updateOne(
-      { _id: new ObjectId(jobId) },
-      updateOps,
-      {
+    const updateResult = await db
+      .collection('jobs')
+      .updateOne({ _id: new ObjectId(jobId) }, updateOps, {
         arrayFilters: [{ 'shift.slug': shiftSlug }],
-      }
-    );
+      });
 
     if (!updateResult.acknowledged) {
       return NextResponse.json(
@@ -445,8 +505,11 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
       fullName?: string;
       email?: string;
     };
-    const configRecipients = (job?.additionalConfig as { eventManagerNotificationRecipients?: ManagerRecipient[] })
-      ?.eventManagerNotificationRecipients;
+    const configRecipients = (
+      job?.additionalConfig as {
+        eventManagerNotificationRecipients?: ManagerRecipient[];
+      }
+    )?.eventManagerNotificationRecipients;
     if (Array.isArray(configRecipients) && configRecipients.length > 0) {
       const firstName = user.given_name ?? user.firstName ?? '';
       const lastName = user.family_name ?? user.lastName ?? '';
@@ -454,13 +517,16 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
         (user.name as string | undefined)?.trim() ||
         [firstName, lastName].filter(Boolean).join(' ') ||
         'Employee';
-      const shiftName = (shift as { shiftName?: string }).shiftName || shiftSlug;
+      const shiftName =
+        (shift as { shiftName?: string }).shiftName || shiftSlug;
       // Use body dates as-is (YYYY-MM-DD), no timezone conversion
       const requestedDatesList = dateRequests.map((r) => r.date);
       const dateLabels =
         (requestedDatesList?.length ?? 0) > 0
           ? (requestedDatesList || []).slice(0, 10).join(', ') +
-            ((requestedDatesList?.length ?? 0) > 10 ? ` and ${(requestedDatesList?.length ?? 0) - 10} more` : '')
+            ((requestedDatesList?.length ?? 0) > 10
+              ? ` and ${(requestedDatesList?.length ?? 0) - 10} more`
+              : '')
           : '';
       const requestedSummary = dateLabels || 'See schedule';
       // Count how many new date-specific entries were auto-approved
@@ -473,8 +539,11 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
           if (entry.status === 'approved') autoApprovedCount += 1;
         }
       }
-      const allAutoApproved = totalDateSpecificCount > 0 && autoApprovedCount === totalDateSpecificCount;
-      const someAutoApproved = autoApprovedCount > 0 && autoApprovedCount < totalDateSpecificCount;
+      const allAutoApproved =
+        totalDateSpecificCount > 0 &&
+        autoApprovedCount === totalDateSpecificCount;
+      const someAutoApproved =
+        autoApprovedCount > 0 && autoApprovedCount < totalDateSpecificCount;
       const allPending = autoApprovedCount === 0 && totalDateSpecificCount > 0;
       const statusLine = allAutoApproved
         ? 'This request was automatically approved because positions were available for all requested dates. No action needed.'
@@ -521,22 +590,36 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
         try {
           await emailService.sendEmail({ to, subject, html, text, db });
         } catch (emailErr) {
-          console.error('[Shift Requests API] Error sending manager email to', to, emailErr);
+          console.error(
+            '[Shift Requests API] Error sending manager email to',
+            to,
+            emailErr
+          );
         }
       }
     }
 
     // Send "Shift request approved" email to requester for each auto-approved entry
-    const requesterEmail = user.email ?? (existingShiftRoster as Array<{ email?: string }>).find(
-      (e) => e && (String((e as { _id?: string; employeeId?: string })._id ?? (e as { _id?: string; employeeId?: string }).employeeId) === String(applicantId))
-    )?.email;
+    const requesterEmail =
+      user.email ??
+      (existingShiftRoster as Array<{ email?: string }>).find(
+        (e) =>
+          e &&
+          String(
+            (e as { _id?: string; employeeId?: string })._id ??
+              (e as { _id?: string; employeeId?: string }).employeeId
+          ) === String(applicantId)
+      )?.email;
     if (requesterEmail) {
       const jobTitle = job.title || 'Job';
-      const shiftName = (shift as { shiftName?: string }).shiftName || shiftSlug;
+      const shiftName =
+        (shift as { shiftName?: string }).shiftName || shiftSlug;
       for (const dayKey of DAY_KEYS) {
         for (const entry of toAddByDay[dayKey]) {
           if (entry.status !== 'approved' || !entry.date) continue;
-          const positionLabel = entry.assignedPosition ? ` – ${entry.assignedPosition}` : '';
+          const positionLabel = entry.assignedPosition
+            ? ` – ${entry.assignedPosition}`
+            : '';
           const subject = `Shift request approved – ${jobTitle} – ${shiftName}${positionLabel}`;
           const plainSummary = `Your shift request for ${jobTitle} – ${shiftName} (${entry.date}) was approved.`;
           const html = [
@@ -545,19 +628,38 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
             '<div style="padding:20px;">',
             `<p style="margin:0 0 16px; color:#374151; font-size:14px;">${escapeHtml(plainSummary)}</p>`,
             '<table style="width:100%; border-collapse:collapse; font-size:14px; border:1px solid #e5e7eb; border-radius:6px;">',
-            '<tr style="background:#f9fafb;"><td style="padding:10px 14px; color:#6b7280; width:120px;">Job</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(jobTitle) + '</td></tr>',
-            '<tr><td style="padding:10px 14px; color:#6b7280;">Shift</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(shiftName) + '</td></tr>',
-            '<tr><td style="padding:10px 14px; color:#6b7280;">Date</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(entry.date) + '</td></tr>',
-            entry.assignedPosition ? '<tr><td style="padding:10px 14px; color:#6b7280;">Position</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(entry.assignedPosition) + '</td></tr>' : '',
+            '<tr style="background:#f9fafb;"><td style="padding:10px 14px; color:#6b7280; width:120px;">Job</td><td style="padding:10px 14px; color:#111827;">' +
+              escapeHtml(jobTitle) +
+              '</td></tr>',
+            '<tr><td style="padding:10px 14px; color:#6b7280;">Shift</td><td style="padding:10px 14px; color:#111827;">' +
+              escapeHtml(shiftName) +
+              '</td></tr>',
+            '<tr><td style="padding:10px 14px; color:#6b7280;">Date</td><td style="padding:10px 14px; color:#111827;">' +
+              escapeHtml(entry.date) +
+              '</td></tr>',
+            entry.assignedPosition
+              ? '<tr><td style="padding:10px 14px; color:#6b7280;">Position</td><td style="padding:10px 14px; color:#111827;">' +
+                escapeHtml(entry.assignedPosition) +
+                '</td></tr>'
+              : '',
             '</table>',
             '</div>',
             '<div style="padding:12px 20px; background:#f9fafb; border-top:1px solid #e5e7eb; font-size:12px; color:#6b7280;">This is an automated notification from the Employee App.</div>',
             '</div>',
           ].join('');
           try {
-            await emailService.sendEmail({ to: requesterEmail, subject, html, text: plainSummary, db });
+            await emailService.sendEmail({
+              to: requesterEmail,
+              subject,
+              html,
+              text: plainSummary,
+              db,
+            });
           } catch (emailErr) {
-            console.error('[Shift Requests API] Error sending approval email to requester', emailErr);
+            console.error(
+              '[Shift Requests API] Error sending approval email to requester',
+              emailErr
+            );
           }
         }
       }
@@ -575,12 +677,15 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
       }
       if (hasAnyPending && requesterEmail) {
         const jobTitle = job.title || 'Job';
-        const shiftName = (shift as { shiftName?: string }).shiftName || shiftSlug;
+        const shiftName =
+          (shift as { shiftName?: string }).shiftName || shiftSlug;
         const requestedDatesList = dateRequests.map((r) => r.date);
         const dateLabels =
           (requestedDatesList?.length ?? 0) > 0
             ? (requestedDatesList || []).slice(0, 10).join(', ') +
-              ((requestedDatesList?.length ?? 0) > 10 ? ` and ${(requestedDatesList?.length ?? 0) - 10} more` : '')
+              ((requestedDatesList?.length ?? 0) > 10
+                ? ` and ${(requestedDatesList?.length ?? 0) - 10} more`
+                : '')
             : '';
         const pendingReason = autoAddEnabled
           ? 'Positions are currently filled for the requested dates, so you have been added to the waitlist. You will be notified if a position becomes available.'
@@ -593,9 +698,15 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
           '<div style="padding:20px;">',
           `<p style="margin:0 0 16px; color:#374151; font-size:14px;">Your shift request has been received.</p>`,
           '<table style="width:100%; border-collapse:collapse; font-size:14px; border:1px solid #e5e7eb; border-radius:6px;">',
-          '<tr style="background:#f9fafb;"><td style="padding:10px 14px; color:#6b7280; width:120px;">Job</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(jobTitle) + '</td></tr>',
-          '<tr><td style="padding:10px 14px; color:#6b7280;">Shift</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(shiftName) + '</td></tr>',
-          '<tr><td style="padding:10px 14px; color:#6b7280;">Requested dates</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(dateLabels || '—') + '</td></tr>',
+          '<tr style="background:#f9fafb;"><td style="padding:10px 14px; color:#6b7280; width:120px;">Job</td><td style="padding:10px 14px; color:#111827;">' +
+            escapeHtml(jobTitle) +
+            '</td></tr>',
+          '<tr><td style="padding:10px 14px; color:#6b7280;">Shift</td><td style="padding:10px 14px; color:#111827;">' +
+            escapeHtml(shiftName) +
+            '</td></tr>',
+          '<tr><td style="padding:10px 14px; color:#6b7280;">Requested dates</td><td style="padding:10px 14px; color:#111827;">' +
+            escapeHtml(dateLabels || '—') +
+            '</td></tr>',
           '</table>',
           `<p style="margin:16px 0 0; color:#6b7280; font-size:13px;">${escapeHtml(pendingReason)}</p>`,
           '</div>',
@@ -603,9 +714,18 @@ async function createShiftRequestsHandler(request: AuthenticatedRequest) {
           '</div>',
         ].join('');
         try {
-          await emailService.sendEmail({ to: requesterEmail, subject, html, text: plainSummary, db });
+          await emailService.sendEmail({
+            to: requesterEmail,
+            subject,
+            html,
+            text: plainSummary,
+            db,
+          });
         } catch (emailErr) {
-          console.error('[Shift Requests API] Error sending pending-request email to requester', emailErr);
+          console.error(
+            '[Shift Requests API] Error sending pending-request email to requester',
+            emailErr
+          );
         }
       }
     }
@@ -635,10 +755,7 @@ export const POST = withEnhancedAuthAPI(createShiftRequestsHandler, {
   requireTenant: true,
 });
 
-function callOffBeforeToMinutes(
-  callOffBefore: number,
-  unit: string
-): number {
+function callOffBeforeToMinutes(callOffBefore: number, unit: string): number {
   if (unit === 'days') return callOffBefore * 1440;
   if (unit === 'hours') return callOffBefore * 60;
   return callOffBefore;
@@ -725,7 +842,11 @@ async function callOffShiftHandler(request: AuthenticatedRequest) {
     }
 
     const additionalConfig = job.additionalConfig as
-      | { allowCallOff?: boolean; callOffBefore?: number; callOffBeforeUnit?: string }
+      | {
+          allowCallOff?: boolean;
+          callOffBefore?: number;
+          callOffBeforeUnit?: string;
+        }
       | undefined;
     if (!additionalConfig?.allowCallOff) {
       return NextResponse.json(
@@ -751,7 +872,8 @@ async function callOffShiftHandler(request: AuthenticatedRequest) {
       return NextResponse.json(
         {
           error: 'roster-entry-not-found',
-          message: 'No date-specific roster entry found for this shift and date.',
+          message:
+            'No date-specific roster entry found for this shift and date.',
         },
         { status: 404 }
       );
@@ -788,8 +910,7 @@ async function callOffShiftHandler(request: AuthenticatedRequest) {
     }
 
     const callOffBefore = Number(additionalConfig?.callOffBefore) || 0;
-    const callOffBeforeUnit =
-      additionalConfig?.callOffBeforeUnit ?? 'minutes';
+    const callOffBeforeUnit = additionalConfig?.callOffBeforeUnit ?? 'minutes';
     const requiredMinutesBefore =
       callOffBefore > 0
         ? callOffBeforeToMinutes(callOffBefore, callOffBeforeUnit)
@@ -867,8 +988,11 @@ async function callOffShiftHandler(request: AuthenticatedRequest) {
       fullName?: string;
       email?: string;
     };
-    const configRecipients = (job?.additionalConfig as { eventManagerNotificationRecipients?: ManagerRecipient[] })
-      ?.eventManagerNotificationRecipients;
+    const configRecipients = (
+      job?.additionalConfig as {
+        eventManagerNotificationRecipients?: ManagerRecipient[];
+      }
+    )?.eventManagerNotificationRecipients;
     if (Array.isArray(configRecipients) && configRecipients.length > 0) {
       const firstName = user.given_name ?? user.firstName ?? '';
       const lastName = user.family_name ?? user.lastName ?? '';
@@ -876,9 +1000,11 @@ async function callOffShiftHandler(request: AuthenticatedRequest) {
         (user.name as string | undefined)?.trim() ||
         [firstName, lastName].filter(Boolean).join(' ') ||
         'Employee';
-      const shiftName = (shift as { shiftName?: string }).shiftName || shiftSlug;
+      const shiftName =
+        (shift as { shiftName?: string }).shiftName || shiftSlug;
       // Use body date and dayKey as-is, no timezone conversion
-      const dayLabel = dayKey.charAt(0).toUpperCase() + dayKey.slice(1).toLowerCase();
+      const dayLabel =
+        dayKey.charAt(0).toUpperCase() + dayKey.slice(1).toLowerCase();
       const subject = `Shift call-off: ${employeeName} – ${job.title || 'Job'}`;
       const text = [
         'An employee has called off a shift.',
@@ -916,62 +1042,177 @@ async function callOffShiftHandler(request: AuthenticatedRequest) {
         try {
           await emailService.sendEmail({ to, subject, html, text, db });
         } catch (emailErr) {
-          console.error('[Shift Requests API] Error sending call-off email to', to, emailErr);
+          console.error(
+            '[Shift Requests API] Error sending call-off email to',
+            to,
+            emailErr
+          );
         }
       }
     }
 
     // Auto-add waitlisted: promote first pending with same position when slot opens
-    const autoAddConfig = job.additionalConfig as { autoAddWaitlistedStaff?: boolean } | undefined;
-    const shiftWithPositions = shift as { positions?: Array<PositionCapacity & { positionName?: string }>; shiftName?: string; shiftRoster?: Array<{ _id?: unknown; employeeId?: string; email?: string }> };
-    if (autoAddConfig?.autoAddWaitlistedStaff === true && Array.isArray(shiftWithPositions.positions) && shiftWithPositions.positions.length > 0) {
-      const totalForDay = getTotalPositionsForShiftDayDate(shiftWithPositions, dayKey, date);
+    const autoAddConfig = job.additionalConfig as
+      | { autoAddWaitlistedStaff?: boolean }
+      | undefined;
+    const shiftWithPositions = shift as {
+      positions?: Array<PositionCapacity & { positionName?: string }>;
+      shiftName?: string;
+      shiftRoster?: Array<{
+        _id?: unknown;
+        employeeId?: string;
+        email?: string;
+      }>;
+    };
+    if (
+      autoAddConfig?.autoAddWaitlistedStaff === true &&
+      Array.isArray(shiftWithPositions.positions) &&
+      shiftWithPositions.positions.length > 0
+    ) {
+      const totalForDay = getTotalPositionsForShiftDayDate(
+        shiftWithPositions,
+        dayKey,
+        date
+      );
       if (totalForDay > 0) {
-        const jobAfter = await db.collection('jobs').findOne({ _id: new ObjectId(jobId) }) as { shifts?: Array<{ slug?: string; defaultSchedule?: Record<string, { roster?: unknown[] }>; shiftRoster?: Array<{ _id?: unknown; employeeId?: string; email?: string }>; positions?: Array<PositionCapacity & { positionName?: string }> }> } | null;
+        const jobAfter = (await db
+          .collection('jobs')
+          .findOne(
+            { _id: new ObjectId(jobId) },
+            { projection: DEFAULT_JOBS_PROJECTION }
+          )) as {
+          shifts?: Array<{
+            slug?: string;
+            defaultSchedule?: Record<string, { roster?: unknown[] }>;
+            shiftRoster?: Array<{
+              _id?: unknown;
+              employeeId?: string;
+              email?: string;
+            }>;
+            positions?: Array<PositionCapacity & { positionName?: string }>;
+          }>;
+        } | null;
         const shiftAfter = jobAfter?.shifts?.find((s) => s.slug === shiftSlug);
-        const rosterAfter = (shiftAfter?.defaultSchedule?.[dayKey]?.roster ?? []) as Array<string | (RosterEntry & { status?: RosterEntryStatus; assignedPosition?: string; requestedPosition?: string })>;
-        const calledOffPos = normalizedAssignedPosition(entry as RosterEntry & { assignedPosition?: string });
-        const total = calledOffPos != null
-          ? getTotalForPosition(shiftWithPositions, calledOffPos, dayKey, date)
-          : getTotalPositionsForShiftDayDate(shiftWithPositions, dayKey, date);
-        const filled = getFilledCountForPosition(rosterAfter, date, calledOffPos);
+        const rosterAfter = (shiftAfter?.defaultSchedule?.[dayKey]?.roster ??
+          []) as Array<
+          | string
+          | (RosterEntry & {
+              status?: RosterEntryStatus;
+              assignedPosition?: string;
+              requestedPosition?: string;
+            })
+        >;
+        const calledOffPos = normalizedAssignedPosition(
+          entry as RosterEntry & { assignedPosition?: string }
+        );
+        const total =
+          calledOffPos != null
+            ? getTotalForPosition(
+                shiftWithPositions,
+                calledOffPos,
+                dayKey,
+                date
+              )
+            : getTotalPositionsForShiftDayDate(
+                shiftWithPositions,
+                dayKey,
+                date
+              );
+        const filled = getFilledCountForPosition(
+          rosterAfter,
+          date,
+          calledOffPos
+        );
         if (filled < total) {
-          const pendingEntry = rosterAfter.find((e): e is RosterEntry & { status?: RosterEntryStatus; assignedPosition?: string; requestedPosition?: string; employeeId: string } => {
-            if (typeof e === 'string') return false;
-            return e.date === date && e.status === 'pending' && normalizedRequestedOrAssignedPosition(e) === calledOffPos;
-          });
+          const pendingEntry = rosterAfter.find(
+            (
+              e
+            ): e is RosterEntry & {
+              status?: RosterEntryStatus;
+              assignedPosition?: string;
+              requestedPosition?: string;
+              employeeId: string;
+            } => {
+              if (typeof e === 'string') return false;
+              return (
+                e.date === date &&
+                e.status === 'pending' &&
+                normalizedRequestedOrAssignedPosition(e) === calledOffPos
+              );
+            }
+          );
           if (pendingEntry) {
             const statusPath = `shifts.$[shift].defaultSchedule.${dayKey}.roster.$[entry].status`;
             const approvedByPath = `shifts.$[shift].defaultSchedule.${dayKey}.roster.$[entry].approvedBy`;
             const assignedPositionPath = `shifts.$[shift].defaultSchedule.${dayKey}.roster.$[entry].assignedPosition`;
             const promoteResult = await db.collection('jobs').updateOne(
               { _id: new ObjectId(jobId) },
-              { $set: { [statusPath]: 'approved', [approvedByPath]: AUTO_APPROVED_BY, ...(calledOffPos != null ? { [assignedPositionPath]: calledOffPos } : {}) } },
+              {
+                $set: {
+                  [statusPath]: 'approved',
+                  [approvedByPath]: AUTO_APPROVED_BY,
+                  ...(calledOffPos != null
+                    ? { [assignedPositionPath]: calledOffPos }
+                    : {}),
+                },
+              },
               {
                 arrayFilters: [
                   { 'shift.slug': shiftSlug },
-                  { 'entry.employeeId': pendingEntry.employeeId, 'entry.date': date, 'entry.status': 'pending' },
+                  {
+                    'entry.employeeId': pendingEntry.employeeId,
+                    'entry.date': date,
+                    'entry.status': 'pending',
+                  },
                 ],
               }
             );
-            if (promoteResult.acknowledged && promoteResult.modifiedCount && promoteResult.modifiedCount > 0) {
-              let promotedEmail: string | undefined = (shiftAfter?.shiftRoster as Array<{ _id?: unknown; employeeId?: string; email?: string }> | undefined)?.find(
-                (emp) => emp && (String(emp._id ?? emp.employeeId) === String(pendingEntry.employeeId))
-              )?.email?.trim();
+            if (
+              promoteResult.acknowledged &&
+              promoteResult.modifiedCount &&
+              promoteResult.modifiedCount > 0
+            ) {
+              let promotedEmail: string | undefined = (
+                shiftAfter?.shiftRoster as
+                  | Array<{
+                      _id?: unknown;
+                      employeeId?: string;
+                      email?: string;
+                    }>
+                  | undefined
+              )
+                ?.find(
+                  (emp) =>
+                    emp &&
+                    String(emp._id ?? emp.employeeId) ===
+                      String(pendingEntry.employeeId)
+                )
+                ?.email?.trim();
               if (!promotedEmail) {
-                const applicantFilter = ObjectId.isValid(pendingEntry.employeeId)
-                ? { _id: new ObjectId(pendingEntry.employeeId) }
-                : null;
-              const applicantDoc = applicantFilter
-                ? (await db.collection('applicants').findOne(applicantFilter) as { email?: string } | null)
-                : null;
+                const applicantFilter = ObjectId.isValid(
+                  pendingEntry.employeeId
+                )
+                  ? { _id: new ObjectId(pendingEntry.employeeId) }
+                  : null;
+                const applicantDoc = applicantFilter
+                  ? ((await db
+                      .collection('applicants')
+                      .findOne(applicantFilter, {
+                        projection: DEFAULT_APPLICANT_PROJECTION,
+                      })) as { email?: string } | null)
+                  : null;
                 promotedEmail = applicantDoc?.email?.trim();
               }
               if (promotedEmail) {
                 const jobTitle = job.title || 'Job';
                 const shiftName = shiftWithPositions.shiftName || shiftSlug;
-                const promotedPosition = pendingEntry.requestedPosition ?? pendingEntry.assignedPosition ?? calledOffPos;
-                const positionLabel = promotedPosition ? ` – ${promotedPosition}` : '';
+                const promotedPosition =
+                  pendingEntry.requestedPosition ??
+                  pendingEntry.assignedPosition ??
+                  calledOffPos;
+                const positionLabel = promotedPosition
+                  ? ` – ${promotedPosition}`
+                  : '';
                 const subject = `Shift request approved – ${jobTitle} – ${shiftName}${positionLabel}`;
                 const plainSummary = `Your shift request for ${jobTitle} – ${shiftName} (${date}) was approved.`;
                 const html = [
@@ -980,19 +1221,38 @@ async function callOffShiftHandler(request: AuthenticatedRequest) {
                   '<div style="padding:20px;">',
                   `<p style="margin:0 0 16px; color:#374151; font-size:14px;">${escapeHtml(plainSummary)}</p>`,
                   '<table style="width:100%; border-collapse:collapse; font-size:14px; border:1px solid #e5e7eb; border-radius:6px;">',
-                  '<tr style="background:#f9fafb;"><td style="padding:10px 14px; color:#6b7280; width:120px;">Job</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(jobTitle) + '</td></tr>',
-                  '<tr><td style="padding:10px 14px; color:#6b7280;">Shift</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(shiftName) + '</td></tr>',
-                  '<tr><td style="padding:10px 14px; color:#6b7280;">Date</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(date) + '</td></tr>',
-                  promotedPosition ? '<tr><td style="padding:10px 14px; color:#6b7280;">Position</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(promotedPosition) + '</td></tr>' : '',
+                  '<tr style="background:#f9fafb;"><td style="padding:10px 14px; color:#6b7280; width:120px;">Job</td><td style="padding:10px 14px; color:#111827;">' +
+                    escapeHtml(jobTitle) +
+                    '</td></tr>',
+                  '<tr><td style="padding:10px 14px; color:#6b7280;">Shift</td><td style="padding:10px 14px; color:#111827;">' +
+                    escapeHtml(shiftName) +
+                    '</td></tr>',
+                  '<tr><td style="padding:10px 14px; color:#6b7280;">Date</td><td style="padding:10px 14px; color:#111827;">' +
+                    escapeHtml(date) +
+                    '</td></tr>',
+                  promotedPosition
+                    ? '<tr><td style="padding:10px 14px; color:#6b7280;">Position</td><td style="padding:10px 14px; color:#111827;">' +
+                      escapeHtml(promotedPosition) +
+                      '</td></tr>'
+                    : '',
                   '</table>',
                   '</div>',
                   '<div style="padding:12px 20px; background:#f9fafb; border-top:1px solid #e5e7eb; font-size:12px; color:#6b7280;">This is an automated notification from the Employee App.</div>',
                   '</div>',
                 ].join('');
                 try {
-                  await emailService.sendEmail({ to: promotedEmail, subject, html, text: plainSummary, db });
+                  await emailService.sendEmail({
+                    to: promotedEmail,
+                    subject,
+                    html,
+                    text: plainSummary,
+                    db,
+                  });
                 } catch (emailErr) {
-                  console.error('[Shift Requests API] Error sending approval email to promoted employee', emailErr);
+                  console.error(
+                    '[Shift Requests API] Error sending approval email to promoted employee',
+                    emailErr
+                  );
                 }
               }
             }
@@ -1175,4 +1435,3 @@ export const DELETE = withEnhancedAuthAPI(deleteShiftRequestHandler, {
   requireDatabaseUser: true,
   requireTenant: true,
 });
-

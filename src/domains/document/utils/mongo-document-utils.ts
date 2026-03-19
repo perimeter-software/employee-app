@@ -6,6 +6,7 @@ import {
   type InsertOneResult,
 } from 'mongodb';
 import { Document, MongoAttachment } from '../types';
+import { DEFAULT_APPLICANT_PROJECTION } from '@/lib/db';
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -46,9 +47,12 @@ export async function getAllDocuments(
   }
 
   try {
-    const applicantDoc = await db.collection('applicants').findOne({
-      _id: new ObjectId(applicantId),
-    });
+    const applicantDoc = await db
+      .collection('applicants')
+      .findOne(
+        { _id: new ObjectId(applicantId) },
+        { projection: DEFAULT_APPLICANT_PROJECTION }
+      );
 
     console.log('🔍 Query result:', applicantDoc ? 'Found' : 'Not found');
     console.log('🔍 Applicant result:', applicantDoc);
@@ -87,11 +91,16 @@ export async function findDocumentById(
   documentId: string
 ): Promise<Document | null> {
   try {
-    const documentDoc = await db.collection('applicants').findOne({
-      _id: new ObjectId(documentId),
-      status: { $ne: 'Deleted' },
-      isActive: true,
-    });
+    const documentDoc = await db
+      .collection('applicants')
+      .findOne(
+        {
+          _id: new ObjectId(documentId),
+          status: { $ne: 'Deleted' },
+          isActive: true,
+        },
+        { projection: DEFAULT_APPLICANT_PROJECTION }
+      );
 
     if (!documentDoc) {
       return null;

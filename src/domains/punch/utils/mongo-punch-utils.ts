@@ -1,5 +1,6 @@
 import type { Db } from 'mongodb';
 import { ObjectId as ObjectIdFunction } from 'mongodb';
+import { DEFAULT_JOBS_PROJECTION } from '@/lib/db';
 import {
   formatISO,
   startOfDay,
@@ -176,21 +177,23 @@ export async function updatePunchWithHistory(
     timeOut: punch.timeOut ? punch.timeOut : null,
     modifiedDate: punch.modifiedDate || new Date().toISOString(),
   };
-  const { _id, updateHistory: _unused, ...punchData } = updatedPunch as Punch & { updateHistory?: PunchUpdateHistoryEntry[] };
+  const {
+    _id,
+    updateHistory: _unused,
+    ...punchData
+  } = updatedPunch as Punch & { updateHistory?: PunchUpdateHistoryEntry[] };
   void _unused; // exclude from $set so we only $push
   const punchID = new ObjectIdFunction(_id);
 
   try {
-    const result = await db
-      .collection('timecard')
-      .findOneAndUpdate(
-        { _id: punchID },
-        {
-          $set: punchData as Document,
-          $push: { updateHistory: { ...historyEntry } },
-        } as unknown as UpdateFilter<Document>,
-        { returnDocument: 'after' }
-      );
+    const result = await db.collection('timecard').findOneAndUpdate(
+      { _id: punchID },
+      {
+        $set: punchData as Document,
+        $push: { updateHistory: { ...historyEntry } },
+      } as unknown as UpdateFilter<Document>,
+      { returnDocument: 'after' }
+    );
 
     if (!result) {
       return null;
@@ -224,9 +227,12 @@ export async function updatePunchUserCoordinates(
     }
 
     // Step 2: Retrieve the job details using the jobId from the punch
-    const job = await db.collection('jobs').findOne({
-      _id: new ObjectIdFunction(punch.jobId),
-    });
+    const job = await db
+      .collection('jobs')
+      .findOne(
+        { _id: new ObjectIdFunction(punch.jobId) },
+        { projection: DEFAULT_JOBS_PROJECTION }
+      );
 
     // If no job is found, return null (no update needed)
     if (!job) {

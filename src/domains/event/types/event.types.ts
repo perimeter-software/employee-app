@@ -1,3 +1,15 @@
+export interface EventPosition {
+  positionName: string;
+  reportTime?: string;
+  endTime?: string;
+  makePublic?: boolean;
+  numberPositions?: number;
+}
+
+export interface EventAttachment {
+  filename: string;
+}
+
 export interface EventApplicant {
   id: string;
   status: string;
@@ -37,4 +49,21 @@ export interface GignologyEvent {
   status?: string;
   timeZone?: string;
   applicants?: EventApplicant[];
+  // Listing-page fields
+  companySlug?: string;
+  jobSlug?: string;
+  makePublicAndSendNotification?: string;
+  allowPartners?: boolean;
+  positionsRequested?: number;
+  numberOnRoster?: number;
+  numberOnPremise?: number;
+  // Detail-only fields (returned by GET /api/events/[eventId])
+  description?: string;
+  positions?: EventPosition[];
+  attachments?: EventAttachment[];
+  waitListPercentage?: string;
+  // Enriched by frontend
+  favorite?: boolean;
+  isEventAdmin?: boolean;
+  rosterStatus?: string;
 }

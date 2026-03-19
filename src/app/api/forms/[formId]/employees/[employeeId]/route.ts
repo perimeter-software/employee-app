@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { getTenantAwareConnection } from '@/lib/db';
+import {
+  getTenantAwareConnection,
+  DEFAULT_APPLICANT_PROJECTION,
+} from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { ObjectId } from 'mongodb';
-import { mapEmployeeToFormFields, getAllFieldsFromSections } from '@/domains/forms/utils/formMapper';
+import {
+  mapEmployeeToFormFields,
+  getAllFieldsFromSections,
+} from '@/domains/forms/utils/formMapper';
 
 // GET Handler for Getting Form with Employee Data Pre-filled
 async function getFormWithEmployeeDataHandler(
@@ -59,9 +65,12 @@ async function getFormWithEmployeeDataHandler(
 
     // Get the employee from applicants collection
     const employeeObjectId = new ObjectId(employeeId);
-    const employee = await db.collection('applicants').findOne({
-      _id: employeeObjectId,
-    });
+    const employee = await db
+      .collection('applicants')
+      .findOne(
+        { _id: employeeObjectId },
+        { projection: DEFAULT_APPLICANT_PROJECTION }
+      );
 
     if (!employee) {
       return NextResponse.json(
@@ -76,8 +85,10 @@ async function getFormWithEmployeeDataHandler(
 
     // Verify client has access to this employee (via clientOrgs/venue slugs)
     const userObjectId = new ObjectId(user._id.toString());
-    const clientUser = await db.collection('users').findOne({ _id: userObjectId });
-    
+    const clientUser = await db
+      .collection('users')
+      .findOne({ _id: userObjectId });
+
     if (!clientUser) {
       return NextResponse.json(
         {
@@ -94,8 +105,11 @@ async function getFormWithEmployeeDataHandler(
       .map((org: any) => org.slug)
       .filter((slug: any) => typeof slug === 'string' && slug.trim() !== '');
 
-    const employeeVenueSlugs = (employee as any)?.venues?.map((v: any) => v.venueSlug) || [];
-    const hasAccess = employeeVenueSlugs.some((slug: string) => clientOrgSlugs.includes(slug));
+    const employeeVenueSlugs =
+      (employee as any)?.venues?.map((v: any) => v.venueSlug) || [];
+    const hasAccess = employeeVenueSlugs.some((slug: string) =>
+      clientOrgSlugs.includes(slug)
+    );
 
     if (!hasAccess) {
       return NextResponse.json(
@@ -109,13 +123,16 @@ async function getFormWithEmployeeDataHandler(
     }
 
     // Extract all fields from form sections
-    const fields = getAllFieldsFromSections(form.formData?.form?.sections || []);
+    const fields = getAllFieldsFromSections(
+      form.formData?.form?.sections || []
+    );
 
     // Map employee data to form fields
     const preFilledValues = mapEmployeeToFormFields(employee, fields);
 
     // Check if there's an existing draft or submitted response
-    const shortName = (form as any).metadata?.shortName ?? (form as any).shortName;
+    const shortName =
+      (form as any).metadata?.shortName ?? (form as any).shortName;
     if (!shortName) {
       return NextResponse.json(
         {
