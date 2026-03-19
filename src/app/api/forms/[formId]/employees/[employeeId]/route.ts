@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { getTenantAwareConnection } from '@/lib/db';
+import { getTenantAwareConnection, DEFAULT_APPLICANT_PROJECTION } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { ObjectId } from 'mongodb';
 import { mapEmployeeToFormFields, getAllFieldsFromSections } from '@/domains/forms/utils/formMapper';
@@ -55,13 +55,13 @@ async function getFormWithEmployeeDataHandler(
         },
         { status: 404 }
       );
-    }
 
     // Get the employee from applicants collection
     const employeeObjectId = new ObjectId(employeeId);
-    const employee = await db.collection('applicants').findOne({
-      _id: employeeObjectId,
-    });
+    const employee = await db.collection('applicants').findOne(
+      { _id: employeeObjectId },
+      { projection: DEFAULT_APPLICANT_PROJECTION }
+    );
 
     if (!employee) {
       return NextResponse.json(

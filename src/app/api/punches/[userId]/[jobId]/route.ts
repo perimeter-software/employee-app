@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { getTenantAwareConnection } from '@/lib/db';
+import {
+  getTenantAwareConnection,
+  DEFAULT_APPLICANT_PROJECTION,
+} from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import {
   findOpenPunchByApplicantIdAndJobId,
@@ -18,7 +21,6 @@ import { findJobByjobId, getUserType } from '@/domains/user/utils';
 import {
   giveJobAllowedGeoDistance,
   giveJobGeoCoords,
-  giveJobPolygon,
   isJobGeoFenced,
   jobHasShiftForUser,
 } from '@/domains/punch/utils/shift-job-utils';
@@ -319,9 +321,15 @@ async function createPunchHandler(
 
     // Log clock in activity
     try {
-      const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
-      const agentName = user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Employee';
-      
+      const { logActivity, createActivityLogData } = await import(
+        '@/lib/services/activity-logger'
+      );
+      const agentName =
+        user.name ||
+        `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+        user.email ||
+        'Employee';
+
       await logActivity(
         db,
         createActivityLogData(
@@ -398,10 +406,16 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
 
       // Log clock out activity
       try {
-        const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
-        const agentName = user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Employee';
+        const { logActivity, createActivityLogData } = await import(
+          '@/lib/services/activity-logger'
+        );
+        const agentName =
+          user.name ||
+          `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+          user.email ||
+          'Employee';
         const timeOut = punch.timeOut || new Date().toISOString();
-        
+
         await logActivity(
           db,
           createActivityLogData(
@@ -452,13 +466,18 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
       const toIso = (v: unknown): string | null => {
         if (v == null) return null;
         if (typeof v === 'string') return v;
-        if (v instanceof Date) return isNaN(v.getTime()) ? null : v.toISOString();
+        if (v instanceof Date)
+          return isNaN(v.getTime()) ? null : v.toISOString();
         return null;
       };
       const origTimeIn = toIso(originalPunch.timeIn) ?? '';
       const origTimeOut = toIso(originalPunch.timeOut);
-      const origUserNote = originalPunch.userNote != null ? String(originalPunch.userNote) : null;
-      const origManagerNote = originalPunch.managerNote != null ? String(originalPunch.managerNote) : null;
+      const origUserNote =
+        originalPunch.userNote != null ? String(originalPunch.userNote) : null;
+      const origManagerNote =
+        originalPunch.managerNote != null
+          ? String(originalPunch.managerNote)
+          : null;
 
       // Only check for overlap if timeIn or timeOut has actually changed
       const timeInChanged = origTimeIn !== punch.timeIn;
@@ -497,7 +516,10 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
       };
 
       // Save history with before (original) and after (changed) so we can show history properly
-      const editorName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.name || 'User';
+      const editorName =
+        [user.firstName, user.lastName].filter(Boolean).join(' ') ||
+        user.name ||
+        'User';
       const historyEntry = {
         timeIn: punch.timeIn,
         timeOut: punch.timeOut ?? null,
@@ -531,8 +553,7 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
             user.firstName || user.name?.split(' ')[0] || 'Manager';
           const editorLastName =
             user.lastName || user.name?.split(' ').slice(1).join(' ') || '';
-          const editorUserId =
-            user._id != null ? String(user._id) : '';
+          const editorUserId = user._id != null ? String(user._id) : '';
 
           const applicantNote: ApplicantNote = {
             type: 'General',
@@ -545,15 +566,13 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
             date: new Date(),
           };
 
-          await db
-            .collection<ApplicantCollectionDoc>('applicants')
-            .updateOne(
-              { _id: new ObjectIdFunction(punch.applicantId) },
-              {
-                $push: { notes: applicantNote },
-                $set: { modifiedDate: new Date() },
-              }
-            );
+          await db.collection<ApplicantCollectionDoc>('applicants').updateOne(
+            { _id: new ObjectIdFunction(punch.applicantId) },
+            {
+              $push: { notes: applicantNote },
+              $set: { modifiedDate: new Date() },
+            }
+          );
         } catch (applicantNoteError) {
           console.error(
             'Error adding employee note to applicant notes:',
@@ -571,18 +590,40 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
       if (shouldNotifyEventManagers) {
         try {
           const job = await findJobByjobId(db, punch.jobId);
-          type EventManagerRecipient = { userId?: string; applicantId?: string; firstName?: string; lastName?: string; fullName?: string; email?: string };
-          const configRecipients = (job?.additionalConfig as { eventManagerNotificationRecipients?: EventManagerRecipient[] })?.eventManagerNotificationRecipients;
-          if (!job || !Array.isArray(configRecipients) || configRecipients.length === 0) {
+          type EventManagerRecipient = {
+            userId?: string;
+            applicantId?: string;
+            firstName?: string;
+            lastName?: string;
+            fullName?: string;
+            email?: string;
+          };
+          const configRecipients = (
+            job?.additionalConfig as {
+              eventManagerNotificationRecipients?: EventManagerRecipient[];
+            }
+          )?.eventManagerNotificationRecipients;
+          if (
+            !job ||
+            !Array.isArray(configRecipients) ||
+            configRecipients.length === 0
+          ) {
             // No recipients configured; punch update already succeeded
           } else {
-            const employeeApplicant = await db.collection('applicants').findOne({
-              _id: new ObjectIdFunction(punch.applicantId),
-            }) as { firstName?: string; lastName?: string } | null;
+            const employeeApplicant = (await db
+              .collection('applicants')
+              .findOne(
+                { _id: new ObjectIdFunction(punch.applicantId) },
+                { projection: DEFAULT_APPLICANT_PROJECTION }
+              )) as { firstName?: string; lastName?: string } | null;
             const employeeName = employeeApplicant
-              ? `${employeeApplicant.firstName || ''} ${employeeApplicant.lastName || ''}`.trim() || 'Employee'
+              ? `${employeeApplicant.firstName || ''} ${employeeApplicant.lastName || ''}`.trim() ||
+                'Employee'
               : 'Employee';
-            const editorName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.name || 'User';
+            const editorName =
+              [user.firstName, user.lastName].filter(Boolean).join(' ') ||
+              user.name ||
+              'User';
             // US Central Time for event manager email and notification; label for clarity
             const CENTRAL_TZ = 'America/Chicago';
             const TZ_LABEL = 'Central Time';
@@ -590,10 +631,25 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
               if (!iso) return '—';
               const d = new Date(iso);
               if (Number.isNaN(d.getTime())) return '—';
-              return d.toLocaleString('en-US', { timeZone: CENTRAL_TZ, dateStyle: 'medium', timeStyle: 'short' }) + ` ${TZ_LABEL}`;
+              return (
+                d.toLocaleString('en-US', {
+                  timeZone: CENTRAL_TZ,
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                }) + ` ${TZ_LABEL}`
+              );
             };
-            const shiftName = (punch as { shiftName?: string }).shiftName || job.shifts?.find((s: { slug?: string }) => s.slug === (punch as { shiftSlug?: string }).shiftSlug)?.shiftName || '—';
-            const stripHtml = (s: string) => String(s || '').replace(/<[^>]*>/g, '').trim();
+            const shiftName =
+              (punch as { shiftName?: string }).shiftName ||
+              job.shifts?.find(
+                (s: { slug?: string }) =>
+                  s.slug === (punch as { shiftSlug?: string }).shiftSlug
+              )?.shiftName ||
+              '—';
+            const stripHtml = (s: string) =>
+              String(s || '')
+                .replace(/<[^>]*>/g, '')
+                .trim();
 
             // One notification body for time edit and/or notes (employee note, manager note)
             const notificationParts = [
@@ -612,12 +668,21 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
               );
             }
             if (userNoteAdded && punch.userNote) {
-              notificationParts.push('Employee note: ' + stripHtml(punch.userNote), '');
+              notificationParts.push(
+                'Employee note: ' + stripHtml(punch.userNote),
+                ''
+              );
             }
             if (managerNoteAdded && punch.managerNote) {
-              notificationParts.push('Manager note: ' + stripHtml(punch.managerNote), '');
+              notificationParts.push(
+                'Manager note: ' + stripHtml(punch.managerNote),
+                ''
+              );
             }
-            notificationParts.push('Updated by: ' + editorName, 'Updated at: ' + formatDt(updatedAtIso));
+            notificationParts.push(
+              'Updated by: ' + editorName,
+              'Updated at: ' + formatDt(updatedAtIso)
+            );
             const notificationBody = notificationParts.join('\n');
 
             // In-app notification for every recipient (same condition as email)
@@ -627,8 +692,12 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
               try {
                 await createNotification(db, {
                   fromUserId: user._id || '',
-                  fromFirstName: user.firstName || user.name?.split(' ')[0] || 'Client',
-                  fromLastName: user.lastName || user.name?.split(' ').slice(1).join(' ') || 'User',
+                  fromFirstName:
+                    user.firstName || user.name?.split(' ')[0] || 'Client',
+                  fromLastName:
+                    user.lastName ||
+                    user.name?.split(' ').slice(1).join(' ') ||
+                    'User',
                   recipient: {
                     userId: recipientUserId,
                     applicantId: r?.applicantId?.trim() || '',
@@ -644,7 +713,11 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
                   type: 'info',
                 });
               } catch (notifErr) {
-                console.error('Error sending punch-update notification to', recipientUserId, notifErr);
+                console.error(
+                  'Error sending punch-update notification to',
+                  recipientUserId,
+                  notifErr
+                );
               }
             }
 
@@ -665,21 +738,37 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
                 'Original Time Out: ' + formatDt(originalPunch.timeOut ?? null),
                 'New Time In:       ' + formatDt(punch.timeIn),
                 'New Time Out:      ' + formatDt(punch.timeOut ?? null),
-                '',
+                ''
               );
             }
-            textParts.push('Updated by: ' + editorName, 'Updated at: ' + formatDt(updatedAtIso));
-            if (punch.userNote) textParts.push('', 'User note: ' + stripHtml(punch.userNote));
-            if (punch.managerNote) textParts.push('', 'Manager note: ' + stripHtml(punch.managerNote));
+            textParts.push(
+              'Updated by: ' + editorName,
+              'Updated at: ' + formatDt(updatedAtIso)
+            );
+            if (punch.userNote)
+              textParts.push('', 'User note: ' + stripHtml(punch.userNote));
+            if (punch.managerNote)
+              textParts.push(
+                '',
+                'Manager note: ' + stripHtml(punch.managerNote)
+              );
             const text = textParts.join('\n');
 
             const timeChangeTableRows = punchTimeEdited
               ? [
                   '<tr style="background:#f9fafb;"><td colspan="2" style="padding:10px 14px; font-weight:600; color:#374151; border-bottom:1px solid #e5e7eb;">Time change</td></tr>',
-                  '<tr><td style="padding:10px 14px; color:#6b7280; width:140px; border-bottom:1px solid #f3f4f6;">Original time in</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">' + escapeHtml(formatDt(originalPunch.timeIn)) + '</td></tr>',
-                  '<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">Original time out</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">' + escapeHtml(formatDt(originalPunch.timeOut ?? null)) + '</td></tr>',
-                  '<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">New time in</td><td style="padding:10px 14px; color:#0d9488; font-weight:500; border-bottom:1px solid #f3f4f6;">' + escapeHtml(formatDt(punch.timeIn)) + '</td></tr>',
-                  '<tr><td style="padding:10px 14px; color:#6b7280;">New time out</td><td style="padding:10px 14px; color:#0d9488; font-weight:500;">' + escapeHtml(formatDt(punch.timeOut ?? null)) + '</td></tr>',
+                  '<tr><td style="padding:10px 14px; color:#6b7280; width:140px; border-bottom:1px solid #f3f4f6;">Original time in</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">' +
+                    escapeHtml(formatDt(originalPunch.timeIn)) +
+                    '</td></tr>',
+                  '<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">Original time out</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">' +
+                    escapeHtml(formatDt(originalPunch.timeOut ?? null)) +
+                    '</td></tr>',
+                  '<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">New time in</td><td style="padding:10px 14px; color:#0d9488; font-weight:500; border-bottom:1px solid #f3f4f6;">' +
+                    escapeHtml(formatDt(punch.timeIn)) +
+                    '</td></tr>',
+                  '<tr><td style="padding:10px 14px; color:#6b7280;">New time out</td><td style="padding:10px 14px; color:#0d9488; font-weight:500;">' +
+                    escapeHtml(formatDt(punch.timeOut ?? null)) +
+                    '</td></tr>',
                 ]
               : [];
             const html = [
@@ -690,23 +779,45 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
               '<p style="margin:0 0 16px; color:#6b7280; font-size:12px;">All times are in US Central Time.</p>',
               '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:20px; border:1px solid #e5e7eb; border-radius:6px;">',
               '<tr style="background:#f9fafb;"><td colspan="2" style="padding:10px 14px; font-weight:600; color:#374151; border-bottom:1px solid #e5e7eb;">Punch details</td></tr>',
-              '<tr><td style="padding:10px 14px; color:#6b7280; width:140px; border-bottom:1px solid #f3f4f6;">Employee</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">' + escapeHtml(employeeName) + '</td></tr>',
-              '<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">Job</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">' + escapeHtml(job.title || 'N/A') + '</td></tr>',
-              '<tr><td style="padding:10px 14px; color:#6b7280;">Shift</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(shiftName) + '</td></tr>',
+              '<tr><td style="padding:10px 14px; color:#6b7280; width:140px; border-bottom:1px solid #f3f4f6;">Employee</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">' +
+                escapeHtml(employeeName) +
+                '</td></tr>',
+              '<tr><td style="padding:10px 14px; color:#6b7280; border-bottom:1px solid #f3f4f6;">Job</td><td style="padding:10px 14px; color:#111827; border-bottom:1px solid #f3f4f6;">' +
+                escapeHtml(job.title || 'N/A') +
+                '</td></tr>',
+              '<tr><td style="padding:10px 14px; color:#6b7280;">Shift</td><td style="padding:10px 14px; color:#111827;">' +
+                escapeHtml(shiftName) +
+                '</td></tr>',
               '</table>',
               ...(timeChangeTableRows.length > 0
-                ? ['<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:20px; border:1px solid #e5e7eb; border-radius:6px;">', ...timeChangeTableRows, '</table>']
+                ? [
+                    '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:20px; border:1px solid #e5e7eb; border-radius:6px;">',
+                    ...timeChangeTableRows,
+                    '</table>',
+                  ]
                 : []),
               '<table style="width:100%; border-collapse:collapse; font-size:14px; margin-bottom:20px; border:1px solid #e5e7eb; border-radius:6px;">',
               '<tr style="background:#f9fafb;"><td colspan="2" style="padding:10px 14px; font-weight:600; color:#374151; border-bottom:1px solid #e5e7eb;">Edited by</td></tr>',
-              '<tr><td style="padding:10px 14px; color:#6b7280; width:140px;">Updated by</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(editorName) + '</td></tr>',
-              '<tr><td style="padding:10px 14px; color:#6b7280;">Updated at</td><td style="padding:10px 14px; color:#111827;">' + escapeHtml(formatDt(updatedAtIso)) + '</td></tr>',
+              '<tr><td style="padding:10px 14px; color:#6b7280; width:140px;">Updated by</td><td style="padding:10px 14px; color:#111827;">' +
+                escapeHtml(editorName) +
+                '</td></tr>',
+              '<tr><td style="padding:10px 14px; color:#6b7280;">Updated at</td><td style="padding:10px 14px; color:#111827;">' +
+                escapeHtml(formatDt(updatedAtIso)) +
+                '</td></tr>',
               '</table>',
               ...(punch.userNote
-                ? ['<div style="margin-bottom:16px; padding:12px 14px; background:#f0f9ff; border-left:4px solid #0ea5e9; border-radius:4px;"><div style="font-size:12px; font-weight:600; color:#0369a1; margin-bottom:4px;">User note</div><div style="font-size:14px; color:#374151;">' + escapeHtml(punch.userNote) + '</div></div>']
+                ? [
+                    '<div style="margin-bottom:16px; padding:12px 14px; background:#f0f9ff; border-left:4px solid #0ea5e9; border-radius:4px;"><div style="font-size:12px; font-weight:600; color:#0369a1; margin-bottom:4px;">User note</div><div style="font-size:14px; color:#374151;">' +
+                      escapeHtml(punch.userNote) +
+                      '</div></div>',
+                  ]
                 : []),
               ...(punch.managerNote
-                ? ['<div style="margin-bottom:16px; padding:12px 14px; background:#fefce8; border-left:4px solid #eab308; border-radius:4px;"><div style="font-size:12px; font-weight:600; color:#a16207; margin-bottom:4px;">Manager note</div><div style="font-size:14px; color:#374151;">' + escapeHtml(punch.managerNote) + '</div></div>']
+                ? [
+                    '<div style="margin-bottom:16px; padding:12px 14px; background:#fefce8; border-left:4px solid #eab308; border-radius:4px;"><div style="font-size:12px; font-weight:600; color:#a16207; margin-bottom:4px;">Manager note</div><div style="font-size:14px; color:#374151;">' +
+                      escapeHtml(punch.managerNote) +
+                      '</div></div>',
+                  ]
                 : []),
               '</div>',
               '<div style="padding:12px 20px; background:#f9fafb; border-top:1px solid #e5e7eb; font-size:12px; color:#6b7280;">This is an automated notification from the Employee App.</div>',
@@ -717,9 +828,19 @@ async function updatePunchHandler(request: AuthenticatedRequest) {
               const email = r?.email?.trim();
               if (!email) continue;
               try {
-                await emailService.sendEmail({ to: email, subject, html, text, db });
+                await emailService.sendEmail({
+                  to: email,
+                  subject,
+                  html,
+                  text,
+                  db,
+                });
               } catch (emailErr) {
-                console.error('Error sending punch-update email to', email, emailErr);
+                console.error(
+                  'Error sending punch-update email to',
+                  email,
+                  emailErr
+                );
               }
             }
           }

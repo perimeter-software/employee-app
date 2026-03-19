@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
-import { getTenantAwareConnection } from '@/lib/db';
+import { getTenantAwareConnection, DEFAULT_APPLICANT_PROJECTION } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { ObjectId } from 'mongodb';
 
@@ -9,7 +9,6 @@ async function saveDraftHandler(
   request: AuthenticatedRequest,
   { params }: { params: { formId: string; employeeId: string } }
 ) {
-  try {
     const user = request.user;
 
     // Only Client users can access forms
@@ -73,9 +72,10 @@ async function saveDraftHandler(
 
     // Verify employee exists and client has access
     const employeeObjectId = new ObjectId(employeeId);
-    const employee = await db.collection('applicants').findOne({
-      _id: employeeObjectId,
-    });
+    const employee = await db.collection('applicants').findOne(
+      { _id: employeeObjectId },
+      { projection: DEFAULT_APPLICANT_PROJECTION }
+    );
 
     if (!employee) {
       return NextResponse.json(
