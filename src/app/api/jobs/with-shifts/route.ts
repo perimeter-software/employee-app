@@ -5,6 +5,7 @@ import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
 import type { GignologyJob } from '@/domains/job/types';
 import { ObjectId } from 'mongodb';
+import { env } from '@/lib/config';
 
 // Type definition for clientOrgs structure
 type ClientOrg = {
@@ -30,7 +31,9 @@ function extractClientOrgSlugs(clientOrgs: ClientOrg[] | undefined): string[] {
 
   return clientOrgs
     .map((org) => org.slug)
-    .filter((slug): slug is string => typeof slug === 'string' && slug.trim() !== '');
+    .filter(
+      (slug): slug is string => typeof slug === 'string' && slug.trim() !== ''
+    );
 }
 
 /**
@@ -58,7 +61,7 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
     // Validate user._id exists
     if (!user._id) {
       // Security: If no user ID, return empty results
-      if (process.env.NODE_ENV === 'development') {
+      if (env.isDevelopment) {
         console.warn('[Jobs with Shifts API] User ID missing for Client user');
       }
       return NextResponse.json(
@@ -84,7 +87,10 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
       try {
         userObjectId = new ObjectId(user._id.toString());
       } catch {
-        console.error('[Jobs with Shifts API] Invalid user._id format:', user._id);
+        console.error(
+          '[Jobs with Shifts API] Invalid user._id format:',
+          user._id
+        );
         return NextResponse.json(
           {
             success: true,
@@ -102,8 +108,11 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
 
       if (!clientUser) {
         // User not found in database - return empty results for security
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('[Jobs with Shifts API] User not found in database:', user._id);
+        if (env.isDevelopment) {
+          console.warn(
+            '[Jobs with Shifts API] User not found in database:',
+            user._id
+          );
         }
         return NextResponse.json(
           {
@@ -122,7 +131,7 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
       clientOrgSlugs = extractClientOrgSlugs(clientOrgs);
 
       // Log for debugging (only in development)
-      if (process.env.NODE_ENV === 'development') {
+      if (env.isDevelopment) {
         console.log('[Jobs with Shifts API] Client user clientOrgs:', {
           userId: user._id,
           clientOrgSlugs,
@@ -131,7 +140,10 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
         });
       }
     } catch (error) {
-      console.error('[Jobs with Shifts API] Error fetching user clientOrgs:', error);
+      console.error(
+        '[Jobs with Shifts API] Error fetching user clientOrgs:',
+        error
+      );
       // If we can't fetch clientOrgs, return empty results for security
       return NextResponse.json(
         {
@@ -146,8 +158,10 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
 
     // PERFORMANCE: Early return if no clientOrgs - no need to query database
     if (clientOrgSlugs.length === 0) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[Jobs with Shifts API] No clientOrgs found, returning empty result');
+      if (env.isDevelopment) {
+        console.log(
+          '[Jobs with Shifts API] No clientOrgs found, returning empty result'
+        );
       }
       return NextResponse.json(
         {
@@ -161,7 +175,8 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
     }
 
     // Include jobs where hideThisJob is 'Yes' only when client requests it (default: exclude)
-    const includeHiddenJobs = request.nextUrl.searchParams.get('includeHiddenJobs') === 'true';
+    const includeHiddenJobs =
+      request.nextUrl.searchParams.get('includeHiddenJobs') === 'true';
 
     // OPTIMIZATION: Fetch only active jobs with shifts, limit results, and optimize projection
     // Filter by status to avoid fetching inactive/old jobs (case-insensitive)
@@ -272,7 +287,10 @@ async function getJobsWithShiftsHandler(request: AuthenticatedRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('[Jobs with Shifts API] Error fetching jobs with shifts:', error);
+    console.error(
+      '[Jobs with Shifts API] Error fetching jobs with shifts:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'internal-error',

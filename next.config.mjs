@@ -1,17 +1,20 @@
 // next.config.mjs
 /** @type {import('next').NextConfig} */
 
-const isDev = process.env.NODE_ENV === 'development';
+const isDev =
+  process.env.NODE_ENV === 'development' ||
+  process.env.NEXT_PUBLIC_APP_ENV === 'development';
 
 const nextConfig = {
   // Enable Turbopack for much faster dev builds (Next.js 14+)
-  ...(isDev && {
-    // Turbopack is experimental but much faster
-    // Uncomment if you want to try it (may have some compatibility issues)
-    // experimental: {
-    //   turbo: {},
-    // },
-  }),
+  ...(isDev &&
+    {
+      // Turbopack is experimental but much faster
+      // Uncomment if you want to try it (may have some compatibility issues)
+      // experimental: {
+      //   turbo: {},
+      // },
+    }),
 
   images: {
     // Disable image optimization in production to avoid permission issues
@@ -127,12 +130,13 @@ const nextConfig = {
   },
 
   // Compiler options - only in production (Turbopack doesn't support removeConsole)
-  ...(process.env.NODE_ENV === 'production' && {
-    compiler: {
-      // Remove console logs in production builds
-      removeConsole: true,
-    },
-  }),
+  ...(process.env.NODE_ENV === 'production' &&
+    process.env.NEXT_PUBLIC_APP_ENV !== 'development' && {
+      compiler: {
+        // Remove console logs in production builds
+        removeConsole: true,
+      },
+    }),
 
   // Transpile @react-pdf/renderer so Next bundles it (it's ESM and can't be server-externalized)
   transpilePackages: ['@react-pdf/renderer'],

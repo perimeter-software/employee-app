@@ -12,7 +12,7 @@ import {
 } from '@aws-sdk/client-ses';
 import type { Db } from 'mongodb';
 import { ObjectId } from 'mongodb';
-import { env, getEnvironmentConfig } from '@/lib/config/env';
+import { env, getEnvironmentConfig } from '@/lib/config';
 import { logActivity } from '@/lib/services/activity-logger';
 
 // ─── Staging email helpers ────────────────────────────────────────────────────
@@ -243,7 +243,7 @@ let emailQueue: Bull.Queue | null = null;
 function getEmailQueue(): Bull.Queue {
   if (!emailQueue) {
     emailQueue = new Bull('emailQueue', {
-      redis: { host: env.redis.host, port: env.redis.port },
+      redis: { host: env.redis.api_host, port: env.redis.api_port },
       defaultJobOptions: {
         removeOnComplete: true,
         removeOnFail: true,
@@ -291,10 +291,7 @@ export async function sendQueuedEmail(
   db: Db
 ): Promise<{ success: boolean; message?: string }> {
   // ── 1. Dev guard (same check kept from the original emailService) ───────────
-  if (
-    process.env.NODE_ENV === 'development' &&
-    process.env.SES_SEND_IN_DEV !== 'true'
-  ) {
+  if (env.isDevelopment && process.env.SES_SEND_IN_DEV !== 'true') {
     console.log('[email-queue] Dev mode – not sending:', {
       subject: options.subject,
       to: options.to,
@@ -381,12 +378,23 @@ export async function sendQueuedEmail(
     html: options.html,
     ...(resolvedSender && {
       sender: {
-        fromEmail: resolvedSender.email,
+        fromEmail: fromDisplay,
         firstName: resolvedSender.firstName,
         lastName: resolvedSender.lastName,
         userId: resolvedSender.userId,
       },
     }),
+    emailProperties: {
+      mainCompanyEmail: companyRec?.companyEmail,
+      imageUrl: companyRec?.imageUrl,
+      logoUrl: companyRec?.squareLogoUrl,
+      companyEmail: companyRec?.companyEmail,
+      supportEmail: companyRec?.supportEmail,
+      companyName: companyRec?.name,
+      companyType: companyRec?.companyType,
+      uploadPath: companyRec?.uploadPath,
+      companySlug: companyRec?.slug,
+    },
   };
 
   // copySender: also CC the original sender's address

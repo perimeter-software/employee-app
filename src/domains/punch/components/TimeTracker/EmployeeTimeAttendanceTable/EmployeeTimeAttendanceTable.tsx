@@ -11,7 +11,15 @@ import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
-import { ChevronLeft, ChevronRight, Pencil, MapPin, Search, Flag, Download } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  MapPin,
+  Search,
+  Flag,
+  Download,
+} from 'lucide-react';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import {
@@ -52,7 +60,11 @@ import { MapModal } from '../MapModal/MapModal';
 import { ActiveEmployeesModal } from '../ActiveEmployeesModal';
 import { ShiftPositionsModal } from '../ShiftPositionsModal';
 import { formatPhoneNumber } from '@/lib/utils';
-import { useActiveEmployeeCount, useActiveEmployees, useEmployeePunches } from '@/domains/punch/hooks';
+import {
+  useActiveEmployeeCount,
+  useActiveEmployees,
+  useEmployeePunches,
+} from '@/domains/punch/hooks';
 import { isApprovedOrLegacyRosterEntry } from '@/domains/punch/utils/shift-job-utils';
 import type {
   EmployeePunch,
@@ -99,7 +111,9 @@ export function EmployeeTimeAttendanceTable({
   );
 
   // Table-only controls (do not affect calendar view toggles)
-  const [tableRange, setTableRange] = useState<'day' | 'week' | 'month'>('week');
+  const [tableRange, setTableRange] = useState<'day' | 'week' | 'month'>(
+    'week'
+  );
 
   // Calendar mode state (for calendar views)
   const [calendarMode, setCalendarMode] = useState<Mode>('month');
@@ -121,10 +135,14 @@ export function EmployeeTimeAttendanceTable({
   const [selectedShiftSlug, setSelectedShiftSlug] = useState<string>('all');
 
   // Job list filter: All | Today | Upcoming | Past (for narrowing the dropdown)
-  const [jobFilter, setJobFilter] = useState<'all' | 'today' | 'upcoming' | 'past'>('all');
+  const [jobFilter, setJobFilter] = useState<
+    'all' | 'today' | 'upcoming' | 'past'
+  >('all');
 
   // Shift list filter: All | Today | Upcoming | Past (for narrowing the dropdown)
-  const [shiftFilter, setShiftFilter] = useState<'all' | 'today' | 'upcoming' | 'past'>('today');
+  const [shiftFilter, setShiftFilter] = useState<
+    'all' | 'today' | 'upcoming' | 'past'
+  >('today');
 
   // Include jobs where hideThisJob is 'Yes' in the job selector (default: false = don't show them)
   const [includeHiddenJobs, setIncludeHiddenJobs] = useState<boolean>(false);
@@ -133,13 +151,16 @@ export function EmployeeTimeAttendanceTable({
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState<string>('');
 
   // Employee status filter state
-  const [employeeStatusFilter, setEmployeeStatusFilter] = useState<'all' | 'clocked-in' | 'scheduled' | 'clocked-in-out'>('all');
+  const [employeeStatusFilter, setEmployeeStatusFilter] = useState<
+    'all' | 'clocked-in' | 'scheduled' | 'clocked-in-out'
+  >('all');
 
   // Geofence modal state
   const [showGeofenceModal, setShowGeofenceModal] = useState(false);
 
   // Active employees modal state
-  const [showActiveEmployeesModal, setShowActiveEmployeesModal] = useState(false);
+  const [showActiveEmployeesModal, setShowActiveEmployeesModal] =
+    useState(false);
 
   // Shift positions modal state
   const [showShiftPositionsModal, setShowShiftPositionsModal] = useState(false);
@@ -183,7 +204,11 @@ export function EmployeeTimeAttendanceTable({
   );
 
   const getPositionTotalForDateInternal = useCallback(
-    (position: PositionWithOverrides, dayName: DayKeyInternal, dateKey: string): number => {
+    (
+      position: PositionWithOverrides,
+      dayName: DayKeyInternal,
+      dateKey: string
+    ): number => {
       if (
         position.numberPositionsByDate &&
         position.numberPositionsByDate[dateKey] != null
@@ -521,7 +546,6 @@ export function EmployeeTimeAttendanceTable({
     tableRange,
     weekStartsOn,
   ]);
-  
 
   // NOTE: employeePunchesQuery moved below after selectedJobIds and selectedShiftSlugs are defined
   // Future punches come from API only (single source of truth)
@@ -563,7 +587,12 @@ export function EmployeeTimeAttendanceTable({
         try {
           const shiftStartDay = startOfDay(parseISO(startStr));
           const shiftEndDay = startOfDay(parseISO(endStr));
-          if (isWithinInterval(todayStart, { start: shiftStartDay, end: shiftEndDay })) {
+          if (
+            isWithinInterval(todayStart, {
+              start: shiftStartDay,
+              end: shiftEndDay,
+            })
+          ) {
             hasToday = true;
           }
           if (isAfter(shiftStartDay, todayStart)) {
@@ -666,7 +695,10 @@ export function EmployeeTimeAttendanceTable({
         continue;
       }
 
-      const spansToday = isWithinInterval(todayStart, { start: shiftStartDay, end: shiftEndDay });
+      const spansToday = isWithinInterval(todayStart, {
+        start: shiftStartDay,
+        end: shiftEndDay,
+      });
       const hasEnded = isBefore(shiftEndDay, todayStart);
       const startsInFuture = isAfter(shiftStartDay, todayStart);
 
@@ -683,7 +715,9 @@ export function EmployeeTimeAttendanceTable({
     }
     const sortUpcoming = (a: Shift, b: Shift) => {
       try {
-        return isBefore(parseISO(a.shiftStartDate), parseISO(b.shiftStartDate)) ? -1 : 1;
+        return isBefore(parseISO(a.shiftStartDate), parseISO(b.shiftStartDate))
+          ? -1
+          : 1;
       } catch {
         return 0;
       }
@@ -692,7 +726,9 @@ export function EmployeeTimeAttendanceTable({
     upcomingForFilter.sort(sortUpcoming);
     past.sort((a, b) => {
       try {
-        return isAfter(parseISO(a.shiftEndDate), parseISO(b.shiftEndDate)) ? -1 : 1;
+        return isAfter(parseISO(a.shiftEndDate), parseISO(b.shiftEndDate))
+          ? -1
+          : 1;
       } catch {
         return 0;
       }
@@ -715,7 +751,14 @@ export function EmployeeTimeAttendanceTable({
       return availableJobs.map((job) => job._id);
     }
     return [selectedJobId];
-  }, [selectedJobId, availableJobs, jobFilter, groupedJobs.today, groupedJobs.upcomingForFilter, groupedJobs.past]);
+  }, [
+    selectedJobId,
+    availableJobs,
+    jobFilter,
+    groupedJobs.today,
+    groupedJobs.upcomingForFilter,
+    groupedJobs.past,
+  ]);
 
   // Get selected shift slugs for filtering - respects shiftFilter (today/upcoming/past)
   const selectedShiftSlugs: string[] = useMemo(() => {
@@ -724,7 +767,9 @@ export function EmployeeTimeAttendanceTable({
       if (shiftFilter === 'today') {
         return groupedShifts.today.map((shift: Shift) => shift.slug);
       } else if (shiftFilter === 'upcoming') {
-        return groupedShifts.upcomingForFilter.map((shift: Shift) => shift.slug);
+        return groupedShifts.upcomingForFilter.map(
+          (shift: Shift) => shift.slug
+        );
       } else if (shiftFilter === 'past') {
         return groupedShifts.past.map((shift: Shift) => shift.slug);
       }
@@ -736,7 +781,15 @@ export function EmployeeTimeAttendanceTable({
       return [];
     }
     return [selectedShiftSlug];
-  }, [selectedShiftSlug, selectedJobId, shiftFilter, groupedShifts.today, groupedShifts.upcomingForFilter, groupedShifts.past, availableShiftsBase]);
+  }, [
+    selectedShiftSlug,
+    selectedJobId,
+    shiftFilter,
+    groupedShifts.today,
+    groupedShifts.upcomingForFilter,
+    groupedShifts.past,
+    availableShiftsBase,
+  ]);
 
   // Only send shiftSlugs to API when a specific job is selected. When Select Job is "all", omit so API returns all shifts.
   const shiftSlugsForApi: string[] | undefined = useMemo(
@@ -745,24 +798,31 @@ export function EmployeeTimeAttendanceTable({
   );
 
   // Date context label for a shift (for secondary line in dropdown)
-  const getShiftDateContext = useCallback((shift: Shift): string => {
-    const startStr = shift.shiftStartDate;
-    const endStr = shift.shiftEndDate;
-    if (!startStr || !endStr) return '—';
-    let start: Date;
-    let end: Date;
-    try {
-      start = parseISO(startStr);
-      end = parseISO(endStr);
-    } catch {
-      return '—';
-    }
-    const shiftStartDay = startOfDay(start);
-    const shiftEndDay = startOfDay(end);
-    if (isWithinInterval(todayStart, { start: shiftStartDay, end: shiftEndDay })) return 'Today';
-    if (isAfter(shiftStartDay, todayStart)) return `Starts ${format(start, 'MMM d')}`;
-    return `Ended ${format(end, 'MMM d')}`;
-  }, [todayStart]);
+  const getShiftDateContext = useCallback(
+    (shift: Shift): string => {
+      const startStr = shift.shiftStartDate;
+      const endStr = shift.shiftEndDate;
+      if (!startStr || !endStr) return '—';
+      let start: Date;
+      let end: Date;
+      try {
+        start = parseISO(startStr);
+        end = parseISO(endStr);
+      } catch {
+        return '—';
+      }
+      const shiftStartDay = startOfDay(start);
+      const shiftEndDay = startOfDay(end);
+      if (
+        isWithinInterval(todayStart, { start: shiftStartDay, end: shiftEndDay })
+      )
+        return 'Today';
+      if (isAfter(shiftStartDay, todayStart))
+        return `Starts ${format(start, 'MMM d')}`;
+      return `Ended ${format(end, 'MMM d')}`;
+    },
+    [todayStart]
+  );
 
   // Target date for auto-navigation: when user selects a job/shift (All | Today | Upcoming | Past),
   // that selection may be outside the current day/week/month; we use this to navigate to a relevant period.
@@ -798,7 +858,8 @@ export function EmployeeTimeAttendanceTable({
         if (isBefore(endDay, todayStart)) {
           if (!latestPast || isAfter(end, latestPast)) latestPast = end;
         } else {
-          if (!earliestUpcoming || isBefore(start, earliestUpcoming)) earliestUpcoming = start;
+          if (!earliestUpcoming || isBefore(start, earliestUpcoming))
+            earliestUpcoming = start;
         }
       } catch {
         continue;
@@ -850,7 +911,11 @@ export function EmployeeTimeAttendanceTable({
   const activeEmployeesQuery = useActiveEmployees(
     { jobIds: selectedJobIds, shiftSlugs: shiftSlugsForApi },
     {
-      enabled: !companyLoading && !jobsLoading && availableJobs.length > 0 && selectedJobIds.length > 0,
+      enabled:
+        !companyLoading &&
+        !jobsLoading &&
+        availableJobs.length > 0 &&
+        selectedJobIds.length > 0,
       refetchInterval: 120000,
       staleTime: 60000,
       refetchOnWindowFocus: false,
@@ -979,9 +1044,16 @@ export function EmployeeTimeAttendanceTable({
   }, [tableData]);
 
   const exportFilenameBase = useMemo(() => {
-    const startStr = dateRange.startDate ? format(parseISO(dateRange.startDate), 'yyyy-MM-dd') : '';
-    const endStr = dateRange.endDate ? format(parseISO(dateRange.endDate), 'yyyy-MM-dd') : '';
-    const datePart = startStr && endStr ? `${startStr}-to-${endStr}` : new Date().toISOString().split('T')[0];
+    const startStr = dateRange.startDate
+      ? format(parseISO(dateRange.startDate), 'yyyy-MM-dd')
+      : '';
+    const endStr = dateRange.endDate
+      ? format(parseISO(dateRange.endDate), 'yyyy-MM-dd')
+      : '';
+    const datePart =
+      startStr && endStr
+        ? `${startStr}-to-${endStr}`
+        : new Date().toISOString().split('T')[0];
     const sanitize = (s: string, maxLen = 20) =>
       s
         .replace(/[\s/\\:*?"<>|]/g, '-')
@@ -990,12 +1062,16 @@ export function EmployeeTimeAttendanceTable({
         .slice(0, maxLen);
     const parts = [datePart];
     if (selectedJobId !== 'all') {
-      const jobLabel = selectedJob?.title ? sanitize(selectedJob.title, 24) : selectedJobId.slice(0, 8);
+      const jobLabel = selectedJob?.title
+        ? sanitize(selectedJob.title, 24)
+        : selectedJobId.slice(0, 8);
       parts.push(`job-${jobLabel}`);
     }
-    if (selectedShiftSlug !== 'all') parts.push(`shift-${sanitize(selectedShiftSlug, 24)}`);
+    if (selectedShiftSlug !== 'all')
+      parts.push(`shift-${sanitize(selectedShiftSlug, 24)}`);
     if (employeeStatusFilter !== 'all') parts.push(employeeStatusFilter);
-    if (employeeSearchQuery.trim()) parts.push(`search-${sanitize(employeeSearchQuery.trim(), 16)}`);
+    if (employeeSearchQuery.trim())
+      parts.push(`search-${sanitize(employeeSearchQuery.trim(), 16)}`);
     return parts.join('-');
   }, [
     dateRange.startDate,
@@ -1113,7 +1189,9 @@ export function EmployeeTimeAttendanceTable({
     }
     const shiftSlugs: string[] = allEmployeePunches
       .map((punch: EmployeePunch) => punch.shiftSlug)
-      .filter((slug: string | undefined): slug is string => !!slug && slug !== 'all');
+      .filter(
+        (slug: string | undefined): slug is string => !!slug && slug !== 'all'
+      );
     return new Set(shiftSlugs);
   }, [allEmployeePunches]);
 
@@ -1126,7 +1204,8 @@ export function EmployeeTimeAttendanceTable({
 
     if (availableShiftSlugs.size > 0 && employeePunches) {
       const missingShiftSlugs = Array.from(availableShiftSlugs).filter(
-        (slug: string) => !allAvailableShifts.some((shift: Shift) => shift.slug === slug)
+        (slug: string) =>
+          !allAvailableShifts.some((shift: Shift) => shift.slug === slug)
       );
 
       const virtualShifts: Shift[] = missingShiftSlugs.map((slug: string) => {
@@ -1171,7 +1250,10 @@ export function EmployeeTimeAttendanceTable({
   // Create stable key for availableShifts to prevent infinite loops
   const availableShiftsKey = useMemo(() => {
     if (!availableShifts || availableShifts.length === 0) return '';
-    return availableShifts.map((s: Shift) => s.slug).sort().join(',');
+    return availableShifts
+      .map((s: Shift) => s.slug)
+      .sort()
+      .join(',');
   }, [availableShifts]);
 
   // Reset shift filter when job changes only: default to Today if job has today shifts, otherwise All.
@@ -1186,12 +1268,22 @@ export function EmployeeTimeAttendanceTable({
     (date: Date): { start: Date; end: Date } => {
       const ws = weekStartsOn ?? 0;
       if (viewType === 'table') {
-        if (tableRange === 'day') return { start: startOfDay(date), end: endOfDay(date) };
-        if (tableRange === 'month') return { start: startOfMonth(date), end: endOfMonth(date) };
-        return { start: startOfWeek(date, { weekStartsOn: ws }), end: endOfWeek(date, { weekStartsOn: ws }) };
+        if (tableRange === 'day')
+          return { start: startOfDay(date), end: endOfDay(date) };
+        if (tableRange === 'month')
+          return { start: startOfMonth(date), end: endOfMonth(date) };
+        return {
+          start: startOfWeek(date, { weekStartsOn: ws }),
+          end: endOfWeek(date, { weekStartsOn: ws }),
+        };
       }
-      if (viewType === 'day') return { start: startOfDay(date), end: endOfDay(date) };
-      if (viewType === 'week') return { start: startOfWeek(date, { weekStartsOn: ws }), end: endOfWeek(date, { weekStartsOn: ws }) };
+      if (viewType === 'day')
+        return { start: startOfDay(date), end: endOfDay(date) };
+      if (viewType === 'week')
+        return {
+          start: startOfWeek(date, { weekStartsOn: ws }),
+          end: endOfWeek(date, { weekStartsOn: ws }),
+        };
       return { start: startOfMonth(date), end: endOfMonth(date) };
     },
     [viewType, tableRange, weekStartsOn]
@@ -1202,7 +1294,13 @@ export function EmployeeTimeAttendanceTable({
   useEffect(() => {
     if (targetDateForNavigation == null) return;
     const { start: rangeStart, end: rangeEnd } = getPeriodBounds(baseDate);
-    if (isWithinInterval(targetDateForNavigation, { start: rangeStart, end: rangeEnd })) return;
+    if (
+      isWithinInterval(targetDateForNavigation, {
+        start: rangeStart,
+        end: rangeEnd,
+      })
+    )
+      return;
     const { start: newStart } = getPeriodBounds(targetDateForNavigation);
     setBaseDate(newStart);
     setCalendarDate(newStart);
@@ -1219,19 +1317,41 @@ export function EmployeeTimeAttendanceTable({
   useEffect(() => {
     if (selectedJobId === 'all') return;
     if (jobFilter === 'all') return;
-    const list = jobFilter === 'today' ? groupedJobs.today : jobFilter === 'upcoming' ? groupedJobs.upcomingForFilter : groupedJobs.past;
+    const list =
+      jobFilter === 'today'
+        ? groupedJobs.today
+        : jobFilter === 'upcoming'
+          ? groupedJobs.upcomingForFilter
+          : groupedJobs.past;
     const inList = list.some((j: GignologyJob) => j._id === selectedJobId);
     if (!inList) setSelectedJobId('all');
-  }, [jobFilter, selectedJobId, groupedJobs.today, groupedJobs.upcomingForFilter, groupedJobs.past]);
+  }, [
+    jobFilter,
+    selectedJobId,
+    groupedJobs.today,
+    groupedJobs.upcomingForFilter,
+    groupedJobs.past,
+  ]);
 
   // Clear shift selection when selected shift is not in the current filter
   useEffect(() => {
     if (selectedShiftSlug === 'all') return;
     if (shiftFilter === 'all') return;
-    const list = shiftFilter === 'today' ? groupedShifts.today : shiftFilter === 'upcoming' ? groupedShifts.upcomingForFilter : groupedShifts.past;
+    const list =
+      shiftFilter === 'today'
+        ? groupedShifts.today
+        : shiftFilter === 'upcoming'
+          ? groupedShifts.upcomingForFilter
+          : groupedShifts.past;
     const inList = list.some((s) => s.slug === selectedShiftSlug);
     if (!inList) setSelectedShiftSlug('all');
-  }, [shiftFilter, selectedShiftSlug, groupedShifts.today, groupedShifts.upcomingForFilter, groupedShifts.past]);
+  }, [
+    shiftFilter,
+    selectedShiftSlug,
+    groupedShifts.today,
+    groupedShifts.upcomingForFilter,
+    groupedShifts.past,
+  ]);
 
   // Reset shift when job changes
   // NOTE: This must be AFTER availableShifts is defined
@@ -1251,12 +1371,17 @@ export function EmployeeTimeAttendanceTable({
     }
     // Use stable key instead of array reference to prevent infinite loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedJobId, selectedJob?._id, availableShiftsKey, availableShifts.length]);
+  }, [
+    selectedJobId,
+    selectedJob?._id,
+    availableShiftsKey,
+    availableShifts.length,
+  ]);
 
   // Debug employee punches fetch - ERROR-PROOF: Only log when values actually change
   // NOTE: Removed to prevent infinite loops - uncomment only for debugging
   // useEffect(() => {
-  //   if (process.env.NODE_ENV === 'development') {
+  //   if (env.isDevelopment) {
   //     console.log('📥 Employee Punches Query State:', {
   //       isLoading,
   //       employeePunchesCount: employeePunches?.length || 0,
@@ -1434,7 +1559,8 @@ export function EmployeeTimeAttendanceTable({
     const events = allEmployeePunches.map((punch) => {
       const punchStart = new Date(punch.timeIn);
       const now = Date.now();
-      const isFuturePunch = punchStart.getTime() > now || punch._id?.startsWith('future-');
+      const isFuturePunch =
+        punchStart.getTime() > now || punch._id?.startsWith('future-');
       // API now returns timeIn/timeOut for future (scheduled) punches; active punches have no timeOut → use now
       const punchEnd = punch.timeOut ? new Date(punch.timeOut) : new Date();
 
@@ -1492,7 +1618,11 @@ export function EmployeeTimeAttendanceTable({
   const [showPunchModal, setShowPunchModal] = useState(false);
   const [overflowDropdownOpen, setOverflowDropdownOpen] = useState(false);
   const [overflowEvents, setOverflowEvents] = useState<CalendarEvent[]>([]);
-  const [overflowDropdownPosition, setOverflowDropdownPosition] = useState<{ x: number; y: number; maxHeight: number } | null>(null);
+  const [overflowDropdownPosition, setOverflowDropdownPosition] = useState<{
+    x: number;
+    y: number;
+    maxHeight: number;
+  } | null>(null);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -1531,7 +1661,10 @@ export function EmployeeTimeAttendanceTable({
   const calendarEventsKey = useMemo(() => {
     if (!allEmployeePunches || allEmployeePunches.length === 0) return '';
     return allEmployeePunches
-      .map(p => `${p._id}-${new Date(p.timeIn).getTime()}-${p.timeOut ? new Date(p.timeOut).getTime() : 0}`)
+      .map(
+        (p) =>
+          `${p._id}-${new Date(p.timeIn).getTime()}-${p.timeOut ? new Date(p.timeOut).getTime() : 0}`
+      )
       .sort()
       .join(',');
   }, [allEmployeePunches]);
@@ -1690,16 +1823,19 @@ export function EmployeeTimeAttendanceTable({
   }, []);
 
   // Handler to open modal for a punch
-  const handleOpenPunchModal = useCallback((punch: EmployeePunch) => {
-    // Don't allow editing future punches (scheduled shifts)
-    const isFuture = isFutureEvent(punch) || punch._id?.startsWith('future-');
-    if (isFuture) {
-      // Future punches are read-only, don't open modal
-      return;
-    }
-    setSelectedPunch(punch);
-    setShowPunchModal(true);
-  }, [isFutureEvent]);
+  const handleOpenPunchModal = useCallback(
+    (punch: EmployeePunch) => {
+      // Don't allow editing future punches (scheduled shifts)
+      const isFuture = isFutureEvent(punch) || punch._id?.startsWith('future-');
+      if (isFuture) {
+        // Future punches are read-only, don't open modal
+        return;
+      }
+      setSelectedPunch(punch);
+      setShowPunchModal(true);
+    },
+    [isFutureEvent]
+  );
 
   // Get the currently selected shift from the Shift selector dropdown
   const currentlySelectedShift = useMemo(() => {
@@ -1720,10 +1856,7 @@ export function EmployeeTimeAttendanceTable({
       return {};
     }
 
-    const rangeStartKey = format(
-      parseISO(dateRange.startDate),
-      'yyyy-MM-dd'
-    );
+    const rangeStartKey = format(parseISO(dateRange.startDate), 'yyyy-MM-dd');
     const rangeEndKey = format(parseISO(dateRange.endDate), 'yyyy-MM-dd');
     const isDateInRange = (dateKey: string) =>
       dateKey >= rangeStartKey && dateKey <= rangeEndKey;
@@ -1757,7 +1890,8 @@ export function EmployeeTimeAttendanceTable({
       daySchedule.roster.forEach((entry) => {
         const dateKey = entry.date;
         if (!dateKey || !isDateInRange(dateKey)) return;
-        if (!isApprovedOrLegacyRosterEntry(entry as { status?: string })) return;
+        if (!isApprovedOrLegacyRosterEntry(entry as { status?: string }))
+          return;
 
         if (dateTotalRequested[dateKey] == null) {
           const totalForDate = (currentlySelectedShift.positions ?? []).reduce(
@@ -1829,10 +1963,7 @@ export function EmployeeTimeAttendanceTable({
       return null;
     }
 
-    const rangeStartKey = format(
-      parseISO(dateRange.startDate),
-      'yyyy-MM-dd'
-    );
+    const rangeStartKey = format(parseISO(dateRange.startDate), 'yyyy-MM-dd');
     const rangeEndKey = format(parseISO(dateRange.endDate), 'yyyy-MM-dd');
     const isDateInRange = (dateKey: string) =>
       dateKey >= rangeStartKey && dateKey <= rangeEndKey;
@@ -1856,11 +1987,14 @@ export function EmployeeTimeAttendanceTable({
       const daySchedule = currentlySelectedShift.defaultSchedule[dayOfWeek];
       if (daySchedule?.roster?.length > 0) {
         daySchedule.roster.forEach((entry) => {
-          if (!isApprovedOrLegacyRosterEntry(entry as { status?: string })) return;
+          if (!isApprovedOrLegacyRosterEntry(entry as { status?: string }))
+            return;
           const dateKey = entry.date;
           if (dateKey && entry.employeeId && isDateInRange(dateKey)) {
             if (!dateDetails[dateKey]) {
-              const totalForDate = (currentlySelectedShift.positions ?? []).reduce(
+              const totalForDate = (
+                currentlySelectedShift.positions ?? []
+              ).reduce(
                 (sum: number, pos: unknown) =>
                   sum +
                   getPositionTotalForDateInternal(
@@ -1945,7 +2079,11 @@ export function EmployeeTimeAttendanceTable({
 
   // Handler for overflow click - shows dropdown with all employees
   const handleOverflowClick = useCallback(
-    (event: CalendarEvent, allEvents: CalendarEvent[], clickEvent?: MouseEvent) => {
+    (
+      event: CalendarEvent,
+      allEvents: CalendarEvent[],
+      clickEvent?: MouseEvent
+    ) => {
       // Set overflow events and position
       setOverflowEvents(allEvents);
       if (clickEvent) {
@@ -1953,7 +2091,7 @@ export function EmployeeTimeAttendanceTable({
         const preferredMaxHeight = 400;
         const padding = 16; // Space from edges
         const offset = 10; // Offset from click point
-        
+
         // Calculate horizontal position - ensure it doesn't go off screen
         let x = clickEvent.clientX;
         if (x + dropdownWidth > window.innerWidth - padding) {
@@ -1962,12 +2100,12 @@ export function EmployeeTimeAttendanceTable({
         } else if (x < padding) {
           x = padding;
         }
-        
+
         // Calculate vertical position - prefer below, but position above if not enough space
         let y = clickEvent.clientY;
         const spaceBelow = window.innerHeight - y - padding - offset;
         const spaceAbove = y - padding - offset;
-        
+
         let maxHeight: number;
         if (spaceBelow >= preferredMaxHeight) {
           // Enough space below - position below click
@@ -1982,14 +2120,14 @@ export function EmployeeTimeAttendanceTable({
           y = y + offset;
           maxHeight = Math.max(200, spaceBelow); // Minimum 200px height
         }
-        
+
         setOverflowDropdownPosition({ x, y, maxHeight });
       } else {
         // Fallback to center of screen
-        setOverflowDropdownPosition({ 
-          x: (window.innerWidth - 320) / 2, 
+        setOverflowDropdownPosition({
+          x: (window.innerWidth - 320) / 2,
           y: (window.innerHeight - 400) / 2,
-          maxHeight: 400
+          maxHeight: 400,
         });
       }
       setOverflowDropdownOpen(true);
@@ -2024,9 +2162,7 @@ export function EmployeeTimeAttendanceTable({
         header: 'LAST NAME',
         render: (_, row) => (
           <div>
-            <div className="font-medium">
-              {row.lastName?.trim() || 'N/A'}
-            </div>
+            <div className="font-medium">{row.lastName?.trim() || 'N/A'}</div>
             {!hideEmployeesDetails && row.phoneNumber && (
               <div className="text-xs text-gray-500">
                 {formatPhoneNumber(row.phoneNumber)}
@@ -2040,7 +2176,8 @@ export function EmployeeTimeAttendanceTable({
         header: 'FIRST NAME',
         render: (_, row) => {
           const avatarUrl = getAvatarUrl(row);
-          const initials = `${row.firstName?.[0] || ''}${row.lastName?.[0] || ''}`.toUpperCase();
+          const initials =
+            `${row.firstName?.[0] || ''}${row.lastName?.[0] || ''}`.toUpperCase();
           return (
             <div className="flex items-center gap-3">
               <Avatar className="h-8 w-8 flex-shrink-0">
@@ -2063,7 +2200,9 @@ export function EmployeeTimeAttendanceTable({
                   {row.firstName?.trim() || 'N/A'}
                 </div>
                 {!hideEmployeesDetails && row.employeeEmail && (
-                  <div className="text-xs text-gray-500">{row.employeeEmail}</div>
+                  <div className="text-xs text-gray-500">
+                    {row.employeeEmail}
+                  </div>
                 )}
               </div>
             </div>
@@ -2175,17 +2314,24 @@ export function EmployeeTimeAttendanceTable({
                 }}
                 disabled={isFuture}
                 className={clsxm(
-                  "flex items-center justify-center p-2 rounded-md transition-colors",
+                  'flex items-center justify-center p-2 rounded-md transition-colors',
                   isFuture
-                    ? "text-gray-300 cursor-not-allowed"
-                    : "text-gray-600 hover:text-teal-600 hover:bg-teal-50"
+                    ? 'text-gray-300 cursor-not-allowed'
+                    : 'text-gray-600 hover:text-teal-600 hover:bg-teal-50'
                 )}
-                title={isFuture ? "Future scheduled shift (not editable)" : "Edit punch details"}
+                title={
+                  isFuture
+                    ? 'Future scheduled shift (not editable)'
+                    : 'Edit punch details'
+                }
               >
                 <Pencil className="h-4 w-4" />
               </button>
               {wasEdited && (
-                <TooltipPrimitive.Provider delayDuration={200} skipDelayDuration={100}>
+                <TooltipPrimitive.Provider
+                  delayDuration={200}
+                  skipDelayDuration={100}
+                >
                   <TooltipPrimitive.Root>
                     <TooltipPrimitive.Trigger asChild>
                       <span className="inline-flex cursor-default">
@@ -2211,77 +2357,113 @@ export function EmployeeTimeAttendanceTable({
                           {(() => {
                             const history = row.updateHistory ?? [];
                             const sorted = [...history].reverse();
-                            const safeFmt = (iso: string | null | undefined, fmt: string): string => {
+                            const safeFmt = (
+                              iso: string | null | undefined,
+                              fmt: string
+                            ): string => {
                               if (!iso || typeof iso !== 'string') return '—';
                               try {
                                 const d = parseISO(iso);
-                                return isNaN(d.getTime()) ? '—' : format(d, fmt);
+                                return isNaN(d.getTime())
+                                  ? '—'
+                                  : format(d, fmt);
                               } catch {
                                 return '—';
                               }
                             };
                             return sorted.length === 0 ? (
-                              <div className="text-gray-600">No update history</div>
+                              <div className="text-gray-600">
+                                No update history
+                              </div>
                             ) : (
                               sorted.map((entry, idx) => {
-                                    const e = entry as {
-                                      timeIn: string;
-                                      timeOut: string | null;
-                                      timeInBefore?: string;
-                                      timeOutBefore?: string | null;
-                                      modifiedByName?: string;
-                                      modifiedDate: string;
-                                    };
-                                    const dateStr = safeFmt(e.modifiedDate, 'MMM d, yyyy \'at\' h:mm a');
-                                    const timeInUpdated = e.timeInBefore != null && e.timeInBefore !== e.timeIn;
-                                    const timeInBeforeStr = safeFmt(e.timeInBefore, 'MMM d, h:mm a');
-                                    const timeInAfterStr = safeFmt(e.timeIn, 'MMM d, h:mm a');
-                                    const timeInStr = timeInUpdated && timeInBeforeStr !== '—'
-                                      ? `${timeInBeforeStr} → ${timeInAfterStr}`
-                                      : timeInAfterStr;
-                                    const outBeforeVal = e.timeOutBefore?.trim() || null;
-                                    const outAfterVal = e.timeOut?.trim() || null;
-                                    const timeOutUpdated = outBeforeVal !== outAfterVal;
-                                    const timeOutBeforeStr = outBeforeVal ? safeFmt(e.timeOutBefore!, 'MMM d, h:mm a') : null;
-                                    const timeOutAfterStr = safeFmt(e.timeOut, 'MMM d, h:mm a');
-                                    const timeOutStr = timeOutUpdated && timeOutBeforeStr != null
-                                      ? `${timeOutBeforeStr} → ${timeOutAfterStr}`
-                                      : timeOutAfterStr;
-                                    return (
-                                      <div
-                                        key={idx}
-                                        className={clsxm(
-                                          'rounded p-2 bg-gray-50/80',
-                                          idx < sorted.length - 1 && 'mb-2'
-                                        )}
-                                      >
-                                        <div className="font-medium text-gray-600 mb-1">
-                                          Update {sorted.length - idx}
-                                          {e.modifiedByName?.trim() && (
-                                            <span className="text-gray-500 font-normal"> by {e.modifiedByName.trim()}</span>
-                                          )}
-                                        </div>
-                                        <div className="space-y-0.5 text-gray-700">
-                                          <div>
-                                            <span className="text-gray-500">Updated at: </span>
-                                            {dateStr}
-                                          </div>
-                                          {timeInUpdated && (
-                                            <div>
-                                              <span className="text-gray-500">Time in: </span>
-                                              {timeInStr}
-                                            </div>
-                                          )}
-                                          {timeOutUpdated && (
-                                            <div>
-                                              <span className="text-gray-500">Time out: </span>
-                                              {timeOutStr}
-                                            </div>
-                                          )}
-                                        </div>
+                                const e = entry as {
+                                  timeIn: string;
+                                  timeOut: string | null;
+                                  timeInBefore?: string;
+                                  timeOutBefore?: string | null;
+                                  modifiedByName?: string;
+                                  modifiedDate: string;
+                                };
+                                const dateStr = safeFmt(
+                                  e.modifiedDate,
+                                  "MMM d, yyyy 'at' h:mm a"
+                                );
+                                const timeInUpdated =
+                                  e.timeInBefore != null &&
+                                  e.timeInBefore !== e.timeIn;
+                                const timeInBeforeStr = safeFmt(
+                                  e.timeInBefore,
+                                  'MMM d, h:mm a'
+                                );
+                                const timeInAfterStr = safeFmt(
+                                  e.timeIn,
+                                  'MMM d, h:mm a'
+                                );
+                                const timeInStr =
+                                  timeInUpdated && timeInBeforeStr !== '—'
+                                    ? `${timeInBeforeStr} → ${timeInAfterStr}`
+                                    : timeInAfterStr;
+                                const outBeforeVal =
+                                  e.timeOutBefore?.trim() || null;
+                                const outAfterVal = e.timeOut?.trim() || null;
+                                const timeOutUpdated =
+                                  outBeforeVal !== outAfterVal;
+                                const timeOutBeforeStr = outBeforeVal
+                                  ? safeFmt(e.timeOutBefore!, 'MMM d, h:mm a')
+                                  : null;
+                                const timeOutAfterStr = safeFmt(
+                                  e.timeOut,
+                                  'MMM d, h:mm a'
+                                );
+                                const timeOutStr =
+                                  timeOutUpdated && timeOutBeforeStr != null
+                                    ? `${timeOutBeforeStr} → ${timeOutAfterStr}`
+                                    : timeOutAfterStr;
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={clsxm(
+                                      'rounded p-2 bg-gray-50/80',
+                                      idx < sorted.length - 1 && 'mb-2'
+                                    )}
+                                  >
+                                    <div className="font-medium text-gray-600 mb-1">
+                                      Update {sorted.length - idx}
+                                      {e.modifiedByName?.trim() && (
+                                        <span className="text-gray-500 font-normal">
+                                          {' '}
+                                          by {e.modifiedByName.trim()}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="space-y-0.5 text-gray-700">
+                                      <div>
+                                        <span className="text-gray-500">
+                                          Updated at:{' '}
+                                        </span>
+                                        {dateStr}
                                       </div>
-                                    );
-                                  })
+                                      {timeInUpdated && (
+                                        <div>
+                                          <span className="text-gray-500">
+                                            Time in:{' '}
+                                          </span>
+                                          {timeInStr}
+                                        </div>
+                                      )}
+                                      {timeOutUpdated && (
+                                        <div>
+                                          <span className="text-gray-500">
+                                            Time out:{' '}
+                                          </span>
+                                          {timeOutStr}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })
                             );
                           })()}
                         </div>
@@ -2320,7 +2502,9 @@ export function EmployeeTimeAttendanceTable({
       <div className="text-center py-8">
         <p className="text-red-600">
           Failed to load employee time and attendance:{' '}
-          {(error as Error)?.message || (jobsError as Error)?.message || 'Unknown error'}
+          {(error as Error)?.message ||
+            (jobsError as Error)?.message ||
+            'Unknown error'}
         </p>
         <Button
           variant="outline"
@@ -2363,14 +2547,18 @@ export function EmployeeTimeAttendanceTable({
                 No Jobs Available
               </h3>
               <p className="text-sm text-gray-500 mb-4">
-                There are no jobs with shifts available for your account. This may be because:
+                There are no jobs with shifts available for your account. This
+                may be because:
               </p>
               <ul className="text-sm text-gray-500 text-left list-disc list-inside space-y-1 mb-4">
                 <li>No organizations have been assigned to your account</li>
-                <li>No jobs with shifts exist for your assigned organizations</li>
+                <li>
+                  No jobs with shifts exist for your assigned organizations
+                </li>
               </ul>
               <p className="text-sm text-gray-500">
-                Please contact your administrator if you believe this is an error.
+                Please contact your administrator if you believe this is an
+                error.
               </p>
             </div>
           </div>
@@ -2398,19 +2586,37 @@ export function EmployeeTimeAttendanceTable({
               <ToggleGroup
                 type="single"
                 value={jobFilter}
-                onValueChange={(v) => v && setJobFilter(v as 'all' | 'today' | 'upcoming' | 'past')}
+                onValueChange={(v) =>
+                  v && setJobFilter(v as 'all' | 'today' | 'upcoming' | 'past')
+                }
                 className="flex flex-wrap gap-1"
               >
-                <ToggleGroupItem value="all" aria-label="All jobs" className="text-xs px-2 py-1 h-7">
+                <ToggleGroupItem
+                  value="all"
+                  aria-label="All jobs"
+                  className="text-xs px-2 py-1 h-7"
+                >
                   All
                 </ToggleGroupItem>
-                <ToggleGroupItem value="today" aria-label="Today" className="text-xs px-2 py-1 h-7">
+                <ToggleGroupItem
+                  value="today"
+                  aria-label="Today"
+                  className="text-xs px-2 py-1 h-7"
+                >
                   Today
                 </ToggleGroupItem>
-                <ToggleGroupItem value="upcoming" aria-label="Upcoming" className="text-xs px-2 py-1 h-7">
+                <ToggleGroupItem
+                  value="upcoming"
+                  aria-label="Upcoming"
+                  className="text-xs px-2 py-1 h-7"
+                >
                   Upcoming
                 </ToggleGroupItem>
-                <ToggleGroupItem value="past" aria-label="Past" className="text-xs px-2 py-1 h-7">
+                <ToggleGroupItem
+                  value="past"
+                  aria-label="Past"
+                  className="text-xs px-2 py-1 h-7"
+                >
                   Past
                 </ToggleGroupItem>
               </ToggleGroup>
@@ -2470,7 +2676,8 @@ export function EmployeeTimeAttendanceTable({
                         <SelectGroupLabel>Today</SelectGroupLabel>
                         {groupedJobs.today.map((job) => {
                           const displayTitle = job.title
-                            ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
+                            ? job.title.charAt(0).toUpperCase() +
+                              job.title.slice(1)
                             : job._id;
                           return (
                             <SelectItem key={job._id} value={job._id}>
@@ -2485,7 +2692,8 @@ export function EmployeeTimeAttendanceTable({
                         <SelectGroupLabel>Upcoming</SelectGroupLabel>
                         {groupedJobs.upcomingOnly.map((job) => {
                           const displayTitle = job.title
-                            ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
+                            ? job.title.charAt(0).toUpperCase() +
+                              job.title.slice(1)
                             : job._id;
                           return (
                             <SelectItem key={job._id} value={job._id}>
@@ -2500,7 +2708,8 @@ export function EmployeeTimeAttendanceTable({
                         <SelectGroupLabel>Past</SelectGroupLabel>
                         {groupedJobs.past.map((job) => {
                           const displayTitle = job.title
-                            ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
+                            ? job.title.charAt(0).toUpperCase() +
+                              job.title.slice(1)
                             : job._id;
                           return (
                             <SelectItem key={job._id} value={job._id}>
@@ -2527,21 +2736,23 @@ export function EmployeeTimeAttendanceTable({
                     })}
                   </SelectGroup>
                 )}
-                {jobFilter === 'upcoming' && groupedJobs.upcomingForFilter.length > 0 && (
-                  <SelectGroup>
-                    <SelectGroupLabel>Upcoming</SelectGroupLabel>
-                    {groupedJobs.upcomingForFilter.map((job) => {
-                      const displayTitle = job.title
-                        ? job.title.charAt(0).toUpperCase() + job.title.slice(1)
-                        : job._id;
-                      return (
-                        <SelectItem key={job._id} value={job._id}>
-                          {displayTitle}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectGroup>
-                )}
+                {jobFilter === 'upcoming' &&
+                  groupedJobs.upcomingForFilter.length > 0 && (
+                    <SelectGroup>
+                      <SelectGroupLabel>Upcoming</SelectGroupLabel>
+                      {groupedJobs.upcomingForFilter.map((job) => {
+                        const displayTitle = job.title
+                          ? job.title.charAt(0).toUpperCase() +
+                            job.title.slice(1)
+                          : job._id;
+                        return (
+                          <SelectItem key={job._id} value={job._id}>
+                            {displayTitle}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectGroup>
+                  )}
                 {jobFilter === 'past' && groupedJobs.past.length > 0 && (
                   <SelectGroup>
                     <SelectGroupLabel>Past</SelectGroupLabel>
@@ -2558,7 +2769,8 @@ export function EmployeeTimeAttendanceTable({
                   </SelectGroup>
                 )}
                 {((jobFilter === 'today' && groupedJobs.today.length === 0) ||
-                  (jobFilter === 'upcoming' && groupedJobs.upcomingForFilter.length === 0) ||
+                  (jobFilter === 'upcoming' &&
+                    groupedJobs.upcomingForFilter.length === 0) ||
                   (jobFilter === 'past' && groupedJobs.past.length === 0)) && (
                   <div className="py-2 px-2 text-sm text-muted-foreground">
                     No jobs in this period
@@ -2578,19 +2790,38 @@ export function EmployeeTimeAttendanceTable({
                 <ToggleGroup
                   type="single"
                   value={shiftFilter}
-                  onValueChange={(v) => v && setShiftFilter(v as 'all' | 'today' | 'upcoming' | 'past')}
+                  onValueChange={(v) =>
+                    v &&
+                    setShiftFilter(v as 'all' | 'today' | 'upcoming' | 'past')
+                  }
                   className="flex flex-wrap gap-1"
                 >
-                  <ToggleGroupItem value="all" aria-label="All shifts" className="text-xs px-2 py-1 h-7">
+                  <ToggleGroupItem
+                    value="all"
+                    aria-label="All shifts"
+                    className="text-xs px-2 py-1 h-7"
+                  >
                     All
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="today" aria-label="Today" className="text-xs px-2 py-1 h-7">
+                  <ToggleGroupItem
+                    value="today"
+                    aria-label="Today"
+                    className="text-xs px-2 py-1 h-7"
+                  >
                     Today
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="upcoming" aria-label="Upcoming" className="text-xs px-2 py-1 h-7">
+                  <ToggleGroupItem
+                    value="upcoming"
+                    aria-label="Upcoming"
+                    className="text-xs px-2 py-1 h-7"
+                  >
                     Upcoming
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="past" aria-label="Past" className="text-xs px-2 py-1 h-7">
+                  <ToggleGroupItem
+                    value="past"
+                    aria-label="Past"
+                    className="text-xs px-2 py-1 h-7"
+                  >
                     Past
                   </ToggleGroupItem>
                 </ToggleGroup>
@@ -2654,13 +2885,19 @@ export function EmployeeTimeAttendanceTable({
                           <SelectGroup>
                             <SelectGroupLabel>Today</SelectGroupLabel>
                             {groupedShifts.today.map((shift) => {
-                              const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
+                              const displayName =
+                                (shift.shiftName || shift.slug)
+                                  .charAt(0)
+                                  .toUpperCase() +
+                                (shift.shiftName || shift.slug).slice(1);
                               const dateContext = getShiftDateContext(shift);
                               return (
                                 <SelectItem key={shift.slug} value={shift.slug}>
                                   <div className="flex flex-col items-start">
                                     <span>{displayName}</span>
-                                    <span className="text-xs text-muted-foreground font-normal">{dateContext}</span>
+                                    <span className="text-xs text-muted-foreground font-normal">
+                                      {dateContext}
+                                    </span>
                                   </div>
                                 </SelectItem>
                               );
@@ -2671,13 +2908,19 @@ export function EmployeeTimeAttendanceTable({
                           <SelectGroup>
                             <SelectGroupLabel>Upcoming</SelectGroupLabel>
                             {groupedShifts.upcomingOnly.map((shift) => {
-                              const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
+                              const displayName =
+                                (shift.shiftName || shift.slug)
+                                  .charAt(0)
+                                  .toUpperCase() +
+                                (shift.shiftName || shift.slug).slice(1);
                               const dateContext = getShiftDateContext(shift);
                               return (
                                 <SelectItem key={shift.slug} value={shift.slug}>
                                   <div className="flex flex-col items-start">
                                     <span>{displayName}</span>
-                                    <span className="text-xs text-muted-foreground font-normal">{dateContext}</span>
+                                    <span className="text-xs text-muted-foreground font-normal">
+                                      {dateContext}
+                                    </span>
                                   </div>
                                 </SelectItem>
                               );
@@ -2688,13 +2931,19 @@ export function EmployeeTimeAttendanceTable({
                           <SelectGroup>
                             <SelectGroupLabel>Past</SelectGroupLabel>
                             {groupedShifts.past.map((shift) => {
-                              const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
+                              const displayName =
+                                (shift.shiftName || shift.slug)
+                                  .charAt(0)
+                                  .toUpperCase() +
+                                (shift.shiftName || shift.slug).slice(1);
                               const dateContext = getShiftDateContext(shift);
                               return (
                                 <SelectItem key={shift.slug} value={shift.slug}>
                                   <div className="flex flex-col items-start">
                                     <span>{displayName}</span>
-                                    <span className="text-xs text-muted-foreground font-normal">{dateContext}</span>
+                                    <span className="text-xs text-muted-foreground font-normal">
+                                      {dateContext}
+                                    </span>
                                   </div>
                                 </SelectItem>
                               );
@@ -2703,60 +2952,84 @@ export function EmployeeTimeAttendanceTable({
                         )}
                       </>
                     )}
-                    {shiftFilter === 'today' && groupedShifts.today.length > 0 && (
-                      <SelectGroup>
-                        <SelectGroupLabel>Today</SelectGroupLabel>
-                        {groupedShifts.today.map((shift) => {
-                          const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
-                          const dateContext = getShiftDateContext(shift);
-                          return (
-                            <SelectItem key={shift.slug} value={shift.slug}>
-                              <div className="flex flex-col items-start">
-                                <span>{displayName}</span>
-                                <span className="text-xs text-muted-foreground font-normal">{dateContext}</span>
-                              </div>
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectGroup>
-                    )}
-                    {shiftFilter === 'upcoming' && groupedShifts.upcomingForFilter.length > 0 && (
-                      <SelectGroup>
-                        <SelectGroupLabel>Upcoming</SelectGroupLabel>
-                        {groupedShifts.upcomingForFilter.map((shift) => {
-                          const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
-                          const dateContext = getShiftDateContext(shift);
-                          return (
-                            <SelectItem key={shift.slug} value={shift.slug}>
-                              <div className="flex flex-col items-start">
-                                <span>{displayName}</span>
-                                <span className="text-xs text-muted-foreground font-normal">{dateContext}</span>
-                              </div>
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectGroup>
-                    )}
-                    {shiftFilter === 'past' && groupedShifts.past.length > 0 && (
-                      <SelectGroup>
-                        <SelectGroupLabel>Past</SelectGroupLabel>
-                        {groupedShifts.past.map((shift) => {
-                          const displayName = (shift.shiftName || shift.slug).charAt(0).toUpperCase() + (shift.shiftName || shift.slug).slice(1);
-                          const dateContext = getShiftDateContext(shift);
-                          return (
-                            <SelectItem key={shift.slug} value={shift.slug}>
-                              <div className="flex flex-col items-start">
-                                <span>{displayName}</span>
-                                <span className="text-xs text-muted-foreground font-normal">{dateContext}</span>
-                              </div>
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectGroup>
-                    )}
-                    {((shiftFilter === 'today' && groupedShifts.today.length === 0) ||
-                      (shiftFilter === 'upcoming' && groupedShifts.upcomingForFilter.length === 0) ||
-                      (shiftFilter === 'past' && groupedShifts.past.length === 0)) && (
+                    {shiftFilter === 'today' &&
+                      groupedShifts.today.length > 0 && (
+                        <SelectGroup>
+                          <SelectGroupLabel>Today</SelectGroupLabel>
+                          {groupedShifts.today.map((shift) => {
+                            const displayName =
+                              (shift.shiftName || shift.slug)
+                                .charAt(0)
+                                .toUpperCase() +
+                              (shift.shiftName || shift.slug).slice(1);
+                            const dateContext = getShiftDateContext(shift);
+                            return (
+                              <SelectItem key={shift.slug} value={shift.slug}>
+                                <div className="flex flex-col items-start">
+                                  <span>{displayName}</span>
+                                  <span className="text-xs text-muted-foreground font-normal">
+                                    {dateContext}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectGroup>
+                      )}
+                    {shiftFilter === 'upcoming' &&
+                      groupedShifts.upcomingForFilter.length > 0 && (
+                        <SelectGroup>
+                          <SelectGroupLabel>Upcoming</SelectGroupLabel>
+                          {groupedShifts.upcomingForFilter.map((shift) => {
+                            const displayName =
+                              (shift.shiftName || shift.slug)
+                                .charAt(0)
+                                .toUpperCase() +
+                              (shift.shiftName || shift.slug).slice(1);
+                            const dateContext = getShiftDateContext(shift);
+                            return (
+                              <SelectItem key={shift.slug} value={shift.slug}>
+                                <div className="flex flex-col items-start">
+                                  <span>{displayName}</span>
+                                  <span className="text-xs text-muted-foreground font-normal">
+                                    {dateContext}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectGroup>
+                      )}
+                    {shiftFilter === 'past' &&
+                      groupedShifts.past.length > 0 && (
+                        <SelectGroup>
+                          <SelectGroupLabel>Past</SelectGroupLabel>
+                          {groupedShifts.past.map((shift) => {
+                            const displayName =
+                              (shift.shiftName || shift.slug)
+                                .charAt(0)
+                                .toUpperCase() +
+                              (shift.shiftName || shift.slug).slice(1);
+                            const dateContext = getShiftDateContext(shift);
+                            return (
+                              <SelectItem key={shift.slug} value={shift.slug}>
+                                <div className="flex flex-col items-start">
+                                  <span>{displayName}</span>
+                                  <span className="text-xs text-muted-foreground font-normal">
+                                    {dateContext}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectGroup>
+                      )}
+                    {((shiftFilter === 'today' &&
+                      groupedShifts.today.length === 0) ||
+                      (shiftFilter === 'upcoming' &&
+                        groupedShifts.upcomingForFilter.length === 0) ||
+                      (shiftFilter === 'past' &&
+                        groupedShifts.past.length === 0)) && (
                       <div className="py-2 px-2 text-sm text-muted-foreground">
                         No shifts in this period
                       </div>
@@ -2786,7 +3059,7 @@ export function EmployeeTimeAttendanceTable({
 
           {/* Currently Clocked In Summary Card - full width on mobile so it doesn't overflow */}
           <span className="relative inline-flex group w-full min-w-0 sm:min-w-[240px] sm:w-auto">
-            <div 
+            <div
               className="flex item-center bg-teal-50 border border-teal-200 rounded-lg p-2 w-full cursor-pointer hover:bg-teal-100 transition-colors"
               onClick={() => setShowActiveEmployeesModal(true)}
             >
@@ -2822,48 +3095,61 @@ export function EmployeeTimeAttendanceTable({
               </div>
             </div>
             {/* Tooltip: employee names with date and time (opens below card where there is more space) */}
-            {!activeCountLoading && !activeEmployeesLoading && activeClockedInEmployees.length > 0 && (
-              <span
-                role="tooltip"
-                className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 w-full max-w-[280px] -translate-x-1/2 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-left text-[11px] font-medium text-gray-900 shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-              >
-                <div className="mb-1 border-b border-gray-100 pb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-500">
-                  Currently clocked in
-                </div>
-                <ul className="space-y-1">
-                  {activeClockedInEmployees.slice(0, 6).map((punch) => {
-                    const name = punch.employeeName || `${punch.firstName ?? ''} ${punch.lastName ?? ''}`.trim() || '—';
-                    const timeIn = new Date(punch.timeIn);
-                    const dateTime = `${format(timeIn, 'MMM d')} at ${format(timeIn, 'h:mm a')}`;
-                    const shiftName = punch.shiftName?.trim() || null;
-                    return (
-                      <li key={punch._id} className="flex flex-col gap-0.5">
-                        <span className="text-[10px] font-medium text-gray-900 truncate" title={name}>
-                          {name}
-                        </span>
-                        <span className="text-[9px] text-gray-500">{dateTime}</span>
-                        {shiftName && (
-                          <span className="text-[9px] text-gray-400 truncate" title={shiftName}>
-                            {shiftName}
-                          </span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-                {activeClockedInEmployees.length > 6 && (
-                  <div className="mt-1 border-t border-gray-100 pt-1 text-[9px] text-gray-500">
-                    + {activeClockedInEmployees.length - 6} more
+            {!activeCountLoading &&
+              !activeEmployeesLoading &&
+              activeClockedInEmployees.length > 0 && (
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 w-full max-w-[280px] -translate-x-1/2 rounded-md border border-gray-200 bg-white px-2.5 py-2 text-left text-[11px] font-medium text-gray-900 shadow-lg opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                >
+                  <div className="mb-1 border-b border-gray-100 pb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-500">
+                    Currently clocked in
                   </div>
-                )}
-              </span>
-            )}
+                  <ul className="space-y-1">
+                    {activeClockedInEmployees.slice(0, 6).map((punch) => {
+                      const name =
+                        punch.employeeName ||
+                        `${punch.firstName ?? ''} ${punch.lastName ?? ''}`.trim() ||
+                        '—';
+                      const timeIn = new Date(punch.timeIn);
+                      const dateTime = `${format(timeIn, 'MMM d')} at ${format(timeIn, 'h:mm a')}`;
+                      const shiftName = punch.shiftName?.trim() || null;
+                      return (
+                        <li key={punch._id} className="flex flex-col gap-0.5">
+                          <span
+                            className="text-[10px] font-medium text-gray-900 truncate"
+                            title={name}
+                          >
+                            {name}
+                          </span>
+                          <span className="text-[9px] text-gray-500">
+                            {dateTime}
+                          </span>
+                          {shiftName && (
+                            <span
+                              className="text-[9px] text-gray-400 truncate"
+                              title={shiftName}
+                            >
+                              {shiftName}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {activeClockedInEmployees.length > 6 && (
+                    <div className="mt-1 border-t border-gray-100 pt-1 text-[9px] text-gray-500">
+                      + {activeClockedInEmployees.length - 6} more
+                    </div>
+                  )}
+                </span>
+              )}
           </span>
 
           {/* Shift Position Summary Card */}
           {currentlySelectedShift && shiftPositionSummary && (
             <span className="relative inline-flex group w-full min-w-0 sm:min-w-[240px] sm:w-auto">
-              <div 
+              <div
                 className="flex item-center bg-teal-50 border border-teal-200 rounded-lg p-2 w-full cursor-pointer hover:bg-teal-100 transition-colors"
                 onClick={() => setShowShiftPositionsModal(true)}
               >
@@ -2871,7 +3157,9 @@ export function EmployeeTimeAttendanceTable({
                   {/* Circle: filled count or — when no positions */}
                   <div className="relative flex-shrink-0">
                     <div className="w-8 h-8 bg-appPrimary rounded-full flex items-center justify-center text-white text-xl font-bold shadow-sm">
-                      {shiftPositionSummary.totalRequested === 0 ? '—' : shiftPositionSummary.totalFilled}
+                      {shiftPositionSummary.totalRequested === 0
+                        ? '—'
+                        : shiftPositionSummary.totalFilled}
                     </div>
                   </div>
                   {/* Text content */}
@@ -2892,7 +3180,7 @@ export function EmployeeTimeAttendanceTable({
                   </div>
                 </div>
               </div>
-              
+
               {/* Hover Tooltip with date-wise breakdown */}
               {Object.keys(shiftPositionSummary.dateDetails).length > 0 && (
                 <span
@@ -2907,7 +3195,8 @@ export function EmployeeTimeAttendanceTable({
                       .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
                       .slice(0, 6)
                       .map(([date, details]) => {
-                        const unfilled = details.totalRequested - details.filled;
+                        const unfilled =
+                          details.totalRequested - details.filled;
                         const unassigned = details.unassigned ?? 0;
                         return (
                           <li key={date} className="flex flex-col gap-0.5">
@@ -2915,13 +3204,25 @@ export function EmployeeTimeAttendanceTable({
                               {format(parseISO(date), 'MMM d, yyyy')}
                             </span>
                             <span className="text-[9px] text-gray-600">
-                              Filled: <span className="font-semibold text-green-600">{details.filled}</span> / 
-                              Total: <span className="font-semibold">{details.totalRequested}</span>
+                              Filled:{' '}
+                              <span className="font-semibold text-green-600">
+                                {details.filled}
+                              </span>{' '}
+                              / Total:{' '}
+                              <span className="font-semibold">
+                                {details.totalRequested}
+                              </span>
                               {unfilled > 0 && (
-                                <span className="text-red-600"> ({unfilled} unfilled)</span>
+                                <span className="text-red-600">
+                                  {' '}
+                                  ({unfilled} unfilled)
+                                </span>
                               )}
                               {unassigned > 0 && (
-                                <span className="text-amber-600"> • {unassigned} unassigned</span>
+                                <span className="text-amber-600">
+                                  {' '}
+                                  • {unassigned} unassigned
+                                </span>
                               )}
                             </span>
                           </li>
@@ -2930,7 +3231,9 @@ export function EmployeeTimeAttendanceTable({
                   </ul>
                   {Object.keys(shiftPositionSummary.dateDetails).length > 6 && (
                     <div className="mt-1 border-t border-gray-100 pt-1 text-[9px] text-gray-500">
-                      + {Object.keys(shiftPositionSummary.dateDetails).length - 6} more dates
+                      +{' '}
+                      {Object.keys(shiftPositionSummary.dateDetails).length - 6}{' '}
+                      more dates
                     </div>
                   )}
                 </span>
@@ -3105,7 +3408,10 @@ export function EmployeeTimeAttendanceTable({
             </div>
             {viewType === 'table' && (
               <span className="text-base font-semibold text-gray-700 mr-2">
-                Total Shift Hours: <span className="text-gray-900 mr-1">{isLoading ? '—' : `${totalShiftHours} hrs`}</span>
+                Total Shift Hours:{' '}
+                <span className="text-gray-900 mr-1">
+                  {isLoading ? '—' : `${totalShiftHours} hrs`}
+                </span>
               </span>
             )}
           </div>
@@ -3128,19 +3434,40 @@ export function EmployeeTimeAttendanceTable({
               <ToggleGroup
                 type="single"
                 value={employeeStatusFilter}
-                onValueChange={(v) => v && setEmployeeStatusFilter(v as 'all' | 'clocked-in' | 'scheduled' | 'clocked-in-out')}
+                onValueChange={(v) =>
+                  v &&
+                  setEmployeeStatusFilter(
+                    v as 'all' | 'clocked-in' | 'scheduled' | 'clocked-in-out'
+                  )
+                }
                 className="flex flex-wrap gap-1"
               >
-                <ToggleGroupItem value="all" aria-label="All employees" className="text-xs px-2 py-1 h-7">
+                <ToggleGroupItem
+                  value="all"
+                  aria-label="All employees"
+                  className="text-xs px-2 py-1 h-7"
+                >
                   All
                 </ToggleGroupItem>
-                <ToggleGroupItem value="clocked-in" aria-label="Clocked In" className="text-xs px-2 py-1 h-7">
+                <ToggleGroupItem
+                  value="clocked-in"
+                  aria-label="Clocked In"
+                  className="text-xs px-2 py-1 h-7"
+                >
                   Clocked In
                 </ToggleGroupItem>
-                <ToggleGroupItem value="scheduled" aria-label="Scheduled" className="text-xs px-2 py-1 h-7">
+                <ToggleGroupItem
+                  value="scheduled"
+                  aria-label="Scheduled"
+                  className="text-xs px-2 py-1 h-7"
+                >
                   Scheduled
                 </ToggleGroupItem>
-                <ToggleGroupItem value="clocked-in-out" aria-label="Clocked In/Out" className="text-xs px-2 py-1 h-7">
+                <ToggleGroupItem
+                  value="clocked-in-out"
+                  aria-label="Clocked In/Out"
+                  className="text-xs px-2 py-1 h-7"
+                >
                   Clocked In/Out
                 </ToggleGroupItem>
               </ToggleGroup>
@@ -3150,8 +3477,14 @@ export function EmployeeTimeAttendanceTable({
         <div
           className="relative flex min-h-0 flex-1 flex-col overflow-y-auto border border-gray-200 rounded-md"
           style={{
-            height: viewType === 'table' ? 'calc(100vh - 36rem)' : 'calc(100vh - 32.5rem)',
-            maxHeight: viewType === 'table' ? 'calc(100vh - 36rem)' : 'calc(100vh - 32.5rem)',
+            height:
+              viewType === 'table'
+                ? 'calc(100vh - 36rem)'
+                : 'calc(100vh - 32.5rem)',
+            maxHeight:
+              viewType === 'table'
+                ? 'calc(100vh - 36rem)'
+                : 'calc(100vh - 32.5rem)',
           }}
         >
           {/* Loading overlay when refetching (not initial load) */}
@@ -3170,32 +3503,35 @@ export function EmployeeTimeAttendanceTable({
               <div className="flex items-center justify-center min-h-[400px]">
                 <div className="flex flex-col items-center gap-3 text-gray-500">
                   <div className="h-8 w-8 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-sm">Loading time and attendance...</span>
+                  <span className="text-sm">
+                    Loading time and attendance...
+                  </span>
                 </div>
               </div>
             ) : (
-            <Table
-              title=""
-              description=""
-              columns={columns}
-              data={tableData}
-              showPagination={false}
-              selectable={false}
-              className="w-full"
-              emptyMessage="No employee time and attendance records found for the selected date range."
-              getRowClassName={(row) => {
-                // Check if this is a future punch by ID or time
-                const isFutureById = row._id?.startsWith('future-');
-                const timeInMs = new Date(row.timeIn).getTime();
-                const isFutureByTime = !Number.isNaN(timeInMs) && timeInMs > Date.now();
+              <Table
+                title=""
+                description=""
+                columns={columns}
+                data={tableData}
+                showPagination={false}
+                selectable={false}
+                className="w-full"
+                emptyMessage="No employee time and attendance records found for the selected date range."
+                getRowClassName={(row) => {
+                  // Check if this is a future punch by ID or time
+                  const isFutureById = row._id?.startsWith('future-');
+                  const timeInMs = new Date(row.timeIn).getTime();
+                  const isFutureByTime =
+                    !Number.isNaN(timeInMs) && timeInMs > Date.now();
 
-                if (isFutureById || isFutureByTime) {
-                  // Light blue background to indicate upcoming shifts
-                  return 'bg-blue-50 hover:bg-blue-100';
-                }
-                return '';
-              }}
-            />
+                  if (isFutureById || isFutureByTime) {
+                    // Light blue background to indicate upcoming shifts
+                    return 'bg-blue-50 hover:bg-blue-100';
+                  }
+                  return '';
+                }}
+              />
             )
           ) : companyLoading ? (
             <div className="flex items-center justify-center min-h-[500px]">
@@ -3234,9 +3570,13 @@ export function EmployeeTimeAttendanceTable({
         }}
         punch={selectedPunch}
         shift={selectedShift}
-        job={selectedJob ? {
-          additionalConfig: selectedJob.additionalConfig
-        } : undefined}
+        job={
+          selectedJob
+            ? {
+                additionalConfig: selectedJob.additionalConfig,
+              }
+            : undefined
+        }
         onSuccess={() => {
           // Refetch data after successful update will be handled by queryClient
           // The modal component will handle the refetch
@@ -3259,7 +3599,12 @@ export function EmployeeTimeAttendanceTable({
         onClose={() => setShowShiftPositionsModal(false)}
         shift={currentlySelectedShift}
         dateDetails={shiftPositionSummary?.dateDetails || {}}
-        shiftRoster={(currentlySelectedShift?.shiftRoster || []) as (RosterApplicant | Applicant)[]}
+        shiftRoster={
+          (currentlySelectedShift?.shiftRoster || []) as (
+            | RosterApplicant
+            | Applicant
+          )[]
+        }
         dateRangeStart={dateRange?.startDate}
         dateRangeEnd={dateRange?.endDate}
         hideContactDetails={hideEmployeesDetails}
@@ -3299,11 +3644,14 @@ export function EmployeeTimeAttendanceTable({
               >
                 {overflowEvents.map((event) => {
                   // Find the matching punch
-                  const punch = allEmployeePunches.find((p) => p._id === event.id);
+                  const punch = allEmployeePunches.find(
+                    (p) => p._id === event.id
+                  );
                   if (!punch) return null;
 
                   const avatarUrl = getAvatarUrl(punch);
-                  const initials = `${punch.firstName?.[0] || ''}${punch.lastName?.[0] || ''}`.toUpperCase();
+                  const initials =
+                    `${punch.firstName?.[0] || ''}${punch.lastName?.[0] || ''}`.toUpperCase();
                   const isFuture =
                     isFutureEvent(punch) || punch._id?.startsWith('future-');
 

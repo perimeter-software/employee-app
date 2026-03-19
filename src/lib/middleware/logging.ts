@@ -1,20 +1,21 @@
-import type { NextRequest, NextResponse } from "next/server";
-import { LogEntry } from "./types";
+import type { NextRequest, NextResponse } from 'next/server';
+import { LogEntry } from './types';
+import { env } from '@/lib/config';
 
 class Logger {
   private serviceName: string;
   private environment: string;
 
   constructor(
-    serviceName = "employee-app",
-    environment = process.env.NODE_ENV || "development"
+    serviceName = 'employee-app',
+    environment = process.env.NODE_ENV || 'development'
   ) {
     this.serviceName = serviceName;
     this.environment = environment;
   }
 
   private createLogEntry(
-    level: LogEntry["level"],
+    level: LogEntry['level'],
     message: string,
     metadata: Partial<LogEntry> = {}
   ): LogEntry {
@@ -22,9 +23,9 @@ class Logger {
       timestamp: new Date().toISOString(),
       level,
       requestId: metadata.requestId || crypto.randomUUID(),
-      method: metadata.method || "",
-      url: metadata.url || "",
-      ip: metadata.ip || "",
+      method: metadata.method || '',
+      url: metadata.url || '',
+      ip: metadata.ip || '',
       userAgent: metadata.userAgent,
       duration: metadata.duration,
       status: metadata.status,
@@ -38,17 +39,17 @@ class Logger {
   }
 
   info(message: string, metadata?: Partial<LogEntry>) {
-    const entry = this.createLogEntry("info", message, metadata);
+    const entry = this.createLogEntry('info', message, metadata);
     this.output(entry);
   }
 
   warn(message: string, metadata?: Partial<LogEntry>) {
-    const entry = this.createLogEntry("warn", message, metadata);
+    const entry = this.createLogEntry('warn', message, metadata);
     this.output(entry);
   }
 
   error(message: string, metadata?: Partial<LogEntry>) {
-    const entry = this.createLogEntry("error", message, metadata);
+    const entry = this.createLogEntry('error', message, metadata);
     this.output(entry);
   }
 
@@ -57,7 +58,7 @@ class Logger {
     console.log(JSON.stringify(entry));
 
     // Send to external services in production
-    if (this.environment === "production") {
+    if (this.environment === 'production') {
       this.sendToExternalServices(entry);
     }
   }
@@ -67,11 +68,11 @@ class Logger {
       // Option A: Send to Datadog
       if (process.env.DATADOG_API_KEY) {
         await fetch(
-          "https://http-intake.logs.datadoghq.com/v1/input/" +
+          'https://http-intake.logs.datadoghq.com/v1/input/' +
             process.env.DATADOG_API_KEY,
           {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(entry),
           }
         );
@@ -80,9 +81,9 @@ class Logger {
       // Option B: Send to LogRocket
       if (process.env.LOGROCKET_APP_ID) {
         // LogRocket backend logging
-        await fetch("https://r.lr-ingest.io/i", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        await fetch('https://r.lr-ingest.io/i', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...entry,
             sessionURL: `https://app.logrocket.com/${process.env.LOGROCKET_APP_ID}`,
@@ -93,9 +94,9 @@ class Logger {
       // Option C: Send to Custom Analytics
       if (process.env.ANALYTICS_ENDPOINT) {
         await fetch(process.env.ANALYTICS_ENDPOINT, {
-          method: "POST",
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
             Authorization: `Bearer ${process.env.ANALYTICS_API_KEY}`,
           },
           body: JSON.stringify(entry),
@@ -103,12 +104,12 @@ class Logger {
       }
 
       // Option D: Send to Sentry for errors
-      if (entry.level === "error" && process.env.SENTRY_DSN) {
+      if (entry.level === 'error' && process.env.SENTRY_DSN) {
         // You'd integrate with @sentry/nextjs here
       }
     } catch (error) {
       // Fallback - don't let logging errors break the app
-      console.error("Failed to send logs to external service:", error);
+      console.error('Failed to send logs to external service:', error);
     }
   }
 }
@@ -126,15 +127,15 @@ export async function loggingMiddleware(
     method: request.method,
     url: request.nextUrl.pathname + request.nextUrl.search,
     ip:
-      request.headers.get("x-forwarded-for") ||
-      request.headers.get("x-real-ip") ||
-      "unknown",
-    userAgent: request.headers.get("user-agent") || undefined,
+      request.headers.get('x-forwarded-for') ||
+      request.headers.get('x-real-ip') ||
+      'unknown',
+    userAgent: request.headers.get('user-agent') || undefined,
   };
 
   // Only log in development to reduce overhead
-  if (process.env.NODE_ENV === 'development') {
-    logger.info("Middleware request started", requestData);
+  if (env.isDevelopment) {
+    logger.info('Middleware request started', requestData);
   }
 
   return null;

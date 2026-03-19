@@ -96,6 +96,8 @@ jobs:
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=MONGODB_CONNECTION_STRING,Value=${{ secrets.MONGODB_CONNECTION_STRING }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=REDIS_HOST,Value=${{ vars.REDIS_HOST }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=REDIS_PORT,Value=${{ vars.REDIS_PORT }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=API_REDIS_HOST,Value=${{ vars.API_REDIS_HOST }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=API_REDIS_PORT,Value=${{ vars.API_REDIS_PORT }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,Value=${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=GOOGLE_MAPS_API_KEY_TWO,Value=${{ secrets.GOOGLE_MAPS_API_KEY_TWO }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=OPENAI_API_KEY,Value=${{ secrets.OPENAI_API_KEY }}" \
@@ -109,4 +111,6 @@ jobs:
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AWS_ACCESS_KEY_ID,Value=${{ secrets.AWS_ACCESS_KEY_ID }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=AWS_SECRET_ACCESS_KEY,Value=${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SES_FROM_EMAIL,Value=${{ vars.SES_FROM_EMAIL }}" \
-                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SES_SEND_IN_DEV,Value=${{ vars.SES_SEND_IN_DEV }}"
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SES_SEND_IN_DEV,Value=${{ vars.SES_SEND_IN_DEV }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=EMAIL_DIRECT_SEND,Value=${{ vars.EMAIL_DIRECT_SEND }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_APP_ENV,Value=${{ vars.NEXT_PUBLIC_APP_ENV }}"

@@ -14,8 +14,8 @@ let queue: Bull.Queue<FirebaseTopicJob> | null = null;
 function getQueue(): Bull.Queue<FirebaseTopicJob> {
   if (!queue) {
     const redisUrl =
-      process.env.REDIS_URL ||
-      `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`;
+      process.env.API_REDIS_URL ||
+      `redis://${process.env.API_REDIS_HOST}:${process.env.API_REDIS_PORT}`;
     queue = new Bull<FirebaseTopicJob>(QUEUE_NAME, redisUrl);
   }
   return queue;
