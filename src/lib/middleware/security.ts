@@ -14,9 +14,10 @@ export async function securityMiddleware(): Promise<NextResponse | null> {
 
   const connectSrc = [
     "'self'",
-    'https://maps.googleapis.com',
+    'https://*.googleapis.com', // Google Maps + Firebase (installations, FCM token, etc.)
     'https://maps.gstatic.com',
     'https://*.auth0.com',
+    'https://*.firebaseio.com', // Firebase Realtime Database / FCM
   ];
 
   const frameSrc = [
@@ -31,7 +32,7 @@ export async function securityMiddleware(): Promise<NextResponse | null> {
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com",
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://*.gstatic.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: https: blob:",
       "font-src 'self' https://fonts.gstatic.com",

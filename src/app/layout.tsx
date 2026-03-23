@@ -7,6 +7,7 @@ import { AuthErrorBoundary } from '@/components/shared/AuthErrorBoundary';
 import { GlobalErrorBoundary } from '@/components/shared/GlobalErrorBoundary';
 import { Toaster } from 'sonner';
 import Script from 'next/script';
+import { NotificationsInit } from '@/components/shared/NotificationsInit';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -33,6 +34,7 @@ export default function RootLayout({
           <AuthErrorBoundary>
             <ReactQueryProvider>
               <UserProvider>
+                <NotificationsInit />
                 {children}
 
                 <Toaster

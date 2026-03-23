@@ -30,15 +30,41 @@ export interface EventClockPayload {
 export type EnrollmentType = 'Not Roster' | 'Roster' | 'Waitlist' | 'Request';
 export type AllowedAction = 'Roster' | 'Waitlist' | 'Not Roster' | 'Request';
 
+export interface OverlappingEvent {
+  eventUrl: string;
+  venue: string;
+  eventName: string;
+  eventDate: string;
+  eventEndTime: string;
+  address?: string;
+  venueCity?: string;
+  venueState?: string;
+  zip?: string;
+}
+
+export interface OverTimeEvent {
+  eventName: string;
+  venue: string;
+  eventDate: string;
+  duration: string;
+}
+
+// The external API returns the enrollment object directly (not wrapped in { data }).
+// Most fields are optional because early-return paths omit capacity/count fields.
 export interface EnrollmentCheckResult {
   type: EnrollmentType;
   allowed: AllowedAction;
   message: string;
-  status: 'Success' | 'Warning';
-  numEnrolled: number;
-  capacity: number;
-  waitListCapacity: number;
-  waitListEnrolled: number;
+  status: 'Success' | 'Warning' | 'Error';
+  success?: boolean;
+  numEnrolled?: number;
+  capacity?: number;
+  waitListCapacity?: number;
+  waitListEnrolled?: number;
+  overlappingEvent?: OverlappingEvent;
+  overTimeEventList?: OverTimeEvent[];
+  totalHours?: number;
+  otherWaitlists?: unknown[];
 }
 
 export const eventQueryKeys = {
@@ -165,22 +191,23 @@ export class EventApiService {
   }
 
   static async checkEnrollment(eventId: string): Promise<EnrollmentCheckResult> {
-    const res = await baseInstance.get<EnrollmentCheckResult>(EventApiService.ENDPOINTS.ENROLLMENT(eventId));
-    if (!res.success || !res.data) throw new Error('Failed to check enrollment');
-    return res.data;
+    // The external API returns the enrollment object at the top level (not wrapped
+    // in { data }), so we return the raw response body directly.
+    const res = await baseInstance.get<never>(EventApiService.ENDPOINTS.ENROLLMENT(eventId));
+    return res as unknown as EnrollmentCheckResult;
   }
 
   static async submitEnrollment(
     eventId: string,
     requestType: EnrollmentType,
     positionName?: string
-  ): Promise<{ type: string; message: string }> {
-    const res = await baseInstance.put<{ type: string; message: string }>(
+  ): Promise<EnrollmentCheckResult> {
+    // Same as checkEnrollment: external API returns the object at the top level.
+    const res = await baseInstance.put<never>(
       EventApiService.ENDPOINTS.ENROLLMENT(eventId),
       { requestType, ...(positionName && { positionName }) }
     );
-    if (!res.success || !res.data) throw new Error('Failed to submit enrollment');
-    return res.data;
+    return res as unknown as EnrollmentCheckResult;
   }
 
   static async clockOut(
