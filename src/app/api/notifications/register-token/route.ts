@@ -11,12 +11,29 @@ async function registerTokenHandler(request: AuthenticatedRequest) {
   }
 
   const user = request.user;
-  const userId = user._id ? String(user._id) : '';
+  let userId = user._id ? String(user._id) : '';
+
+  // For applicant-only OTP sessions, withEnhancedAuthAPI does not populate
+  // user._id. Attempt to find the user record by email — an applicant may
+  // also have a user account and should still receive push notifications.
+  if (!userId && user.email) {
+    try {
+      const { getTenantAwareConnection } = await import('@/lib/db');
+      const { checkUserExistsByEmail } = await import('@/domains/user/utils');
+      const { db } = await getTenantAwareConnection(request);
+      const dbUser = await checkUserExistsByEmail(db, user.email);
+      if (dbUser?._id) {
+        userId = String(dbUser._id);
+      }
+    } catch {
+      // DB lookup failed — fall through to no-op below
+    }
+  }
+
+  // Pure applicant (no user record): push notifications are user-only.
+  // Return gracefully so the client doesn't treat this as an error.
   if (!userId) {
-    return NextResponse.json(
-      { success: false, message: 'No user ID in session' },
-      { status: 401 }
-    );
+    return NextResponse.json({ success: true, skipped: true });
   }
 
   const { sub: userSub, email } = user;

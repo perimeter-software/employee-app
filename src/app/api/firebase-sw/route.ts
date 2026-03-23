@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 
-// Serves the Firebase service worker at /firebase-messaging-sw.js (root scope).
-// Uses the native Web Push API instead of importScripts so no external scripts
-// are needed — avoids all CSP issues. Firebase's getToken() only requires a
-// valid registered service worker; it does not care what's inside it.
+// Serves the Firebase service worker (rewritten from /firebase-messaging-sw.js).
+// Uses the native Web Push API — no importScripts, no CSP issues.
+// Firebase's getToken() only requires a valid registered service worker.
 export async function GET() {
   const script = `
 self.addEventListener('push', (event) => {
