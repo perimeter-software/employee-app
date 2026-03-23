@@ -22,14 +22,6 @@ async function getEnrollmentHandler(
       );
     }
 
-    const sessionId = request.cookies.get('session_id')?.value;
-    if (!sessionId) {
-      return NextResponse.json(
-        { success: false, message: 'Not authenticated' },
-        { status: 401 }
-      );
-    }
-
     const user = request.user;
     const applicantId = user.applicantId ? String(user.applicantId) : '';
     if (!applicantId) {
