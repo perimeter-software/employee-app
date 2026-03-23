@@ -45,15 +45,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     // Check if user is a Client
     const isClient = currentUser?.userType === 'Client';
 
-    // For limited access users (applicants or terminated/inactive employees), only show Paycheck Stubs
+    // For limited access users (applicants or terminated/inactive employees), only show Payroll
     if (isLimitedAccess) {
       return [
         {
-          name: 'Paycheck Stubs',
-          href: '/paycheck-stubs',
+          name: 'Payroll',
+          href: '/payroll',
           icon: Receipt,
           current:
-            pathname === '/paycheck-stubs' ||
+            pathname === '/payroll' ||
+            pathname.startsWith('/payroll') ||
             pathname.startsWith('/paycheck-stubs'),
         },
       ];
@@ -102,15 +103,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       });
     }
 
-    // Conditionally add Paycheck Stubs link for Prism companies (exclude for Client users)
-    const isPrism = primaryCompany?.peoIntegration === 'Prism';
-    if (isPrism && !isClient) {
+    // Add Payroll link for non-Client users (shows pay history; Paycheck Stubs tab only for Prism)
+    if (!isClient) {
       baseNavigation.push({
-        name: 'Paycheck Stubs',
-        href: '/paycheck-stubs',
+        name: 'Payroll',
+        href: '/payroll',
         icon: Receipt,
         current:
-          pathname === '/paycheck-stubs' ||
+          pathname === '/payroll' ||
+          pathname.startsWith('/payroll') ||
           pathname.startsWith('/paycheck-stubs'),
       });
     }

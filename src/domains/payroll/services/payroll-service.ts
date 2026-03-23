@@ -1,5 +1,9 @@
 import { baseInstance } from '@/lib/api/instance';
-import { PayrollBatch, PayrollBatchParams } from '../types';
+import {
+  EmployeePayrollHistoryResponse,
+  PayrollBatch,
+  PayrollBatchParams,
+} from '../types';
 
 export const payrollQueryKeys = {
   all: ['payroll'] as const,
@@ -7,6 +11,8 @@ export const payrollQueryKeys = {
   batch: (id: string) => [...payrollQueryKeys.all, 'batch', id] as const,
   batchByTimecard: (timecardId: string) =>
     [...payrollQueryKeys.all, 'batchByTimecard', timecardId] as const,
+  employeeHistory: () =>
+    [...payrollQueryKeys.all, 'employeeHistory'] as const,
 } as const;
 
 export class PayrollService {
@@ -15,6 +21,7 @@ export class PayrollService {
     GET_BATCH: (id: string) => `/payroll/batches/${id}`,
     CHECK_TIMECARD: (timecardId: string) =>
       `/payroll/batches/timecard/${timecardId}`,
+    GET_EMPLOYEE_HISTORY: () => '/payroll/employee-history',
   } as const;
 
   /**
@@ -90,6 +97,28 @@ export class PayrollService {
       return response.data;
     } catch (error) {
       console.error('❌ checkTimecardInProcessedBatch API error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get payroll history for the authenticated employee
+   */
+  static async getEmployeePayrollHistory(): Promise<EmployeePayrollHistoryResponse> {
+    try {
+      const response =
+        await baseInstance.get<EmployeePayrollHistoryResponse>(
+          this.ENDPOINTS.GET_EMPLOYEE_HISTORY()
+        );
+
+      if (!response.success || !response.data) {
+        console.error('❌ No employee payroll history data in response:', response);
+        throw new Error('No employee payroll history data received from API');
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('❌ getEmployeePayrollHistory API error:', error);
       throw error;
     }
   }

@@ -5,6 +5,20 @@ export type PayrollBatchStatus =
   | 'Paid'
   | 'Cancelled';
 
+export interface TaxDetails {
+  totalPay: number;
+  totalBill: number;
+  burden?: number;
+  grossMargin?: number;
+  grossMarginPercentage?: number;
+  ficaSS: number;
+  ficaMED: number;
+  federalTax: number;
+  stateTax: number;
+  checkNet: number;
+  billingVoucherId?: string;
+}
+
 export interface BatchDataEdit {
   applicantId: string;
   payRate: number;
@@ -19,6 +33,19 @@ export interface BatchDataEdit {
   earningId: string | null;
   totalHours: number;
   timecardId: string;
+}
+
+export interface SubmittedEventApplicant {
+  applicantId: string;
+  companySlug?: string;
+  earningId: string | null;
+  payRate?: number;
+  billRate?: number;
+  totalHours?: number;
+  taxDetails?: TaxDetails;
+  rowId?: string;
+  isEstimated?: boolean;
+  isSynced?: boolean;
 }
 
 export interface SubmittedJobTimecard {
@@ -52,6 +79,7 @@ export interface SubmittedJobTimecard {
   salary: 'Yes' | 'No';
   earningId: string | null;
   totalHours: number;
+  taxDetails?: TaxDetails;
 }
 
 export interface PayrollBatch {
@@ -73,4 +101,59 @@ export interface PayrollBatchParams {
   endDate?: string;
   status?: PayrollBatchStatus;
   timecardId?: string;
+}
+
+// ── Employee-facing payroll history types ─────────────────────────────────────
+
+export interface BillingVoucherItem {
+  billCode: string;
+  billCodeDescription: string;
+  billAmt: number;
+}
+
+export interface BillingVoucher {
+  _id?: string;
+  employeeId: string;
+  batchNumber: string;
+  voucherId?: string;
+  payDate?: string;
+  voucherStatus?: string;
+  sumBilling: BillingVoucherItem[];
+}
+
+export interface EmployeePayrollBatch {
+  _id: string;
+  type: 'event' | 'job';
+  eventUrl?: string;
+  jobSlug?: string;
+  startDate: string;
+  endDate: string;
+  payrollStatus: string;
+  createdDate: string;
+  modifiedDate: string;
+  regularItems: (SubmittedEventApplicant | SubmittedJobTimecard)[];
+  overtimeItems: (SubmittedEventApplicant | SubmittedJobTimecard)[];
+  totalRegularHours: number;
+  totalOvertimeHours: number;
+  totalGrossRegularPay: number;
+  totalGrossOvertimePay: number;
+  totalGrossPay: number;
+  totalFicaSS: number;
+  totalFicaMED: number;
+  totalFederalTax: number;
+  totalStateTax: number;
+  totalTaxes: number;
+  totalNetPay: number;
+  billingVoucher?: BillingVoucher;
+  lastCreatedPEOBatch?: {
+    batchNumber: string;
+    batchStatus?: string;
+    billingVouchersAvailable?: string;
+    payrollVouchersAvailable?: string;
+  };
+}
+
+export interface EmployeePayrollHistoryResponse {
+  payrollBatches: EmployeePayrollBatch[];
+  count: number;
 }

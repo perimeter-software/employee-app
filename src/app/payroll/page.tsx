@@ -1,0 +1,1241 @@
+'use client';
+
+import { NextPage } from 'next';
+import { Suspense, useCallback, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { format } from 'date-fns';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  DollarSign,
+  Eye,
+  EyeOff,
+  FileText,
+  LayoutGrid,
+  Receipt,
+  Search,
+  Table as TableIcon,
+  TrendingUp,
+} from 'lucide-react';
+import Layout from '@/components/layout/Layout';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { usePageAuth } from '@/domains/shared/hooks/use-page-auth';
+import {
+  AuthErrorState,
+  AuthLoadingState,
+  UnauthenticatedState,
+} from '@/components/shared/PageProtection';
+import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
+import { useCurrentUser } from '@/domains/user';
+import { usePaycheckStubs } from '@/domains/paycheck-stubs';
+import { useEmployeePayrollHistory } from '@/domains/payroll';
+import { clsxm } from '@/lib/utils';
+import type {
+  EmployeePayrollBatch,
+  SubmittedEventApplicant,
+  SubmittedJobTimecard,
+} from '@/domains/payroll/types/payroll.types';
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type ViewMode = 'table' | 'card' | 'paystubs';
+type StatusFilter = 'all' | 'current' | 'past' | 'custom';
+type SortField =
+  | 'startDate'
+  | 'checkDate'
+  | 'hours'
+  | 'grossPay'
+  | 'deductions'
+  | 'netPay';
+type SortDir = 'asc' | 'desc';
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function formatCurrency(val: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(val);
+}
+
+function formatPeriod(start: string, end: string) {
+  const s = new Date(start);
+  const e = new Date(end);
+  const sameYear = s.getFullYear() === e.getFullYear();
+  return `${format(s, 'MMM d')} – ${format(e, sameYear ? 'MMM d' : 'MMM d, yyyy')}`;
+}
+
+function getCheckDate(batch: EmployeePayrollBatch): string | null {
+  const pd = batch.billingVoucher?.payDate;
+  if (pd) {
+    try {
+      return format(new Date(pd), 'MMM d, yyyy');
+    } catch {
+      /* fall through */
+    }
+  }
+  try {
+    return format(new Date(batch.endDate), 'MMM d, yyyy');
+  } catch {
+    return null;
+  }
+}
+
+function getItemLabel(item: SubmittedEventApplicant | SubmittedJobTimecard): string {
+  if ('rowId' in item && item.rowId) return item.rowId;
+  if ('companySlug' in item && item.companySlug) return item.companySlug;
+  if ('jobId' in item) return item.jobId;
+  return '–';
+}
+
+function getItemRate(item: SubmittedEventApplicant | SubmittedJobTimecard): string {
+  const rate = 'payRate' in item ? item.payRate : undefined;
+  if (!rate) return '–';
+  return `$${rate.toFixed(2)}/hr`;
+}
+
+function getItemEarnings(
+  item: SubmittedEventApplicant | SubmittedJobTimecard
+): number {
+  if (item.taxDetails?.totalPay) return item.taxDetails.totalPay;
+  return (item.totalHours ?? 0) * (item.payRate ?? 0);
+}
+
+// ── Sort icon ─────────────────────────────────────────────────────────────────
+
+const SortIcon: React.FC<{
+  field: SortField;
+  active: SortField;
+  dir: SortDir;
+}> = ({ field, active, dir }) => {
+  if (active !== field)
+    return <ArrowUpDown className="w-3 h-3 ml-1 text-gray-400 inline" />;
+  return dir === 'asc' ? (
+    <ArrowUp className="w-3 h-3 ml-1 text-blue-600 inline" />
+  ) : (
+    <ArrowDown className="w-3 h-3 ml-1 text-blue-600 inline" />
+  );
+};
+
+// ── Stat card ─────────────────────────────────────────────────────────────────
+
+const StatCard: React.FC<{
+  label: string;
+  value: string;
+  sub: string;
+  icon: React.ReactNode;
+  iconBg: string;
+}> = ({ label, value, sub, icon, iconBg }) => (
+  <div className="bg-white rounded-xl p-5 shadow-sm flex items-center gap-4">
+    <div className={clsxm('p-3 rounded-xl flex-shrink-0', iconBg)}>{icon}</div>
+    <div className="min-w-0">
+      <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+        {label}
+      </p>
+      <p className="text-2xl font-bold text-gray-900 mt-0.5 leading-none">
+        {value}
+      </p>
+      <p className="text-xs text-gray-400 mt-1">{sub}</p>
+    </div>
+  </div>
+);
+
+// ── Table row (expandable) ────────────────────────────────────────────────────
+
+const PayrollTableRow: React.FC<{
+  batch: EmployeePayrollBatch;
+  stubId?: string;
+  detailMode: boolean;
+  onViewStub: (id: string) => void;
+}> = ({ batch, stubId, detailMode, onViewStub }) => {
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const expanded = detailMode || localExpanded;
+  const totalHours = batch.totalRegularHours + batch.totalOvertimeHours;
+  const hasOT = batch.totalOvertimeHours > 0;
+  const checkDate = getCheckDate(batch);
+  const voucherNumber =
+    batch.billingVoucher?.voucherId ||
+    batch.lastCreatedPEOBatch?.batchNumber ||
+    null;
+
+  // Merge REG and OT items into display rows
+  type ItemRow = {
+    label: string;
+    date: string;
+    regHrs: number;
+    otHrs: number;
+    rate: string;
+    earnings: number;
+  };
+
+  const itemRows = useMemo<ItemRow[]>(() => {
+    const rows: ItemRow[] = [];
+
+    batch.regularItems.forEach((item) => {
+      rows.push({
+        label: getItemLabel(item),
+        date: format(new Date(batch.startDate), 'MMM d, yyyy'),
+        regHrs: item.totalHours ?? 0,
+        otHrs: 0,
+        rate: getItemRate(item),
+        earnings: getItemEarnings(item),
+      });
+    });
+
+    batch.overtimeItems.forEach((item) => {
+      rows.push({
+        label: getItemLabel(item),
+        date: format(new Date(batch.startDate), 'MMM d, yyyy'),
+        regHrs: 0,
+        otHrs: item.totalHours ?? 0,
+        rate: getItemRate(item),
+        earnings: getItemEarnings(item),
+      });
+    });
+
+    // Fallback: if no items, show one summary row
+    if (rows.length === 0) {
+      rows.push({
+        label: batch.eventUrl || batch.jobSlug || '–',
+        date: format(new Date(batch.startDate), 'MMM d, yyyy'),
+        regHrs: batch.totalRegularHours,
+        otHrs: batch.totalOvertimeHours,
+        rate: '–',
+        earnings: batch.totalGrossPay,
+      });
+    }
+
+    return rows;
+  }, [batch]);
+
+  return (
+    <>
+      <tr
+        className={clsxm(
+          'border-b border-gray-100 transition-colors',
+          expanded ? 'bg-blue-50/20' : 'hover:bg-gray-50/60'
+        )}
+      >
+        {/* Expand toggle */}
+        <td className="pl-4 pr-2 py-4 w-8">
+          <button
+            onClick={() => setLocalExpanded((p) => !p)}
+            className="text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            {expanded ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+          </button>
+        </td>
+
+        {/* Pay Period */}
+        <td className="px-4 py-4">
+          <span className="text-sm font-semibold text-gray-900">
+            {formatPeriod(batch.startDate, batch.endDate)}
+          </span>
+        </td>
+
+        {/* Check Date */}
+        <td className="px-4 py-4 text-sm text-gray-600">
+          {checkDate ?? '–'}
+        </td>
+
+        {/* Hours */}
+        <td className="px-4 py-4">
+          <span className="text-sm text-gray-800 font-medium">
+            {totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)}
+          </span>
+          {hasOT && (
+            <span className="ml-1.5 text-xs font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-600">
+              +
+              {batch.totalOvertimeHours % 1 === 0
+                ? batch.totalOvertimeHours
+                : batch.totalOvertimeHours.toFixed(1)}{' '}
+              OT
+            </span>
+          )}
+        </td>
+
+        {/* Gross Pay */}
+        <td className="px-4 py-4 text-sm font-semibold text-green-600">
+          {formatCurrency(batch.totalGrossPay)}
+        </td>
+
+        {/* Deductions */}
+        <td className="px-4 py-4 text-sm font-semibold text-red-500">
+          -{formatCurrency(batch.totalTaxes)}
+        </td>
+
+        {/* Net Pay */}
+        <td className="px-4 py-4 text-sm font-bold text-blue-600">
+          {formatCurrency(batch.totalNetPay)}
+        </td>
+
+        {/* Status */}
+        <td className="px-4 py-4">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+            PAID
+          </span>
+        </td>
+
+        {/* Stub */}
+        <td className="px-4 py-4">
+          {stubId ? (
+            <button
+              onClick={() => onViewStub(stubId)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-600 border border-blue-200 bg-white hover:bg-blue-50 transition-colors"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              View
+            </button>
+          ) : (
+            <span className="text-xs text-gray-300">–</span>
+          )}
+        </td>
+
+        {/* Voucher # (detail mode only) */}
+        {detailMode && (
+          <td className="px-4 py-4 text-sm text-gray-500 font-mono">
+            {voucherNumber ?? '–'}
+          </td>
+        )}
+      </tr>
+
+      {/* Expanded events table */}
+      {expanded && (
+        <tr className="bg-slate-50/60 border-b border-gray-100">
+          <td colSpan={detailMode ? 10 : 9} className="px-8 py-4">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+              Events / Jobs in this Pay Period
+            </p>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  {[
+                    'Event',
+                    'Venue',
+                    'Date',
+                    'Reg Hrs',
+                    'OT Hrs',
+                    'Rate',
+                    'Earnings',
+                  ].map((col) => (
+                    <th
+                      key={col}
+                      className={clsxm(
+                        'text-xs font-semibold text-gray-400 uppercase tracking-wider pb-2',
+                        col === 'Reg Hrs' ||
+                          col === 'OT Hrs' ||
+                          col === 'Rate' ||
+                          col === 'Earnings'
+                          ? 'text-right pr-4'
+                          : 'text-left pr-4'
+                      )}
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {itemRows.map((row, i) => (
+                  <tr key={i} className="border-b border-gray-100 last:border-0">
+                    <td className="text-sm font-semibold text-gray-800 pr-4 py-2">
+                      {row.label}
+                    </td>
+                    <td className="text-sm text-gray-500 pr-4 py-2">
+                      {batch.eventUrl || batch.jobSlug || '–'}
+                    </td>
+                    <td className="text-sm text-gray-500 pr-4 py-2">
+                      {row.date}
+                    </td>
+                    <td className="text-sm text-right text-gray-700 pr-4 py-2">
+                      {row.regHrs > 0 ? row.regHrs : (
+                        <span className="text-gray-300">0</span>
+                      )}
+                    </td>
+                    <td className="text-sm text-right pr-4 py-2">
+                      {row.otHrs > 0 ? (
+                        <span className="text-orange-500 font-medium">
+                          {row.otHrs}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">0</span>
+                      )}
+                    </td>
+                    <td className="text-sm text-right text-gray-600 pr-4 py-2">
+                      {row.rate}
+                    </td>
+                    <td className="text-sm text-right font-semibold text-green-600 py-2">
+                      {formatCurrency(row.earnings)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+};
+
+// ── Card view ─────────────────────────────────────────────────────────────────
+
+const PayrollCardGrid: React.FC<{
+  batches: EmployeePayrollBatch[];
+  stubMap: Map<string, string>;
+  onViewStub: (id: string) => void;
+}> = ({ batches, stubMap, onViewStub }) => (
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    {batches.map((batch) => {
+      const totalHours = batch.totalRegularHours + batch.totalOvertimeHours;
+      const hasOT = batch.totalOvertimeHours > 0;
+      const checkDate = getCheckDate(batch);
+      const stubId = stubMap.get(batch._id);
+
+      // Build event items for the card
+      const allItems = [
+        ...batch.regularItems,
+        ...batch.overtimeItems,
+      ];
+      const displayItems = allItems.slice(0, 2);
+      const extraCount = allItems.length - displayItems.length;
+
+      return (
+        <div
+          key={batch._id}
+          className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col gap-4"
+        >
+          {/* Header */}
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-base font-bold text-gray-900">
+                {formatPeriod(batch.startDate, batch.endDate)}
+              </p>
+              {checkDate && (
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Check Date: {checkDate}
+                </p>
+              )}
+            </div>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200 flex-shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              PAID
+            </span>
+          </div>
+
+          {/* Gross / Deductions / Net */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-0.5">
+                Gross
+              </p>
+              <p className="text-base font-bold text-green-600">
+                {formatCurrency(batch.totalGrossPay)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-0.5">
+                Deductions
+              </p>
+              <p className="text-base font-bold text-red-500">
+                -{formatCurrency(batch.totalTaxes)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-0.5">
+                Net Pay
+              </p>
+              <p className="text-base font-bold text-blue-600">
+                {formatCurrency(batch.totalNetPay)}
+              </p>
+            </div>
+          </div>
+
+          {/* Hours + events count */}
+          <div className="flex items-center justify-between text-sm text-gray-500">
+            <span>
+              {totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)}h total
+              {hasOT && (
+                <span className="ml-1.5 text-xs font-semibold text-orange-500">
+                  {batch.totalOvertimeHours % 1 === 0
+                    ? batch.totalOvertimeHours
+                    : batch.totalOvertimeHours.toFixed(1)}h OT
+                </span>
+              )}
+            </span>
+            <span>{allItems.length} event{allItems.length !== 1 ? 's' : ''}</span>
+          </div>
+
+          {/* Event list */}
+          {displayItems.length > 0 && (
+            <div className="space-y-1.5">
+              {displayItems.map((item, i) => (
+                <div key={i} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-700 font-medium truncate mr-2">
+                    {getItemLabel(item)}
+                  </span>
+                  <span className="text-gray-800 font-semibold flex-shrink-0">
+                    {formatCurrency(getItemEarnings(item))}
+                  </span>
+                </div>
+              ))}
+              {extraCount > 0 && (
+                <p className="text-xs text-gray-400 text-center">
+                  +{extraCount} more
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* View Paystub button */}
+          {stubId ? (
+            <button
+              onClick={() => onViewStub(stubId)}
+              className="w-full py-2 rounded-lg text-sm font-medium text-blue-600 border border-blue-300 bg-white hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 mt-auto"
+            >
+              <FileText className="w-4 h-4" />
+              View Paystub
+            </button>
+          ) : (
+            <div className="mt-auto" />
+          )}
+        </div>
+      );
+    })}
+  </div>
+);
+
+// ── Paystubs view ─────────────────────────────────────────────────────────────
+
+const PaystubsGrid: React.FC<{ applicantId?: string }> = ({ applicantId }) => {
+  const router = useRouter();
+  const { data, isLoading, error } = usePaycheckStubs(applicantId);
+  const stubs = data?.paycheckStubs ?? [];
+
+  if (isLoading)
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-white rounded-xl p-5 shadow-sm">
+              <Skeleton className="h-4 w-20 mb-2" />
+              <Skeleton className="h-8 w-12" />
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2].map((i) => (
+            <div key={i} className="bg-white rounded-xl p-5 shadow-sm">
+              <Skeleton className="h-5 w-3/4 mb-3" />
+              <Skeleton className="h-4 w-1/2 mb-4" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+
+  if (error)
+    return (
+      <div className="text-center py-12 text-gray-500 text-sm">
+        Failed to load paycheck stubs.
+      </div>
+    );
+
+  const viewedCount = stubs.filter((s) => s.viewStatus === 'viewed').length;
+  const notViewedCount = stubs.length - viewedCount;
+
+  if (stubs.length === 0)
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <Receipt className="w-12 h-12 text-gray-300 mb-3" />
+        <p className="text-gray-500 text-sm font-medium">
+          No paycheck stubs available yet.
+        </p>
+      </div>
+    );
+
+  return (
+    <div className="space-y-4">
+      {/* Mini-stat cards */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl p-4 shadow-sm flex items-center gap-3 border border-gray-100">
+          <div className="p-2 rounded-lg bg-blue-50 flex-shrink-0">
+            <FileText className="w-5 h-5 text-blue-500" />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              Total Stubs
+            </p>
+            <p className="text-2xl font-bold text-gray-900">{stubs.length}</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl p-4 shadow-sm flex items-center gap-3 border border-green-200">
+          <div className="p-2 rounded-lg bg-green-50 flex-shrink-0">
+            <Eye className="w-5 h-5 text-green-500" />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              Viewed
+            </p>
+            <p className="text-2xl font-bold text-gray-900">{viewedCount}</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl p-4 shadow-sm flex items-center gap-3 border border-red-200">
+          <div className="p-2 rounded-lg bg-red-50 flex-shrink-0">
+            <EyeOff className="w-5 h-5 text-red-400" />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              Not Viewed
+            </p>
+            <p className="text-2xl font-bold text-gray-900">{notViewedCount}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Stub cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {stubs.map((stub) => {
+          const isViewed = stub.viewStatus === 'viewed';
+          return (
+            <div
+              key={stub._id}
+              className={clsxm(
+                'bg-white rounded-xl shadow-sm border p-5 flex flex-col gap-3',
+                isViewed ? 'border-gray-100' : 'border-blue-200'
+              )}
+            >
+              {/* Filename + status badge */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div
+                    className={clsxm(
+                      'p-2 rounded-lg flex-shrink-0',
+                      isViewed ? 'bg-gray-100' : 'bg-blue-50'
+                    )}
+                  >
+                    <FileText
+                      className={clsxm(
+                        'w-4 h-4',
+                        isViewed ? 'text-gray-500' : 'text-blue-600'
+                      )}
+                    />
+                  </div>
+                  <p className="text-xs font-semibold text-gray-900 truncate">
+                    {stub.fileName}
+                  </p>
+                </div>
+                <span
+                  className={clsxm(
+                    'flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
+                    isViewed
+                      ? 'bg-green-50 text-green-700 border border-green-200'
+                      : 'bg-red-50 text-red-600 border border-red-200'
+                  )}
+                >
+                  {isViewed ? (
+                    <Eye className="w-3 h-3" />
+                  ) : (
+                    <EyeOff className="w-3 h-3" />
+                  )}
+                  {isViewed ? 'Viewed' : 'Not Viewed'}
+                </span>
+              </div>
+
+              {/* Dates + IDs */}
+              <div className="space-y-1 text-xs text-gray-500">
+                <p>
+                  Uploaded:{' '}
+                  <span className="text-gray-700 font-medium">
+                    {format(new Date(stub.uploadedAt), 'MMM d, yyyy')}
+                  </span>
+                </p>
+                <p>
+                  Check Date:{' '}
+                  <span className="text-gray-700 font-medium">
+                    {format(new Date(stub.checkDate), 'MMM d, yyyy')}
+                  </span>
+                </p>
+                <div className="flex items-center gap-4 pt-1">
+                  <p>
+                    Batch ID:{' '}
+                    <span className="font-semibold text-gray-700">
+                      {stub.batchId}
+                    </span>
+                  </p>
+                  <p>
+                    Voucher:{' '}
+                    <span className="font-semibold text-gray-700">
+                      {stub.voucherNumber}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {/* View PDF button */}
+              <button
+                onClick={() => router.push(`/paycheck-stubs/${stub._id}`)}
+                className="w-full py-2.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <FileText className="w-4 h-4" />
+                View PDF
+                <span className="text-blue-300">›</span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ── Main page content ──────────────────────────────────────────────────────────
+
+const PayrollPageContent: React.FC = () => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [sortField, setSortField] = useState<SortField>('startDate');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [detailMode, setDetailMode] = useState(false);
+  const [selectedYear, setSelectedYear] = useState<number>(
+    new Date().getFullYear()
+  );
+
+  // Auth
+  const {
+    shouldShowContent,
+    isLoading: pageAuthLoading,
+    error: pageAuthError,
+  } = usePageAuth({ requireAuth: true });
+
+  const { data: primaryCompany, isLoading: companyLoading } =
+    usePrimaryCompany();
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const applicantId = currentUser?.applicantId;
+  const isPrism = primaryCompany?.peoIntegration === 'Prism';
+
+  // Data
+  const { data: historyData, isLoading: historyLoading } =
+    useEmployeePayrollHistory(!!applicantId);
+  const { data: stubsData } = usePaycheckStubs(
+    isPrism ? applicantId : undefined
+  );
+
+  const allBatches = historyData?.payrollBatches ?? [];
+  const stubs = stubsData?.paycheckStubs ?? [];
+
+  // Map batchId → stubId for quick lookup
+  const stubMap = useMemo(() => {
+    const m = new Map<string, string>();
+    stubs.forEach((s) => m.set(s.batchId, s._id));
+    return m;
+  }, [stubs]);
+
+  // Available years from batch data
+  const availableYears = useMemo(() => {
+    const current = new Date().getFullYear();
+    const years = new Set<number>([current]);
+    allBatches.forEach((b) =>
+      years.add(new Date(b.startDate).getFullYear())
+    );
+    return Array.from(years).sort((a, b) => b - a);
+  }, [allBatches]);
+
+  // Year-filtered batches
+  const yearBatches = useMemo(
+    () =>
+      allBatches.filter(
+        (b) => new Date(b.startDate).getFullYear() === selectedYear
+      ),
+    [allBatches, selectedYear]
+  );
+
+  // Status filter
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
+  const statusFiltered = useMemo(() => {
+    if (statusFilter === 'all') return yearBatches;
+    if (statusFilter === 'current')
+      return yearBatches.filter(
+        (b) => new Date(b.startDate).getMonth() === currentMonth
+      );
+    if (statusFilter === 'past')
+      return yearBatches.filter(
+        (b) => new Date(b.startDate).getMonth() < currentMonth
+      );
+    return yearBatches; // 'custom' - no-op for now
+  }, [yearBatches, statusFilter, currentMonth]);
+
+  // Search
+  const searched = useMemo(() => {
+    if (!searchQuery.trim()) return statusFiltered;
+    const q = searchQuery.toLowerCase();
+    return statusFiltered.filter(
+      (b) =>
+        formatPeriod(b.startDate, b.endDate).toLowerCase().includes(q) ||
+        (b.eventUrl && b.eventUrl.toLowerCase().includes(q)) ||
+        (b.jobSlug && b.jobSlug.toLowerCase().includes(q)) ||
+        (b.billingVoucher?.voucherId &&
+          b.billingVoucher.voucherId.toLowerCase().includes(q))
+    );
+  }, [statusFiltered, searchQuery]);
+
+  // Sort
+  const sorted = useMemo(() => {
+    return [...searched].sort((a, b) => {
+      let va: number, vb: number;
+      switch (sortField) {
+        case 'checkDate': {
+          const ad = a.billingVoucher?.payDate ?? a.endDate;
+          const bd = b.billingVoucher?.payDate ?? b.endDate;
+          va = new Date(ad).getTime();
+          vb = new Date(bd).getTime();
+          break;
+        }
+        case 'hours':
+          va = a.totalRegularHours + a.totalOvertimeHours;
+          vb = b.totalRegularHours + b.totalOvertimeHours;
+          break;
+        case 'grossPay':
+          va = a.totalGrossPay;
+          vb = b.totalGrossPay;
+          break;
+        case 'deductions':
+          va = a.totalTaxes;
+          vb = b.totalTaxes;
+          break;
+        case 'netPay':
+          va = a.totalNetPay;
+          vb = b.totalNetPay;
+          break;
+        default: // startDate
+          va = new Date(a.startDate).getTime();
+          vb = new Date(b.startDate).getTime();
+      }
+      return sortDir === 'asc' ? va - vb : vb - va;
+    });
+  }, [searched, sortField, sortDir]);
+
+  const handleSort = useCallback(
+    (field: SortField) => {
+      if (sortField === field) {
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+      } else {
+        setSortField(field);
+        setSortDir('desc');
+      }
+    },
+    [sortField]
+  );
+
+  // YTD stats
+  const ytd = useMemo(() => {
+    const viewedCount = stubs.filter(
+      (s) =>
+        new Date(s.checkDate).getFullYear() === selectedYear &&
+        s.viewStatus === 'viewed'
+    ).length;
+    return {
+      gross: yearBatches.reduce((s, b) => s + b.totalGrossPay, 0),
+      net: yearBatches.reduce((s, b) => s + b.totalNetPay, 0),
+      hours: yearBatches.reduce(
+        (s, b) => s + b.totalRegularHours + b.totalOvertimeHours,
+        0
+      ),
+      count: yearBatches.length,
+      stubsViewed: viewedCount,
+    };
+  }, [yearBatches, stubs, selectedYear]);
+
+  // Handle legacy stubId redirect
+  const stubId = searchParams.get('stubId');
+  if (stubId) {
+    router.replace(`/paycheck-stubs/${stubId}`);
+    return null;
+  }
+
+  if (pageAuthLoading || companyLoading || userLoading)
+    return <AuthLoadingState />;
+  if (pageAuthError) return <AuthErrorState error={pageAuthError.message} />;
+  if (!shouldShowContent) return <UnauthenticatedState />;
+
+  const thClass =
+    'px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider select-none cursor-pointer hover:text-gray-700';
+
+  return (
+    <div className="min-h-screen bg-slate-100">
+      <Layout>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+
+          {/* ── Page Header ─────────────────────────────────────────────── */}
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Payroll</h1>
+            <p className="text-gray-500 mt-1">
+              View your earnings, deductions, paycheck history, and paystubs
+            </p>
+          </div>
+
+          {/* ── Stats Cards ─────────────────────────────────────────────── */}
+          {historyLoading ? (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="bg-white rounded-xl p-5 shadow-sm">
+                  <Skeleton className="h-4 w-28 mb-3" />
+                  <Skeleton className="h-8 w-24 mb-2" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatCard
+                label="Total Earnings"
+                value={formatCurrency(ytd.gross)}
+                sub={`${selectedYear} Gross`}
+                iconBg="bg-green-100"
+                icon={<DollarSign className="w-6 h-6 text-green-600" />}
+              />
+              <StatCard
+                label="Net Pay"
+                value={formatCurrency(ytd.net)}
+                sub={`${selectedYear} Take-Home`}
+                iconBg="bg-blue-100"
+                icon={<DollarSign className="w-6 h-6 text-blue-500" />}
+              />
+              <StatCard
+                label="Total Hours"
+                value={
+                  ytd.hours % 1 === 0
+                    ? String(ytd.hours)
+                    : ytd.hours.toFixed(1)
+                }
+                sub={`Across ${ytd.count} paycheck${ytd.count !== 1 ? 's' : ''}`}
+                iconBg="bg-purple-100"
+                icon={<Clock className="w-6 h-6 text-purple-500" />}
+              />
+              <StatCard
+                label="Paychecks Paid"
+                value={
+                  isPrism
+                    ? `${ytd.stubsViewed}/${ytd.count}`
+                    : String(ytd.count)
+                }
+                sub={
+                  isPrism
+                    ? `${ytd.stubsViewed} stub${ytd.stubsViewed !== 1 ? 's' : ''} viewed`
+                    : `${ytd.count} period${ytd.count !== 1 ? 's' : ''}`
+                }
+                iconBg="bg-orange-100"
+                icon={<CheckCircle2 className="w-6 h-6 text-orange-500" />}
+              />
+            </div>
+          )}
+
+          {/* ── Filters + View Toggle ────────────────────────────────────── */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+            {/* Year selector */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider w-10">
+                Year
+              </span>
+              <div className="flex gap-2 flex-wrap">
+                {availableYears.map((yr) => (
+                  <button
+                    key={yr}
+                    onClick={() => setSelectedYear(yr)}
+                    className={clsxm(
+                      'px-4 py-1.5 rounded-full text-sm font-medium transition-colors',
+                      selectedYear === yr
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700'
+                    )}
+                  >
+                    {yr}
+                    {yr === currentYear && (
+                      <span className="ml-1 text-xs opacity-75">
+                        (Current)
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Status + search + view */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              {/* Status pills */}
+              <div className="flex gap-1.5">
+                {(
+                  [
+                    ['all', 'All'],
+                    ['current', 'Current'],
+                    ['past', 'Past'],
+                    ['custom', 'Custom'],
+                  ] as [StatusFilter, string][]
+                ).map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setStatusFilter(val)}
+                    className={clsxm(
+                      'px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors',
+                      statusFilter === val
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search */}
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search voucher, venue, event..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+                />
+              </div>
+
+              {/* View toggle */}
+              <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-gray-50 flex-shrink-0">
+                {(
+                  [
+                    ['table', TableIcon, 'Table'],
+                    ['card', LayoutGrid, 'Card'],
+                    ...(isPrism
+                      ? [['paystubs', Receipt, 'Paystubs'] as const]
+                      : []),
+                  ] as [ViewMode, React.ElementType, string][]
+                ).map(([mode, Icon, label]) => (
+                  <button
+                    key={mode}
+                    onClick={() => setViewMode(mode)}
+                    className={clsxm(
+                      'flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium transition-colors',
+                      viewMode === mode
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                    )}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Content ──────────────────────────────────────────────────── */}
+          {historyLoading ? (
+            <div className="bg-white rounded-xl shadow-sm p-6 space-y-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          ) : viewMode === 'paystubs' ? (
+            <PaystubsGrid applicantId={applicantId} />
+          ) : (
+            <>
+              {/* Results header */}
+              {sorted.length > 0 && (
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-500">
+                    Showing{' '}
+                    <span className="font-semibold text-gray-700">
+                      {sorted.length}
+                    </span>{' '}
+                    paycheck{sorted.length !== 1 ? 's' : ''}
+                  </p>
+                  <button
+                    onClick={() => setDetailMode((p) => !p)}
+                    className={clsxm(
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                      detailMode
+                        ? 'bg-blue-50 border-blue-300 text-blue-600'
+                        : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    )}
+                  >
+                    {detailMode ? '● Detail Mode' : '◇ Summary Mode'}
+                  </button>
+                </div>
+              )}
+
+              {/* Table view */}
+              {viewMode === 'table' && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                  {sorted.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20">
+                      <TrendingUp className="w-12 h-12 text-gray-200 mb-3" />
+                      <p className="text-gray-400 text-sm font-medium">
+                        No pay history for {selectedYear}.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="pl-4 pr-2 py-3 w-8" />
+                            <th
+                              className={thClass}
+                              onClick={() => handleSort('startDate')}
+                            >
+                              Pay Period{' '}
+                              <SortIcon
+                                field="startDate"
+                                active={sortField}
+                                dir={sortDir}
+                              />
+                            </th>
+                            <th
+                              className={thClass}
+                              onClick={() => handleSort('checkDate')}
+                            >
+                              Check Date{' '}
+                              <SortIcon
+                                field="checkDate"
+                                active={sortField}
+                                dir={sortDir}
+                              />
+                            </th>
+                            <th
+                              className={thClass}
+                              onClick={() => handleSort('hours')}
+                            >
+                              Hours{' '}
+                              <SortIcon
+                                field="hours"
+                                active={sortField}
+                                dir={sortDir}
+                              />
+                            </th>
+                            <th
+                              className={thClass}
+                              onClick={() => handleSort('grossPay')}
+                            >
+                              Gross Pay{' '}
+                              <SortIcon
+                                field="grossPay"
+                                active={sortField}
+                                dir={sortDir}
+                              />
+                            </th>
+                            <th
+                              className={thClass}
+                              onClick={() => handleSort('deductions')}
+                            >
+                              Deductions{' '}
+                              <SortIcon
+                                field="deductions"
+                                active={sortField}
+                                dir={sortDir}
+                              />
+                            </th>
+                            <th
+                              className={thClass}
+                              onClick={() => handleSort('netPay')}
+                            >
+                              Net Pay{' '}
+                              <SortIcon
+                                field="netPay"
+                                active={sortField}
+                                dir={sortDir}
+                              />
+                            </th>
+                            <th className={thClass}>Status</th>
+                            <th className={thClass}>Stub</th>
+                            {detailMode && (
+                              <th className={thClass}>Voucher #</th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sorted.map((batch) => (
+                            <PayrollTableRow
+                              key={batch._id}
+                              batch={batch}
+                              stubId={stubMap.get(batch._id)}
+                              detailMode={detailMode}
+                              onViewStub={(id) =>
+                                router.push(`/paycheck-stubs/${id}`)
+                              }
+                            />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Card view */}
+              {viewMode === 'card' && sorted.length > 0 && (
+                <PayrollCardGrid
+                  batches={sorted}
+                  stubMap={stubMap}
+                  onViewStub={(id) => router.push(`/paycheck-stubs/${id}`)}
+                />
+              )}
+
+              {viewMode === 'card' && sorted.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <TrendingUp className="w-12 h-12 text-gray-200 mb-3" />
+                  <p className="text-gray-400 text-sm font-medium">
+                    No pay history for {selectedYear}.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Footer ───────────────────────────────────────────────────── */}
+          <footer className="flex items-center justify-between pt-4 border-t border-gray-200 text-xs text-gray-400">
+            <p>
+              © {currentYear} All rights reserved.
+            </p>
+            <div className="flex items-center gap-4">
+              <button className="hover:text-gray-600 transition-colors">
+                Privacy Policy
+              </button>
+              <button className="hover:text-gray-600 transition-colors">
+                Terms of Service
+              </button>
+              <button className="hover:text-gray-600 transition-colors">
+                Help &amp; Support
+              </button>
+            </div>
+          </footer>
+        </div>
+      </Layout>
+    </div>
+  );
+};
+
+// ── Page export ───────────────────────────────────────────────────────────────
+
+const PayrollPage: NextPage = () => (
+  <Suspense fallback={<AuthLoadingState />}>
+    <PayrollPageContent />
+  </Suspense>
+);
+
+export default PayrollPage;
