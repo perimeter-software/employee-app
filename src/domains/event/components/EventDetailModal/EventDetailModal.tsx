@@ -407,8 +407,9 @@ export const EventDetailModal = ({
       // Also refetch immediately
       await refetchEnrollment();
 
-      // Notify parent to update the card status badge
-      onEnrollmentChange?.(initialEvent._id, result.type);
+      // Use requestType as the new enrollment state: the external API's `type` field
+      // reflects the pre-enrollment validation state ('Not Roster'), not the result.
+      onEnrollmentChange?.(initialEvent._id, requestType);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     } finally {
