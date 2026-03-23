@@ -2,8 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(xargs cat:*)",
-      "Bash(grep -n \"function getApplicantId\\\\|function escapeHtml\\\\|function appendHiddenVenuesFilter\\\\|function appendClientFilter\" c:/CODETRIA/employee-app/src/app/api/venues/route.ts c:/CODETRIA/employee-app/src/app/api/venues/[venueSlug]/route.ts c:/CODETRIA/employee-app/src/app/api/venues/[venueSlug]/request/route.ts)",
-      "Bash(xargs grep:*)"
+      "Bash(grep -n \"function getApplicantId\\\\|function escapeHtml\\\\|function appendHiddenVenuesFilter\\\\|function appendClientFilter\" c:/CODETRIA/employee-app/src/app/api/venues/route.ts c:/CODETRIA/employee-app/src/app/api/venues/[venueSlug]/route.ts c:/CODETRIA/employee-app/src/app/api/venues/[venueSlug]/request/route.ts)"
     ]
   }
 }

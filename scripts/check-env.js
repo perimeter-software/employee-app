@@ -55,7 +55,7 @@ requiredAuth0Vars.forEach((varName) => {
       displayValue = value;
       // Check for common issues
       if (
-        value === 'http://localhost:3001' &&
+        value === 'http://localhost:3000' &&
         process.env.NODE_ENV === 'production'
       ) {
         warnings.push(

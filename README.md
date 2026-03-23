@@ -90,7 +90,7 @@ A comprehensive employee management application built with Next.js, featuring ti
 
 5. **Open the application**
 
-   Navigate to [http://localhost:3001](http://localhost:3001) in your browser.
+   Navigate to [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Project Structure
 

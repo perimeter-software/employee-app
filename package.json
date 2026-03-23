@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001",
-    "dev:turbo": "next dev --turbo -p 3001",
+    "dev": "next dev",
+    "dev:turbo": "next dev --turbo",
     "build": "sh -c 'ulimit -n 65536 2>/dev/null; next build'",
-    "start": "next start -p 3001",
+    "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf .next && echo 'Cleared .next cache'",
