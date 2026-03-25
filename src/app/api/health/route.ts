@@ -7,6 +7,12 @@ interface HealthStatus {
   timestamp: string;
   uptime: number;
   version: string;
+  cluster?: {
+    workerId?: number;
+    totalWorkers?: number;
+    isWorker: boolean;
+    pid: number;
+  };
   services: {
     database: {
       status: 'healthy' | 'unhealthy';
@@ -28,11 +34,28 @@ interface HealthStatus {
 
 export async function GET() {
   // Initialize health status
+  const workerIdRaw = process.env.WORKER_ID;
+  const workerIdParsed = workerIdRaw ? parseInt(workerIdRaw, 10) : NaN;
+  const totalRaw = process.env.CLUSTER_TOTAL_WORKERS;
+  const totalParsed = totalRaw ? parseInt(totalRaw, 10) : NaN;
+
   const health: HealthStatus = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     version: process.env.npm_package_version || '1.0.0',
+    cluster:
+      process.env.IS_CLUSTER_WORKER === 'true' ||
+      (workerIdRaw !== undefined && workerIdRaw !== '')
+        ? {
+            ...(Number.isFinite(workerIdParsed)
+              ? { workerId: workerIdParsed }
+              : {}),
+            ...(Number.isFinite(totalParsed) ? { totalWorkers: totalParsed } : {}),
+            isWorker: process.env.IS_CLUSTER_WORKER === 'true',
+            pid: process.pid,
+          }
+        : undefined,
     services: {
       database: { status: 'unhealthy' },
       redis: { status: 'unhealthy' },
