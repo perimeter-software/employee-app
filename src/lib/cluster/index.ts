@@ -3,6 +3,7 @@ export {
   assertProductionBuildReady,
   getWorkerCount,
   isClusterEnabled,
+  loadEnvFilesForCluster,
   MAX_CLUSTER_WORKERS,
 } from './config';
 export {

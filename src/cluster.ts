@@ -8,6 +8,7 @@ import {
   assertProductionBuildReady,
   getWorkerCount,
   isClusterEnabled,
+  loadEnvFilesForCluster,
 } from '@/lib/cluster/config';
 
 const RESTART_MS = 60_000;
@@ -161,6 +162,7 @@ async function runPrimary(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  loadEnvFilesForCluster();
   applyPortFromArgv();
 
   if (!isClusterEnabled()) {

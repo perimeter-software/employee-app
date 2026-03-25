@@ -5,6 +5,40 @@ import { availableParallelism, cpus } from 'node:os';
 /** Max forked workers (primary does not serve HTTP). */
 export const MAX_CLUSTER_WORKERS = 32;
 
+/**
+ * `tsx src/cluster.ts` does not load `.env` like Next.js. Minimal parser (no extra deps).
+ * `.env` then `.env.local` (local overrides).
+ */
+export function loadEnvFilesForCluster(): void {
+  const root = process.cwd();
+  const apply = (rel: string, override: boolean) => {
+    const fp = path.join(root, rel);
+    if (!fs.existsSync(fp)) return;
+    for (const raw of fs.readFileSync(fp, 'utf8').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const eq = line.indexOf('=');
+      if (eq <= 0) continue;
+      const key = line.slice(0, eq).trim();
+      if (!/^[A-Za-z_]\w*$/.test(key)) continue;
+      let val = line.slice(eq + 1).trim();
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
+        val = val.slice(1, -1);
+      } else {
+        const ci = val.search(/\s+#/);
+        if (ci >= 0) val = val.slice(0, ci).trim();
+      }
+      if (!override && process.env[key] !== undefined) continue;
+      process.env[key] = val;
+    }
+  };
+  apply('.env', false);
+  apply('.env.local', true);
+}
+
 export function assertProductionBuildReady(): void {
   if (process.env.NODE_ENV !== 'production') return;
   if (!fs.existsSync(path.join(process.cwd(), '.next', 'BUILD_ID'))) {
