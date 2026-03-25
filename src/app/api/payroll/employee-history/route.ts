@@ -38,7 +38,7 @@ async function getEmployeePayrollHistoryHandler(
       // Not a valid ObjectId — try matching as a plain string _id
       try {
         const applicantDoc = await db.collection('applicants').findOne(
-          { _id: applicantId as unknown },
+          { _id: applicantId as any },
           { projection: { employeeID: 1 } }
         );
         employeeID = applicantDoc?.employeeID;

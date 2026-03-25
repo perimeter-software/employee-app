@@ -70,6 +70,25 @@ function formatPeriod(start: string, end: string) {
   return `${format(s, 'MMM d')} – ${format(e, sameYear ? 'MMM d' : 'MMM d, yyyy')}`;
 }
 
+/** Try to find a stub for a batch using voucherId OR lastBillingSync date */
+function getStubId(
+  batch: EmployeePayrollBatch,
+  stubMap: Map<string, string>
+): string | undefined {
+  // Strategy 1: match via billingVoucher.voucherId (PRISM users)
+  if (batch.billingVoucher?.voucherId) {
+    const id = stubMap.get(batch.billingVoucher.voucherId);
+    if (id) return id;
+  }
+  // Strategy 2: match via lastBillingSync date (format "YYYY-MM-DD")
+  if (batch.lastCreatedPEOBatch?.lastBillingSync) {
+    const dateKey = batch.lastCreatedPEOBatch.lastBillingSync.slice(0, 10);
+    const id = stubMap.get(dateKey);
+    if (id) return id;
+  }
+  return undefined;
+}
+
 function getCheckDate(batch: EmployeePayrollBatch): string | null {
   const pd = batch.billingVoucher?.payDate;
   if (pd) {
@@ -86,10 +105,18 @@ function getCheckDate(batch: EmployeePayrollBatch): string | null {
   }
 }
 
-function getItemLabel(item: SubmittedEventApplicant | SubmittedJobTimecard): string {
-  if ('rowId' in item && item.rowId) return item.rowId;
+function getItemLabel(
+  item: SubmittedEventApplicant | SubmittedJobTimecard,
+  batch?: EmployeePayrollBatch
+): string {
+  if ('shiftName' in item && item.shiftName) return item.shiftName;
+  if ('shiftSlug' in item && item.shiftSlug) return item.shiftSlug;
   if ('companySlug' in item && item.companySlug) return item.companySlug;
+  // Fall back to batch-level name
+  if (batch?.eventUrl) return batch.eventUrl;
+  if (batch?.jobSlug) return batch.jobSlug;
   if ('jobId' in item) return item.jobId;
+  if ('rowId' in item && item.rowId) return item.rowId;
   return '–';
 }
 
@@ -178,7 +205,7 @@ const PayrollTableRow: React.FC<{
 
     batch.regularItems.forEach((item) => {
       rows.push({
-        label: getItemLabel(item),
+        label: getItemLabel(item, batch),
         date: format(new Date(batch.startDate), 'MMM d, yyyy'),
         regHrs: item.totalHours ?? 0,
         otHrs: 0,
@@ -189,7 +216,7 @@ const PayrollTableRow: React.FC<{
 
     batch.overtimeItems.forEach((item) => {
       rows.push({
-        label: getItemLabel(item),
+        label: getItemLabel(item, batch),
         date: format(new Date(batch.startDate), 'MMM d, yyyy'),
         regHrs: 0,
         otHrs: item.totalHours ?? 0,
@@ -254,11 +281,9 @@ const PayrollTableRow: React.FC<{
           </span>
           {hasOT && (
             <span className="ml-1.5 text-xs font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-600">
-              +
-              {batch.totalOvertimeHours % 1 === 0
+              +{batch.totalOvertimeHours % 1 === 0
                 ? batch.totalOvertimeHours
-                : batch.totalOvertimeHours.toFixed(1)}{' '}
-              OT
+                : batch.totalOvertimeHours.toFixed(1)}OT
             </span>
           )}
         </td>
@@ -400,7 +425,7 @@ const PayrollCardGrid: React.FC<{
       const totalHours = batch.totalRegularHours + batch.totalOvertimeHours;
       const hasOT = batch.totalOvertimeHours > 0;
       const checkDate = getCheckDate(batch);
-      const stubId = stubMap.get(batch._id);
+      const stubId = getStubId(batch, stubMap);
 
       // Build event items for the card
       const allItems = [
@@ -433,29 +458,29 @@ const PayrollCardGrid: React.FC<{
             </span>
           </div>
 
-          {/* Gross / Deductions / Net */}
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-0.5">
-                Gross
+          {/* Gross / Deductions / Net — boxed mini-stats */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">
+                GROSS
               </p>
-              <p className="text-base font-bold text-green-600">
+              <p className="text-sm font-bold text-green-600">
                 {formatCurrency(batch.totalGrossPay)}
               </p>
             </div>
-            <div>
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-0.5">
-                Deductions
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">
+                DEDUCTIONS
               </p>
-              <p className="text-base font-bold text-red-500">
+              <p className="text-sm font-bold text-red-500">
                 -{formatCurrency(batch.totalTaxes)}
               </p>
             </div>
-            <div>
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-0.5">
-                Net Pay
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">
+                NET PAY
               </p>
-              <p className="text-base font-bold text-blue-600">
+              <p className="text-sm font-bold text-blue-600">
                 {formatCurrency(batch.totalNetPay)}
               </p>
             </div>
@@ -482,7 +507,7 @@ const PayrollCardGrid: React.FC<{
               {displayItems.map((item, i) => (
                 <div key={i} className="flex items-center justify-between text-sm">
                   <span className="text-gray-700 font-medium truncate mr-2">
-                    {getItemLabel(item)}
+                    {getItemLabel(item, batch)}
                   </span>
                   <span className="text-gray-800 font-semibold flex-shrink-0">
                     {formatCurrency(getItemEarnings(item))}
@@ -497,18 +522,20 @@ const PayrollCardGrid: React.FC<{
             </div>
           )}
 
-          {/* View Paystub button */}
-          {stubId ? (
-            <button
-              onClick={() => onViewStub(stubId)}
-              className="w-full py-2 rounded-lg text-sm font-medium text-blue-600 border border-blue-300 bg-white hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5 mt-auto"
-            >
-              <FileText className="w-4 h-4" />
-              View Paystub
-            </button>
-          ) : (
-            <div className="mt-auto" />
-          )}
+          {/* View Paystub button — always visible, disabled if no stub */}
+          <button
+            onClick={() => stubId && onViewStub(stubId)}
+            disabled={!stubId}
+            className={clsxm(
+              'w-full py-2.5 rounded-lg text-sm font-semibold border flex items-center justify-center gap-1.5 mt-auto transition-colors',
+              stubId
+                ? 'text-blue-600 border-blue-300 bg-white hover:bg-blue-50 cursor-pointer'
+                : 'text-gray-300 border-gray-200 bg-white cursor-not-allowed'
+            )}
+          >
+            <FileText className="w-4 h-4" />
+            View Paystub
+          </button>
         </div>
       );
     })}
@@ -533,8 +560,8 @@ const PaystubsGrid: React.FC<{ applicantId?: string }> = ({ applicantId }) => {
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2].map((i) => (
+        <div className="grid grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
             <div key={i} className="bg-white rounded-xl p-5 shadow-sm">
               <Skeleton className="h-5 w-3/4 mb-3" />
               <Skeleton className="h-4 w-1/2 mb-4" />
@@ -604,33 +631,20 @@ const PaystubsGrid: React.FC<{ applicantId?: string }> = ({ applicantId }) => {
         </div>
       </div>
 
-      {/* Stub cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Stub cards — always 2 cols to match design */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {stubs.map((stub) => {
           const isViewed = stub.viewStatus === 'viewed';
           return (
             <div
               key={stub._id}
-              className={clsxm(
-                'bg-white rounded-xl shadow-sm border p-5 flex flex-col gap-3',
-                isViewed ? 'border-gray-100' : 'border-blue-200'
-              )}
+              className="bg-white rounded-xl shadow-sm border border-blue-200 p-5 flex flex-col gap-3"
             >
               {/* Filename + status badge */}
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div
-                    className={clsxm(
-                      'p-2 rounded-lg flex-shrink-0',
-                      isViewed ? 'bg-gray-100' : 'bg-blue-50'
-                    )}
-                  >
-                    <FileText
-                      className={clsxm(
-                        'w-4 h-4',
-                        isViewed ? 'text-gray-500' : 'text-blue-600'
-                      )}
-                    />
+                  <div className="p-2 rounded-lg flex-shrink-0 bg-blue-50">
+                    <FileText className="w-4 h-4 text-blue-600" />
                   </div>
                   <p className="text-xs font-semibold text-gray-900 truncate">
                     {stub.fileName}
@@ -638,10 +652,10 @@ const PaystubsGrid: React.FC<{ applicantId?: string }> = ({ applicantId }) => {
                 </div>
                 <span
                   className={clsxm(
-                    'flex-shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
+                    'flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border bg-white',
                     isViewed
-                      ? 'bg-green-50 text-green-700 border border-green-200'
-                      : 'bg-red-50 text-red-600 border border-red-200'
+                      ? 'border-green-400 text-green-600'
+                      : 'border-red-400 text-red-500'
                   )}
                 >
                   {isViewed ? (
@@ -739,10 +753,20 @@ const PayrollPageContent: React.FC = () => {
   const allBatches = historyData?.payrollBatches ?? [];
   const stubs = stubsData?.paycheckStubs ?? [];
 
-  // Map batchId → stubId for quick lookup
+  // Build stubMap with TWO keys per stub for maximum match coverage:
+  //   1. voucherNumber  → matches billingVoucher.voucherId (PRISM users)
+  //   2. batchId date   → matches lastCreatedPEOBatch.lastBillingSync date
+  //      e.g. "batch_2026_03_20" → key "2026-03-20"
   const stubMap = useMemo(() => {
     const m = new Map<string, string>();
-    stubs.forEach((s) => m.set(s.batchId, s._id));
+    stubs.forEach((s) => {
+      if (s.voucherNumber) m.set(s.voucherNumber, s._id);
+      if (s.batchId) {
+        // "batch_2026_03_20" → "2026-03-20"
+        const dateKey = s.batchId.replace(/^batch_/, '').replace(/_/g, '-');
+        m.set(dateKey, s._id);
+      }
+    });
     return m;
   }, [stubs]);
 
@@ -992,10 +1016,10 @@ const PayrollPageContent: React.FC = () => {
                     key={val}
                     onClick={() => setStatusFilter(val)}
                     className={clsxm(
-                      'px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors',
+                      'px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors border',
                       statusFilter === val
-                        ? 'bg-blue-600 text-white'
-                        : 'text-gray-500 border border-gray-200 hover:border-gray-300 hover:text-gray-700'
+                        ? 'border-blue-500 text-blue-600 bg-white'
+                        : 'text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                     )}
                   >
                     {label}
@@ -1021,9 +1045,7 @@ const PayrollPageContent: React.FC = () => {
                   [
                     ['table', TableIcon, 'Table'],
                     ['card', LayoutGrid, 'Card'],
-                    ...(isPrism
-                      ? [['paystubs', Receipt, 'Paystubs'] as const]
-                      : []),
+                    ['paystubs', Receipt, 'Paystubs'],
                   ] as [ViewMode, React.ElementType, string][]
                 ).map(([mode, Icon, label]) => (
                   <button
@@ -1173,7 +1195,7 @@ const PayrollPageContent: React.FC = () => {
                             <PayrollTableRow
                               key={batch._id}
                               batch={batch}
-                              stubId={stubMap.get(batch._id)}
+                              stubId={getStubId(batch, stubMap)}
                               detailMode={detailMode}
                               onViewStub={(id) =>
                                 router.push(`/paycheck-stubs/${id}`)
@@ -1209,9 +1231,12 @@ const PayrollPageContent: React.FC = () => {
 
           {/* ── Footer ───────────────────────────────────────────────────── */}
           <footer className="flex items-center justify-between pt-4 border-t border-gray-200 text-xs text-gray-400">
-            <p>
-              © {currentYear} All rights reserved.
-            </p>
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                G
+              </div>
+              <p>© {currentYear} gig·nology. All rights reserved.</p>
+            </div>
             <div className="flex items-center gap-4">
               <button className="hover:text-gray-600 transition-colors">
                 Privacy Policy

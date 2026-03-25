@@ -277,7 +277,15 @@ export async function getEmployeePayrollHistory(
         totalTaxes,
         totalNetPay,
         billingVoucher,
-        lastCreatedPEOBatch: batch.lastCreatedPEOBatch,
+        lastCreatedPEOBatch: batch.lastCreatedPEOBatch
+          ? {
+              batchNumber: batch.lastCreatedPEOBatch.batchNumber,
+              batchStatus: batch.lastCreatedPEOBatch.batchStatus,
+              billingVouchersAvailable: batch.lastCreatedPEOBatch.billingVouchersAvailable,
+              payrollVouchersAvailable: batch.lastCreatedPEOBatch.payrollVouchersAvailable,
+              lastBillingSync: batch.lastCreatedPEOBatch.lastBillingSync,
+            }
+          : undefined,
       });
     }
 

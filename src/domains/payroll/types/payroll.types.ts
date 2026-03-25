@@ -150,6 +150,7 @@ export interface EmployeePayrollBatch {
     batchStatus?: string;
     billingVouchersAvailable?: string;
     payrollVouchersAvailable?: string;
+    lastBillingSync?: string;
   };
 }
 
