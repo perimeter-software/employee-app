@@ -45,6 +45,11 @@ const nextConfig = {
         protocol: 'https',
         hostname: 's.gravatar.com',
       },
+      // S3 bucket used for tenant assets (avoids next/image render error in dev)
+      {
+        protocol: 'https',
+        hostname: 'pureblue-gignology',
+      },
     ],
   },
 
@@ -139,8 +144,19 @@ const nextConfig = {
       },
     }),
 
-  // Transpile @react-pdf/renderer so Next bundles it (it's ESM and can't be server-externalized)
-  transpilePackages: ['@react-pdf/renderer'],
+  // Transpile packages that ship ESM and can't be server-externalized
+  transpilePackages: ['@react-pdf/renderer', 'firebase'],
+
+  async rewrites() {
+    return [
+      {
+        // Serve the Firebase service worker at the expected path without
+        // putting ".js" in the app directory folder name (which confuses webpack)
+        source: '/firebase-messaging-sw.js',
+        destination: '/api/firebase-sw',
+      },
+    ];
+  },
 
   // Add experimental features for better compatibility
   experimental: {

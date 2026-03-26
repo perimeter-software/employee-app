@@ -13,6 +13,10 @@ import { EmployeeTimeAttendanceTable } from './EmployeeTimeAttendanceTable';
 import { useMemo, useState, useEffect } from 'react';
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
 import { startOfWeek, endOfWeek } from 'date-fns';
+import {
+  getUserShiftForToday,
+  resolveShiftDates,
+} from '@/domains/punch/utils/shift-job-utils';
 
 export const TimeTrackerContainer = () => {
   const { user: auth0User, isLoading: auth0Loading } = useUser();
@@ -102,9 +106,10 @@ export const TimeTrackerContainer = () => {
     return ids;
   }, [userData?.jobs]);
 
-  // Check if user has any rostered events in the next 6 months
+  // Check if user has any rostered events — start from yesterday to catch events that began yesterday
   const rosterCheckRange = useMemo(() => {
     const start = new Date();
+    start.setDate(start.getDate() - 1);
     start.setHours(0, 0, 0, 0);
     const end = new Date();
     end.setMonth(end.getMonth() + 6);
@@ -130,6 +135,55 @@ export const TimeTrackerContainer = () => {
 
   // Still need open punches for the timer card (only enabled for non-Client users)
   const { data: openPunches } = useAllOpenPunches(userData?._id || '');
+
+  // True when there is an active job punch whose scheduled shift has NOT yet ended.
+  // Once the shift ends the user is forgiven and can clock in to something else.
+  const isBlockedByJobPunch = useMemo(() => {
+    if (!openPunches?.length || !userData) return false;
+    const openPunch = openPunches.find((p) => !p.timeOut);
+    if (!openPunch) return false;
+
+    // Forgiveness: punch older than 24 h is considered stale
+    const punchAge = Date.now() - new Date(openPunch.timeIn).getTime();
+    if (punchAge > 24 * 60 * 60 * 1000) return false;
+
+    const openJob = userData.jobs?.find((j) => j._id === openPunch.jobId);
+    if (!openJob) return true; // can't determine end time → conservative
+
+    const openShift = openJob.shifts?.find((s) => s.slug === openPunch.shiftSlug);
+    if (!openShift) return true; // can't determine end time → conservative
+
+    const now = new Date().toISOString();
+    const { start, end, isOvernightFromPreviousDay } = getUserShiftForToday(
+      openJob,
+      userData.applicantId,
+      now,
+      openShift
+    );
+    if (!start || !end) return true; // can't determine end time → conservative
+
+    const { shiftEndTime } = resolveShiftDates(start, end, now, isOvernightFromPreviousDay);
+    // Forgiveness: shift has already ended
+    return new Date() <= shiftEndTime;
+  }, [openPunches, userData]);
+
+  // True when the user is clocked into an event that has NOT yet ended.
+  const hasActiveEventClockIn = useMemo(() => {
+    if (!isVenueCompany || !rosterCheckEvents?.length || !userData?.applicantId) return false;
+    const now = new Date();
+    return rosterCheckEvents.some((event) => {
+      const applicantEntry = event.applicants?.find(
+        (a) => a.id === userData.applicantId && a.status === 'Roster'
+      );
+      if (!applicantEntry?.timeIn || applicantEntry?.timeOut) return false;
+      // Forgiveness: clock-in older than 24 h
+      const punchAge = now.getTime() - new Date(applicantEntry.timeIn).getTime();
+      if (punchAge > 24 * 60 * 60 * 1000) return false;
+      // Forgiveness: event has ended
+      if (event.eventEndTime && now > new Date(event.eventEndTime)) return false;
+      return true;
+    });
+  }, [isVenueCompany, rosterCheckEvents, userData?.applicantId]);
 
   // Fetch punches based on current date range (only enabled for non-Client users)
   const { data: allPunches, isLoading: punchesLoading } = useFindPunches({
@@ -191,6 +245,8 @@ export const TimeTrackerContainer = () => {
         userData={userData}
         openPunches={openPunches}
         hasRosterEvents={hasRosterEvents}
+        isBlockedByJobPunch={isBlockedByJobPunch}
+        hasActiveEventClockIn={hasActiveEventClockIn}
       />
 
       <ShiftsSection
@@ -203,6 +259,8 @@ export const TimeTrackerContainer = () => {
         onDateNavigation={handleDateNavigation}
         currentViewType={currentViewType}
         hasRosterEvents={hasRosterEvents}
+        isBlockedByJobPunch={isBlockedByJobPunch}
+        hasActiveEventClockIn={hasActiveEventClockIn}
       />
     </div>
   );

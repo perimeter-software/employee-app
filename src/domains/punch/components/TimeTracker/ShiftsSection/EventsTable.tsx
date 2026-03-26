@@ -194,9 +194,11 @@ interface EventsTableProps {
     endDate: string;
     displayRange: string;
   };
+  isBlockedByJobPunch?: boolean;
+  hasActiveEventClockIn?: boolean;
 }
 
-export function EventsTable({ applicantId, userId, agentName, dateRange }: EventsTableProps) {
+export function EventsTable({ applicantId, userId, agentName, dateRange, isBlockedByJobPunch = false, hasActiveEventClockIn = false }: EventsTableProps) {
   const { data: events, isLoading, error } = useRosterEvents({
     applicantId,
     startDate: dateRange.startDate,
@@ -349,7 +351,7 @@ export function EventsTable({ applicantId, userId, agentName, dateRange }: Event
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={isMutating || !showClockIn || clockInButtonDisabled}
+                  disabled={isMutating || !showClockIn || clockInButtonDisabled || isBlockedByJobPunch || hasActiveEventClockIn}
                   onClick={() =>
                     clockInMutation.mutate({
                       eventId,
@@ -358,9 +360,13 @@ export function EventsTable({ applicantId, userId, agentName, dateRange }: Event
                   }
                   className="border-blue-500 text-blue-500 hover:bg-blue-50 disabled:opacity-50"
                   title={
-                    showEarlyClockInWarning
-                      ? 'Early clock-in — arriving before your scheduled report time'
-                      : undefined
+                    isBlockedByJobPunch
+                      ? 'You are clocked into a job shift. Please clock out first.'
+                      : hasActiveEventClockIn
+                        ? 'You are already clocked into another event. Please clock out first.'
+                        : showEarlyClockInWarning
+                          ? 'Early clock-in — arriving before your scheduled report time'
+                          : undefined
                   }
                 >
                   {clockInMutation.isPending ? (
@@ -398,7 +404,7 @@ export function EventsTable({ applicantId, userId, agentName, dateRange }: Event
         },
       },
     ],
-    [clockInMutation, clockOutMutation, applicantId, userId, agentName]
+    [clockInMutation, clockOutMutation, applicantId, userId, agentName, isBlockedByJobPunch, hasActiveEventClockIn]
   );
 
   if (isLoading) {
