@@ -1,5 +1,12 @@
 import { Db } from 'mongodb';
-import { PayrollBatch } from '../types';
+import {
+  BillingVoucher,
+  EmployeePayrollBatch,
+  PayrollBatch,
+  SubmittedEventApplicant,
+  SubmittedJobTimecard,
+  TaxDetails,
+} from '../types';
 
 /**
  * Check if a timecard is in a processed payroll batch
@@ -122,6 +129,169 @@ export async function getPayrollBatches(
     }));
   } catch (error) {
     console.error('Error getting payroll batches:', error);
+    return [];
+  }
+}
+
+/**
+ * Helper to sum a tax field across an array of items
+ */
+function sumTaxField(
+  items: (SubmittedEventApplicant | SubmittedJobTimecard)[],
+  field: keyof TaxDetails
+): number {
+  return items.reduce((sum, item) => {
+    const val = item.taxDetails?.[field];
+    return sum + (typeof val === 'number' ? val : 0);
+  }, 0);
+}
+
+/**
+ * Get payroll history for a specific employee, enriched with billing vouchers.
+ * Fetches all payroll-batches with payrollStatus === 'Submitted' that contain
+ * the given applicantId, then cross-references prism-billing-vouchers.
+ */
+export async function getEmployeePayrollHistory(
+  db: Db,
+  applicantId: string,
+  employeeID?: string
+): Promise<EmployeePayrollBatch[]> {
+  try {
+    const rawBatches = await db
+      .collection('payroll-batches')
+      .find({
+        payrollStatus: 'Submitted',
+        $or: [
+          { 'submittedEventApplicants.applicantId': applicantId },
+          { 'submittedJobTimecards.applicantId': applicantId },
+        ],
+      })
+      .sort({ startDate: -1 })
+      .toArray();
+
+    const results: EmployeePayrollBatch[] = [];
+
+    for (const batch of rawBatches) {
+      const isEvent = !!batch.eventUrl;
+
+      // Extract this employee's items from whichever array applies
+      const rawEventItems: SubmittedEventApplicant[] = (
+        (batch.submittedEventApplicants as SubmittedEventApplicant[]) || []
+      ).filter((item) => item.applicantId === applicantId);
+
+      const rawJobItems: SubmittedJobTimecard[] = (
+        (batch.submittedJobTimecards as SubmittedJobTimecard[]) || []
+      ).filter((item) => item.applicantId === applicantId);
+
+      const allItems: (SubmittedEventApplicant | SubmittedJobTimecard)[] = [
+        ...rawEventItems,
+        ...rawJobItems,
+      ];
+
+      if (allItems.length === 0) continue;
+
+      const regularItems = allItems.filter((item) => item.earningId === 'REG');
+      const overtimeItems = allItems.filter((item) => item.earningId === 'OT');
+
+      const totalRegularHours = regularItems.reduce(
+        (s, i) => s + (i.totalHours ?? 0),
+        0
+      );
+      const totalOvertimeHours = overtimeItems.reduce(
+        (s, i) => s + (i.totalHours ?? 0),
+        0
+      );
+      const totalGrossRegularPay = sumTaxField(regularItems, 'totalPay');
+      const totalGrossOvertimePay = sumTaxField(overtimeItems, 'totalPay');
+      const totalGrossPay = totalGrossRegularPay + totalGrossOvertimePay;
+
+      const totalFicaSS = sumTaxField(allItems, 'ficaSS');
+      const totalFicaMED = sumTaxField(allItems, 'ficaMED');
+      const totalFederalTax = sumTaxField(allItems, 'federalTax');
+      const totalStateTax = sumTaxField(allItems, 'stateTax');
+      const totalTaxes = totalFicaSS + totalFicaMED + totalFederalTax + totalStateTax;
+      const totalNetPay = sumTaxField(allItems, 'checkNet');
+
+      // Fetch billing voucher if available
+      let billingVoucher: BillingVoucher | undefined;
+      const batchNumber = batch.lastCreatedPEOBatch?.batchNumber;
+      if (batchNumber && employeeID) {
+        try {
+          const voucherDoc = await db
+            .collection('prism-billing-vouchers')
+            .findOne(
+              { batchNumber: String(batchNumber), employeeId: employeeID },
+              {
+                projection: {
+                  sumBilling: 1,
+                  batchNumber: 1,
+                  employeeId: 1,
+                  voucherId: 1,
+                  payDate: 1,
+                  voucherStatus: 1,
+                },
+              }
+            );
+
+          if (voucherDoc) {
+            const filteredBilling = (voucherDoc.sumBilling || []).filter(
+              (item: { billCode: string }) =>
+                item.billCode !== 'EXPS' && item.billCode !== '000'
+            );
+            billingVoucher = {
+              _id: voucherDoc._id?.toString(),
+              employeeId: voucherDoc.employeeId,
+              batchNumber: voucherDoc.batchNumber,
+              voucherId: voucherDoc.voucherId,
+              payDate: voucherDoc.payDate,
+              voucherStatus: voucherDoc.voucherStatus,
+              sumBilling: filteredBilling,
+            };
+          }
+        } catch (voucherError) {
+          console.warn('Could not fetch billing voucher:', voucherError);
+        }
+      }
+
+      results.push({
+        _id: batch._id.toString(),
+        type: isEvent ? 'event' : 'job',
+        eventUrl: batch.eventUrl,
+        jobSlug: batch.jobSlug,
+        startDate: batch.startDate,
+        endDate: batch.endDate,
+        payrollStatus: batch.payrollStatus,
+        createdDate: batch.createdDate,
+        modifiedDate: batch.modifiedDate,
+        regularItems,
+        overtimeItems,
+        totalRegularHours,
+        totalOvertimeHours,
+        totalGrossRegularPay,
+        totalGrossOvertimePay,
+        totalGrossPay,
+        totalFicaSS,
+        totalFicaMED,
+        totalFederalTax,
+        totalStateTax,
+        totalTaxes,
+        totalNetPay,
+        billingVoucher,
+        lastCreatedPEOBatch: batch.lastCreatedPEOBatch
+          ? {
+              batchNumber: batch.lastCreatedPEOBatch.batchNumber,
+              batchStatus: batch.lastCreatedPEOBatch.batchStatus,
+              billingVouchersAvailable: batch.lastCreatedPEOBatch.billingVouchersAvailable,
+              payrollVouchersAvailable: batch.lastCreatedPEOBatch.payrollVouchersAvailable,
+              lastBillingSync: batch.lastCreatedPEOBatch.lastBillingSync,
+            }
+          : undefined,
+      });
+    }
+
+    return results;
+  } catch (error) {
+    console.error('Error getting employee payroll history:', error);
     return [];
   }
 }

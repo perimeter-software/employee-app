@@ -202,7 +202,7 @@ const PaycheckStubViewPage: NextPage = () => {
   }, [presignedUrl]);
 
   const handleBack = useCallback(() => {
-    router.push('/paycheck-stubs');
+    router.push('/payroll?tab=stubs');
   }, [router]);
 
   const handlePdfLoad = useCallback(() => {
@@ -242,9 +242,9 @@ const PaycheckStubViewPage: NextPage = () => {
   // Check if peoIntegration is Prism
   const isPrism = primaryCompany?.peoIntegration === 'Prism';
 
-  // If not Prism, redirect to paycheck stubs page
+  // If not Prism, redirect to payroll page
   if (!isPrism) {
-    router.push('/paycheck-stubs');
+    router.push('/payroll');
     return null;
   }
 
