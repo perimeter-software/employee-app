@@ -34,6 +34,8 @@ interface ShiftsSectionProps {
   onDateNavigation?: (direction: number) => void;
   currentViewType?: 'table' | 'calendar';
   hasRosterEvents?: boolean;
+  isBlockedByJobPunch?: boolean;
+  hasActiveEventClockIn?: boolean;
 }
 
 // Enhanced CalendarEvent interface for shift data
@@ -167,6 +169,8 @@ export function ShiftsSection({
   onDateNavigation,
   currentViewType: parentViewType,
   hasRosterEvents,
+  isBlockedByJobPunch = false,
+  hasActiveEventClockIn = false,
 }: ShiftsSectionProps) {
   // Get company work week settings
   const { weekStartsOn, isLoading: companyLoading } = useCompanyWorkWeek();
@@ -526,6 +530,8 @@ export function ShiftsSection({
                     endDate: dateRange.endDate.toISOString(),
                     displayRange: dateRange.displayRange,
                   }}
+                  isBlockedByJobPunch={isBlockedByJobPunch}
+                  hasActiveEventClockIn={hasActiveEventClockIn}
                 />
                 {hasRosterEvents && (
                   <EventsTable
@@ -539,6 +545,8 @@ export function ShiftsSection({
                       endDate: dateRange.endDate.toISOString(),
                       displayRange: dateRange.displayRange,
                     }}
+                    isBlockedByJobPunch={isBlockedByJobPunch}
+                    hasActiveEventClockIn={hasActiveEventClockIn}
                   />
                 )}
               </div>

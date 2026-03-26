@@ -26,6 +26,7 @@ import {
 interface UseTimerCardProps {
   userData: GignologyUser;
   openPunches: PunchWithJobInfo[] | undefined;
+  hasActiveEventClockIn?: boolean;
 }
 
 interface ValidationMessage {
@@ -33,7 +34,7 @@ interface ValidationMessage {
   message: string;
 }
 
-export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
+export function useTimerCard({ userData, openPunches, hasActiveEventClockIn = false }: UseTimerCardProps) {
   // Local state for UI
   const [currentTime, setCurrentTime] = useState('00:00:00');
   const [isClocked, setIsClocked] = useState(false);
@@ -605,6 +606,15 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         return;
       }
 
+      // Block clock-in when user is currently clocked into an active event
+      if (hasActiveEventClockIn) {
+        showNotification(
+          'You are currently clocked into an event. Please clock out of the event first.',
+          'warning'
+        );
+        return;
+      }
+
       // For clock-in, validate using the provided or selected job/shift
       const validation = await validateClockIn(
         jobToUse || undefined,
@@ -865,6 +875,7 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
     showValidationModal,
     cancelClockIn,
     performClockIn,
+    hasActiveEventClockIn,
 
     // Existing handlers
     handleJobSelection,

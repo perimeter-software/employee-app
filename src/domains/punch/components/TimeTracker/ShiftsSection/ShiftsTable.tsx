@@ -69,6 +69,8 @@ interface ShiftsTableProps {
     endDate: string;
     displayRange: string;
   };
+  isBlockedByJobPunch?: boolean;
+  hasActiveEventClockIn?: boolean;
 }
 
 const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
@@ -154,6 +156,8 @@ export function ShiftsTable({
   allPunches: propAllPunches,
   punchesLoading: propPunchesLoading,
   dateRange,
+  isBlockedByJobPunch = false,
+  hasActiveEventClockIn = false,
 }: ShiftsTableProps) {
   // Use the existing useTimerCard hook for all state management and logic
   const {
@@ -170,7 +174,7 @@ export function ShiftsTable({
     handleClockInOut,
     cancelClockIn,
     performClockIn,
-  } = useTimerCard({ userData, openPunches });
+  } = useTimerCard({ userData, openPunches, hasActiveEventClockIn });
 
   const callOffMutation = useCallOffShift(userData._id || userData.applicantId || '');
   const [callOffConfirmRow, setCallOffConfirmRow] = useState<ShiftRowData | null>(null);
@@ -599,6 +603,8 @@ export function ShiftsTable({
         effectiveIsToday &&
         !hasActivePunchForThisShift &&
         !shiftHasEnded &&
+        !isBlockedByJobPunch &&
+        !hasActiveEventClockIn &&
         input.isUserInShiftRoster &&
         input.daySchedule?.start &&
         input.daySchedule?.end &&
@@ -709,7 +715,7 @@ export function ShiftsTable({
 
       return 0;
     });
-  }, [userData, allPunches, startDate, endDate, selectedJob, selectedShift]);
+  }, [userData, allPunches, startDate, endDate, selectedJob, selectedShift, isBlockedByJobPunch, hasActiveEventClockIn]);
 
   // FIXED: Updated columns to properly show shift times instead of punch times
   const columns: TableColumn<ShiftRowData>[] = useMemo(

@@ -21,12 +21,16 @@ interface TimerCardProps {
   userData: GignologyUser;
   openPunches: PunchWithJobInfo[] | undefined;
   hasRosterEvents?: boolean;
+  isBlockedByJobPunch?: boolean;
+  hasActiveEventClockIn?: boolean;
 }
 
 export function TimerCard({
   userData,
   openPunches,
   hasRosterEvents,
+  isBlockedByJobPunch = false,
+  hasActiveEventClockIn = false,
 }: TimerCardProps) {
   const { initializeFromServerData } = usePunchViewerStore();
   const [activeTab, setActiveTab] = useState<'jobs' | 'events'>('jobs');
@@ -72,7 +76,7 @@ export function TimerCard({
     showValidationModal,
     cancelClockIn,
     performClockIn,
-  } = useTimerCard({ userData, openPunches });
+  } = useTimerCard({ userData, openPunches, hasActiveEventClockIn });
 
   // Show loading state until initialized
   if (!isInitialized) {
@@ -150,6 +154,13 @@ export function TimerCard({
           )}
           {(hasRosterEvents ? activeTab : 'jobs') === 'jobs' ? (
             <>
+              {/* Warning: blocked by an active event clock-in */}
+              {hasActiveEventClockIn && !isClocked && (
+                <p className="text-sm text-center text-orange-600 mb-4">
+                  You are clocked into an event. Please clock out of the event first.
+                </p>
+              )}
+
               {/* Job and Shift Selection */}
               <JobShiftSelector
                 userData={userData}
@@ -191,7 +202,8 @@ export function TimerCard({
                     !selectedJob ||
                     !selectedShift ||
                     (!!currentOpenPunch && openPunchOtherJob) ||
-                    !shiftInfo.canClockInNow
+                    !shiftInfo.canClockInNow ||
+                    hasActiveEventClockIn
                   }
                   // Only pass countdown info - simplified
                   timeUntilShift={shiftInfo.timeUntilShift}
@@ -210,7 +222,11 @@ export function TimerCard({
               />
             </>
           ) : (
-            <EventTimerCardContent userData={userData} />
+            <EventTimerCardContent
+              userData={userData}
+              isBlockedByJobPunch={isBlockedByJobPunch}
+              hasActiveEventClockIn={hasActiveEventClockIn}
+            />
           )}
         </CardContent>
       </Card>

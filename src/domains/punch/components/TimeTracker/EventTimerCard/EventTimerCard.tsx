@@ -121,12 +121,14 @@ interface ActionableItem {
 
 interface EventTimerCardProps {
   userData: GignologyUser;
+  isBlockedByJobPunch?: boolean;
+  hasActiveEventClockIn?: boolean;
 }
 
 // ---------------------------------------------------------------------------
 // Inner content — no Card wrapper, suitable for embedding in a tab
 // ---------------------------------------------------------------------------
-export function EventTimerCardContent({ userData }: EventTimerCardProps) {
+export function EventTimerCardContent({ userData, isBlockedByJobPunch = false, hasActiveEventClockIn = false }: EventTimerCardProps) {
   const applicantId = userData.applicantId || '';
   const agentName = [userData.firstName, userData.lastName].filter(Boolean).join(' ');
   const userId = userData._id || '';
@@ -234,7 +236,10 @@ export function EventTimerCardContent({ userData }: EventTimerCardProps) {
     [actionableItems, selectedEventId]
   );
 
+  const isClockInBlocked = isBlockedByJobPunch || hasActiveEventClockIn;
+
   const handleClockIn = () => {
+    if (isClockInBlocked) return;
     if (!selectedEventId || !selectedItem?.clockState?.showClockIn || selectedItem.clockState.clockInButtonDisabled) return;
     clockInMutation.mutate({
       eventId: selectedEventId,
@@ -368,6 +373,15 @@ export function EventTimerCardContent({ userData }: EventTimerCardProps) {
         )}
       </div>
 
+      {/* Warning: blocked by an active job punch or another active event */}
+      {isClockInBlocked && !isActive && (
+        <p className="text-sm text-center text-orange-600 mb-4">
+          {isBlockedByJobPunch
+            ? 'You are clocked into a job shift. Please clock out of the shift first.'
+            : 'You are already clocked into another event. Please clock out first.'}
+        </p>
+      )}
+
       {/* Timer display */}
       {selectedItem && clockState ? (
         isActive ? (
@@ -383,7 +397,7 @@ export function EventTimerCardContent({ userData }: EventTimerCardProps) {
             time={currentTime}
             isActive={false}
             onClick={handleClockIn}
-            disabled={clockState.clockInButtonDisabled || isMutating}
+            disabled={clockState.clockInButtonDisabled || isMutating || isClockInBlocked}
           />
         )
       ) : (
