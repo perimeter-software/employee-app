@@ -30,9 +30,34 @@ export async function GET(request: NextRequest) {
         }>(`otp_session:${otpSessionId}`);
         
         if (otpSessionData) {
+          const activityEmail = otpSessionData.email?.toLowerCase().trim();
+          let resolvedUserId: string | undefined;
+          let resolvedApplicantId: string | undefined;
+          const tenantData = activityEmail
+            ? await redisService.getTenantData(activityEmail)
+            : null;
+          const tenantDbName = tenantData?.tenant?.dbName;
+          if (tenantDbName && activityEmail) {
+            try {
+              const { mongoConn } = await import('@/lib/db/mongodb');
+              const { resolveActivityIdentityByEmail } = await import(
+                '@/lib/services/activity-identity'
+              );
+              const { db } = await mongoConn(tenantDbName);
+              const resolved = await resolveActivityIdentityByEmail(
+                db,
+                activityEmail
+              );
+              resolvedUserId = resolved.userId;
+              resolvedApplicantId = resolved.applicantId;
+            } catch {
+              // Ignore lookup errors and fall back to OTP session values
+            }
+          }
+
           userInfoForLogging = {
-            userId: otpSessionData.userId,
-            applicantId: otpSessionData.userId, // For OTP, userId might be the same
+            userId: resolvedUserId || otpSessionData.userId,
+            applicantId: resolvedApplicantId || otpSessionData.userId,
             agent: otpSessionData.name || otpSessionData.firstName || otpSessionData.email,
             email: otpSessionData.email,
           };
@@ -61,26 +86,34 @@ export async function GET(request: NextRequest) {
           if (tenantDbName && activityEmail) {
             try {
               const { mongoConn } = await import('@/lib/db/mongodb');
-              const { db } = await mongoConn(tenantDbName);
-              const dbUser = await db.collection('users').findOne(
-                { emailAddress: activityEmail },
-                { projection: { _id: 1, applicantId: 1 } }
+              const { resolveActivityIdentityByEmail } = await import(
+                '@/lib/services/activity-identity'
               );
-              resolvedAuthUserId = dbUser?._id ? String(dbUser._id) : undefined;
-              resolvedAuthApplicantId =
-                typeof dbUser?.applicantId === 'string' && dbUser.applicantId.trim()
-                  ? dbUser.applicantId.trim()
-                  : undefined;
+              const { db } = await mongoConn(tenantDbName);
+              const resolved = await resolveActivityIdentityByEmail(
+                db,
+                activityEmail
+              );
+              resolvedAuthUserId = resolved.userId;
+              resolvedAuthApplicantId = resolved.applicantId;
             } catch {
               // Ignore lookup errors and fall back to available session values
             }
           }
-          userInfoForLogging = {
-            userId: resolvedAuthUserId || auth0Session.user.sub,
-            applicantId: resolvedAuthApplicantId || auth0Session.user.sub,
-            agent: auth0Session.user.name || auth0Session.user.email,
-            email: auth0Session.user.email,
-          };
+
+          // Safety: never write Auth0 subject IDs into activity user/applicant fields.
+          if (resolvedAuthUserId && resolvedAuthApplicantId) {
+            userInfoForLogging = {
+              userId: resolvedAuthUserId,
+              applicantId: resolvedAuthApplicantId,
+              agent: auth0Session.user.name || auth0Session.user.email,
+              email: auth0Session.user.email,
+            };
+          } else {
+            console.warn(
+              `Skipping logout activity log: could not resolve DB user/applicant IDs for ${activityEmail || 'unknown email'}`
+            );
+          }
         }
       }
     } catch {
@@ -100,6 +133,10 @@ export async function GET(request: NextRequest) {
         if (!tenantDbName) {
           console.warn(
             `Skipping logout activity log: tenant dbName unavailable for ${activityEmail || 'unknown email'}`
+          );
+        } else if (!userInfoForLogging.userId || !userInfoForLogging.applicantId) {
+          console.warn(
+            `Skipping logout activity log: missing resolved IDs for ${activityEmail || 'unknown email'}`
           );
         } else {
           const { db } = await mongoConn(tenantDbName);

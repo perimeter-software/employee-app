@@ -53,20 +53,20 @@ const afterCallback = async (req: NextRequest, session: Session): Promise<Sessio
 
         const { db } = await mongoConn(tenantDbName);
         const agentName = session.user.name || session.user.email || 'User';
-        const dbUser = activityEmail
-          ? await db.collection('users').findOne(
-              { emailAddress: activityEmail },
-              { projection: { _id: 1, applicantId: 1 } }
-            )
-          : null;
-        const userId = dbUser?._id ? String(dbUser._id) : undefined;
-        const applicantId =
-          typeof dbUser?.applicantId === 'string' && dbUser.applicantId.trim()
-            ? dbUser.applicantId.trim()
-            : undefined;
+        const { resolveActivityIdentityByEmail } = await import('@/lib/services/activity-identity');
+        const { userId, applicantId } = activityEmail
+          ? await resolveActivityIdentityByEmail(db, activityEmail)
+          : {};
+
+        if (!userId || !applicantId) {
+          console.warn(
+            `Skipping Auth0 login activity log: unresolved DB IDs for ${activityEmail || 'unknown email'}`
+          );
+          return session;
+        }
 
         // Deduplicate noisy callback/login loops.
-        if (userId && activityEmail) {
+        if (activityEmail) {
           const recentThreshold = new Date(Date.now() - 2 * 60 * 1000);
           const existingRecent = await db.collection('activities').findOne({
             action: 'User Login',

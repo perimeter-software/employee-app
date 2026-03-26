@@ -168,30 +168,40 @@ export async function POST(request: NextRequest) {
         );
       } else {
       const { db } = await mongoConn(tenantDbName);
-      const agentName: string = sessionData.firstName && sessionData.lastName 
-        ? `${sessionData.firstName} ${sessionData.lastName}`.trim()
-        : (sessionData.firstName || sessionData.lastName || sessionData.email || normalizedEmail) as string;
-      
-      await logActivity(
-        db,
-        createActivityLogData(
-          'OTP Login',
-          `${agentName} logged in using OTP (Email: ${normalizedEmail})${isApplicantOnly ? ' [Applicant-Only]' : ''}`,
-          {
-            applicantId: sessionData.applicantId ? String(sessionData.applicantId) : undefined,
-            userId: sessionData.userId ? String(sessionData.userId) : undefined,
-            agent: agentName,
-            email: normalizedEmail,
-            details: {
-              loginMethod: 'OTP',
+      const { resolveActivityIdentityByEmail } = await import('@/lib/services/activity-identity');
+      const resolvedIdentity = await resolveActivityIdentityByEmail(db, normalizedEmail);
+      const userId = resolvedIdentity.userId || (sessionData.userId ? String(sessionData.userId) : undefined);
+      const applicantId = resolvedIdentity.applicantId || (sessionData.applicantId ? String(sessionData.applicantId) : undefined);
+      if (!userId || !applicantId) {
+        console.warn(
+          `Skipping OTP login activity log: unresolved DB IDs for ${normalizedEmail}`
+        );
+      } else {
+        const agentName: string = sessionData.firstName && sessionData.lastName 
+          ? `${sessionData.firstName} ${sessionData.lastName}`.trim()
+          : (sessionData.firstName || sessionData.lastName || sessionData.email || normalizedEmail) as string;
+        
+        await logActivity(
+          db,
+          createActivityLogData(
+            'OTP Login',
+            `${agentName} logged in using OTP (Email: ${normalizedEmail})${isApplicantOnly ? ' [Applicant-Only]' : ''}`,
+            {
+              applicantId,
+              userId,
+              agent: agentName,
               email: normalizedEmail,
-              employmentStatus: sessionData.employmentStatus,
-              isLimitedAccess: sessionData.isLimitedAccess,
-              isApplicantOnly: isApplicantOnly,
-            },
-          }
-        )
-      );
+              details: {
+                loginMethod: 'OTP',
+                email: normalizedEmail,
+                employmentStatus: sessionData.employmentStatus,
+                isLimitedAccess: sessionData.isLimitedAccess,
+                isApplicantOnly: isApplicantOnly,
+              },
+            }
+          )
+        );
+      }
       }
     } catch (error) {
       // Don't fail login if logging fails

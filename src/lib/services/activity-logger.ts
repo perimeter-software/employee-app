@@ -13,7 +13,6 @@ export interface ActivityLogData {
   applicantId?: string;
   userId?: string;
   agent?: string;
-  createAgent?: string;
   email?: string;
   eventId?: string;
   jobId?: string;
@@ -59,7 +58,6 @@ export async function logActivity(
       description: (data.description || '').trim(),
       applicantId: data.applicantId ? String(data.applicantId).trim() : undefined,
       userId: data.userId ? String(data.userId).trim() : undefined,
-      createAgent: data.createAgent ? String(data.createAgent).trim() : undefined,
       eventId: data.eventId ? String(data.eventId).trim() : undefined,
       jobId: data.jobId ? String(data.jobId).trim() : undefined,
       venueId: data.venueId ? String(data.venueId).trim() : undefined,
@@ -72,9 +70,6 @@ export async function logActivity(
     // Keep identity fields consistent even for callers that don't use createActivityLogData.
     if (!normalizedData.userId && normalizedData.applicantId) {
       normalizedData.userId = normalizedData.applicantId;
-    }
-    if (!normalizedData.createAgent && normalizedData.userId) {
-      normalizedData.createAgent = normalizedData.userId;
     }
 
     const dbName = db.databaseName;
@@ -103,22 +98,12 @@ export async function logActivity(
     // Add optional fields only if they exist
     if (normalizedData.applicantId) {
       activityDocument.applicantId = normalizedData.applicantId;
-      const applicantObjectId = toObjectId(normalizedData.applicantId);
-      if (applicantObjectId) activityDocument.applicantObjectId = applicantObjectId;
     }
     if (normalizedData.userId) {
       activityDocument.userId = normalizedData.userId;
-      const userObjectId = toObjectId(normalizedData.userId);
-      if (userObjectId) activityDocument.userObjectId = userObjectId;
     }
     if (normalizedData.agent) activityDocument.agent = normalizedData.agent;
     if (normalizedData.email) activityDocument.email = normalizedData.email;
-    if (normalizedData.createAgent) {
-      const createAgentObjectId = toObjectId(normalizedData.createAgent);
-      if (createAgentObjectId) {
-        activityDocument.createAgent = createAgentObjectId;
-      }
-    }
     if (normalizedData.eventId) {
       // Store canonical string ID for consistent querying across all foreign IDs.
       activityDocument.eventId = normalizedData.eventId;
@@ -212,7 +197,6 @@ export function createActivityLogData(
     userId: options.userId || options.applicantId, // Default userId to applicantId if not provided
     agent: options.agent,
     email: options.email,
-    createAgent: options.userId || options.applicantId,
     eventId: options.eventId,
     jobId: options.jobId,
     details: options.details,
