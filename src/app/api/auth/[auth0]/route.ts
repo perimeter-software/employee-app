@@ -37,7 +37,21 @@ const afterCallback = async (req: NextRequest, session: Session): Promise<Sessio
       try {
         const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
         const { mongoConn } = await import('@/lib/db/mongodb');
-        const { db } = await mongoConn();
+        const activityEmail = session.user.email?.toLowerCase().trim();
+        const { default: redisService } = await import('@/lib/cache/redis-client');
+        const tenantData = activityEmail
+          ? await redisService.getTenantData(activityEmail)
+          : null;
+        const tenantDbName = tenantData?.tenant?.dbName;
+
+        if (!tenantDbName) {
+          console.warn(
+            `Skipping Auth0 login activity log: tenant dbName unavailable for ${activityEmail || 'unknown email'}`
+          );
+          return session;
+        }
+
+        const { db } = await mongoConn(tenantDbName);
         const agentName = session.user.name || session.user.email || 'User';
         
         await logActivity(

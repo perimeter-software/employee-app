@@ -160,7 +160,14 @@ export async function POST(request: NextRequest) {
     // Log OTP login activity
     try {
       const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
-      const { db } = await mongoConn();
+      const tenantData = await redisService.getTenantData(normalizedEmail);
+      const tenantDbName = tenantData?.tenant?.dbName;
+      if (!tenantDbName) {
+        console.warn(
+          `Skipping OTP login activity log: tenant dbName unavailable for ${normalizedEmail}`
+        );
+      } else {
+      const { db } = await mongoConn(tenantDbName);
       const agentName: string = sessionData.firstName && sessionData.lastName 
         ? `${sessionData.firstName} ${sessionData.lastName}`.trim()
         : (sessionData.firstName || sessionData.lastName || sessionData.email || normalizedEmail) as string;
@@ -185,6 +192,7 @@ export async function POST(request: NextRequest) {
           }
         )
       );
+      }
     } catch (error) {
       // Don't fail login if logging fails
       console.error('Error logging OTP login activity:', error);

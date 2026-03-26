@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
       userId?: string;
       applicantId?: string;
       agent?: string;
+      email?: string;
     } | null = null;
 
     if (otpSessionId) {
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
             userId: otpSessionData.userId,
             applicantId: otpSessionData.userId, // For OTP, userId might be the same
             agent: otpSessionData.name || otpSessionData.firstName || otpSessionData.email,
+            email: otpSessionData.email,
           };
         }
       } catch {
@@ -52,6 +54,7 @@ export async function GET(request: NextRequest) {
             userId: auth0Session.user.sub,
             applicantId: auth0Session.user.sub,
             agent: auth0Session.user.name || auth0Session.user.email,
+            email: auth0Session.user.email,
           };
         }
       }
@@ -64,23 +67,34 @@ export async function GET(request: NextRequest) {
       try {
         const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
         const { mongoConn } = await import('@/lib/db/mongodb');
-        const { db } = await mongoConn();
-        await logActivity(
-          db,
-          createActivityLogData(
-            'User Logout',
-            `${userInfoForLogging.agent || 'User'} logged out`,
-            {
-              applicantId: userInfoForLogging.applicantId,
-              userId: userInfoForLogging.userId,
-              agent: userInfoForLogging.agent,
-              email: userEmail || '',
-              details: {
-                logoutMethod: otpSessionId ? 'OTP' : 'Auth0',
-              },
-            }
-          )
-        );
+        const activityEmail = (userEmail || userInfoForLogging.email || '').toLowerCase().trim();
+        const tenantData = activityEmail
+          ? await redisService.getTenantData(activityEmail)
+          : null;
+        const tenantDbName = tenantData?.tenant?.dbName;
+        if (!tenantDbName) {
+          console.warn(
+            `Skipping logout activity log: tenant dbName unavailable for ${activityEmail || 'unknown email'}`
+          );
+        } else {
+          const { db } = await mongoConn(tenantDbName);
+          await logActivity(
+            db,
+            createActivityLogData(
+              'User Logout',
+              `${userInfoForLogging.agent || 'User'} logged out`,
+              {
+                applicantId: userInfoForLogging.applicantId,
+                userId: userInfoForLogging.userId,
+                agent: userInfoForLogging.agent,
+                email: userEmail || '',
+                details: {
+                  logoutMethod: otpSessionId ? 'OTP' : 'Auth0',
+                },
+              }
+            )
+          );
+        }
       } catch (error) {
         // Don't fail logout if logging fails
         console.error('Error logging logout activity:', error);
