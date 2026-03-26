@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -191,6 +191,10 @@ export function ShiftsSection({
     const now = new Date();
     return startOfWeek(now, { weekStartsOn: weekStartsOn || 0 });
   });
+
+  // Collapsible section state — only relevant when both tables are present
+  const [shiftsExpanded, setShiftsExpanded] = useState(true);
+  const [eventsExpanded, setEventsExpanded] = useState(true);
 
   // Shift Details Modal State
   const [selectedShift, setSelectedShift] = useState<ShiftCalendarEvent | null>(
@@ -520,34 +524,79 @@ export function ShiftsSection({
             /* Table view */
             <div className="overflow-x-auto -mx-3 sm:-mx-4 lg:-mx-6">
               <div className="min-w-full pb-3 px-3 sm:px-4 lg:px-6">
-                <ShiftsTable
-                  userData={userData}
-                  openPunches={openPunches}
-                  allPunches={allPunches}
-                  punchesLoading={punchesLoading}
-                  dateRange={{
-                    startDate: dateRange.startDate.toISOString(),
-                    endDate: dateRange.endDate.toISOString(),
-                    displayRange: dateRange.displayRange,
-                  }}
-                  isBlockedByJobPunch={isBlockedByJobPunch}
-                  hasActiveEventClockIn={hasActiveEventClockIn}
-                />
+                {/* Job shifts section — collapsible when events are also present */}
+                <div>
+                  {hasRosterEvents && (
+                    <button
+                      type="button"
+                      onClick={() => setShiftsExpanded((v) => !v)}
+                      className="flex w-full items-center justify-between px-3 py-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                    >
+                      <span className="text-base font-semibold text-gray-800">
+                        Job Shifts
+                      </span>
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm border border-gray-200">
+                        {shiftsExpanded ? (
+                          <ChevronUp className="h-4 w-4 text-gray-600" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-gray-600" />
+                        )}
+                      </span>
+                    </button>
+                  )}
+                  {shiftsExpanded && (
+                    <ShiftsTable
+                      userData={userData}
+                      openPunches={openPunches}
+                      allPunches={allPunches}
+                      punchesLoading={punchesLoading}
+                      dateRange={{
+                        startDate: dateRange.startDate.toISOString(),
+                        endDate: dateRange.endDate.toISOString(),
+                        displayRange: dateRange.displayRange,
+                      }}
+                      isBlockedByJobPunch={isBlockedByJobPunch}
+                      hasActiveEventClockIn={hasActiveEventClockIn}
+                    />
+                  )}
+                </div>
+
+                {/* Events section — collapsible when present */}
                 {hasRosterEvents && (
-                  <EventsTable
-                    applicantId={userData.applicantId}
-                    userId={userData._id}
-                    agentName={[userData.firstName, userData.lastName]
-                      .filter(Boolean)
-                      .join(' ')}
-                    dateRange={{
-                      startDate: dateRange.startDate.toISOString(),
-                      endDate: dateRange.endDate.toISOString(),
-                      displayRange: dateRange.displayRange,
-                    }}
-                    isBlockedByJobPunch={isBlockedByJobPunch}
-                    hasActiveEventClockIn={hasActiveEventClockIn}
-                  />
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setEventsExpanded((v) => !v)}
+                      className="flex w-full items-center justify-between px-3 py-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                    >
+                      <span className="text-base font-semibold text-gray-800">
+                        Events
+                      </span>
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm border border-gray-200">
+                        {eventsExpanded ? (
+                          <ChevronUp className="h-4 w-4 text-gray-600" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-gray-600" />
+                        )}
+                      </span>
+                    </button>
+                    {eventsExpanded && (
+                      <EventsTable
+                        applicantId={userData.applicantId}
+                        userId={userData._id}
+                        agentName={[userData.firstName, userData.lastName]
+                          .filter(Boolean)
+                          .join(' ')}
+                        dateRange={{
+                          startDate: dateRange.startDate.toISOString(),
+                          endDate: dateRange.endDate.toISOString(),
+                          displayRange: dateRange.displayRange,
+                        }}
+                        isBlockedByJobPunch={isBlockedByJobPunch}
+                        hasActiveEventClockIn={hasActiveEventClockIn}
+                      />
+                    )}
+                  </div>
                 )}
               </div>
             </div>
