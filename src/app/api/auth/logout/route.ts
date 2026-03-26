@@ -50,9 +50,34 @@ export async function GET(request: NextRequest) {
       if (auth0Session?.user) {
         userEmail = auth0Session.user.email;
         if (!userInfoForLogging) {
+          const activityEmail = auth0Session.user.email?.toLowerCase().trim();
+          const tenantData = activityEmail
+            ? await redisService.getTenantData(activityEmail)
+            : null;
+          const tenantDbName = tenantData?.tenant?.dbName;
+          let resolvedAuthUserId: string | undefined;
+          let resolvedAuthApplicantId: string | undefined;
+
+          if (tenantDbName && activityEmail) {
+            try {
+              const { mongoConn } = await import('@/lib/db/mongodb');
+              const { db } = await mongoConn(tenantDbName);
+              const dbUser = await db.collection('users').findOne(
+                { emailAddress: activityEmail },
+                { projection: { _id: 1, applicantId: 1 } }
+              );
+              resolvedAuthUserId = dbUser?._id ? String(dbUser._id) : undefined;
+              resolvedAuthApplicantId =
+                typeof dbUser?.applicantId === 'string' && dbUser.applicantId.trim()
+                  ? dbUser.applicantId.trim()
+                  : undefined;
+            } catch {
+              // Ignore lookup errors and fall back to available session values
+            }
+          }
           userInfoForLogging = {
-            userId: auth0Session.user.sub,
-            applicantId: auth0Session.user.sub,
+            userId: resolvedAuthUserId || auth0Session.user.sub,
+            applicantId: resolvedAuthApplicantId || auth0Session.user.sub,
             agent: auth0Session.user.name || auth0Session.user.email,
             email: auth0Session.user.email,
           };

@@ -53,6 +53,32 @@ const afterCallback = async (req: NextRequest, session: Session): Promise<Sessio
 
         const { db } = await mongoConn(tenantDbName);
         const agentName = session.user.name || session.user.email || 'User';
+        const dbUser = activityEmail
+          ? await db.collection('users').findOne(
+              { emailAddress: activityEmail },
+              { projection: { _id: 1, applicantId: 1 } }
+            )
+          : null;
+        const userId = dbUser?._id ? String(dbUser._id) : undefined;
+        const applicantId =
+          typeof dbUser?.applicantId === 'string' && dbUser.applicantId.trim()
+            ? dbUser.applicantId.trim()
+            : undefined;
+
+        // Deduplicate noisy callback/login loops.
+        if (userId && activityEmail) {
+          const recentThreshold = new Date(Date.now() - 2 * 60 * 1000);
+          const existingRecent = await db.collection('activities').findOne({
+            action: 'User Login',
+            userId,
+            email: activityEmail,
+            integration: 'Employee App',
+            activityDate: { $gte: recentThreshold },
+          });
+          if (existingRecent) {
+            return session;
+          }
+        }
         
         await logActivity(
           db,
@@ -60,13 +86,13 @@ const afterCallback = async (req: NextRequest, session: Session): Promise<Sessio
             'User Login',
             `${agentName} logged in using Auth0`,
             {
-              userId: session.user.sub,
-              applicantId: session.user.sub, // May need to fetch from DB later
+              userId,
+              applicantId,
               agent: agentName,
-              email: session.user.email || '',
+              email: activityEmail || '',
               details: {
                 loginMethod: 'Auth0',
-                email: session.user.email,
+                email: activityEmail,
               },
             }
           )

@@ -37,6 +37,13 @@ function toObjectId(id: string | undefined): ObjectId | undefined {
   }
 }
 
+function normalizeIntegration(integration?: string): string {
+  const value = (integration || '').trim();
+  if (!value) return 'Employee App';
+  if (value.toLowerCase() === 'employee') return 'Employee App';
+  return value;
+}
+
 /**
  * Log an activity directly to the database
  * This function is fire-and-forget - errors are logged but don't throw
@@ -58,6 +65,8 @@ export async function logActivity(
       venueId: data.venueId ? String(data.venueId).trim() : undefined,
       agent: data.agent ? String(data.agent).trim() : undefined,
       email: data.email ? String(data.email).trim().toLowerCase() : undefined,
+      type: data.type ? String(data.type).trim() : undefined,
+      integration: normalizeIntegration(data.integration),
     };
 
     // Keep identity fields consistent even for callers that don't use createActivityLogData.
@@ -79,17 +88,17 @@ export async function logActivity(
     const Activities = db.collection('activities');
     const now = new Date();
 
-    // Always set integration and type for Employee App activities
-    const integrationValue = data.integration || 'Employee App';
-    const typeValue = data.type || 'Employee App';
+    // Keep one canonical integration label across app activity writes.
+    const integrationValue = normalizeIntegration(normalizedData.integration);
     
     const activityDocument: Record<string, unknown> = {
       action: normalizedData.action,
       description: normalizedData.description,
       activityDate: now,
       integration: integrationValue,
-      type: typeValue,
     };
+    // Keep type only when explicitly passed (e.g. "Message").
+    if (normalizedData.type) activityDocument.type = normalizedData.type;
 
     // Add optional fields only if they exist
     if (normalizedData.applicantId) {
@@ -108,8 +117,6 @@ export async function logActivity(
       const createAgentObjectId = toObjectId(normalizedData.createAgent);
       if (createAgentObjectId) {
         activityDocument.createAgent = createAgentObjectId;
-      } else {
-        activityDocument.createAgent = normalizedData.createAgent;
       }
     }
     if (normalizedData.eventId) {
@@ -128,10 +135,8 @@ export async function logActivity(
     if (normalizedData.details || normalizedData.detail) {
       activityDocument.details = normalizedData.details || normalizedData.detail;
     }
-    // Override type if explicitly provided (already set above, but allow override)
-    if (data.type) activityDocument.type = data.type;
-    // Override integration if explicitly provided (already set above, but allow override)
-    if (data.integration) activityDocument.integration = data.integration;
+    // Ensure canonical integration value and avoid defaulting type.
+    activityDocument.integration = normalizeIntegration(normalizedData.integration);
     if (data.hideFromEmployee) activityDocument.hideFromEmployee = data.hideFromEmployee;
 
     const result = await Activities.insertOne(activityDocument);
