@@ -2,7 +2,7 @@
 
 import { NextPage } from 'next';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import {
   AlertCircle,
@@ -36,6 +36,7 @@ import { clsxm } from '@/lib/utils';
 const PaycheckStubViewPage: NextPage = () => {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const stubId = params?.stubId as string;
 
   const [pdfLoadError, setPdfLoadError] = useState(false);
@@ -202,8 +203,10 @@ const PaycheckStubViewPage: NextPage = () => {
   }, [presignedUrl]);
 
   const handleBack = useCallback(() => {
-    router.push('/payroll?tab=stubs');
-  }, [router]);
+    const from = searchParams.get('from');
+    const view = from && ['table', 'card', 'paystubs'].includes(from) ? from : 'paystubs';
+    router.push(`/payroll?view=${view}`);
+  }, [router, searchParams]);
 
   const handlePdfLoad = useCallback(() => {
     setIsPdfLoading(false);
