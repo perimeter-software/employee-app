@@ -63,6 +63,10 @@ function formatCurrency(val: number) {
   }).format(val);
 }
 
+function getNetPay(batch: { totalNetPay: number; totalGrossPay: number; totalTaxes: number }): number {
+  return batch.totalNetPay || (batch.totalGrossPay - batch.totalTaxes);
+}
+
 function formatPeriod(start: string, end: string) {
   const s = new Date(start);
   const e = new Date(end);
@@ -121,7 +125,7 @@ function getItemLabel(
 }
 
 function getItemRate(item: SubmittedEventApplicant | SubmittedJobTimecard): string {
-  const rate = 'payRate' in item ? item.payRate : undefined;
+  const rate = 'payRate' in item ? Number(item.payRate) : undefined;
   if (!rate) return '–';
   return `$${rate.toFixed(2)}/hr`;
 }
@@ -177,9 +181,10 @@ const StatCard: React.FC<{
 const PayrollTableRow: React.FC<{
   batch: EmployeePayrollBatch;
   stubId?: string;
+  stubVoucherNumber?: string;
   detailMode: boolean;
   onViewStub: (id: string) => void;
-}> = ({ batch, stubId, detailMode, onViewStub }) => {
+}> = ({ batch, stubId, stubVoucherNumber, detailMode, onViewStub }) => {
   const [localExpanded, setLocalExpanded] = useState(false);
   const expanded = detailMode || localExpanded;
   const totalHours = batch.totalRegularHours + batch.totalOvertimeHours;
@@ -300,7 +305,7 @@ const PayrollTableRow: React.FC<{
 
         {/* Net Pay */}
         <td className="px-4 py-4 text-sm font-bold text-blue-600">
-          {formatCurrency(batch.totalNetPay)}
+          {formatCurrency(getNetPay(batch))}
         </td>
 
         {/* Status */}
@@ -309,6 +314,11 @@ const PayrollTableRow: React.FC<{
             <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
             PAID
           </span>
+        </td>
+
+        {/* Voucher # */}
+        <td className="px-4 py-4 text-xs text-gray-500 font-mono">
+          {stubVoucherNumber ?? '–'}
         </td>
 
         {/* Stub */}
@@ -337,7 +347,7 @@ const PayrollTableRow: React.FC<{
       {/* Expanded events table */}
       {expanded && (
         <tr className="bg-slate-50/60 border-b border-gray-100">
-          <td colSpan={detailMode ? 10 : 9} className="px-8 py-4">
+          <td colSpan={detailMode ? 11 : 10} className="px-8 py-4">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
               Events / Jobs in this Pay Period
             </p>
@@ -481,7 +491,7 @@ const PayrollCardGrid: React.FC<{
                 NET PAY
               </p>
               <p className="text-sm font-bold text-blue-600">
-                {formatCurrency(batch.totalNetPay)}
+                {formatCurrency(getNetPay(batch))}
               </p>
             </div>
           </div>
@@ -720,7 +730,9 @@ const PayrollPageContent: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    () => (searchParams.get('view') as ViewMode) || 'table'
+  );
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortField, setSortField] = useState<SortField>('startDate');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -844,8 +856,8 @@ const PayrollPageContent: React.FC = () => {
           vb = b.totalTaxes;
           break;
         case 'netPay':
-          va = a.totalNetPay;
-          vb = b.totalNetPay;
+          va = getNetPay(a);
+          vb = getNetPay(b);
           break;
         default: // startDate
           va = new Date(a.startDate).getTime();
@@ -876,7 +888,7 @@ const PayrollPageContent: React.FC = () => {
     ).length;
     return {
       gross: yearBatches.reduce((s, b) => s + b.totalGrossPay, 0),
-      net: yearBatches.reduce((s, b) => s + b.totalNetPay, 0),
+      net: yearBatches.reduce((s, b) => s + getNetPay(b), 0),
       hours: yearBatches.reduce(
         (s, b) => s + b.totalRegularHours + b.totalOvertimeHours,
         0
@@ -1184,6 +1196,7 @@ const PayrollPageContent: React.FC = () => {
                               />
                             </th>
                             <th className={thClass}>Status</th>
+                            <th className={thClass}>Voucher #</th>
                             <th className={thClass}>Stub</th>
                             {detailMode && (
                               <th className={thClass}>Voucher #</th>
@@ -1191,17 +1204,22 @@ const PayrollPageContent: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {sorted.map((batch) => (
-                            <PayrollTableRow
-                              key={batch._id}
-                              batch={batch}
-                              stubId={getStubId(batch, stubMap)}
-                              detailMode={detailMode}
-                              onViewStub={(id) =>
-                                router.push(`/paycheck-stubs/${id}`)
-                              }
-                            />
-                          ))}
+                          {sorted.map((batch) => {
+                            const sid = getStubId(batch, stubMap);
+                            const matchedStub = stubs.find((s) => s._id === sid);
+                            return (
+                              <PayrollTableRow
+                                key={batch._id}
+                                batch={batch}
+                                stubId={sid}
+                                stubVoucherNumber={matchedStub?.voucherNumber}
+                                detailMode={detailMode}
+                                onViewStub={(id) =>
+                                  router.push(`/paycheck-stubs/${id}?from=${viewMode}`)
+                                }
+                              />
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -1214,7 +1232,7 @@ const PayrollPageContent: React.FC = () => {
                 <PayrollCardGrid
                   batches={sorted}
                   stubMap={stubMap}
-                  onViewStub={(id) => router.push(`/paycheck-stubs/${id}`)}
+                  onViewStub={(id) => router.push(`/paycheck-stubs/${id}?from=${viewMode}`)}
                 />
               )}
 
