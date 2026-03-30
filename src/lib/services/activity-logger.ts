@@ -5,6 +5,7 @@
 import 'server-only';
 import type { Db } from 'mongodb';
 import { ObjectId } from 'mongodb';
+import { env } from '@/lib/config';
 
 export interface ActivityLogData {
   action: string;
@@ -12,7 +13,6 @@ export interface ActivityLogData {
   applicantId?: string;
   userId?: string;
   agent?: string;
-  createAgent?: string;
   email?: string;
   eventId?: string;
   jobId?: string;
@@ -36,6 +36,13 @@ function toObjectId(id: string | undefined): ObjectId | undefined {
   }
 }
 
+function normalizeIntegration(integration?: string): string {
+  const value = (integration || '').trim();
+  if (!value) return 'Employee App';
+  if (value.toLowerCase() === 'employee') return 'Employee App';
+  return value;
+}
+
 /**
  * Log an activity directly to the database
  * This function is fire-and-forget - errors are logged but don't throw
@@ -45,99 +52,113 @@ export async function logActivity(
   data: ActivityLogData
 ): Promise<void> {
   try {
+    const normalizedData: ActivityLogData = {
+      ...data,
+      action: (data.action || '').trim(),
+      description: (data.description || '').trim(),
+      applicantId: data.applicantId ? String(data.applicantId).trim() : undefined,
+      userId: data.userId ? String(data.userId).trim() : undefined,
+      eventId: data.eventId ? String(data.eventId).trim() : undefined,
+      jobId: data.jobId ? String(data.jobId).trim() : undefined,
+      venueId: data.venueId ? String(data.venueId).trim() : undefined,
+      agent: data.agent ? String(data.agent).trim() : undefined,
+      email: data.email ? String(data.email).trim().toLowerCase() : undefined,
+      type: data.type ? String(data.type).trim() : undefined,
+      integration: normalizeIntegration(data.integration),
+    };
+
+    // Keep identity fields consistent even for callers that don't use createActivityLogData.
+    if (!normalizedData.userId && normalizedData.applicantId) {
+      normalizedData.userId = normalizedData.applicantId;
+    }
+
     const dbName = db.databaseName;
-    console.log(`💾 Logging activity to database: "${dbName}"`, {
-      action: data.action,
-      description: data.description,
-    });
+    if (env.isDevelopment) {
+      console.log(`💾 Logging activity to database: "${dbName}"`, {
+        action: normalizedData.action,
+        description: normalizedData.description,
+      });
+    }
     
     const Activities = db.collection('activities');
     const now = new Date();
 
-    // Always set integration and type for Employee App activities
-    const integrationValue = data.integration || 'Employee App';
-    const typeValue = data.type || 'Employee App';
+    // Keep one canonical integration label across app activity writes.
+    const integrationValue = normalizeIntegration(normalizedData.integration);
     
     const activityDocument: Record<string, unknown> = {
-      action: data.action,
-      description: data.description,
+      action: normalizedData.action,
+      description: normalizedData.description,
       activityDate: now,
-      createdAt: now,
-      updatedAt: now,
       integration: integrationValue,
-      type: typeValue,
     };
+    // Keep type only when explicitly passed (e.g. "Message").
+    if (normalizedData.type) activityDocument.type = normalizedData.type;
 
     // Add optional fields only if they exist
-    if (data.applicantId) {
-      // const objId = toObjectId(data.applicantId);
-      activityDocument.applicantId = data.applicantId;
+    if (normalizedData.applicantId) {
+      activityDocument.applicantId = normalizedData.applicantId;
     }
-    if (data.userId) {
-      // const objId = toObjectId(data.userId);
-     activityDocument.userId = data.userId;
+    if (normalizedData.userId) {
+      activityDocument.userId = normalizedData.userId;
     }
-    if (data.agent) activityDocument.agent = data.agent;
-    if (data.email) activityDocument.email = data.email;
-    if (data.createAgent) {
-      // const objId = toObjectId(data.createAgent);
-      activityDocument.createAgent = data.createAgent;
+    if (normalizedData.agent) activityDocument.agent = normalizedData.agent;
+    if (normalizedData.email) activityDocument.email = normalizedData.email;
+    if (normalizedData.eventId) {
+      // Store canonical string ID for consistent querying across all foreign IDs.
+      activityDocument.eventId = normalizedData.eventId;
+      const eventObjectId = toObjectId(normalizedData.eventId);
+      if (eventObjectId) activityDocument.eventObjectId = eventObjectId;
     }
-    if (data.eventId) {
-      const objId = toObjectId(data.eventId);
-      if (objId) activityDocument.eventId = objId;
+    if (normalizedData.jobId) {
+      // Store canonical string ID for consistent querying across all foreign IDs.
+      activityDocument.jobId = normalizedData.jobId;
+      const jobObjectId = toObjectId(normalizedData.jobId);
+      if (jobObjectId) activityDocument.jobObjectId = jobObjectId;
     }
-    if (data.jobId) {
-      const objId = toObjectId(data.jobId);
-      if (objId) activityDocument.jobId = objId;
+    if (normalizedData.venueId) activityDocument.venueId = normalizedData.venueId;
+    if (normalizedData.details || normalizedData.detail) {
+      activityDocument.details = normalizedData.details || normalizedData.detail;
     }
-    if (data.venueId) activityDocument.venueId = data.venueId;
-    if (data.details || data.detail) {
-      activityDocument.details = data.details || data.detail;
-    }
-    // Override type if explicitly provided (already set above, but allow override)
-    if (data.type) activityDocument.type = data.type;
-    // Override integration if explicitly provided (already set above, but allow override)
-    if (data.integration) activityDocument.integration = data.integration;
+    // Ensure canonical integration value and avoid defaulting type.
+    activityDocument.integration = normalizeIntegration(normalizedData.integration);
     if (data.hideFromEmployee) activityDocument.hideFromEmployee = data.hideFromEmployee;
 
     const result = await Activities.insertOne(activityDocument);
-    
-    // Verify the document was inserted by querying it back
-    const insertedDoc = await Activities.findOne({ _id: result.insertedId });
-    
-    console.log(`✅ Activity logged successfully to database: "${dbName}"`, {
-      insertedId: result.insertedId,
-      action: data.action,
-      description: data.description,
-      applicantId: data.applicantId,
-      userId: data.userId,
-      agent: data.agent,
-      email: data.email,
-      verified: !!insertedDoc,
-      documentExists: insertedDoc ? 'YES' : 'NO',
-    });
-    
-    if (insertedDoc) {
-      console.log('📄 Inserted document structure:', {
-        _id: insertedDoc._id,
-        action: insertedDoc.action,
-        description: insertedDoc.description,
-        applicantId: insertedDoc.applicantId,
-        userId: insertedDoc.userId,
-        agent: insertedDoc.agent,
-        activityDate: insertedDoc.activityDate,
-        createdAt: insertedDoc.createdAt,
-        hasDetails: !!insertedDoc.details,
+
+    if (env.isDevelopment) {
+      console.log(`✅ Activity logged successfully to database: "${dbName}"`, {
+        insertedId: result.insertedId,
+        action: normalizedData.action,
+        description: normalizedData.description,
+        applicantId: normalizedData.applicantId,
+        userId: normalizedData.userId,
+        agent: normalizedData.agent,
+        email: normalizedData.email,
       });
-      
-      // Test query: Can we find this activity by applicantId?
-      if (data.applicantId) {
-        const objId = toObjectId(data.applicantId);
-        if (objId) {
-          const count = await Activities.countDocuments({ applicantId: objId });
-          console.log(`🔍 Total activities found for applicantId ${data.applicantId}: ${count}`);
-        }
+    }
+
+    // Optional verification in development only (avoid extra DB calls in production path).
+    if (env.isDevelopment) {
+      const insertedDoc = await Activities.findOne({ _id: result.insertedId });
+      if (insertedDoc) {
+        console.log('📄 Inserted document structure:', {
+          insertedId: result.insertedId,
+          _id: insertedDoc._id,
+          action: insertedDoc.action,
+          description: insertedDoc.description,
+          applicantId: insertedDoc.applicantId,
+          userId: insertedDoc.userId,
+          agent: insertedDoc.agent,
+          activityDate: insertedDoc.activityDate,
+          hasDetails: !!insertedDoc.details,
+        });
+      }
+
+      // Test query using canonical string field.
+      if (normalizedData.applicantId) {
+        const count = await Activities.countDocuments({ applicantId: normalizedData.applicantId });
+        console.log(`🔍 Total activities found for applicantId ${normalizedData.applicantId}: ${count}`);
       }
     }
   } catch (error) {
@@ -176,7 +197,6 @@ export function createActivityLogData(
     userId: options.userId || options.applicantId, // Default userId to applicantId if not provided
     agent: options.agent,
     email: options.email,
-    createAgent: options.userId || options.applicantId,
     eventId: options.eventId,
     jobId: options.jobId,
     details: options.details,

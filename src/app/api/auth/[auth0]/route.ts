@@ -37,8 +37,48 @@ const afterCallback = async (req: NextRequest, session: Session): Promise<Sessio
       try {
         const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
         const { mongoConn } = await import('@/lib/db/mongodb');
-        const { db } = await mongoConn();
+        const activityEmail = session.user.email?.toLowerCase().trim();
+        const { default: redisService } = await import('@/lib/cache/redis-client');
+        const tenantData = activityEmail
+          ? await redisService.getTenantData(activityEmail)
+          : null;
+        const tenantDbName = tenantData?.tenant?.dbName;
+
+        if (!tenantDbName) {
+          console.warn(
+            `Skipping Auth0 login activity log: tenant dbName unavailable for ${activityEmail || 'unknown email'}`
+          );
+          return session;
+        }
+
+        const { db } = await mongoConn(tenantDbName);
         const agentName = session.user.name || session.user.email || 'User';
+        const { resolveActivityIdentityByEmail } = await import('@/lib/services/activity-identity');
+        const { userId, applicantId } = activityEmail
+          ? await resolveActivityIdentityByEmail(db, activityEmail)
+          : {};
+
+        if (!userId || !applicantId) {
+          console.warn(
+            `Skipping Auth0 login activity log: unresolved DB IDs for ${activityEmail || 'unknown email'}`
+          );
+          return session;
+        }
+
+        // Deduplicate noisy callback/login loops.
+        if (activityEmail) {
+          const recentThreshold = new Date(Date.now() - 2 * 60 * 1000);
+          const existingRecent = await db.collection('activities').findOne({
+            action: 'User Login',
+            userId,
+            email: activityEmail,
+            integration: 'Employee App',
+            activityDate: { $gte: recentThreshold },
+          });
+          if (existingRecent) {
+            return session;
+          }
+        }
         
         await logActivity(
           db,
@@ -46,13 +86,13 @@ const afterCallback = async (req: NextRequest, session: Session): Promise<Sessio
             'User Login',
             `${agentName} logged in using Auth0`,
             {
-              userId: session.user.sub,
-              applicantId: session.user.sub, // May need to fetch from DB later
+              userId,
+              applicantId,
               agent: agentName,
-              email: session.user.email || '',
+              email: activityEmail || '',
               details: {
                 loginMethod: 'Auth0',
-                email: session.user.email,
+                email: activityEmail,
               },
             }
           )

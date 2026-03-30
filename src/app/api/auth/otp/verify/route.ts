@@ -160,31 +160,49 @@ export async function POST(request: NextRequest) {
     // Log OTP login activity
     try {
       const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
-      const { db } = await mongoConn();
-      const agentName: string = sessionData.firstName && sessionData.lastName 
-        ? `${sessionData.firstName} ${sessionData.lastName}`.trim()
-        : (sessionData.firstName || sessionData.lastName || sessionData.email || normalizedEmail) as string;
-      
-      await logActivity(
-        db,
-        createActivityLogData(
-          'OTP Login',
-          `${agentName} logged in using OTP (Email: ${normalizedEmail})${isApplicantOnly ? ' [Applicant-Only]' : ''}`,
-          {
-            applicantId: sessionData.applicantId ? String(sessionData.applicantId) : undefined,
-            userId: sessionData.userId ? String(sessionData.userId) : undefined,
-            agent: agentName,
-            email: normalizedEmail,
-            details: {
-              loginMethod: 'OTP',
+      const tenantData = await redisService.getTenantData(normalizedEmail);
+      const tenantDbName = tenantData?.tenant?.dbName;
+      if (!tenantDbName) {
+        console.warn(
+          `Skipping OTP login activity log: tenant dbName unavailable for ${normalizedEmail}`
+        );
+      } else {
+      const { db } = await mongoConn(tenantDbName);
+      const { resolveActivityIdentityByEmail } = await import('@/lib/services/activity-identity');
+      const resolvedIdentity = await resolveActivityIdentityByEmail(db, normalizedEmail);
+      const userId = resolvedIdentity.userId || (sessionData.userId ? String(sessionData.userId) : undefined);
+      const applicantId = resolvedIdentity.applicantId || (sessionData.applicantId ? String(sessionData.applicantId) : undefined);
+      if (!userId || !applicantId) {
+        console.warn(
+          `Skipping OTP login activity log: unresolved DB IDs for ${normalizedEmail}`
+        );
+      } else {
+        const agentName: string = sessionData.firstName && sessionData.lastName 
+          ? `${sessionData.firstName} ${sessionData.lastName}`.trim()
+          : (sessionData.firstName || sessionData.lastName || sessionData.email || normalizedEmail) as string;
+        
+        await logActivity(
+          db,
+          createActivityLogData(
+            'OTP Login',
+            `${agentName} logged in using OTP (Email: ${normalizedEmail})${isApplicantOnly ? ' [Applicant-Only]' : ''}`,
+            {
+              applicantId,
+              userId,
+              agent: agentName,
               email: normalizedEmail,
-              employmentStatus: sessionData.employmentStatus,
-              isLimitedAccess: sessionData.isLimitedAccess,
-              isApplicantOnly: isApplicantOnly,
-            },
-          }
-        )
-      );
+              details: {
+                loginMethod: 'OTP',
+                email: normalizedEmail,
+                employmentStatus: sessionData.employmentStatus,
+                isLimitedAccess: sessionData.isLimitedAccess,
+                isApplicantOnly: isApplicantOnly,
+              },
+            }
+          )
+        );
+      }
+      }
     } catch (error) {
       // Don't fail login if logging fails
       console.error('Error logging OTP login activity:', error);
