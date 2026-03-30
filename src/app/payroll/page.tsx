@@ -67,10 +67,17 @@ function getNetPay(batch: { totalNetPay: number; totalGrossPay: number; totalTax
   return batch.totalNetPay || (batch.totalGrossPay - batch.totalTaxes);
 }
 
+/** Parse a date string as UTC to avoid timezone-shift issues */
+function parseUTC(dateStr: string): Date {
+  // "2026-03-09" → treat as UTC midnight, not local midnight
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+
 function formatPeriod(start: string, end: string) {
-  const s = new Date(start);
-  const e = new Date(end);
-  const sameYear = s.getFullYear() === e.getFullYear();
+  const s = parseUTC(start);
+  const e = parseUTC(end);
+  const sameYear = s.getUTCFullYear() === e.getUTCFullYear();
   return `${format(s, 'MMM d')} – ${format(e, sameYear ? 'MMM d' : 'MMM d, yyyy')}`;
 }
 
@@ -103,7 +110,7 @@ function getCheckDate(batch: EmployeePayrollBatch): string | null {
     }
   }
   try {
-    return format(new Date(batch.endDate), 'MMM d, yyyy');
+    return format(parseUTC(batch.endDate), 'MMM d, yyyy');
   } catch {
     return null;
   }
@@ -211,7 +218,7 @@ const PayrollTableRow: React.FC<{
     batch.regularItems.forEach((item) => {
       rows.push({
         label: getItemLabel(item, batch),
-        date: format(new Date(batch.startDate), 'MMM d, yyyy'),
+        date: format(parseUTC(batch.startDate), 'MMM d, yyyy'),
         regHrs: item.totalHours ?? 0,
         otHrs: 0,
         rate: getItemRate(item),
@@ -222,7 +229,7 @@ const PayrollTableRow: React.FC<{
     batch.overtimeItems.forEach((item) => {
       rows.push({
         label: getItemLabel(item, batch),
-        date: format(new Date(batch.startDate), 'MMM d, yyyy'),
+        date: format(parseUTC(batch.startDate), 'MMM d, yyyy'),
         regHrs: 0,
         otHrs: item.totalHours ?? 0,
         rate: getItemRate(item),
@@ -234,7 +241,7 @@ const PayrollTableRow: React.FC<{
     if (rows.length === 0) {
       rows.push({
         label: batch.eventUrl || batch.jobSlug || '–',
-        date: format(new Date(batch.startDate), 'MMM d, yyyy'),
+        date: format(parseUTC(batch.startDate), 'MMM d, yyyy'),
         regHrs: batch.totalRegularHours,
         otHrs: batch.totalOvertimeHours,
         rate: '–',
