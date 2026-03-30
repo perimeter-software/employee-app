@@ -27,15 +27,15 @@ type VenueDoc = {
 };
 
 // Mirrors appendHiddenVenuesFilter — excludes venues with ShowVenueOnWebsite=No
-// unless the applicant is already in the staffing pool for that venue.
+// unless the applicant already has a StaffingPool or Pending status for that venue.
 function appendHiddenVenuesFilter(
   filter: Record<string, unknown>,
-  staffingPoolSlugs: string[]
+  exceptionSlugs: string[]
 ) {
-  if (staffingPoolSlugs.length > 0) {
+  if (exceptionSlugs.length > 0) {
     const visibilityOr = [
       { 'settings.ShowVenueOnWebsite': { $ne: 'No' } },
-      { slug: { $in: staffingPoolSlugs } },
+      { slug: { $in: exceptionSlugs } },
     ];
     if (filter['$or']) {
       const currentAnd = (filter['$and'] as unknown[]) ?? [];
@@ -69,12 +69,14 @@ async function appendClientFilter(
         { projection: { clientOrgs: 1 } }
       );
   }
-  const clientOrgs = (
-    (clientUser?.clientOrgs ?? (user as Record<string, unknown>).clientOrgs ?? []) as {
-      slug?: string;
-    }[]
-  );
-  const clientOrgSlugs = clientOrgs.map((org) => org.slug ?? '').filter(Boolean);
+  const clientOrgs = (clientUser?.clientOrgs ??
+    (user as Record<string, unknown>).clientOrgs ??
+    []) as {
+    slug?: string;
+  }[];
+  const clientOrgSlugs = clientOrgs
+    .map((org) => org.slug ?? '')
+    .filter(Boolean);
 
   const existing = filter.slug as
     | string
@@ -91,7 +93,9 @@ async function appendClientFilter(
         filter.slug = { $in: [] };
       }
     } else if (existing.$in) {
-      filter.slug = { $in: existing.$in.filter((s) => clientOrgSlugs.includes(s)) };
+      filter.slug = {
+        $in: existing.$in.filter((s) => clientOrgSlugs.includes(s)),
+      };
     }
   } else {
     filter.slug = { $in: clientOrgSlugs };
@@ -113,10 +117,10 @@ async function getVenuesHandler(request: AuthenticatedRequest) {
     const url = new URL(request.url);
     const longitudeParam = url.searchParams.get('longitude');
     const latitudeParam = url.searchParams.get('latitude');
-
     // Fetch applicant data for employees
     let statusMap = new Map<string, string>();
     let staffingPoolSlugs: string[] = [];
+    let pendingSlugs: string[] = [];
     let employmentStatus: string | null = null;
 
     if (isEmployee) {
@@ -145,11 +149,17 @@ async function getVenuesHandler(request: AuthenticatedRequest) {
         staffingPoolSlugs = applicantVenues
           .filter((v) => v.status === 'StaffingPool')
           .map((v) => v.venueSlug);
+        pendingSlugs = applicantVenues
+          .filter((v) => v.status === 'Pending')
+          .map((v) => v.venueSlug);
       }
     }
 
     // If inactive/terminated on a Venue-type company, return empty list
-    if (isEmployee && (employmentStatus === 'Inactive' || employmentStatus === 'Terminated')) {
+    if (
+      isEmployee &&
+      (employmentStatus === 'Inactive' || employmentStatus === 'Terminated')
+    ) {
       const companyDoc = await db
         .collection('company')
         .findOne({}, { projection: { type: 1 } });
@@ -161,9 +171,11 @@ async function getVenuesHandler(request: AuthenticatedRequest) {
     // Build base filter
     const baseFilter: Record<string, unknown> = { status: 'Active' };
 
-    // Exclude hidden venues for non-admin employees
+    // Exclude venues with ShowVenueOnWebsite=No for non-admin employees,
+    // but always include venues where the user has StaffingPool or Pending status.
     if (!isAdmin && !isClient && isEmployee) {
-      appendHiddenVenuesFilter(baseFilter, staffingPoolSlugs);
+      const exceptionSlugs = [...new Set([...staffingPoolSlugs, ...pendingSlugs])];
+      appendHiddenVenuesFilter(baseFilter, exceptionSlugs);
     }
 
     // Restrict venue list to client's orgs
