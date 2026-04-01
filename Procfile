@@ -1,1 +1,1 @@
-web: yarn start -p 8080
+web: node server.mjs

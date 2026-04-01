@@ -10,7 +10,9 @@
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf .next && echo 'Cleared .next cache'",
-    "dev:clean": "rm -rf .next && next dev"
+    "dev:clean": "rm -rf .next && next dev",
+    "start:cluster": "node server.mjs",
+    "preview:cluster": "yarn build && node server.mjs"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "3.5.0",
