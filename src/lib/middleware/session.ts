@@ -124,6 +124,11 @@ export function withAuthAPI<T = unknown>(handler: RouteHandler<T>) {
     context: { params: Promise<Record<string, string | string[] | undefined>> }
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
+      // Redis-backed rate limiting (shared across cluster workers)
+      const { rateLimitCheck } = await import('./rate-limiting');
+      const rateLimitResult = await rateLimitCheck(request);
+      if (rateLimitResult) return rateLimitResult;
+
       // Get user session (Auth0 or OTP)
       const user = await getUserSession(request);
 
@@ -165,6 +170,11 @@ export function withEnhancedAuthAPI<T = unknown>(
     context: { params: Promise<Record<string, string | string[] | undefined>> }
   ): Promise<NextResponse<T> | NextResponse<unknown>> {
     try {
+      // Redis-backed rate limiting (shared across cluster workers)
+      const { rateLimitCheck } = await import('./rate-limiting');
+      const rateLimitResult = await rateLimitCheck(request);
+      if (rateLimitResult) return rateLimitResult;
+
       // Get user session (Auth0 or OTP)
       const user = await getUserSession(request);
 

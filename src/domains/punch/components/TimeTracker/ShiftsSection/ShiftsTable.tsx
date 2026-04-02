@@ -6,7 +6,8 @@ import { TableColumn } from '@/components/ui/Table/types';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ClockInValidationModal } from '../ClockInValidationModal';
 import { CallOffConfirmModal } from '../CallOffConfirmModal';
-import { Clock, MapPin } from 'lucide-react';
+import { ShiftSwapRequestModal } from '../ShiftSwapRequestModal/ShiftSwapRequestModal';
+import { ArrowLeftRight, Clock, Clock3, MapPin } from 'lucide-react';
 
 // Import your existing hook and utilities
 import { useTimerCard, useCallOffShift } from '@/domains/punch/hooks';
@@ -21,6 +22,15 @@ import {
   isUserInRoster,
   canCallOffShift,
 } from '@/domains/punch/utils/shift-job-utils';
+import {
+  useAcceptSwapRequestMutation,
+  useCreateSwapRequestMutation,
+  useSwapRequestsQuery,
+  useWithdrawSwapRequestMutation,
+} from '@/domains/swap/hooks/use-swap-requests';
+import type { SwapRequest, SwapRequestStatus } from '@/domains/swap/types';
+
+type SwapRowRole = 'from' | 'to';
 
 interface ShiftRowData extends Record<string, unknown> {
   date: string;
@@ -57,6 +67,14 @@ interface ShiftRowData extends Record<string, unknown> {
   isOvernightShift?: boolean;
   /** Formatted end date (MM/dd/yyyy) for overnight shifts, e.g. "01/21/2025" */
   endDateDisplay?: string;
+  swapStatus?: SwapRequestStatus | null;
+  /** Short line under the swap control: what kind of request and what you are waiting for */
+  swapContextHint?: string | null;
+  /** Open request on this row (for detail modal / withdraw). */
+  swapRequest?: SwapRequest | null;
+  swapRole?: SwapRowRole | null;
+  canSwapByLeadTime?: boolean;
+  swapDisabledReason?: string;
 }
 
 interface ShiftsTableProps {
@@ -112,6 +130,67 @@ const formatTime = (date: Date) => {
     hour12: true,
   });
 };
+
+function formatYmdToUs(ymd: string): string {
+  const d = Date.parse(`${ymd}T12:00:00`);
+  if (Number.isNaN(d)) return ymd;
+  return new Date(d).toLocaleDateString('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function shiftNameFromJob(
+  job: GignologyJob,
+  slug: string | null | undefined
+): string | null {
+  if (!slug) return null;
+  const s = job.shifts?.find((sh) => sh.slug === slug);
+  if (!s) return null;
+  return s.shiftName || s.slug || null;
+}
+
+/** Explains request type and what the employee is waiting on (shown under Swap / status). */
+function buildSwapContextHint(
+  req: SwapRequest,
+  role: SwapRowRole,
+  job: GignologyJob
+): string {
+  if (req.status === 'approved') {
+    return 'Swap approved — schedule updated';
+  }
+  if (req.status === 'pending_approval') {
+    return 'Matched — awaiting admin approval';
+  }
+  if (req.type === 'giveaway') {
+    return 'Waiting for someone to take this shift';
+  }
+  if (req.type === 'pickup_interest') {
+    return req.taggedOnly
+      ? 'Interest saved — we will notify you when a shift opens'
+      : 'Pickup request open';
+  }
+  if (req.type === 'swap') {
+    if (role === 'from') {
+      if (req.acceptAny && !req.toEmployeeId) {
+        return 'Open offer — any coworker on this job/shift can match';
+      }
+      const peerShift = shiftNameFromJob(job, req.toShiftSlug);
+      const peerDate = req.toShiftDate ? formatYmdToUs(req.toShiftDate) : null;
+      if (peerShift || peerDate) {
+        const detail = [peerShift, peerDate].filter(Boolean).join(' · ');
+        return `Waiting for match — you asked to swap for: ${detail}`;
+      }
+      if (req.toEmployeeId) {
+        return 'Waiting for selected coworker to confirm';
+      }
+      return 'Waiting for a coworker to match';
+    }
+    return 'Your side of the swap — follow notifications if action is needed';
+  }
+  return '';
+}
 
 /** True if punch time segment [timeIn, timeOut ?? now] overlaps [windowStart, windowEnd]. */
 function punchOverlapsWindow(
@@ -178,6 +257,15 @@ export function ShiftsTable({
 
   const callOffMutation = useCallOffShift(userData._id || userData.applicantId || '');
   const [callOffConfirmRow, setCallOffConfirmRow] = useState<ShiftRowData | null>(null);
+  const [swapModalRow, setSwapModalRow] = useState<ShiftRowData | null>(null);
+  const createSwapMutation = useCreateSwapRequestMutation();
+  const acceptSwapMutation = useAcceptSwapRequestMutation();
+  const withdrawSwapMutation = useWithdrawSwapRequestMutation();
+  const { data: swapRequests = [] } = useSwapRequestsQuery({
+    employeeId: userData.applicantId,
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+  });
 
   const confirmCallOff = useCallback(
     (reason: string) => {
@@ -247,6 +335,144 @@ export function ShiftsTable({
       await handleClockInOut();
     },
     [handleClockInOut]
+  );
+
+  /** Winning swap request per shift-day cell (pending, approved, etc.). */
+  const pendingSwapRequestByShiftDay = useMemo(() => {
+    const map = new Map<string, { req: SwapRequest; source: SwapRowRole }>();
+    const me = String(userData.applicantId ?? '');
+
+    const statusRank = (s: SwapRequest['status']): number => {
+      if (s === 'approved') return 3;
+      if (s === 'pending_approval') return 2;
+      if (s === 'pending_match') return 1;
+      return 0;
+    };
+
+    const merge = (key: string, req: SwapRequest, source: SwapRowRole) => {
+      if (
+        !['pending_match', 'pending_approval', 'approved'].includes(req.status)
+      ) {
+        return;
+      }
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, { req, source });
+        return;
+      }
+      const rNew = statusRank(req.status);
+      const rOld = statusRank(existing.req.status);
+      if (rNew > rOld) {
+        map.set(key, { req, source });
+        return;
+      }
+      if (rNew === rOld) {
+        const tNew = new Date(req.submittedAt).getTime();
+        const tOld = new Date(existing.req.submittedAt).getTime();
+        if (!Number.isNaN(tNew) && !Number.isNaN(tOld) && tNew > tOld) {
+          map.set(key, { req, source });
+        }
+      }
+    };
+
+    for (const req of swapRequests) {
+      if (String(req.fromEmployeeId) === me && req.fromShiftSlug && req.fromShiftDate) {
+        merge(`${req.fromShiftSlug}|${req.fromShiftDate}`, req, 'from');
+      }
+      if (
+        req.toEmployeeId != null &&
+        String(req.toEmployeeId) === me &&
+        req.toShiftSlug &&
+        req.toShiftDate
+      ) {
+        merge(`${req.toShiftSlug}|${req.toShiftDate}`, req, 'to');
+      }
+    }
+    return map;
+  }, [swapRequests, userData.applicantId]);
+
+  const submitSwapRequest = useCallback(
+    (input: {
+      type: 'swap' | 'giveaway' | 'pickup_interest';
+      toEmployeeId?: string | null;
+      toShiftSlug?: string | null;
+      toShiftDate?: string | null;
+      acceptAny?: boolean;
+      notes?: string;
+      matchGiveawayId?: string | null;
+      pickupTargetShiftDate?: string | null;
+    }) => {
+      if (!swapModalRow?.dateYyyyMmDd || !swapModalRow.dayKey) return;
+
+      const pickupDate = input.pickupTargetShiftDate?.trim();
+      const fromShiftDate =
+        input.type === 'pickup_interest' && pickupDate
+          ? pickupDate
+          : swapModalRow.dateYyyyMmDd;
+
+      const matchId = input.matchGiveawayId?.trim();
+      if (input.type === 'pickup_interest' && matchId) {
+        if (!pickupDate) return;
+        createSwapMutation.mutate(
+          {
+            jobSlug: swapModalRow.job.jobSlug,
+            fromShiftSlug: swapModalRow.shift.slug,
+            fromShiftDate: pickupDate,
+            type: 'pickup_interest',
+            taggedOnly: true,
+            matchGiveawayId: matchId,
+            toEmployeeId: null,
+            toShiftSlug: null,
+            toShiftDate: null,
+            acceptAny: false,
+            notes: input.notes,
+          },
+          { onSuccess: () => setSwapModalRow(null) }
+        );
+        return;
+      }
+
+      createSwapMutation.mutate(
+        {
+          jobSlug: swapModalRow.job.jobSlug,
+          fromShiftSlug: swapModalRow.shift.slug,
+          fromShiftDate,
+          type: input.type,
+          toEmployeeId: input.toEmployeeId || null,
+          toShiftSlug: input.toShiftSlug ?? null,
+          toShiftDate: input.toShiftDate ?? null,
+          acceptAny: Boolean(input.acceptAny),
+          taggedOnly: input.type === 'pickup_interest' && Boolean(pickupDate),
+          notes: input.notes,
+        },
+        {
+          onSuccess: () => setSwapModalRow(null),
+        }
+      );
+    },
+    [createSwapMutation, swapModalRow]
+  );
+
+  const acceptPeerSwap = useCallback(
+    (input: {
+      swapRequestId: string;
+      toShiftSlug: string;
+      toShiftDate: string;
+      notes?: string;
+    }) => {
+      acceptSwapMutation.mutate(
+        {
+          id: input.swapRequestId,
+          body: {
+            toShiftSlug: input.toShiftSlug,
+            toShiftDate: input.toShiftDate,
+            ...(input.notes ? { notes: input.notes } : {}),
+          },
+        },
+        { onSuccess: () => setSwapModalRow(null) }
+      );
+    },
+    [acceptSwapMutation]
   );
 
   const shiftRows = useMemo((): ShiftRowData[] => {
@@ -638,12 +864,29 @@ export function ShiftsTable({
       if (shouldShowRow) {
         const dateYyyyMmDd = formatDate(input.currentDate, 'yyyy-MM-dd');
         const dayKey = DAY_KEYS[input.currentDate.getDay()];
+        const swapKey = `${input.shift.slug}|${dateYyyyMmDd}`;
+        const swapCell = pendingSwapRequestByShiftDay.get(swapKey);
+        const swapStatus = swapCell?.req.status ?? null;
+        const swapContextHint = swapCell
+          ? buildSwapContextHint(swapCell.req, swapCell.source, input.job)
+          : null;
         const callOffCheck = canCallOffShift(
           input.job,
           input.shift,
           dateYyyyMmDd,
           dayKey
         );
+        const hoursUntilShift =
+          (input.todayShiftStart.getTime() - now.getTime()) / (1000 * 60 * 60);
+        const configuredSwapHours = Number(input.job.additionalConfig?.swapBeforeHours);
+        const minSwapLeadHours =
+          Number.isFinite(configuredSwapHours) && configuredSwapHours >= 0
+            ? configuredSwapHours
+            : 48;
+        const canSwapByLeadTime = hoursUntilShift >= minSwapLeadHours;
+        const swapDisabledReason = canSwapByLeadTime
+          ? undefined
+          : `Swap is only available ${minSwapLeadHours}+ hours before shift start.`;
         const canCallOff =
           todayPunches.length === 0 &&
           callOffCheck.allowed &&
@@ -683,6 +926,12 @@ export function ShiftsTable({
           dayKey,
           canCallOff,
           callOffDisabledReason,
+          swapStatus,
+          swapContextHint,
+          swapRequest: swapCell?.req ?? null,
+          swapRole: swapCell?.source ?? null,
+          canSwapByLeadTime,
+          swapDisabledReason,
           isOvernightShift: input.isOvernightStartDay,
           endDateDisplay: input.isOvernightStartDay
             ? formatDate(input.todayShiftEnd, 'MM/dd/yyyy')
@@ -715,7 +964,7 @@ export function ShiftsTable({
 
       return 0;
     });
-  }, [userData, allPunches, startDate, endDate, selectedJob, selectedShift, isBlockedByJobPunch, hasActiveEventClockIn]);
+  }, [userData, allPunches, startDate, endDate, selectedJob, selectedShift, isBlockedByJobPunch, hasActiveEventClockIn, pendingSwapRequestByShiftDay]);
 
   // FIXED: Updated columns to properly show shift times instead of punch times
   const columns: TableColumn<ShiftRowData>[] = useMemo(
@@ -842,6 +1091,38 @@ export function ShiftsTable({
               row.dayKey &&
               row.punches.length === 0
           );
+          const me = String(userData.applicantId ?? '');
+          const todayYmd = formatDate(new Date(), 'yyyy-MM-dd');
+          const isPastShiftDay = Boolean(
+            row.dateYyyyMmDd && row.dateYyyyMmDd < todayYmd
+          );
+          const hasClockedInForShift = row.punches.length > 0;
+          const isSwapApproved = row.swapStatus === 'approved';
+          const hasEndedRequestOnThisShift = swapRequests.some(
+            (r) =>
+              String(r.fromEmployeeId) === me &&
+              r.fromShiftSlug === row.shift.slug &&
+              r.fromShiftDate === row.dateYyyyMmDd &&
+              (r.status === 'rejected' || r.status === 'expired')
+          );
+          const canSwap = Boolean(
+            row.dateYyyyMmDd &&
+              row.dayKey &&
+              !row.shiftHasEnded &&
+              !isPastShiftDay &&
+              !hasClockedInForShift &&
+              (row.canSwapByLeadTime || hasEndedRequestOnThisShift)
+          );
+          /** Spec 8.2 / 2.1: hide swap for past days, after clock-in, when approved, or when shift ended. */
+          const canShowSwapControl = Boolean(
+            row.dateYyyyMmDd &&
+              row.dayKey &&
+              !row.shiftHasEnded &&
+              !isPastShiftDay &&
+              !hasClockedInForShift &&
+              !isSwapApproved
+          );
+          const isSwapPending = row.swapStatus === 'pending_approval' || row.swapStatus === 'pending_match';
 
           const openCallOffConfirm = () => {
             if (!row.dateYyyyMmDd || !row.dayKey) return;
@@ -892,12 +1173,60 @@ export function ShiftsTable({
                   )}
                 </Button>
               )}
+              {canShowSwapControl && (
+                <div className="flex max-w-[13rem] flex-col items-start gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSwapModalRow(row)}
+                    disabled={isSwapPending ? false : !canSwap}
+                    title={
+                      isSwapPending
+                        ? 'View your swap request or remove it'
+                        : !canSwap && row.swapDisabledReason
+                          ? row.swapDisabledReason
+                          : undefined
+                    }
+                    className={`disabled:opacity-50 ${
+                      isSwapPending
+                        ? 'border-amber-500 text-amber-600'
+                        : 'border-violet-500 text-violet-600 hover:bg-violet-50'
+                    }`}
+                  >
+                    {!isSwapPending ? (
+                      <ArrowLeftRight className="h-3.5 w-3.5 mr-1" />
+                    ) : (
+                      <Clock3 className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    {row.swapStatus === 'pending_approval'
+                      ? 'Awaiting approval'
+                      : row.swapStatus === 'pending_match'
+                        ? 'Waiting for match'
+                        : 'Swap'}
+                  </Button>
+                  {row.swapContextHint ? (
+                    <span
+                      className="text-[11px] leading-snug text-muted-foreground"
+                      title={row.swapContextHint}
+                    >
+                      {row.swapContextHint}
+                    </span>
+                  ) : null}
+                </div>
+              )}
             </div>
           );
         },
       },
     ],
-    [loading, handleShiftClockIn, handleShiftClockOut, callOffMutation.isPending]
+    [
+      loading,
+      handleShiftClockIn,
+      handleShiftClockOut,
+      callOffMutation.isPending,
+      swapRequests,
+      userData.applicantId,
+    ]
   );
 
   // Show loading state while fetching punches
@@ -1006,6 +1335,46 @@ export function ShiftsTable({
               }
             : null
         }
+      />
+
+      <ShiftSwapRequestModal
+        isOpen={!!swapModalRow}
+        onClose={() => setSwapModalRow(null)}
+        loading={
+          createSwapMutation.isPending ||
+          acceptSwapMutation.isPending ||
+          withdrawSwapMutation.isPending
+        }
+        onSubmit={submitSwapRequest}
+        onAcceptPeerSwap={acceptPeerSwap}
+        existingRequest={
+          swapModalRow?.swapRequest && swapModalRow.swapRole
+            ? {
+                request: swapModalRow.swapRequest,
+                viewerRole: swapModalRow.swapRole,
+              }
+            : null
+        }
+        contextJob={swapModalRow?.job ?? null}
+        onWithdraw={(id) =>
+          withdrawSwapMutation.mutate(id, {
+            onSuccess: () => setSwapModalRow(null),
+          })
+        }
+        shiftInfo={
+          swapModalRow?.dateYyyyMmDd
+            ? {
+                summaryLine: `${swapModalRow.date} · ${swapModalRow.startTime} – ${swapModalRow.endTime} · ${swapModalRow.jobTitle} · ${swapModalRow.shiftName}`,
+                jobSlug: swapModalRow.job.jobSlug,
+                shiftSlug: swapModalRow.shift.slug,
+                fromShiftDate: swapModalRow.dateYyyyMmDd,
+              }
+            : null
+        }
+        pickupListDateRange={{
+          startDate: formatDate(new Date(dateRange.startDate), 'yyyy-MM-dd'),
+          endDate: formatDate(new Date(dateRange.endDate), 'yyyy-MM-dd'),
+        }}
       />
 
       <Table

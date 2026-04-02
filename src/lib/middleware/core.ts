@@ -2,7 +2,6 @@
 import type { NextRequest } from 'next/server';
 import { authMiddleware } from './auth';
 import { loggingMiddleware } from './logging';
-import { rateLimitMiddleware } from './rate-limiting';
 import { securityMiddleware } from './security';
 import { sessionCleanerMiddleware } from './session-cleaner';
 import { isAuthRoute, isStaticAsset } from './utils';
@@ -48,9 +47,8 @@ export async function middleware(request: NextRequest) {
     const sessionCleanerResult = sessionCleanerMiddleware(request);
     if (sessionCleanerResult) return sessionCleanerResult;
 
-    // Then run rate limiting
-    const rateLimitResult = await rateLimitMiddleware(request);
-    if (rateLimitResult) return rateLimitResult;
+    // Rate limiting moved to API route handlers (withEnhancedAuthAPI / withAuthAPI)
+    // so it can use Redis for cross-worker consistency in cluster mode.
 
     // Then run auth middleware for protected routes
     const authResult = await authMiddleware(request);
