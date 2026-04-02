@@ -23,6 +23,15 @@ export type Shift = {
   positions?: Position[];
 };
 
+export type EventManagerNotificationRecipient = {
+  userId?: string;
+  applicantId?: string;
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  email?: string;
+};
+
 export type JobShiftSettings = {
   shifts: Shift[];
   startDate: string;
@@ -46,6 +55,9 @@ export type JobShiftSettings = {
     allowCallOff?: boolean;
     callOffBefore?: number;
     callOffBeforeUnit?: 'minutes' | 'hours' | 'days';
+    /** Minimum lead time (in hours) required to request a shift swap. */
+    swapBeforeHours?: number;
+    eventManagerNotificationRecipients?: EventManagerNotificationRecipient[];
   };
   defaultSchedule: DefaultSchedule;
   jobShiftRoster: RosterApplicant[];
@@ -67,6 +79,10 @@ export type AdditionalConfiguration = {
   allowCallOff?: boolean;
   callOffBefore?: number;
   callOffBeforeUnit?: 'minutes' | 'hours' | 'days';
+  /** Minimum lead time (in hours) required to request a shift swap. */
+  swapBeforeHours?: number;
+  /** Swap / event-style emails to job managers (see swap admin notifications). */
+  eventManagerNotificationRecipients?: EventManagerNotificationRecipient[];
 };
 
 export type GignologyJob = {
