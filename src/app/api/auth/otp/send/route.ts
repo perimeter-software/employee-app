@@ -82,6 +82,9 @@ export async function POST(request: NextRequest) {
     // Send OTP via email
     try {
       await emailService.sendOTPCode(normalizedEmail, otpCode, db);
+      if (env.isDevelopment) {
+        console.log(`🔐 [dev] Login OTP for ${normalizedEmail}: ${otpCode}`);
+      }
     } catch (emailError) {
       const errorMessage =
         emailError instanceof Error ? emailError.message : String(emailError);
