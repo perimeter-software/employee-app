@@ -16,6 +16,8 @@ async function getWillingHandler(request: AuthenticatedRequest) {
     const shiftSlug = searchParams.get('shiftSlug') || '';
     const page = searchParams.get('page');
     const limit = searchParams.get('limit');
+    const startDate = searchParams.get('startDate') || '';
+    const endDate = searchParams.get('endDate') || '';
 
     const { db } = await getTenantAwareConnection(request);
     const data = await listWillingSwapCandidates(db, request.user, {
@@ -23,6 +25,8 @@ async function getWillingHandler(request: AuthenticatedRequest) {
       shiftSlug,
       ...(page ? { page: parseInt(page, 10) || 1 } : {}),
       ...(limit ? { limit: parseInt(limit, 10) || 5 } : {}),
+      ...(startDate ? { startDate } : {}),
+      ...(endDate ? { endDate } : {}),
     });
 
     return NextResponse.json({ success: true, data }, { status: 200 });

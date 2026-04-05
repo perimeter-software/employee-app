@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { NextResponse } from 'next/server';
-import type { Collection, Db, Document } from 'mongodb';
+import type { Db, Document } from 'mongodb';
 import { ObjectId } from 'mongodb';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
@@ -291,68 +291,9 @@ function initialStatus(
 }
 
 /**
- * Close open pickup-interest rows for this employee + shift-day so seekers /
- * pickup lists no longer show them after a match (directed giveaway or claim).
- */
-async function supersedePickupInterestForMatchedShiftDay(
-  col: Collection<SwapRequestDoc>,
-  params: {
-    jobSlug: string;
-    shiftSlug: string;
-    shiftDateYmd: string;
-    /** Applicant whose pickup_interest docs are closed */
-    targetEmployeeId: string;
-    /** Shown as resolver (initiator or claimer) */
-    resolvedByApplicantId: string;
-    excludeId?: ObjectId;
-  }
-): Promise<void> {
-  const {
-    jobSlug,
-    shiftSlug,
-    shiftDateYmd,
-    targetEmployeeId,
-    resolvedByApplicantId,
-    excludeId,
-  } = params;
-
-  const filter: Record<string, unknown> = {
-    jobSlug,
-    type: 'pickup_interest',
-    fromEmployeeId: targetEmployeeId,
-    fromShiftDate: shiftDateYmd,
-    status: { $in: ['pending_match', 'pending_approval'] },
-    $or: [{ fromShiftSlug: shiftSlug }, { shiftSlug: shiftSlug }],
-  };
-  if (excludeId) {
-    filter._id = { $ne: excludeId };
-  }
-
-  const rows = await col.find<SwapRequestDoc>(filter).toArray();
-  const note = '[withdrawn: matched to offered shift]';
-  for (const r of rows) {
-    const merged =
-      r.notes != null && String(r.notes).trim() !== ''
-        ? `${r.notes}\n${note}`
-        : note;
-    await col.updateOne(
-      { _id: r._id, status: { $in: ['pending_match', 'pending_approval'] } },
-      {
-        $set: {
-          status: 'rejected',
-          resolvedAt: new Date(),
-          resolvedBy: resolvedByApplicantId,
-          resolution: 'rejected',
-          notes: merged,
-        },
-      }
-    );
-  }
-}
-
-/**
- * Claim an open giveaway by creating a `pickup_interest` with full peer/slot linkage
- * (`pending_approval`) and closing the giveaway so it no longer appears as available.
+ * Pick Up + `matchGiveawayId` (Available now): inserts `pickup_interest` / `pending_approval`
+ * with `from*` = claimant, `to*` = giveaway offerer, same shift slug+date on both sides;
+ * then closes the open giveaway so it no longer appears as available.
  */
 async function createPickupInterestFromMatchedGiveaway(
   db: Db,
@@ -537,6 +478,7 @@ async function createPickupInterestFromMatchedGiveaway(
   }
 
   const notes = normalizeNotes(input.notes);
+  /** Claimant = from*, original offerer = to*; same slug/date on both sides for this slot. */
   const doc: SwapRequestDoc = {
     _id: new ObjectId(),
     jobSlug,
@@ -558,15 +500,6 @@ async function createPickupInterestFromMatchedGiveaway(
   };
 
   await col.insertOne(doc);
-
-  await supersedePickupInterestForMatchedShiftDay(col, {
-    jobSlug,
-    shiftSlug: fromShiftSlug,
-    shiftDateYmd: fromShiftDate,
-    targetEmployeeId: claimantId,
-    resolvedByApplicantId: claimantId,
-    excludeId: doc._id,
-  });
 
   await notifyGiveawayClaimedByPeer(db, {
     type: 'giveaway',
@@ -697,6 +630,24 @@ export async function createSwapRequest(
     }
   }
 
+  if (type === 'giveaway') {
+    const dupGiveaway = await col.findOne({
+      jobSlug,
+      fromEmployeeId,
+      fromShiftSlug,
+      fromShiftDate,
+      type: 'giveaway',
+      status: { $in: ['pending_match', 'pending_approval'] },
+    });
+    if (dupGiveaway) {
+      throw new SwapRequestError(
+        'duplicate-giveaway',
+        'You already have an open giveaway or pending offer for this shift-day.',
+        400
+      );
+    }
+  }
+
   if (type === 'swap' || type === 'giveaway') {
     assertInitiatorOnRoster(job, fromShiftSlug, fromEmployeeId, fromSnap);
   }
@@ -734,6 +685,29 @@ export async function createSwapRequest(
   }
 
   const directedToId = input.toEmployeeId?.trim() || null;
+
+  if (type === 'giveaway') {
+    const wantsOpenOffer = Boolean(input.acceptAny);
+    if (wantsOpenOffer && directedToId) {
+      throw new SwapRequestError(
+        'invalid-input',
+        'An open giveaway cannot name a specific employee.',
+        400
+      );
+    }
+    if (!wantsOpenOffer && !directedToId) {
+      throw new SwapRequestError(
+        'missing-target',
+        'Select a coworker with pickup interest, or choose an open offer for any eligible employee.',
+        400
+      );
+    }
+    if (wantsOpenOffer && !directedToId) {
+      toShiftSlug = null;
+      toShiftDate = null;
+    }
+  }
+
   if (type === 'swap' && directedToId && toShiftSlug && toShiftDate) {
     const toSnapDirected = buildShiftDaySnapshotFromJob(
       job,
@@ -769,6 +743,9 @@ export async function createSwapRequest(
   }
 
   if (type === 'giveaway' && directedToId) {
+    if (!toShiftSlug) {
+      toShiftSlug = fromShiftSlug;
+    }
     try {
       validateGiveawayOverlap(
         job,
@@ -790,7 +767,7 @@ export async function createSwapRequest(
 
   const taggedOnly = Boolean(input.taggedOnly);
   const acceptAny =
-    type === 'swap'
+    type === 'swap' || type === 'giveaway'
       ? Boolean(input.acceptAny) && !directedToId
       : Boolean(input.acceptAny);
   const notes = normalizeNotes(input.notes);
@@ -821,17 +798,6 @@ export async function createSwapRequest(
   };
 
   await col.insertOne(doc);
-
-  if (type === 'giveaway' && directedToId) {
-    await supersedePickupInterestForMatchedShiftDay(col, {
-      jobSlug,
-      shiftSlug: fromShiftSlug,
-      shiftDateYmd: fromShiftDate,
-      targetEmployeeId: directedToId,
-      resolvedByApplicantId: fromEmployeeId,
-      excludeId: doc._id,
-    });
-  }
 
   const created = await col.findOne({ _id: doc._id });
   if (created) {
@@ -1211,15 +1177,6 @@ export async function claimGiveawayRequest(
     );
   }
 
-  await supersedePickupInterestForMatchedShiftDay(col, {
-    jobSlug: updated.jobSlug,
-    shiftSlug: fromSlug,
-    shiftDateYmd: fromDate,
-    targetEmployeeId: employeeId,
-    resolvedByApplicantId: employeeId,
-    excludeId: updated._id,
-  });
-
   await notifyGiveawayClaimedByPeer(db, updated);
   return toPublic(updated);
 }
@@ -1544,6 +1501,9 @@ export type ListWillingSwapCandidatesQuery = {
   shiftSlug: string;
   page?: number;
   limit?: number;
+  /** Optional YYYY-MM-DD window (e.g. schedule table week) for peers’ `fromShiftDate`. */
+  startDate?: string;
+  endDate?: string;
 };
 
 type ApplicantNameFields = {
@@ -1588,8 +1548,9 @@ async function loadApplicantDisplayMap(
 }
 
 /**
- * Other employees with an open `swap` request on the same job+shift (pending_match).
- * Used to pick a peer by name instead of typing an id.
+ * Other employees with an open `swap` request on the same job+shift (`type: 'swap'`,
+ * `pending_match`). Omits rows where the viewer is already on this shift template’s
+ * roster for the peer’s offered calendar day (`fromShiftDate`).
  */
 export async function listWillingSwapCandidates(
   db: Db,
@@ -1643,22 +1604,26 @@ export async function listWillingSwapCandidates(
     fromEmployeeId: { $ne: me },
   };
 
+  const rangeStart = query.startDate?.trim()
+    ? coerceQueryBoundaryToYmd(query.startDate)
+    : null;
+  const rangeEnd = query.endDate?.trim()
+    ? coerceQueryBoundaryToYmd(query.endDate)
+    : null;
+  if (rangeStart && rangeEnd && rangeStart <= rangeEnd) {
+    filter.fromShiftDate = { $gte: rangeStart, $lte: rangeEnd };
+  }
+
   const col = db.collection<SwapRequestDoc>(COLLECTION);
   const jobForWilling = await findJobByJobSlug(db, jobSlug);
-  const total = await col.countDocuments(filter);
-  const rows = await col
-    .find(filter)
-    .sort({ submittedAt: -1 })
-    .skip((page - 1) * limit)
-    .limit(limit)
-    .toArray();
+  const rows = await col.find(filter).sort({ submittedAt: -1 }).toArray();
 
   const nameMap = await loadApplicantDisplayMap(
     db,
     rows.map((r) => r.fromEmployeeId)
   );
 
-  const items = rows.map((r) => {
+  const mapped = rows.map((r) => {
     const nm = nameMap.get(r.fromEmployeeId) ?? {
       displayName: 'Employee',
       initials: 'EM',
@@ -1701,6 +1666,21 @@ export async function listWillingSwapCandidates(
           : String(r.submittedAt),
     };
   });
+
+  const itemsAll = mapped.filter((item) => {
+    if (!item.fromShiftDate) return false;
+    if (item.fromShiftSlug !== shiftSlug) return false;
+    if (!jobForWilling) return true;
+    return !isEmployeeAssignedShiftDay(
+      jobForWilling,
+      shiftSlug,
+      me,
+      item.fromShiftDate
+    );
+  });
+
+  const total = itemsAll.length;
+  const items = itemsAll.slice((page - 1) * limit, page * limit);
 
   return {
     items,
@@ -1753,6 +1733,12 @@ export type ListPickupInterestSeekersQuery = {
   shiftSlug: string;
   page?: number;
   limit?: number;
+  /**
+   * Optional YYYY-MM-DD bounds on seekers’ tagged `fromShiftDate`.
+   * Use the same value for both to restrict to a single calendar day.
+   */
+  startDate?: string;
+  endDate?: string;
 };
 
 export type ListPickupOpportunitiesQuery = {
@@ -1765,7 +1751,8 @@ export type ListPickupOpportunitiesQuery = {
 /**
  * Coworkers with open `pickup_interest` on the same job+shift (want extra work).
  * Includes `pending_match` and `pending_approval`, and any `taggedOnly` value.
- * Used for “Let someone take my shift” — pick who to offer your day to.
+ * Used for “Let someone take my shift” — pass equal `startDate`/`endDate` to list
+ * only seekers who tagged interest for that specific shift-day.
  */
 export async function listPickupInterestSeekers(
   db: Db,
@@ -1817,6 +1804,16 @@ export async function listPickupInterestSeekers(
     type: 'pickup_interest',
     fromEmployeeId: { $ne: me },
   };
+
+  const skStart = query.startDate?.trim()
+    ? coerceQueryBoundaryToYmd(query.startDate)
+    : null;
+  const skEnd = query.endDate?.trim()
+    ? coerceQueryBoundaryToYmd(query.endDate)
+    : null;
+  if (skStart && skEnd && skStart <= skEnd) {
+    filter.fromShiftDate = { $gte: skStart, $lte: skEnd };
+  }
 
   const col = db.collection<SwapRequestDoc>(COLLECTION);
   const total = await col.countDocuments(filter);
@@ -1883,6 +1880,7 @@ export async function listPickupOpportunities(
     offererDisplayName: string | null;
     directedToOther: boolean;
     viewerAlreadyAssigned: boolean;
+    viewerPickedUp: boolean;
   }>;
   swapBeforeHours: number;
 }> {
@@ -1960,6 +1958,25 @@ export async function listPickupOpportunities(
   const offererIds = [...byDate.values()].map((g) => g.fromEmployeeId);
   const nameMap = await loadApplicantDisplayMap(db, offererIds);
 
+  const pickupRows = await col
+    .find({
+      jobSlug,
+      type: 'pickup_interest',
+      fromEmployeeId: me,
+      status: { $in: ['pending_match', 'pending_approval', 'approved'] },
+      fromShiftDate: { $gte: startDate, $lte: endDate },
+      $or: [{ fromShiftSlug: shiftSlug }, { shiftSlug: shiftSlug }],
+    })
+    .toArray();
+
+  const viewerPickedUpDates = new Set<string>();
+  for (const pr of pickupRows) {
+    const stored = pr as unknown as SwapRequestStoredDoc;
+    if (getFromShiftSlug(stored) !== shiftSlug) continue;
+    const d = getFromShiftDate(stored);
+    if (d) viewerPickedUpDates.add(d);
+  }
+
   const items: Array<{
     shiftDate: string;
     shiftDay: ShiftDaySnapshot;
@@ -1970,6 +1987,7 @@ export async function listPickupOpportunities(
     offererDisplayName: string | null;
     directedToOther: boolean;
     viewerAlreadyAssigned: boolean;
+    viewerPickedUp: boolean;
   }> = [];
 
   for (const ymd of eachYmdInRange(startDate, endDate)) {
@@ -2019,6 +2037,7 @@ export async function listPickupOpportunities(
       offererDisplayName: offerer,
       directedToOther,
       viewerAlreadyAssigned,
+      viewerPickedUp: viewerPickedUpDates.has(ymd),
     });
   }
 

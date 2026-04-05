@@ -97,6 +97,11 @@ export type PickupOpportunityRow = {
   directedToOther: boolean;
   /** True when the viewer is already on the roster for this shift-day. */
   viewerAlreadyAssigned: boolean;
+  /**
+   * True when the viewer has a `pickup_interest` for this shift-day
+   * (pending_match, pending_approval, or approved).
+   */
+  viewerPickedUp: boolean;
 };
 
 export type PickupOpportunitiesResponse = {

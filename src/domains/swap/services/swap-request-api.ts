@@ -12,10 +12,38 @@ export const swapRequestQueryKeys = {
   all: ['swap-requests'] as const,
   list: (startDate?: string, endDate?: string) =>
     [...swapRequestQueryKeys.all, 'list', startDate || '', endDate || ''] as const,
-  willing: (jobSlug: string, shiftSlug: string, page: number) =>
-    [...swapRequestQueryKeys.all, 'willing', jobSlug, shiftSlug, page] as const,
-  pickupSeekers: (jobSlug: string, shiftSlug: string, page: number) =>
-    [...swapRequestQueryKeys.all, 'pickup-seekers', jobSlug, shiftSlug, page] as const,
+  willing: (
+    jobSlug: string,
+    shiftSlug: string,
+    page: number,
+    startDate?: string,
+    endDate?: string
+  ) =>
+    [
+      ...swapRequestQueryKeys.all,
+      'willing',
+      jobSlug,
+      shiftSlug,
+      page,
+      startDate ?? '',
+      endDate ?? '',
+    ] as const,
+  pickupSeekers: (
+    jobSlug: string,
+    shiftSlug: string,
+    page: number,
+    startDate?: string,
+    endDate?: string
+  ) =>
+    [
+      ...swapRequestQueryKeys.all,
+      'pickup-seekers',
+      jobSlug,
+      shiftSlug,
+      page,
+      startDate ?? '',
+      endDate ?? '',
+    ] as const,
   pickupOpportunities: (
     jobSlug: string,
     shiftSlug: string,
@@ -62,6 +90,8 @@ export class SwapRequestApi {
     shiftSlug: string;
     page?: number;
     limit?: number;
+    startDate?: string;
+    endDate?: string;
   }): Promise<WillingSwapCandidatesPage> {
     const response = await baseInstance.get<WillingSwapCandidatesPage>(
       `${this.ENDPOINT}/willing`,
@@ -71,6 +101,8 @@ export class SwapRequestApi {
           shiftSlug: params.shiftSlug,
           page: params.page ?? 1,
           limit: params.limit ?? 5,
+          ...(params.startDate ? { startDate: params.startDate } : {}),
+          ...(params.endDate ? { endDate: params.endDate } : {}),
         },
       }
     );
@@ -86,6 +118,8 @@ export class SwapRequestApi {
     shiftSlug: string;
     page?: number;
     limit?: number;
+    startDate?: string;
+    endDate?: string;
   }): Promise<PickupInterestSeekersPage> {
     const response = await baseInstance.get<PickupInterestSeekersPage>(
       `${this.ENDPOINT}/pickup-seekers`,
@@ -95,6 +129,8 @@ export class SwapRequestApi {
           shiftSlug: params.shiftSlug,
           page: params.page ?? 1,
           limit: params.limit ?? 8,
+          ...(params.startDate ? { startDate: params.startDate } : {}),
+          ...(params.endDate ? { endDate: params.endDate } : {}),
         },
       }
     );

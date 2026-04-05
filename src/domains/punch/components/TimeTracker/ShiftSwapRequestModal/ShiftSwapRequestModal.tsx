@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -13,12 +14,16 @@ import { Button } from '@/components/ui/Button';
 import { Textarea } from '@/components/ui/Textarea';
 import { Badge } from '@/components/ui/Badge';
 import type {
+  PickupInterestSeekerRow,
+  PickupOpportunityRow,
   ShiftDaySnapshot,
   SwapRequest,
   SwapRequestType,
+  WillingSwapCandidate,
 } from '@/domains/swap/types';
 import type { GignologyJob } from '@/domains/job/types/job.types';
 import {
+  prefetchShiftSwapModalLists,
   usePickupInterestSeekersQuery,
   usePickupOpportunitiesQuery,
   useWillingSwapCandidatesQuery,
@@ -28,6 +33,210 @@ import { ArrowLeftRight, ArrowRightLeft, Plus, Zap } from 'lucide-react';
 type SwapMode = 'swap' | 'giveaway' | 'pickup_interest';
 
 const WILLING_LIMIT = 5;
+
+/**
+ * Scrollable list regions: `min-h-0` lets flex/grid ancestors shrink; `isolate` +
+ * layout containment reduce repaint cost while scrolling; `transition-colors` only
+ * avoids animating layout during hover/selection.
+ */
+const SWAP_MODAL_LIST_SCROLL =
+  'isolate min-h-0 max-h-[280px] overflow-y-auto overscroll-y-contain touch-pan-y [-webkit-overflow-scrolling:touch] [contain:layout] rounded-xl border border-gray-200 p-2 pr-1';
+const SWAP_MODAL_PICKUP_SCROLL =
+  'isolate min-h-0 max-h-[300px] overflow-y-auto overscroll-y-contain touch-pan-y [-webkit-overflow-scrolling:touch] [contain:layout] rounded-xl border border-gray-200 p-2 pr-1';
+
+const WillingSwapListRow = memo(function WillingSwapListRow({
+  candidate,
+  selected,
+  onSelect,
+}: {
+  candidate: WillingSwapCandidate;
+  selected: boolean;
+  onSelect: (swapRequestId: string) => void;
+}) {
+  const timeLine = useMemo(
+    () => formatCandidateShiftLine(candidate.fromShiftDay),
+    [candidate.fromShiftDay]
+  );
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(candidate.swapRequestId)}
+      className={`mb-2 flex w-full items-start gap-3 rounded-xl border p-4 text-left transition-colors duration-150 ease-out last:mb-0 ${
+        selected
+          ? 'border-blue-500 bg-blue-50/60'
+          : 'border-gray-200 hover:bg-gray-50'
+      }`}
+    >
+      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[var(--app-primary,#0d9488)] text-sm font-semibold text-white">
+        {candidate.initials}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="font-medium text-gray-900">{candidate.displayName}</div>
+        <div className="text-xs text-gray-600">{timeLine}</div>
+      </div>
+      <Badge
+        variant="outline"
+        className="flex-shrink-0 border-emerald-200 bg-emerald-50 text-emerald-800"
+      >
+        Open
+      </Badge>
+    </button>
+  );
+});
+
+const GiveawaySeekerListRow = memo(function GiveawaySeekerListRow({
+  seeker,
+  selected,
+  onSelect,
+}: {
+  seeker: PickupInterestSeekerRow;
+  selected: boolean;
+  /** One row per `pickup_interest` doc; use full row so selection is unique per day. */
+  onSelect: (seeker: PickupInterestSeekerRow) => void;
+}) {
+  const interestUs = useMemo(
+    () => formatYmdUs(seeker.interestShiftDate),
+    [seeker.interestShiftDate]
+  );
+  const relative = useMemo(
+    () => formatRelativeRequested(seeker.submittedAt),
+    [seeker.submittedAt]
+  );
+  const avatarBg = useMemo(
+    () => ({ backgroundColor: avatarHueForId(seeker.employeeId) }),
+    [seeker.employeeId]
+  );
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(seeker)}
+      className={`mb-2 flex w-full items-start gap-3 rounded-xl border p-4 text-left transition-colors duration-150 ease-out last:mb-0 ${
+        selected
+          ? 'border-blue-500 bg-blue-50/60'
+          : 'border-gray-200 hover:bg-gray-50'
+      }`}
+    >
+      <div
+        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+        style={avatarBg}
+      >
+        {seeker.initials}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="font-medium text-gray-900">{seeker.displayName}</div>
+        <div className="text-xs text-gray-600">
+          Preference:{' '}
+          {seeker.preferenceNote || 'Any shift · extra work'}
+        </div>
+        <div className="mt-0.5 text-xs text-muted-foreground">
+          Interested in {interestUs} · {relative}
+        </div>
+      </div>
+      <span
+        className={`mt-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 ${
+          selected
+            ? 'border-blue-600 bg-blue-600 text-white'
+            : 'border-gray-300'
+        }`}
+        aria-hidden
+      >
+        {selected ? '✓' : ''}
+      </span>
+    </button>
+  );
+});
+
+const PickupOpportunityListRow = memo(function PickupOpportunityListRow({
+  row,
+  title,
+  selected,
+  onSelect,
+}: {
+  row: PickupOpportunityRow;
+  title: string;
+  selected: boolean;
+  onSelect: (shiftDate: string) => void;
+}) {
+  const timeLine = useMemo(
+    () => formatCandidateShiftLine(row.shiftDay),
+    [row.shiftDay]
+  );
+  const weekday = useMemo(
+    () => shortWeekdayLabel(row.shiftDate),
+    [row.shiftDate]
+  );
+  const disabled = row.viewerAlreadyAssigned;
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => {
+        if (!disabled) onSelect(row.shiftDate);
+      }}
+      className={`mb-2 flex w-full items-start gap-3 rounded-xl border p-4 text-left shadow-sm transition-colors duration-150 ease-out last:mb-0 ${
+        disabled
+          ? 'cursor-not-allowed border-gray-100 bg-gray-50/80 opacity-95'
+          : selected
+            ? 'border-blue-500 bg-blue-50/60'
+            : 'border-gray-200 hover:bg-gray-50'
+      }`}
+    >
+      <div className="flex h-12 w-12 flex-shrink-0 flex-col items-center justify-center rounded-lg bg-sky-600 text-center text-xs font-bold leading-tight text-white">
+        <span>{weekday}</span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium text-gray-900">{title}</span>
+          {row.viewerAlreadyAssigned && (
+            <Badge
+              variant="outline"
+              className="border-slate-300 bg-slate-50 text-[10px] uppercase text-slate-700"
+            >
+              Your shift
+            </Badge>
+          )}
+          {row.viewerPickedUp && (
+            <Badge
+              variant="outline"
+              className="border-violet-300 bg-violet-50 text-[10px] uppercase text-violet-800"
+            >
+              Picked up
+            </Badge>
+          )}
+          {row.availableNow && (
+            <Badge
+              variant="outline"
+              className="border-amber-300 bg-amber-50 text-[10px] uppercase text-amber-900"
+            >
+              Available now
+            </Badge>
+          )}
+        </div>
+        <div className="mt-0.5 text-xs text-gray-600">{timeLine}</div>
+        {row.availableNow && row.offererDisplayName && (
+          <div className="mt-1 flex items-center gap-1 text-xs text-orange-600">
+            <Zap className="h-3 w-3 shrink-0" />
+            <span>
+              {row.directedToOther
+                ? `${row.offererDisplayName} offered this shift`
+                : `${row.offererDisplayName} is offering this shift`}
+            </span>
+          </div>
+        )}
+      </div>
+      <span
+        className={`mt-2 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 ${
+          selected
+            ? 'border-blue-600 bg-blue-600 text-white'
+            : 'border-gray-300'
+        }`}
+        aria-hidden
+      >
+        {selected ? '✓' : ''}
+      </span>
+    </button>
+  );
+});
 
 export interface ShiftSwapRequestModalProps {
   isOpen: boolean;
@@ -221,6 +430,10 @@ function SwapRequestDetailPanel({
   const swapPeerEmployeeId =
     viewerRole === 'to' ? request.fromEmployeeId : request.toEmployeeId ?? null;
   const swapPeerName = coworkerDisplayNameFromJob(job, swapPeerEmployeeId);
+  const giveawayRecipientName = coworkerDisplayNameFromJob(
+    job,
+    request.type === 'giveaway' ? request.toEmployeeId : null
+  );
 
   /** Spec: remove only for giveaway / pickup without a named coworker; never for swap or assigned giveaway/pickup. */
   const canWithdraw =
@@ -278,10 +491,41 @@ function SwapRequestDetailPanel({
         )}
 
         {request.type === 'giveaway' && (
-          <p className="border-t border-gray-200 pt-3 text-gray-700">
-            You are offering this shift-day for someone else to take. Admin must approve before the
-            schedule changes.
-          </p>
+          <div className="space-y-2 border-t border-gray-200 pt-3 text-gray-700">
+            {request.toEmployeeId ? (
+              <p>
+                {giveawayRecipientName ? (
+                  <>
+                    You are offering this shift-day to{' '}
+                    <span className="font-semibold text-gray-900">
+                      {giveawayRecipientName}
+                    </span>
+                    . Admin must approve before the schedule changes.
+                  </>
+                ) : (
+                  <>
+                    You are offering this shift-day to a specific coworker. Admin must approve
+                    before the schedule changes.
+                  </>
+                )}
+              </p>
+            ) : request.acceptAny ? (
+              <p>
+                Open offer — any eligible coworker on this job/shift can ask to take this shift-day.
+                Admin must approve before the schedule changes.
+              </p>
+            ) : (
+              <p>
+                You are offering this shift-day for someone else to take. Admin must approve before
+                the schedule changes.
+              </p>
+            )}
+            {request.toShiftDate && (
+              <p className="text-xs text-muted-foreground">
+                Their pickup interest was tagged for {formatYmdUs(request.toShiftDate)}.
+              </p>
+            )}
+          </div>
         )}
 
         {request.type === 'pickup_interest' && (
@@ -366,25 +610,68 @@ export function ShiftSwapRequestModal({
   >(null);
   const [willingPage, setWillingPage] = useState(1);
   const [seekersPage, setSeekersPage] = useState(1);
-  const [giveawaySelectedEmployeeId, setGiveawaySelectedEmployeeId] = useState<
-    string | null
-  >(null);
+  const [giveawaySelection, setGiveawaySelection] = useState<{
+    swapRequestId: string;
+    employeeId: string;
+    /** YYYY-MM-DD — day the seeker tagged in their pickup interest (not the giver’s shift-day). */
+    interestShiftDate: string;
+  } | null>(null);
+  /** Open giveaway: any eligible coworker may claim (pending admin), no named seeker. */
+  const [giveawayAcceptAny, setGiveawayAcceptAny] = useState(false);
   const [pickupSelectedDate, setPickupSelectedDate] = useState<string | null>(
     null
   );
   const [notes, setNotes] = useState('');
 
+  const queryClient = useQueryClient();
   const jobSlug = shiftInfo?.jobSlug ?? '';
   const shiftSlug = shiftInfo?.shiftSlug ?? '';
+  const listRangeStart = pickupListDateRange?.startDate ?? '';
+  const listRangeEnd = pickupListDateRange?.endDate ?? '';
+  const hasListDateRange = Boolean(listRangeStart && listRangeEnd);
+  const giveawaySeekersDay = shiftInfo?.fromShiftDate?.trim() ?? '';
+  const hasGiveawaySeekersDay = Boolean(giveawaySeekersDay);
+
+  useEffect(() => {
+    if (!isOpen || existingRequest || !jobSlug || !shiftSlug) {
+      return;
+    }
+    if (!hasListDateRange && !hasGiveawaySeekersDay) {
+      return;
+    }
+    void prefetchShiftSwapModalLists(queryClient, {
+      jobSlug,
+      shiftSlug,
+      ...(hasListDateRange
+        ? { weekStart: listRangeStart, weekEnd: listRangeEnd }
+        : {}),
+      ...(hasGiveawaySeekersDay
+        ? { pickupSeekersInterestDate: giveawaySeekersDay }
+        : {}),
+    });
+  }, [
+    isOpen,
+    existingRequest,
+    jobSlug,
+    shiftSlug,
+    hasListDateRange,
+    hasGiveawaySeekersDay,
+    giveawaySeekersDay,
+    listRangeStart,
+    listRangeEnd,
+    queryClient,
+  ]);
 
   const willingQuery = useWillingSwapCandidatesQuery({
     jobSlug,
     shiftSlug,
     page: willingPage,
+    startDate: listRangeStart,
+    endDate: listRangeEnd,
     enabled:
       isOpen &&
       mode === 'swap' &&
-      Boolean(jobSlug && shiftSlug) &&
+      Boolean(jobSlug && shiftSlug && hasListDateRange) &&
       !existingRequest,
   });
 
@@ -392,10 +679,11 @@ export function ShiftSwapRequestModal({
     jobSlug,
     shiftSlug,
     page: seekersPage,
+    interestShiftDate: giveawaySeekersDay,
     enabled:
       isOpen &&
       mode === 'giveaway' &&
-      Boolean(jobSlug && shiftSlug) &&
+      Boolean(jobSlug && shiftSlug && hasGiveawaySeekersDay) &&
       !existingRequest,
   });
 
@@ -423,7 +711,8 @@ export function ShiftSwapRequestModal({
       setSelectedSwapRequestId(null);
       setWillingPage(1);
       setSeekersPage(1);
-      setGiveawaySelectedEmployeeId(null);
+      setGiveawaySelection(null);
+      setGiveawayAcceptAny(false);
       setPickupSelectedDate(null);
       setNotes('');
     }
@@ -433,13 +722,34 @@ export function ShiftSwapRequestModal({
     setSelectedSwapRequestId(null);
     setWillingPage(1);
     setSeekersPage(1);
-    setGiveawaySelectedEmployeeId(null);
+    setGiveawaySelection(null);
+    setGiveawayAcceptAny(false);
     setPickupSelectedDate(null);
-  }, [mode, jobSlug, shiftSlug]);
+  }, [mode, jobSlug, shiftSlug, listRangeStart, listRangeEnd, giveawaySeekersDay]);
 
   useEffect(() => {
     if (acceptAny) setSelectedSwapRequestId(null);
   }, [acceptAny]);
+
+  const handleSelectWilling = useCallback((swapRequestId: string) => {
+    setSelectedSwapRequestId(swapRequestId);
+  }, []);
+
+  const handleSelectGiveawaySeeker = useCallback(
+    (seeker: PickupInterestSeekerRow) => {
+      setGiveawayAcceptAny(false);
+      setGiveawaySelection({
+        swapRequestId: seeker.swapRequestId,
+        employeeId: seeker.employeeId,
+        interestShiftDate: seeker.interestShiftDate,
+      });
+    },
+    []
+  );
+
+  const handleSelectPickupDate = useCallback((shiftDate: string) => {
+    setPickupSelectedDate(shiftDate);
+  }, []);
 
   const selectedCandidate = useMemo(() => {
     if (!selectedSwapRequestId || !willingQuery.data?.items) return null;
@@ -458,7 +768,10 @@ export function ShiftSwapRequestModal({
       );
     }
     if (mode === 'giveaway') {
-      return Boolean(giveawaySelectedEmployeeId);
+      if (giveawayAcceptAny) {
+        return Boolean(hasGiveawaySeekersDay);
+      }
+      return Boolean(giveawaySelection?.employeeId);
     }
     if (mode === 'pickup_interest') {
       return Boolean(pickupSelectedDate);
@@ -470,7 +783,9 @@ export function ShiftSwapRequestModal({
     selectedCandidate,
     shiftInfo?.fromShiftDate,
     onAcceptPeerSwap,
-    giveawaySelectedEmployeeId,
+    giveawaySelection,
+    giveawayAcceptAny,
+    hasGiveawaySeekersDay,
     pickupSelectedDate,
   ]);
 
@@ -506,12 +821,25 @@ export function ShiftSwapRequestModal({
     }
 
     if (mode === 'giveaway') {
-      if (!giveawaySelectedEmployeeId) return;
+      if (giveawayAcceptAny) {
+        if (!hasGiveawaySeekersDay) return;
+        onSubmit({
+          type: 'giveaway',
+          acceptAny: true,
+          toEmployeeId: null,
+          toShiftSlug: null,
+          toShiftDate: null,
+          notes: notes.trim() || undefined,
+        });
+        return;
+      }
+      if (!giveawaySelection?.employeeId) return;
+      const interestYmd = giveawaySelection.interestShiftDate?.trim() || null;
       onSubmit({
         type: 'giveaway',
-        toEmployeeId: giveawaySelectedEmployeeId,
-        toShiftSlug: null,
-        toShiftDate: null,
+        toEmployeeId: giveawaySelection.employeeId,
+        toShiftSlug: shiftInfo?.shiftSlug?.trim() || null,
+        toShiftDate: interestYmd,
         acceptAny: false,
         notes: notes.trim() || undefined,
       });
@@ -569,8 +897,8 @@ export function ShiftSwapRequestModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto p-0 gap-0">
-        <DialogHeader className="bg-appPrimary text-white px-6 py-4 rounded-t-lg">
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogHeader className="flex-shrink-0 bg-appPrimary text-white px-6 py-4 rounded-t-lg">
           <DialogTitle className="text-3xl">
             {existingRequest ? 'Swap request details' : 'Shift Swap Request'}
           </DialogTitle>
@@ -598,7 +926,8 @@ export function ShiftSwapRequestModal({
             </DialogFooter>
           </>
         ) : (
-        <div className="p-6 space-y-4">
+        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 space-y-4">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {TABS.map((tab) => (
             <button
@@ -629,6 +958,21 @@ export function ShiftSwapRequestModal({
                 Or check <strong>Accept any available</strong> to match with the
                 first employee who agrees.
               </p>
+              {!hasListDateRange ? (
+                <p className="text-sm text-amber-800 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  Swap list uses the same week as the Employee Shifts table. Open
+                  this modal from the schedule when a date range is visible.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Willing swap offers are limited to the peer&apos;s offered day
+                  in{' '}
+                  <strong>
+                    {formatYmdUs(listRangeStart)} – {formatYmdUs(listRangeEnd)}
+                  </strong>{' '}
+                  (your current schedule week).
+                </p>
+              )}
 
               <label
                 className={`flex cursor-pointer flex-col gap-1 rounded-xl border p-4 text-sm ${
@@ -650,7 +994,7 @@ export function ShiftSwapRequestModal({
                 </span>
               </label>
 
-              {!acceptAny && (
+              {!acceptAny && hasListDateRange && (
                 <>
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -663,7 +1007,7 @@ export function ShiftSwapRequestModal({
                     )}
                   </div>
 
-                  <div className="max-h-[280px] overflow-y-auto rounded-xl border border-gray-200 p-2 pr-1">
+                  <div className={SWAP_MODAL_LIST_SCROLL}>
                     {willingQuery.isLoading && (
                       <div className="p-4 text-sm text-muted-foreground">
                         Loading…
@@ -682,46 +1026,14 @@ export function ShiftSwapRequestModal({
                           later.
                         </div>
                       )}
-                    {willingQuery.data?.items.map((c) => {
-                      const selected = selectedSwapRequestId === c.swapRequestId;
-                      return (
-                        <button
-                          key={c.swapRequestId}
-                          type="button"
-                          onClick={() =>
-                            setSelectedSwapRequestId(c.swapRequestId)
-                          }
-                          className={`mb-2 flex w-full items-start gap-3 rounded-xl border p-4 text-left transition last:mb-0 ${
-                            selected
-                              ? 'border-blue-500 bg-blue-50/60'
-                              : 'border-gray-200 hover:bg-gray-50'
-                          }`}
-                        >
-                          <div
-                            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
-                            style={{
-                              backgroundColor: 'var(--app-primary, #0d9488)',
-                            }}
-                          >
-                            {c.initials}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="font-medium text-gray-900">
-                              {c.displayName}
-                            </div>
-                            <div className="text-xs text-gray-600">
-                              {formatCandidateShiftLine(c.fromShiftDay)}
-                            </div>
-                          </div>
-                          <Badge
-                            variant="outline"
-                            className="flex-shrink-0 border-emerald-200 bg-emerald-50 text-emerald-800"
-                          >
-                            Open
-                          </Badge>
-                        </button>
-                      );
-                    })}
+                    {willingQuery.data?.items.map((c) => (
+                      <WillingSwapListRow
+                        key={c.swapRequestId}
+                        candidate={c}
+                        selected={selectedSwapRequestId === c.swapRequestId}
+                        onSelect={handleSelectWilling}
+                      />
+                    ))}
                   </div>
 
                   {willingQuery.data && willingQuery.data.total > WILLING_LIMIT && (
@@ -761,80 +1073,96 @@ export function ShiftSwapRequestModal({
           {mode === 'giveaway' && (
             <>
               <p className="text-sm text-muted-foreground">
-                These employees want extra work and won&apos;t give up one of
-                their own shifts in return. Select one to offer them your
-                shift-day. Admin approval still required.
+                Select a coworker who tagged pickup interest for this day, or
+                check <strong>Offer to any eligible employee</strong> so anyone
+                on this job/shift can request your shift (pickup list will show
+                it as available). Admin approval still required.
               </p>
-              <div className="max-h-[280px] overflow-y-auto rounded-xl border border-gray-200 p-2 pr-1">
-                {seekersQuery.isLoading && (
+              {!hasGiveawaySeekersDay ? (
+                <p className="text-sm text-amber-800 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  Open this modal from a shift row on the schedule so we know
+                  which day you are offering — only coworkers who tagged pickup
+                  interest for that same calendar day are listed.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Showing coworkers who tagged pickup interest for{' '}
+                  <strong>{formatYmdUs(giveawaySeekersDay)}</strong> only (same
+                  day as this shift).
+                </p>
+              )}
+              {!hasGiveawaySeekersDay ? null : (
+              <label
+                className={`flex cursor-pointer flex-col gap-1 rounded-xl border p-4 text-sm ${
+                  giveawayAcceptAny
+                    ? 'border-blue-400 bg-blue-50/50'
+                    : 'border-gray-200'
+                }`}
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={giveawayAcceptAny}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setGiveawayAcceptAny(on);
+                      if (on) setGiveawaySelection(null);
+                    }}
+                    disabled={loading}
+                  />
+                  Offer to any eligible employee
+                </span>
+                <span className="pl-6 text-xs text-muted-foreground">
+                  No need to pick someone from the list — coworkers will see
+                  this day as <strong>Available now</strong> on the Pick Up tab
+                  and can request it.
+                </span>
+              </label>
+              )}
+              {!hasGiveawaySeekersDay ? null : (
+              <div className={SWAP_MODAL_LIST_SCROLL}>
+                {giveawayAcceptAny ? (
                   <div className="p-4 text-sm text-muted-foreground">
-                    Loading…
+                    Coworker list isn&apos;t needed for an open offer. Submit to
+                    post this shift-day for others to pick up.
                   </div>
-                )}
-                {seekersQuery.isError && (
-                  <div className="p-4 text-sm text-red-600">
-                    Could not load the list. Try again.
-                  </div>
-                )}
-                {seekersQuery.data &&
-                  seekersQuery.data.items.length === 0 && (
-                    <div className="p-4 text-sm text-muted-foreground">
-                      No coworkers have tagged extra-shift interest for this
-                      job yet. Check back later.
-                    </div>
-                  )}
-                {seekersQuery.data?.items.map((s) => {
-                  const selected =
-                    giveawaySelectedEmployeeId === s.employeeId;
-                  return (
-                    <button
-                      key={`${s.employeeId}-${s.swapRequestId}`}
-                      type="button"
-                      onClick={() =>
-                        setGiveawaySelectedEmployeeId(s.employeeId)
-                      }
-                      className={`mb-2 flex w-full items-start gap-3 rounded-xl border p-4 text-left transition last:mb-0 ${
-                        selected
-                          ? 'border-blue-500 bg-blue-50/60'
-                          : 'border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <div
-                        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
-                        style={{
-                          backgroundColor: avatarHueForId(s.employeeId),
-                        }}
-                      >
-                        {s.initials}
+                ) : (
+                  <>
+                    {seekersQuery.isLoading && (
+                      <div className="p-4 text-sm text-muted-foreground">
+                        Loading…
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-medium text-gray-900">
-                          {s.displayName}
-                        </div>
-                        <div className="text-xs text-gray-600">
-                          Preference:{' '}
-                          {s.preferenceNote || 'Any shift · extra work'}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          Interested in {formatYmdUs(s.interestShiftDate)} ·{' '}
-                          {formatRelativeRequested(s.submittedAt)}
-                        </div>
+                    )}
+                    {seekersQuery.isError && (
+                      <div className="p-4 text-sm text-red-600">
+                        Could not load the list. Try again.
                       </div>
-                      <span
-                        className={`mt-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 ${
-                          selected
-                            ? 'border-blue-600 bg-blue-600 text-white'
-                            : 'border-gray-300'
-                        }`}
-                        aria-hidden
-                      >
-                        {selected ? '✓' : ''}
-                      </span>
-                    </button>
-                  );
-                })}
+                    )}
+                    {seekersQuery.data &&
+                      seekersQuery.data.items.length === 0 && (
+                        <div className="p-4 text-sm text-muted-foreground">
+                          No coworkers have tagged pickup interest for this
+                          shift-day yet. You can still use{' '}
+                          <strong>Offer to any eligible employee</strong> above.
+                        </div>
+                      )}
+                    {seekersQuery.data?.items.map((s) => (
+                      <GiveawaySeekerListRow
+                        key={s.swapRequestId}
+                        seeker={s}
+                        selected={
+                          giveawaySelection?.swapRequestId === s.swapRequestId
+                        }
+                        onSelect={handleSelectGiveawaySeeker}
+                      />
+                    ))}
+                  </>
+                )}
               </div>
-              {seekersQuery.data &&
+              )}
+              {hasGiveawaySeekersDay &&
+                !giveawayAcceptAny &&
+                seekersQuery.data &&
                 seekersQuery.data.total > seekersQuery.data.limit && (
                   <div className="flex items-center justify-between gap-2">
                     <Button
@@ -897,8 +1225,16 @@ export function ShiftSwapRequestModal({
                         away are listed (from job settings).
                       </p>
                     )}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Days shown match your schedule week{' '}
+                      <strong>
+                        {formatYmdUs(pickupListDateRange.startDate)} –{' '}
+                        {formatYmdUs(pickupListDateRange.endDate)}
+                      </strong>
+                      .
+                    </p>
                   </div>
-                  <div className="max-h-[300px] overflow-y-auto rounded-xl border border-gray-200 p-2 pr-1">
+                  <div className={SWAP_MODAL_PICKUP_SCROLL}>
                     {opportunitiesQuery.isLoading && (
                       <div className="p-4 text-sm text-muted-foreground">
                         Loading…
@@ -918,82 +1254,19 @@ export function ShiftSwapRequestModal({
                           weekdays.
                         </div>
                       )}
-                    {opportunitiesQuery.data?.items.map((row) => {
-                      const selected = pickupSelectedDate === row.shiftDate;
-                      const title =
-                        row.shiftName ||
-                        shiftLabel(contextJob, shiftSlug) ||
-                        'Shift';
-                      const timeLine = formatCandidateShiftLine(row.shiftDay);
-                      const rowDisabled = row.viewerAlreadyAssigned;
-                      return (
-                        <button
-                          key={row.shiftDate}
-                          type="button"
-                          disabled={rowDisabled}
-                          onClick={() =>
-                            !rowDisabled && setPickupSelectedDate(row.shiftDate)
-                          }
-                          className={`mb-2 flex w-full items-start gap-3 rounded-xl border p-4 text-left shadow-sm transition last:mb-0 ${
-                            rowDisabled
-                              ? 'cursor-not-allowed border-gray-100 bg-gray-50/80 opacity-95'
-                              : selected
-                                ? 'border-blue-500 bg-blue-50/60'
-                                : 'border-gray-200 hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className="flex h-12 w-12 flex-shrink-0 flex-col items-center justify-center rounded-lg bg-sky-600 text-center text-xs font-bold text-white leading-tight">
-                            <span>{shortWeekdayLabel(row.shiftDate)}</span>
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium text-gray-900">
-                                {title}
-                              </span>
-                              {row.viewerAlreadyAssigned && (
-                                <Badge
-                                  variant="outline"
-                                  className="border-slate-300 bg-slate-50 text-slate-700 text-[10px] uppercase"
-                                >
-                                  Your shift
-                                </Badge>
-                              )}
-                              {row.availableNow && (
-                                <Badge
-                                  variant="outline"
-                                  className="border-amber-300 bg-amber-50 text-amber-900 text-[10px] uppercase"
-                                >
-                                  Available now
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="text-xs text-gray-600 mt-0.5">
-                              {timeLine}
-                            </div>
-                            {row.availableNow && row.offererDisplayName && (
-                              <div className="mt-1 flex items-center gap-1 text-xs text-orange-600">
-                                <Zap className="h-3 w-3 shrink-0" />
-                                <span>
-                                  {row.directedToOther
-                                    ? `${row.offererDisplayName} offered this shift`
-                                    : `${row.offererDisplayName} is offering this shift`}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                          <span
-                            className={`mt-2 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 ${
-                              selected
-                                ? 'border-blue-600 bg-blue-600 text-white'
-                                : 'border-gray-300'
-                            }`}
-                            aria-hidden
-                          >
-                            {selected ? '✓' : ''}
-                          </span>
-                        </button>
-                      );
-                    })}
+                    {opportunitiesQuery.data?.items.map((row) => (
+                      <PickupOpportunityListRow
+                        key={row.shiftDate}
+                        row={row}
+                        title={
+                          row.shiftName ||
+                          shiftLabel(contextJob, shiftSlug) ||
+                          'Shift'
+                        }
+                        selected={pickupSelectedDate === row.shiftDate}
+                        onSelect={handleSelectPickupDate}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
@@ -1015,7 +1288,9 @@ export function ShiftSwapRequestModal({
           </p>
         )}
 
-        <DialogFooter className="gap-2 border-t bg-gray-50 px-6 py-4 rounded-b-lg">
+        </div>
+
+        <DialogFooter className="flex-shrink-0 gap-2 border-t bg-gray-50 px-6 py-4 rounded-b-lg">
           {mode === 'swap' && (
             <p className="mr-auto text-xs text-muted-foreground">
               Both employees must agree before admin approval is required.

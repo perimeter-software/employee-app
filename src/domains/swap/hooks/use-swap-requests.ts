@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   SwapRequestApi,
@@ -10,17 +15,114 @@ import {
 const WILLING_PAGE_SIZE = 5;
 const PICKUP_SEEKERS_PAGE_SIZE = 8;
 
+const MODAL_LIST_STALE_MS = 60_000;
+
+/**
+ * Prefetch swap-modal lists so tab switches feel instant.
+ * Pickup seekers are always scoped to `pickupSeekersInterestDate` (the row’s shift-day).
+ * Willing swaps and pickup opportunities use the table week when `weekStart`/`weekEnd` are set.
+ */
+export function prefetchShiftSwapModalLists(
+  queryClient: QueryClient,
+  params: {
+    jobSlug: string;
+    shiftSlug: string;
+    weekStart?: string;
+    weekEnd?: string;
+    /** YYYY-MM-DD — only `pickup_interest` rows tagged for this calendar day */
+    pickupSeekersInterestDate?: string;
+  }
+): Promise<unknown[]> {
+  const { jobSlug, shiftSlug, weekStart, weekEnd, pickupSeekersInterestDate } =
+    params;
+  const tasks: Promise<unknown>[] = [];
+
+  if (weekStart && weekEnd) {
+    tasks.push(
+      queryClient.prefetchQuery({
+        queryKey: swapRequestQueryKeys.willing(
+          jobSlug,
+          shiftSlug,
+          1,
+          weekStart,
+          weekEnd
+        ),
+        queryFn: () =>
+          SwapRequestApi.listWillingSwapCandidates({
+            jobSlug,
+            shiftSlug,
+            page: 1,
+            limit: WILLING_PAGE_SIZE,
+            startDate: weekStart,
+            endDate: weekEnd,
+          }),
+        staleTime: MODAL_LIST_STALE_MS,
+      }),
+      queryClient.prefetchQuery({
+        queryKey: swapRequestQueryKeys.pickupOpportunities(
+          jobSlug,
+          shiftSlug,
+          weekStart,
+          weekEnd
+        ),
+        queryFn: () =>
+          SwapRequestApi.listPickupOpportunities({
+            jobSlug,
+            shiftSlug,
+            startDate: weekStart,
+            endDate: weekEnd,
+          }),
+        staleTime: MODAL_LIST_STALE_MS,
+      })
+    );
+  }
+
+  const seekersDay = pickupSeekersInterestDate?.trim();
+  if (seekersDay) {
+    tasks.push(
+      queryClient.prefetchQuery({
+        queryKey: swapRequestQueryKeys.pickupSeekers(
+          jobSlug,
+          shiftSlug,
+          1,
+          seekersDay,
+          seekersDay
+        ),
+        queryFn: () =>
+          SwapRequestApi.listPickupInterestSeekers({
+            jobSlug,
+            shiftSlug,
+            page: 1,
+            limit: PICKUP_SEEKERS_PAGE_SIZE,
+            startDate: seekersDay,
+            endDate: seekersDay,
+          }),
+        staleTime: MODAL_LIST_STALE_MS,
+      })
+    );
+  }
+
+  if (tasks.length === 0) {
+    return Promise.resolve([]);
+  }
+  return Promise.all(tasks);
+}
+
 export function useWillingSwapCandidatesQuery(params: {
   jobSlug: string;
   shiftSlug: string;
   page: number;
+  startDate?: string;
+  endDate?: string;
   enabled?: boolean;
 }) {
   return useQuery({
     queryKey: swapRequestQueryKeys.willing(
       params.jobSlug,
       params.shiftSlug,
-      params.page
+      params.page,
+      params.startDate ?? '',
+      params.endDate ?? ''
     ),
     queryFn: () =>
       SwapRequestApi.listWillingSwapCandidates({
@@ -28,25 +130,38 @@ export function useWillingSwapCandidatesQuery(params: {
         shiftSlug: params.shiftSlug,
         page: params.page,
         limit: WILLING_PAGE_SIZE,
+        ...(params.startDate ? { startDate: params.startDate } : {}),
+        ...(params.endDate ? { endDate: params.endDate } : {}),
       }),
     enabled:
-      Boolean(params.enabled && params.jobSlug && params.shiftSlug) &&
-      params.page >= 1,
-    staleTime: 20_000,
+      Boolean(
+        params.enabled &&
+          params.jobSlug &&
+          params.shiftSlug &&
+          params.startDate &&
+          params.endDate
+      ) && params.page >= 1,
+    staleTime: MODAL_LIST_STALE_MS,
+    placeholderData: (previousData) => previousData,
   });
 }
 
+/** `interestShiftDate` — YYYY-MM-DD; list is restricted to pickup_interest for that day only. */
 export function usePickupInterestSeekersQuery(params: {
   jobSlug: string;
   shiftSlug: string;
   page: number;
+  interestShiftDate?: string;
   enabled?: boolean;
 }) {
+  const day = params.interestShiftDate?.trim() ?? '';
   return useQuery({
     queryKey: swapRequestQueryKeys.pickupSeekers(
       params.jobSlug,
       params.shiftSlug,
-      params.page
+      params.page,
+      day,
+      day
     ),
     queryFn: () =>
       SwapRequestApi.listPickupInterestSeekers({
@@ -54,11 +169,15 @@ export function usePickupInterestSeekersQuery(params: {
         shiftSlug: params.shiftSlug,
         page: params.page,
         limit: PICKUP_SEEKERS_PAGE_SIZE,
+        startDate: day,
+        endDate: day,
       }),
     enabled:
-      Boolean(params.enabled && params.jobSlug && params.shiftSlug) &&
-      params.page >= 1,
-    staleTime: 20_000,
+      Boolean(
+        params.enabled && params.jobSlug && params.shiftSlug && day
+      ) && params.page >= 1,
+    staleTime: MODAL_LIST_STALE_MS,
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -90,7 +209,8 @@ export function usePickupOpportunitiesQuery(params: {
         params.startDate &&
         params.endDate
     ),
-    staleTime: 20_000,
+    staleTime: MODAL_LIST_STALE_MS,
+    placeholderData: (previousData) => previousData,
   });
 }
 
