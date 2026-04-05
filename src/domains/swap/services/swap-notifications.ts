@@ -141,7 +141,7 @@ ${options.closingHtml ?? ''}`;
 /**
  * Default: `sendQueuedEmail` → Bull → worker → SES. When `EMAIL_DIRECT_SEND=true`, uses
  * `emailService.sendEmail` (SES from this process, same as shift-requests / invoices).
- * Dev: requires `SES_SEND_IN_DEV=true` to actually send. `EMAIL_OVERRIDE_TO` is honored in both paths.
+ * In local dev, real sends require `SES_SEND_IN_DEV=true` (same guard as `email-queue` / `email-service`).
  */
 
 type SwapDocLike = {
