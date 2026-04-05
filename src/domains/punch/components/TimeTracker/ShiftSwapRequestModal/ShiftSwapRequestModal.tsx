@@ -165,7 +165,8 @@ const PickupOpportunityListRow = memo(function PickupOpportunityListRow({
     () => shortWeekdayLabel(row.shiftDate),
     [row.shiftDate]
   );
-  const disabled = row.viewerAlreadyAssigned;
+  const disabled =
+    row.viewerAlreadyAssigned || Boolean(row.viewerPickedUp);
   return (
     <button
       type="button"
@@ -731,6 +732,20 @@ export function ShiftSwapRequestModal({
     if (acceptAny) setSelectedSwapRequestId(null);
   }, [acceptAny]);
 
+  /** Drop pickup selection if that day is no longer selectable (e.g. already picked up). */
+  useEffect(() => {
+    if (mode !== 'pickup_interest' || !pickupSelectedDate) return;
+    const items = opportunitiesQuery.data?.items;
+    if (!items?.length) return;
+    const row = items.find((r) => r.shiftDate === pickupSelectedDate);
+    if (
+      row &&
+      (row.viewerPickedUp || row.viewerAlreadyAssigned)
+    ) {
+      setPickupSelectedDate(null);
+    }
+  }, [mode, pickupSelectedDate, opportunitiesQuery.data?.items]);
+
   const handleSelectWilling = useCallback((swapRequestId: string) => {
     setSelectedSwapRequestId(swapRequestId);
   }, []);
@@ -774,7 +789,15 @@ export function ShiftSwapRequestModal({
       return Boolean(giveawaySelection?.employeeId);
     }
     if (mode === 'pickup_interest') {
-      return Boolean(pickupSelectedDate);
+      if (!pickupSelectedDate) return false;
+      const row = opportunitiesQuery.data?.items?.find(
+        (r) => r.shiftDate === pickupSelectedDate
+      );
+      return Boolean(
+        row &&
+          !row.viewerAlreadyAssigned &&
+          !row.viewerPickedUp
+      );
     }
     return false;
   }, [
@@ -787,6 +810,7 @@ export function ShiftSwapRequestModal({
     giveawayAcceptAny,
     hasGiveawaySeekersDay,
     pickupSelectedDate,
+    opportunitiesQuery.data?.items,
   ]);
 
   const submit = () => {
@@ -851,6 +875,7 @@ export function ShiftSwapRequestModal({
     );
     if (!opp) return;
     if (opp.viewerAlreadyAssigned) return;
+    if (opp.viewerPickedUp) return;
 
     const matchOpenGiveaway =
       opp.giveawayRequestId &&
@@ -1254,19 +1279,27 @@ export function ShiftSwapRequestModal({
                           weekdays.
                         </div>
                       )}
-                    {opportunitiesQuery.data?.items.map((row) => (
-                      <PickupOpportunityListRow
-                        key={row.shiftDate}
-                        row={row}
-                        title={
-                          row.shiftName ||
-                          shiftLabel(contextJob, shiftSlug) ||
-                          'Shift'
-                        }
-                        selected={pickupSelectedDate === row.shiftDate}
-                        onSelect={handleSelectPickupDate}
-                      />
-                    ))}
+                    {opportunitiesQuery.data?.items.map((row) => {
+                      const rowDisabled =
+                        row.viewerAlreadyAssigned ||
+                        Boolean(row.viewerPickedUp);
+                      return (
+                        <PickupOpportunityListRow
+                          key={row.shiftDate}
+                          row={row}
+                          title={
+                            row.shiftName ||
+                            shiftLabel(contextJob, shiftSlug) ||
+                            'Shift'
+                          }
+                          selected={
+                            !rowDisabled &&
+                            pickupSelectedDate === row.shiftDate
+                          }
+                          onSelect={handleSelectPickupDate}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
               )}
