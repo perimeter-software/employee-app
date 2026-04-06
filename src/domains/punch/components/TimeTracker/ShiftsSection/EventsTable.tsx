@@ -7,7 +7,11 @@ import { Table } from '@/components/ui/Table';
 import { TableColumn } from '@/components/ui/Table/types';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Clock } from 'lucide-react';
-import { useRosterEvents, useEventClockIn, useEventClockOut } from '@/domains/event/hooks';
+import {
+  useRosterEvents,
+  useEventClockIn,
+  useEventClockOut,
+} from '@/domains/event/hooks';
 import type { GignologyEvent, EventApplicant } from '@/domains/event/types';
 
 // ---------------------------------------------------------------------------
@@ -36,8 +40,7 @@ function computeClockState(
   const clockedOut = !!actualTimeOut;
 
   // Only show buttons within 6.5h before report time (or once event has started)
-  const inWindow =
-    now >= new Date(reportTime.getTime() - 6.5 * 60 * 60 * 1000);
+  const inWindow = now >= new Date(reportTime.getTime() - 6.5 * 60 * 60 * 1000);
 
   if (!inWindow) {
     return {
@@ -135,6 +138,7 @@ interface EventRowData extends Record<string, unknown> {
   allowEarlyClockin: boolean;
   actualTimeIn: string | null | undefined;
   actualTimeOut: string | null | undefined;
+  rawEvent: GignologyEvent;
 }
 
 function buildEventRows(
@@ -154,7 +158,9 @@ function buildEventRows(
 
       const reportTimeIso = applicantEntry?.reportTime ?? event.eventDate;
       const scheduledTimeIn = formatTime(reportTimeIso);
-      const scheduledTimeOut = eventEnd ? formatTime(event.eventEndTime!) : '----';
+      const scheduledTimeOut = eventEnd
+        ? formatTime(event.eventEndTime!)
+        : '----';
 
       const venueLocation = [event.venueCity, event.venueState]
         .filter(Boolean)
@@ -174,6 +180,7 @@ function buildEventRows(
         allowEarlyClockin: event.allowEarlyClockin === 'Yes',
         actualTimeIn: applicantEntry?.timeIn,
         actualTimeOut: applicantEntry?.timeOut,
+        rawEvent: event,
       };
     })
     .filter((row): row is EventRowData => row !== null)
@@ -196,10 +203,23 @@ interface EventsTableProps {
   };
   isBlockedByJobPunch?: boolean;
   hasActiveEventClockIn?: boolean;
+  onEventClick?: (event: GignologyEvent) => void;
 }
 
-export function EventsTable({ applicantId, userId, agentName, dateRange, isBlockedByJobPunch = false, hasActiveEventClockIn = false }: EventsTableProps) {
-  const { data: events, isLoading, error } = useRosterEvents({
+export function EventsTable({
+  applicantId,
+  userId,
+  agentName,
+  dateRange,
+  isBlockedByJobPunch = false,
+  hasActiveEventClockIn = false,
+  onEventClick,
+}: EventsTableProps) {
+  const {
+    data: events,
+    isLoading,
+    error,
+  } = useRosterEvents({
     applicantId,
     startDate: dateRange.startDate,
     endDate: dateRange.endDate,
@@ -230,9 +250,7 @@ export function EventsTable({ applicantId, userId, agentName, dateRange, isBlock
       {
         key: 'eventName',
         header: 'Event',
-        render: (value) => (
-          <span className="font-medium">{String(value)}</span>
-        ),
+        render: (value) => <span className="font-medium">{String(value)}</span>,
       },
       {
         key: 'venueName',
@@ -268,7 +286,10 @@ export function EventsTable({ applicantId, userId, agentName, dateRange, isBlock
             return (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-700">In: {clockInTime}</span>
-                <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
+                <Badge
+                  variant="outline"
+                  className="text-xs bg-green-50 text-green-700"
+                >
                   Active
                 </Badge>
               </div>
@@ -296,7 +317,10 @@ export function EventsTable({ applicantId, userId, agentName, dateRange, isBlock
           }
           if (clockInTime) {
             return (
-              <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
+              <Badge
+                variant="outline"
+                className="text-xs bg-green-50 text-green-700"
+              >
                 Clocked In
               </Badge>
             );
@@ -309,7 +333,10 @@ export function EventsTable({ applicantId, userId, agentName, dateRange, isBlock
             );
           }
           return (
-            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+            <Badge
+              variant="outline"
+              className="text-xs bg-blue-50 text-blue-700"
+            >
               Upcoming
             </Badge>
           );
@@ -320,7 +347,8 @@ export function EventsTable({ applicantId, userId, agentName, dateRange, isBlock
         header: 'Action',
         render: (value, row) => {
           const eventId = String(value);
-          const isMutating = clockInMutation.isPending || clockOutMutation.isPending;
+          const isMutating =
+            clockInMutation.isPending || clockOutMutation.isPending;
 
           const {
             showClockIn,
@@ -351,11 +379,21 @@ export function EventsTable({ applicantId, userId, agentName, dateRange, isBlock
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={isMutating || !showClockIn || clockInButtonDisabled || isBlockedByJobPunch || hasActiveEventClockIn}
+                  disabled={
+                    isMutating ||
+                    !showClockIn ||
+                    clockInButtonDisabled ||
+                    isBlockedByJobPunch ||
+                    hasActiveEventClockIn
+                  }
                   onClick={() =>
                     clockInMutation.mutate({
                       eventId,
-                      payload: { applicantId, agent: agentName, createAgent: userId },
+                      payload: {
+                        applicantId,
+                        agent: agentName,
+                        createAgent: userId,
+                      },
                     })
                   }
                   className="border-blue-500 text-blue-500 hover:bg-blue-50 disabled:opacity-50"
@@ -378,11 +416,17 @@ export function EventsTable({ applicantId, userId, agentName, dateRange, isBlock
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={isMutating || !showClockOut || clockOutButtonDisabled}
+                  disabled={
+                    isMutating || !showClockOut || clockOutButtonDisabled
+                  }
                   onClick={() =>
                     clockOutMutation.mutate({
                       eventId,
-                      payload: { applicantId, agent: agentName, createAgent: userId },
+                      payload: {
+                        applicantId,
+                        agent: agentName,
+                        createAgent: userId,
+                      },
                     })
                   }
                   className="border-red-500 text-red-500 hover:bg-red-50 disabled:opacity-50"
@@ -404,7 +448,15 @@ export function EventsTable({ applicantId, userId, agentName, dateRange, isBlock
         },
       },
     ],
-    [clockInMutation, clockOutMutation, applicantId, userId, agentName, isBlockedByJobPunch, hasActiveEventClockIn]
+    [
+      clockInMutation,
+      clockOutMutation,
+      applicantId,
+      userId,
+      agentName,
+      isBlockedByJobPunch,
+      hasActiveEventClockIn,
+    ]
   );
 
   if (isLoading) {
@@ -414,24 +466,44 @@ export function EventsTable({ applicantId, userId, agentName, dateRange, isBlock
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
-                {['Date & Time', 'Event', 'Venue', 'Actual Clock In/Out', 'Status', 'Action'].map(
-                  (h) => (
-                    <th key={h} className="text-left py-3 px-4 font-medium text-gray-600">
-                      {h}
-                    </th>
-                  )
-                )}
+                {[
+                  'Date & Time',
+                  'Event',
+                  'Venue',
+                  'Actual Clock In/Out',
+                  'Status',
+                  'Action',
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="text-left py-3 px-4 font-medium text-gray-600"
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {[...Array(3)].map((_, i) => (
                 <tr key={i} className="border-b border-gray-100">
-                  <td className="py-3 px-4"><Skeleton className="h-4 w-20" /></td>
-                  <td className="py-3 px-4"><Skeleton className="h-4 w-40" /></td>
-                  <td className="py-3 px-4"><Skeleton className="h-4 w-28" /></td>
-                  <td className="py-3 px-4"><Skeleton className="h-4 w-24" /></td>
-                  <td className="py-3 px-4"><Skeleton className="h-4 w-16" /></td>
-                  <td className="py-3 px-4"><Skeleton className="h-8 w-20" /></td>
+                  <td className="py-3 px-4">
+                    <Skeleton className="h-4 w-20" />
+                  </td>
+                  <td className="py-3 px-4">
+                    <Skeleton className="h-4 w-40" />
+                  </td>
+                  <td className="py-3 px-4">
+                    <Skeleton className="h-4 w-28" />
+                  </td>
+                  <td className="py-3 px-4">
+                    <Skeleton className="h-4 w-24" />
+                  </td>
+                  <td className="py-3 px-4">
+                    <Skeleton className="h-4 w-16" />
+                  </td>
+                  <td className="py-3 px-4">
+                    <Skeleton className="h-8 w-20" />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -463,7 +535,15 @@ export function EventsTable({ applicantId, userId, agentName, dateRange, isBlock
         className="w-full"
         emptyMessage="No rostered events found for the selected date range."
         getRowClassName={(row) =>
-          row.actualTimeIn && row.actualTimeOut ? 'opacity-70' : ''
+          [
+            row.actualTimeIn && row.actualTimeOut ? 'opacity-70' : '',
+            onEventClick ? 'hover:bg-gray-50' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')
+        }
+        onRowClick={
+          onEventClick ? (row) => onEventClick(row.rawEvent) : undefined
         }
       />
     </div>
