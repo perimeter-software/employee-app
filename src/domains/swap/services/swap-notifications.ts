@@ -271,24 +271,9 @@ function eventManagerEmailsFromJob(job: GignologyJob | null): string[] {
   return [...new Set(emails)];
 }
 
-async function fallbackAdminEmailsFromUsers(db: Db): Promise<string[]> {
-  const admins = await db
-    .collection('users')
-    .find(
-      { userType: { $in: ['Admin', 'Master'] } },
-      { projection: { emailAddress: 1 } }
-    )
-    .limit(25)
-    .toArray();
-  const emails = admins
-    .map((u) => u.emailAddress)
-    .filter((e): e is string => typeof e === 'string' && e.includes('@'));
-  return [...new Set(emails)];
-}
-
 /**
  * Notify job event managers that a swap/giveaway needs admin approval.
- * Recipients: `job.additionalConfig.eventManagerNotificationRecipients[].email`, else legacy Admin/Master users.
+ * Recipients only: `job.additionalConfig.eventManagerNotificationRecipients[].email`.
  */
 async function notifyAdminsPendingSwap(
   db: Db,
@@ -297,14 +282,11 @@ async function notifyAdminsPendingSwap(
 ): Promise<void> {
   try {
     const job = await findJobByJobSlug(db, jobSlug.trim());
-    let recipients = eventManagerEmailsFromJob(job);
-    if (recipients.length === 0) {
-      recipients = await fallbackAdminEmailsFromUsers(db);
-    }
+    const recipients = eventManagerEmailsFromJob(job);
 
     if (recipients.length === 0) {
       console.warn(
-        '[swap-notifications] pending-approval email skipped: no eventManagerNotificationRecipients and no Admin/Master emails',
+        '[swap-notifications] pending-approval email skipped: job has no eventManagerNotificationRecipients',
         jobSlug
       );
       return;
@@ -513,7 +495,7 @@ ${offerLead}`;
   }
 }
 
-/** After employee claims an open or directed giveaway — notify initiator + admins. */
+/** After employee claims an open or directed giveaway — notify initiator + job event managers (if configured). */
 export async function notifyGiveawayClaimedByPeer(
   db: Db,
   doc: SwapDocLike
@@ -559,7 +541,7 @@ ${acceptLine}`;
   }
 }
 
-/** After peer PATCH accept — initiator + admins. */
+/** After peer PATCH accept — notify initiator + job event managers (if configured). */
 export async function notifySwapAcceptedByPeer(
   db: Db,
   doc: SwapDocLike
