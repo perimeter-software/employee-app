@@ -3,7 +3,10 @@ import { withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { ObjectId } from 'mongodb';
-import { logActivity, createActivityLogData } from '@/lib/services/activity-logger';
+import {
+  logActivity,
+  createActivityLogData,
+} from '@/lib/services/activity-logger';
 
 /**
  * POST /api/events/[eventId]/clock-in
@@ -25,18 +28,25 @@ async function clockInHandler(
     const params = (await context?.params) as { eventId: string } | undefined;
     const eventId = params?.eventId;
     const body = await request.json();
-    const { applicantId, agent, createAgent, timeIn, platform, coordinates } = body;
+    const { applicantId, agent, createAgent, timeIn, platform, coordinates } =
+      body;
 
     if (!eventId || !applicantId) {
       return NextResponse.json(
-        { error: 'missing-parameters', message: 'eventId and applicantId are required' },
+        {
+          error: 'missing-parameters',
+          message: 'eventId and applicantId are required',
+        },
         { status: 400 }
       );
     }
 
     if (!agent || !createAgent || !timeIn) {
       return NextResponse.json(
-        { error: 'invalid-payload', message: 'agent, createAgent and timeIn are required' },
+        {
+          error: 'invalid-payload',
+          message: 'agent, createAgent and timeIn are required',
+        },
         { status: 400 }
       );
     }
@@ -48,7 +58,10 @@ async function clockInHandler(
       applicantObjectId = new ObjectId(applicantId);
     } catch {
       return NextResponse.json(
-        { error: 'invalid-parameters', message: 'Invalid eventId or applicantId format' },
+        {
+          error: 'invalid-parameters',
+          message: 'Invalid eventId or applicantId format',
+        },
         { status: 400 }
       );
     }
@@ -73,7 +86,10 @@ async function clockInHandler(
     // Fetch applicant
     const applicant = await db
       .collection('applicants')
-      .findOne({ _id: applicantObjectId }, { projection: { status: 1, venues: 1, firstName: 1, lastName: 1 } });
+      .findOne(
+        { _id: applicantObjectId },
+        { projection: { status: 1, venues: 1, firstName: 1, lastName: 1 } }
+      );
     if (!applicant) {
       return NextResponse.json(
         { error: 'not-found', message: 'Applicant not found' },
@@ -93,19 +109,23 @@ async function clockInHandler(
       return NextResponse.json(
         {
           error: 'not-in-staffing-pool',
-          message: 'Applicant is not part of the StaffingPool for the specified venue',
+          message:
+            'Applicant is not part of the StaffingPool for the specified venue',
         },
         { status: 400 }
       );
     }
 
     // Find roster record
-    const rosterRecord = (event.applicants as Array<Record<string, unknown>>).find(
-      (a) => a.id?.toString() === applicantId && a.status === 'Roster'
-    );
+    const rosterRecord = (
+      event.applicants as Array<Record<string, unknown>>
+    ).find((a) => a.id?.toString() === applicantId && a.status === 'Roster');
     if (!rosterRecord) {
       return NextResponse.json(
-        { error: 'not-on-roster', message: 'Applicant is not on Roster for this event' },
+        {
+          error: 'not-on-roster',
+          message: 'Applicant is not on Roster for this event',
+        },
         { status: 400 }
       );
     }
@@ -127,11 +147,9 @@ async function clockInHandler(
     const reportTime = rosterRecord.reportTime
       ? new Date(rosterRecord.reportTime as string)
       : new Date(event.eventDate as string);
-    const eventEndTime = event.eventEndTime ? new Date(event.eventEndTime as string) : null;
     const now = new Date();
 
-    const clockInTime =
-      now > reportTime && eventEndTime && now < eventEndTime ? now : reportTime;
+    const clockInTime = now > reportTime ? now : reportTime;
 
     // Build the updated roster record (full replacement, matching legacy API)
     const updatedRecord = {
@@ -169,7 +187,11 @@ async function clockInHandler(
     );
 
     return NextResponse.json(
-      { success: true, message: 'Clocked in successfully', data: { rosterRecord: updatedRecord } },
+      {
+        success: true,
+        message: 'Clocked in successfully',
+        data: { rosterRecord: updatedRecord },
+      },
       { status: 200 }
     );
   } catch (error) {

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ArrowLeftRight, Clock3 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -524,6 +524,20 @@ export function ShiftsSection({
             /* Table view */
             <div className="overflow-x-auto -mx-3 sm:-mx-4 lg:-mx-6">
               <div className="min-w-full pb-3 px-3 sm:px-4 lg:px-6">
+                <div className="mb-3 flex flex-wrap gap-2 text-xs sm:text-sm">
+                  <span className="inline-flex items-center gap-1 rounded-md border border-violet-300 px-2.5 py-1 text-violet-700">
+                    <ArrowLeftRight className="h-3.5 w-3.5" />
+                    Swap - request available
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-md border border-amber-300 px-2.5 py-1 text-amber-700">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    Waiting for match
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-md border border-amber-400 px-2.5 py-1 text-amber-800">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    Awaiting approval
+                  </span>
+                </div>
                 {/* Job shifts section — collapsible when events are also present */}
                 <div>
                   {hasRosterEvents && (
