@@ -25,7 +25,10 @@ import {
 } from '@/components/ui/Dialog';
 import { EventApiService, eventQueryKeys } from '../../services/event-service';
 import type { GignologyEvent, EventPosition } from '../../types';
-import type { EnrollmentCheckResult, EnrollmentType } from '../../services/event-service';
+import type {
+  EnrollmentCheckResult,
+  EnrollmentType,
+} from '../../services/event-service';
 import { VenueMap } from '@/domains/venue/components/VenueMap';
 import { VenueVideo } from '@/domains/venue/components/VenueVideo';
 import { baseInstance } from '@/lib/api/instance';
@@ -70,21 +73,30 @@ function enrollmentBadge(type: EnrollmentType | undefined) {
   if (!type || type === 'Not Roster') return null;
   if (type === 'Roster') {
     return (
-      <Badge variant="outline" className="border-emerald-500 text-emerald-700 shrink-0">
+      <Badge
+        variant="outline"
+        className="border-emerald-500 text-emerald-700 shrink-0"
+      >
         On Roster
       </Badge>
     );
   }
   if (type === 'Waitlist') {
     return (
-      <Badge variant="outline" className="border-amber-400 text-amber-700 shrink-0">
+      <Badge
+        variant="outline"
+        className="border-amber-400 text-amber-700 shrink-0"
+      >
         Waitlisted
       </Badge>
     );
   }
   if (type === 'Request') {
     return (
-      <Badge variant="outline" className="border-blue-400 text-blue-700 shrink-0">
+      <Badge
+        variant="outline"
+        className="border-blue-400 text-blue-700 shrink-0"
+      >
         Requested
       </Badge>
     );
@@ -104,13 +116,20 @@ function getAvailablePositions(
     if (!pos.makePublic) return false;
     if (pos.numberPositions == null) return true;
     const assigned = (existingApplicants ?? []).filter(
-      (a) => a.status === 'Roster' && (a as Record<string, unknown>).primaryPosition === pos.positionName
+      (a) =>
+        a.status === 'Roster' &&
+        (a as Record<string, unknown>).primaryPosition === pos.positionName
     ).length;
     return assigned < pos.numberPositions;
   });
 
-  const hasEventStaff = filtered.some((p) => p.positionName === DEFAULT_POSITION);
-  const items = filtered.map((p) => ({ label: p.positionName, value: p.positionName }));
+  const hasEventStaff = filtered.some(
+    (p) => p.positionName === DEFAULT_POSITION
+  );
+  const items = filtered.map((p) => ({
+    label: p.positionName,
+    value: p.positionName,
+  }));
 
   if (!hasEventStaff) {
     return [{ label: DEFAULT_POSITION, value: DEFAULT_POSITION }, ...items];
@@ -124,11 +143,19 @@ type ActionSectionProps = {
   enrollment: EnrollmentCheckResult;
   event: GignologyEvent;
   imageBaseUrl?: string;
-  onAction: (requestType: EnrollmentType, positionName?: string) => Promise<void>;
+  onAction: (
+    requestType: EnrollmentType,
+    positionName?: string
+  ) => Promise<void>;
   submitting: boolean;
 };
 
-function ActionSection({ enrollment, event, onAction, submitting }: ActionSectionProps) {
+function ActionSection({
+  enrollment,
+  event,
+  onAction,
+  submitting,
+}: ActionSectionProps) {
   const { type, allowed, message, status } = enrollment;
   const [selectedPosition, setSelectedPosition] = useState(DEFAULT_POSITION);
 
@@ -137,7 +164,8 @@ function ActionSection({ enrollment, event, onAction, submitting }: ActionSectio
     [event.positions, event.applicants]
   );
 
-  const showPositionPicker = allowed === 'Roster' && availablePositions.length > 1;
+  const showPositionPicker =
+    allowed === 'Roster' && availablePositions.length > 1;
 
   // ── Currently enrolled (Roster) ────────────────────────────────────────────
   if (type === 'Roster') {
@@ -153,7 +181,9 @@ function ActionSection({ enrollment, event, onAction, submitting }: ActionSectio
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-center py-2 px-4 rounded-md bg-emerald-50 border border-emerald-200">
-          <span className="text-sm font-medium text-emerald-700">You are on the roster</span>
+          <span className="text-sm font-medium text-emerald-700">
+            You are on the roster
+          </span>
         </div>
         <Button
           variant="outline-danger"
@@ -173,7 +203,9 @@ function ActionSection({ enrollment, event, onAction, submitting }: ActionSectio
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-center py-2 px-4 rounded-md bg-amber-50 border border-amber-200">
-          <span className="text-sm font-medium text-amber-700">You are on the waitlist</span>
+          <span className="text-sm font-medium text-amber-700">
+            You are on the waitlist
+          </span>
         </div>
         <Button
           variant="outline-danger"
@@ -193,7 +225,9 @@ function ActionSection({ enrollment, event, onAction, submitting }: ActionSectio
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-center py-2 px-4 rounded-md bg-blue-50 border border-blue-200">
-          <span className="text-sm font-medium text-blue-700">You have requested this event</span>
+          <span className="text-sm font-medium text-blue-700">
+            You have requested this event
+          </span>
         </div>
         <Button
           variant="outline-danger"
@@ -320,7 +354,12 @@ export const EventDetailModal = ({
     queryKey: ['venue-detail', initialEvent.venueSlug],
     queryFn: async () => {
       const res = await baseInstance.get<{
-        venueContact1?: { fullName?: string; firstName?: string; lastName?: string; email?: string };
+        venueContact1?: {
+          fullName?: string;
+          firstName?: string;
+          lastName?: string;
+          email?: string;
+        };
         location?: { coordinates?: [number, number] };
         videoUrls?: string[];
       }>(`venues/${initialEvent.venueSlug}`);
@@ -377,9 +416,17 @@ export const EventDetailModal = ({
     day: 'numeric',
     year: 'numeric',
   };
-  const timeOpts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true };
+  const timeOpts: Intl.DateTimeFormatOptions = {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  };
 
-  const formattedDate = formatEventDate(event.eventDate, event.timeZone, dateOpts);
+  const formattedDate = formatEventDate(
+    event.eventDate,
+    event.timeZone,
+    dateOpts
+  );
   const startTime = formatEventDate(event.eventDate, event.timeZone, timeOpts);
   const endTime = event.eventEndTime
     ? formatEventDate(event.eventEndTime, event.timeZone, timeOpts)
@@ -392,7 +439,10 @@ export const EventDetailModal = ({
   const descTooLong = description.length > DESCRIPTION_LIMIT;
 
   // ── Enrollment action handler ─────────────────────────────────────────────
-  const handleAction = async (requestType: EnrollmentType, positionName?: string) => {
+  const handleAction = async (
+    requestType: EnrollmentType,
+    positionName?: string
+  ) => {
     setSubmitting(true);
     try {
       const result = await EventApiService.submitEnrollment(
@@ -403,7 +453,9 @@ export const EventDetailModal = ({
       toast.success(result.message);
 
       // Invalidate the enrollment query so it refetches
-      queryClient.invalidateQueries({ queryKey: eventQueryKeys.enrollment(initialEvent._id) });
+      queryClient.invalidateQueries({
+        queryKey: eventQueryKeys.enrollment(initialEvent._id),
+      });
       // Also refetch immediately
       await refetchEnrollment();
 
@@ -411,13 +463,21 @@ export const EventDetailModal = ({
       // reflects the pre-enrollment validation state ('Not Roster'), not the result.
       onEnrollmentChange?.(initialEvent._id, requestType);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : 'Something went wrong. Please try again.'
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  const location = [event.venueCity, event.venueState].filter(Boolean).join(', ');
+  const location = [event.venueCity, event.venueState]
+    .filter(Boolean)
+    .join(', ');
+
+  console.log('enrollment', enrollment);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -483,10 +543,12 @@ export const EventDetailModal = ({
                   {reportTimeTBD
                     ? `Time TBD: ${reportTimeTBD}`
                     : endTime
-                    ? `${startTime} – ${endTime}`
-                    : startTime}
+                      ? `${startTime} – ${endTime}`
+                      : startTime}
                   {event.timeZone && (
-                    <span className="ml-1 text-xs text-slate-400">({event.timeZone})</span>
+                    <span className="ml-1 text-xs text-slate-400">
+                      ({event.timeZone})
+                    </span>
                   )}
                 </span>
               </div>
@@ -515,7 +577,9 @@ export const EventDetailModal = ({
           {/* Description */}
           {description ? (
             <div>
-              <h4 className="text-sm font-semibold text-slate-700 mb-1.5">Event Description</h4>
+              <h4 className="text-sm font-semibold text-slate-700 mb-1.5">
+                Event Description
+              </h4>
               <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
                 {descTooLong && !descExpanded
                   ? `${description.slice(0, DESCRIPTION_LIMIT)}…`
@@ -528,9 +592,13 @@ export const EventDetailModal = ({
                   className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-appPrimary hover:underline"
                 >
                   {descExpanded ? (
-                    <><ChevronUp className="w-3 h-3" /> Show less</>
+                    <>
+                      <ChevronUp className="w-3 h-3" /> Show less
+                    </>
                   ) : (
-                    <><ChevronDown className="w-3 h-3" /> Show more</>
+                    <>
+                      <ChevronDown className="w-3 h-3" /> Show more
+                    </>
                   )}
                 </button>
               )}
@@ -540,45 +608,59 @@ export const EventDetailModal = ({
             <div className="space-y-2">
               <div className="h-4 bg-zinc-100 rounded animate-pulse w-32" />
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-3 bg-zinc-100 rounded animate-pulse" style={{ width: `${90 - i * 8}%` }} />
+                <div
+                  key={i}
+                  className="h-3 bg-zinc-100 rounded animate-pulse"
+                  style={{ width: `${90 - i * 8}%` }}
+                />
               ))}
             </div>
           ) : null}
 
           {/* Attachments */}
-          {event.attachments && event.attachments.length > 0 && imageBaseUrl && event.venueSlug && (
-            <div>
-              <h4 className="text-sm font-semibold text-slate-700 mb-2">Attachments</h4>
-              <ul className="space-y-1.5">
-                {event.attachments.map((att) => (
-                  <li key={att.filename}>
-                    <a
-                      href={`${imageBaseUrl}/${event.venueSlug}/events/${event.eventUrl}/${att.filename}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-sm text-appPrimary hover:underline"
-                    >
-                      <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span className="truncate">{att.filename}</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {event.attachments &&
+            event.attachments.length > 0 &&
+            imageBaseUrl &&
+            event.venueSlug && (
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">
+                  Attachments
+                </h4>
+                <ul className="space-y-1.5">
+                  {event.attachments.map((att) => (
+                    <li key={att.filename}>
+                      <a
+                        href={`${imageBaseUrl}/${event.venueSlug}/events/${event.eventUrl}/${att.filename}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm text-appPrimary hover:underline"
+                      >
+                        <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate">{att.filename}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
           {/* Contact person */}
           {venueDetail?.venueContact1?.fullName && (
             <div>
-              <h4 className="text-sm font-semibold text-slate-700 mb-2">Contact Person</h4>
+              <h4 className="text-sm font-semibold text-slate-700 mb-2">
+                Contact Person
+              </h4>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-appPrimary/10 flex items-center justify-center flex-shrink-0">
                   <span className="text-sm font-semibold text-appPrimary">
-                    {`${venueDetail.venueContact1.firstName?.[0] ?? ''}${venueDetail.venueContact1.lastName?.[0] ?? ''}` || '?'}
+                    {`${venueDetail.venueContact1.firstName?.[0] ?? ''}${venueDetail.venueContact1.lastName?.[0] ?? ''}` ||
+                      '?'}
                   </span>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900">{venueDetail.venueContact1.fullName}</p>
+                  <p className="text-sm font-medium text-slate-900">
+                    {venueDetail.venueContact1.fullName}
+                  </p>
                   {venueDetail.venueContact1.email && (
                     <a
                       href={`mailto:${venueDetail.venueContact1.email}`}
@@ -601,7 +683,9 @@ export const EventDetailModal = ({
           {/* Videos */}
           {venueDetail?.videoUrls && venueDetail.videoUrls.length > 0 && (
             <div>
-              <h4 className="text-sm font-semibold text-slate-700 mb-2">Videos</h4>
+              <h4 className="text-sm font-semibold text-slate-700 mb-2">
+                Videos
+              </h4>
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {venueDetail.videoUrls.map((url, i) => (
                   <VenueVideo key={i} url={url} />

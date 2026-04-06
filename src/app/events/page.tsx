@@ -2,16 +2,25 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarRange, Search } from 'lucide-react';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import Layout from '@/components/layout/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/Select';
 import { useCurrentUser } from '@/domains/user';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { clsxm } from '@/lib/utils';
 import { EventApiService, EventCard, EventDetailModal } from '@/domains/event';
 import type { GignologyEvent, EventListPage } from '@/domains/event';
+import { baseInstance } from '@/lib/api/instance';
+import type { VenueWithStatus } from '@/domains/venue';
 
 // ─── Page-local constants ─────────────────────────────────────────────────────
 
@@ -42,10 +51,23 @@ export default function EventsPage() {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 400);
   const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(null);
+  const [venueSlug, setVenueSlug] = useState('');
 
   const queryClient = useQueryClient();
   const applicantId = currentUser?.applicantId;
   const isEmployee = currentUser?.userType === 'User';
+
+  // ── StaffingPool venues for the filter dropdown ──────────────────────────────
+  const { data: staffingVenues = [] } = useQuery<VenueWithStatus[]>({
+    queryKey: ['venues', 'staffing-pool'],
+    queryFn: async () => {
+      const res = await baseInstance.get<VenueWithStatus[]>('venues');
+      if (!res.success || !res.data) return [];
+      return res.data.filter((v) => v.userVenueStatus === 'StaffingPool');
+    },
+    enabled: !!currentUser && isEmployee,
+    staleTime: 5 * 60 * 1000,
+  });
 
   // ── All events ──────────────────────────────────────────────────────────────
   const {
@@ -55,9 +77,9 @@ export default function EventsPage() {
     isFetchingNextPage: isFetchingNextAll,
     hasNextPage: hasNextAll,
   } = useInfiniteQuery<EventListPage, Error, { pages: EventListPage[] }, readonly unknown[], number>({
-    queryKey: ['events-all', applicantId, debouncedSearch],
+    queryKey: ['events-all', applicantId, debouncedSearch, venueSlug],
     queryFn: ({ pageParam }) =>
-      EventApiService.fetchAllEvents({ applicantId, search: debouncedSearch, page: pageParam }),
+      EventApiService.fetchAllEvents({ applicantId, search: debouncedSearch, page: pageParam, venueSlug }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => lastPage.pagination?.next?.page ?? undefined,
     enabled: tab === 'all' && !!currentUser,
@@ -73,9 +95,9 @@ export default function EventsPage() {
     isFetchingNextPage: isFetchingNextMy,
     hasNextPage: hasNextMy,
   } = useInfiniteQuery<EventListPage, Error, { pages: EventListPage[] }, readonly unknown[], number>({
-    queryKey: ['events-my', applicantId, debouncedSearch],
+    queryKey: ['events-my', applicantId, debouncedSearch, venueSlug],
     queryFn: ({ pageParam }) =>
-      EventApiService.fetchMyEvents({ applicantId, search: debouncedSearch, page: pageParam }),
+      EventApiService.fetchMyEvents({ applicantId, search: debouncedSearch, page: pageParam, venueSlug }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => lastPage.pagination?.next?.page ?? undefined,
     enabled: tab === 'my' && !!applicantId,
@@ -91,9 +113,9 @@ export default function EventsPage() {
     isFetchingNextPage: isFetchingNextPast,
     hasNextPage: hasNextPast,
   } = useInfiniteQuery<EventListPage, Error, { pages: EventListPage[] }, readonly unknown[], number>({
-    queryKey: ['events-past', applicantId, debouncedSearch],
+    queryKey: ['events-past', applicantId, debouncedSearch, venueSlug],
     queryFn: ({ pageParam }) =>
-      EventApiService.fetchPastEvents({ applicantId, search: debouncedSearch, page: pageParam }),
+      EventApiService.fetchPastEvents({ applicantId, search: debouncedSearch, page: pageParam, venueSlug }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) => lastPage.pagination?.next?.page ?? undefined,
     enabled: tab === 'past' && !!applicantId,
@@ -226,19 +248,44 @@ export default function EventsPage() {
                 </div>
               </div>
 
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search events…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className={clsxm(
-                    'w-full pl-9 pr-4 py-1.5 text-sm rounded-md border border-zinc-200',
-                    'bg-white placeholder:text-zinc-400 text-zinc-900',
-                    'focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary'
-                  )}
-                />
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                {staffingVenues.length > 1 && (
+                  <Select value={venueSlug} onValueChange={setVenueSlug}>
+                    <SelectTrigger className="h-[34px] w-full sm:w-56 text-sm border-zinc-200 focus:ring-appPrimary/30 focus:border-appPrimary">
+                      <SelectValue
+                        placeholder="All Venues"
+                        displayText={
+                          venueSlug
+                            ? (staffingVenues.find((v) => v.slug === venueSlug)?.name ?? 'All Venues')
+                            : 'All Venues'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All Venues</SelectItem>
+                      {staffingVenues.map((v) => (
+                        <SelectItem key={v.slug} value={v.slug}>
+                          {v.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search events…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className={clsxm(
+                      'w-full pl-9 pr-4 py-1.5 text-sm rounded-md border border-zinc-200',
+                      'bg-white placeholder:text-zinc-400 text-zinc-900',
+                      'focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary'
+                    )}
+                  />
+                </div>
               </div>
             </div>
           </CardHeader>

@@ -1,7 +1,14 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ArrowLeftRight, Clock3 } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  ArrowLeftRight,
+  Clock3,
+} from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -13,9 +20,11 @@ import { useCalendarContext } from '@/components/ui/Calendar/CalendarContext';
 import { ShiftsTable } from './ShiftsTable';
 import { EventsTable } from './EventsTable';
 import { ShiftDetailsModal } from '../ShiftDetailsModal';
+import { EventDetailModal } from '@/domains/event/components/EventDetailModal/EventDetailModal';
 import type { GignologyUser } from '@/domains/user/types';
 import type { PunchWithJobInfo } from '@/domains/punch/types';
 import type { GignologyJob, Shift } from '@/domains/job/types/job.types';
+import type { GignologyEvent } from '@/domains/event/types';
 import { clsxm } from '@/lib/utils';
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
 import { useRosterEvents } from '@/domains/event/hooks';
@@ -126,10 +135,14 @@ const generateShiftEvents = (
 // Component that listens to calendar context for event selections
 const CalendarEventHandler = ({
   shiftEvents,
+  rosterEvents,
   onShiftClick,
+  onRosterEventClick,
 }: {
   shiftEvents: ShiftCalendarEvent[];
+  rosterEvents: GignologyEvent[];
   onShiftClick: (shiftEvent: ShiftCalendarEvent) => void;
+  onRosterEventClick: (event: GignologyEvent) => void;
 }) => {
   const { selectedEvent, manageEventDialogOpen, setManageEventDialogOpen } =
     useCalendarContext();
@@ -140,7 +153,17 @@ const CalendarEventHandler = ({
       // Always close the calendar's default dialog
       setManageEventDialogOpen(false);
 
-      // Only open the custom shift modal for punch events
+      // Roster events have IDs prefixed with "roster-"
+      if (selectedEvent.id.startsWith('roster-')) {
+        const eventId = selectedEvent.id.replace('roster-', '');
+        const rosterEvent = rosterEvents.find((e) => e._id === eventId);
+        if (rosterEvent) {
+          onRosterEventClick(rosterEvent);
+        }
+        return;
+      }
+
+      // Punch/shift events
       const shiftEvent = shiftEvents.find(
         (event) => event.id === selectedEvent.id
       );
@@ -152,7 +175,9 @@ const CalendarEventHandler = ({
     selectedEvent,
     manageEventDialogOpen,
     shiftEvents,
+    rosterEvents,
     onShiftClick,
+    onRosterEventClick,
     setManageEventDialogOpen,
   ]);
 
@@ -201,6 +226,11 @@ export function ShiftsSection({
     null
   );
   const [showShiftModal, setShowShiftModal] = useState(false);
+
+  // Event Detail Modal State
+  const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(
+    null
+  );
 
   // Query client for data refresh
   const queryClient = useQueryClient();
@@ -513,10 +543,12 @@ export function ShiftsSection({
 
                 <CalendarEventHandler
                   shiftEvents={shiftEvents}
+                  rosterEvents={calendarRosterEvents ?? []}
                   onShiftClick={(shiftEvent) => {
                     setSelectedShift(shiftEvent);
                     setShowShiftModal(true);
                   }}
+                  onRosterEventClick={(event) => setSelectedEvent(event)}
                 />
               </CalendarProvider>
             )
@@ -608,6 +640,7 @@ export function ShiftsSection({
                         }}
                         isBlockedByJobPunch={isBlockedByJobPunch}
                         hasActiveEventClockIn={hasActiveEventClockIn}
+                        onEventClick={(event) => setSelectedEvent(event)}
                       />
                     )}
                   </div>
@@ -633,6 +666,15 @@ export function ShiftsSection({
         }}
         onSuccess={handleDataRefresh}
       />
+
+      {/* Event Detail Modal */}
+      {selectedEvent && (
+        <EventDetailModal
+          event={selectedEvent}
+          open={!!selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+        />
+      )}
     </>
   );
 }
