@@ -11,6 +11,8 @@ export interface FetchEventsParams {
   search?: string;
   page?: number;
   limit?: number;
+  /** venueSlug to filter by; empty/undefined means show all accessible venues */
+  venueSlug?: string;
 }
 
 export interface RosterEventsParams {
@@ -130,9 +132,12 @@ export class EventApiService {
     search = '',
     page = 1,
     limit = 10,
+    venueSlug = '',
   }: FetchEventsParams): Promise<EventListPage> {
+    const filterParts = ['timeFrame:Current', 'eventType:Event'];
+    if (venueSlug) filterParts.push(`venueSlug:${venueSlug}`);
     const qs = new URLSearchParams({
-      filter: 'timeFrame:Current,eventType:Event',
+      filter: filterParts.join(','),
       limit: String(limit),
       sort: 'eventDate:asc',
       page: String(page),
@@ -149,10 +154,13 @@ export class EventApiService {
     search = '',
     page = 1,
     limit = 10,
+    venueSlug = '',
   }: FetchEventsParams): Promise<EventListPage> {
     if (!applicantId) return { data: [] };
+    const filterParts = [`timeFrame:Current`, `eventType:Event`, `applicants.id:${applicantId}`];
+    if (venueSlug) filterParts.push(`venueSlug:${venueSlug}`);
     const qs = new URLSearchParams({
-      filter: `timeFrame:Current,eventType:Event,applicants.id:${applicantId}`,
+      filter: filterParts.join(','),
       limit: String(limit),
       sort: 'eventDate:asc',
       page: String(page),
@@ -169,10 +177,18 @@ export class EventApiService {
     search = '',
     page = 1,
     limit = 10,
+    venueSlug = '',
   }: FetchEventsParams): Promise<EventListPage> {
     if (!applicantId) return { data: [] };
+    const filterParts = [
+      `timeFrame:Past`,
+      `eventType:Event`,
+      `applicants.id:${applicantId}`,
+      `applicants.status:Roster`,
+    ];
+    if (venueSlug) filterParts.push(`venueSlug:${venueSlug}`);
     const qs = new URLSearchParams({
-      filter: `timeFrame:Past,eventType:Event,applicants.id:${applicantId},applicants.status:Roster`,
+      filter: filterParts.join(','),
       limit: String(limit),
       sort: 'eventDate:desc',
       page: String(page),
