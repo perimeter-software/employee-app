@@ -40,6 +40,7 @@ import type {
   SubmittedEventApplicant,
   SubmittedJobTimecard,
 } from '@/domains/payroll/types/payroll.types';
+import type { PaycheckStub } from '@/domains/paycheck-stubs';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -183,28 +184,45 @@ const StatCard: React.FC<{
   </div>
 );
 
-// ── Table row (expandable) ────────────────────────────────────────────────────
+// ── Table row (expandable, groups all batches in a period) ───────────────────
 
 const PayrollTableRow: React.FC<{
-  batch: EmployeePayrollBatch;
-  stubId?: string;
-  stubVoucherNumber?: string;
+  batches: EmployeePayrollBatch[];
+  stubMap: Map<string, string>;
+  stubs: PaycheckStub[];
   detailMode: boolean;
   onViewStub: (id: string) => void;
-}> = ({ batch, stubId, stubVoucherNumber, detailMode, onViewStub }) => {
+}> = ({ batches, stubMap, stubs, detailMode, onViewStub }) => {
   const [localExpanded, setLocalExpanded] = useState(false);
   const expanded = detailMode || localExpanded;
-  const totalHours = batch.totalRegularHours + batch.totalOvertimeHours;
-  const hasOT = batch.totalOvertimeHours > 0;
-  const checkDate = getCheckDate(batch);
-  const voucherNumber =
-    batch.billingVoucher?.voucherId ||
-    batch.lastCreatedPEOBatch?.batchNumber ||
-    null;
 
-  // Merge REG and OT items into display rows
+  const firstBatch = batches[0];
+  const totalHours = batches.reduce(
+    (s, b) => s + b.totalRegularHours + b.totalOvertimeHours,
+    0
+  );
+  const totalOTHours = batches.reduce((s, b) => s + b.totalOvertimeHours, 0);
+  const totalGross = batches.reduce((s, b) => s + b.totalGrossPay, 0);
+  const totalDeductions = batches.reduce((s, b) => s + b.totalTaxes, 0);
+  const totalNet = batches.reduce((s, b) => s + getNetPay(b), 0);
+  const checkDate = getCheckDate(firstBatch);
+
+  // First stub found across all batches in this period
+  const firstStubId = batches.map((b) => getStubId(b, stubMap)).find(Boolean);
+  const firstStubVoucherNumber = firstStubId
+    ? stubs.find((s) => s._id === firstStubId)?.voucherNumber
+    : undefined;
+
+  // Voucher # for detail mode — from first batch that has one
+  const voucherNumber =
+    batches
+      .map((b) => b.billingVoucher?.voucherId || b.lastCreatedPEOBatch?.batchNumber)
+      .find(Boolean) ?? null;
+
+  // Merge all items from all batches in this period into display rows
   type ItemRow = {
     label: string;
+    venue: string;
     date: string;
     regHrs: number;
     otHrs: number;
@@ -215,42 +233,57 @@ const PayrollTableRow: React.FC<{
   const itemRows = useMemo<ItemRow[]>(() => {
     const rows: ItemRow[] = [];
 
-    batch.regularItems.forEach((item) => {
-      rows.push({
-        label: getItemLabel(item, batch),
-        date: format(parseUTC(batch.startDate), 'MMM d, yyyy'),
-        regHrs: item.totalHours ?? 0,
-        otHrs: 0,
-        rate: getItemRate(item),
-        earnings: getItemEarnings(item),
-      });
-    });
+    batches.forEach((batch) => {
+      const batchDate = format(parseUTC(batch.startDate), 'MMM d, yyyy');
 
-    batch.overtimeItems.forEach((item) => {
-      rows.push({
-        label: getItemLabel(item, batch),
-        date: format(parseUTC(batch.startDate), 'MMM d, yyyy'),
-        regHrs: 0,
-        otHrs: item.totalHours ?? 0,
-        rate: getItemRate(item),
-        earnings: getItemEarnings(item),
+      batch.regularItems.forEach((item) => {
+        const itemDate =
+          'timeIn' in item && item.timeIn
+            ? format(parseUTC(item.timeIn), 'MMM d, yyyy')
+            : batchDate;
+        rows.push({
+          label: getItemLabel(item, batch),
+          venue: batch.eventUrl || batch.jobSlug || '–',
+          date: itemDate,
+          regHrs: item.totalHours ?? 0,
+          otHrs: 0,
+          rate: getItemRate(item),
+          earnings: getItemEarnings(item),
+        });
       });
-    });
 
-    // Fallback: if no items, show one summary row
-    if (rows.length === 0) {
-      rows.push({
-        label: batch.eventUrl || batch.jobSlug || '–',
-        date: format(parseUTC(batch.startDate), 'MMM d, yyyy'),
-        regHrs: batch.totalRegularHours,
-        otHrs: batch.totalOvertimeHours,
-        rate: '–',
-        earnings: batch.totalGrossPay,
+      batch.overtimeItems.forEach((item) => {
+        const itemDate =
+          'timeIn' in item && item.timeIn
+            ? format(parseUTC(item.timeIn), 'MMM d, yyyy')
+            : batchDate;
+        rows.push({
+          label: getItemLabel(item, batch),
+          venue: batch.eventUrl || batch.jobSlug || '–',
+          date: itemDate,
+          regHrs: 0,
+          otHrs: item.totalHours ?? 0,
+          rate: getItemRate(item),
+          earnings: getItemEarnings(item),
+        });
       });
-    }
+
+      // Fallback: if no items on this batch, show one summary row
+      if (batch.regularItems.length === 0 && batch.overtimeItems.length === 0) {
+        rows.push({
+          label: batch.eventUrl || batch.jobSlug || '–',
+          venue: batch.eventUrl || batch.jobSlug || '–',
+          date: format(new Date(batch.startDate), 'MMM d, yyyy'),
+          regHrs: batch.totalRegularHours,
+          otHrs: batch.totalOvertimeHours,
+          rate: '–',
+          earnings: batch.totalGrossPay,
+        });
+      }
+    });
 
     return rows;
-  }, [batch]);
+  }, [batches]);
 
   return (
     <>
@@ -263,6 +296,7 @@ const PayrollTableRow: React.FC<{
         {/* Expand toggle */}
         <td className="pl-4 pr-2 py-4 w-8">
           <button
+            type="button"
             onClick={() => setLocalExpanded((p) => !p)}
             className="text-gray-400 hover:text-gray-600 transition-colors"
           >
@@ -277,7 +311,7 @@ const PayrollTableRow: React.FC<{
         {/* Pay Period */}
         <td className="px-4 py-4">
           <span className="text-sm font-semibold text-gray-900">
-            {formatPeriod(batch.startDate, batch.endDate)}
+            {formatPeriod(firstBatch.startDate, firstBatch.endDate)}
           </span>
         </td>
 
@@ -291,28 +325,28 @@ const PayrollTableRow: React.FC<{
           <span className="text-sm text-gray-800 font-medium">
             {totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)}
           </span>
-          {hasOT && (
+          {totalOTHours > 0 && (
             <span className="ml-1.5 text-xs font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-600">
-              +{batch.totalOvertimeHours % 1 === 0
-                ? batch.totalOvertimeHours
-                : batch.totalOvertimeHours.toFixed(1)}OT
+              +{totalOTHours % 1 === 0
+                ? totalOTHours
+                : totalOTHours.toFixed(1)}OT
             </span>
           )}
         </td>
 
         {/* Gross Pay */}
         <td className="px-4 py-4 text-sm font-semibold text-green-600">
-          {formatCurrency(batch.totalGrossPay)}
+          {formatCurrency(totalGross)}
         </td>
 
         {/* Deductions */}
         <td className="px-4 py-4 text-sm font-semibold text-red-500">
-          -{formatCurrency(batch.totalTaxes)}
+          -{formatCurrency(totalDeductions)}
         </td>
 
         {/* Net Pay */}
         <td className="px-4 py-4 text-sm font-bold text-blue-600">
-          {formatCurrency(getNetPay(batch))}
+          {formatCurrency(totalNet)}
         </td>
 
         {/* Status */}
@@ -325,14 +359,15 @@ const PayrollTableRow: React.FC<{
 
         {/* Voucher # */}
         <td className="px-4 py-4 text-xs text-gray-500 font-mono">
-          {stubVoucherNumber ?? '–'}
+          {firstStubVoucherNumber ?? '–'}
         </td>
 
         {/* Stub */}
         <td className="px-4 py-4">
-          {stubId ? (
+          {firstStubId ? (
             <button
-              onClick={() => onViewStub(stubId)}
+              type="button"
+              onClick={() => onViewStub(firstStubId)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-600 border border-blue-200 bg-white hover:bg-blue-50 transition-colors"
             >
               <FileText className="w-3.5 h-3.5" />
@@ -394,7 +429,7 @@ const PayrollTableRow: React.FC<{
                       {row.label}
                     </td>
                     <td className="text-sm text-gray-500 pr-4 py-2">
-                      {batch.eventUrl || batch.jobSlug || '–'}
+                      {row.venue}
                     </td>
                     <td className="text-sm text-gray-500 pr-4 py-2">
                       {row.date}
@@ -433,35 +468,37 @@ const PayrollTableRow: React.FC<{
 // ── Card view ─────────────────────────────────────────────────────────────────
 
 const PayrollCardGrid: React.FC<{
-  batches: EmployeePayrollBatch[];
+  groups: { key: string; batches: EmployeePayrollBatch[] }[];
   stubMap: Map<string, string>;
   onViewStub: (id: string) => void;
-}> = ({ batches, stubMap, onViewStub }) => (
+}> = ({ groups, stubMap, onViewStub }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-    {batches.map((batch) => {
-      const totalHours = batch.totalRegularHours + batch.totalOvertimeHours;
-      const hasOT = batch.totalOvertimeHours > 0;
-      const checkDate = getCheckDate(batch);
-      const stubId = getStubId(batch, stubMap);
+    {groups.map(({ key, batches }) => {
+      const firstBatch = batches[0];
+      const totalHours = batches.reduce(
+        (s, b) => s + b.totalRegularHours + b.totalOvertimeHours,
+        0
+      );
+      const totalOTHours = batches.reduce((s, b) => s + b.totalOvertimeHours, 0);
+      const totalGross = batches.reduce((s, b) => s + b.totalGrossPay, 0);
+      const totalDeductions = batches.reduce((s, b) => s + b.totalTaxes, 0);
+      const totalNet = batches.reduce((s, b) => s + getNetPay(b), 0);
+      const checkDate = getCheckDate(firstBatch);
+      const stubId = batches.map((b) => getStubId(b, stubMap)).find(Boolean);
 
-      // Build event items for the card
-      const allItems = [
-        ...batch.regularItems,
-        ...batch.overtimeItems,
-      ];
-      const displayItems = allItems.slice(0, 2);
-      const extraCount = allItems.length - displayItems.length;
+      const displayBatches = batches.slice(0, 4);
+      const extraCount = batches.length - displayBatches.length;
 
       return (
         <div
-          key={batch._id}
+          key={key}
           className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col gap-4"
         >
           {/* Header */}
           <div className="flex items-start justify-between">
             <div>
               <p className="text-base font-bold text-gray-900">
-                {formatPeriod(batch.startDate, batch.endDate)}
+                {formatPeriod(firstBatch.startDate, firstBatch.endDate)}
               </p>
               {checkDate && (
                 <p className="text-xs text-gray-400 mt-0.5">
@@ -482,7 +519,7 @@ const PayrollCardGrid: React.FC<{
                 GROSS
               </p>
               <p className="text-sm font-bold text-green-600">
-                {formatCurrency(batch.totalGrossPay)}
+                {formatCurrency(totalGross)}
               </p>
             </div>
             <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
@@ -490,7 +527,7 @@ const PayrollCardGrid: React.FC<{
                 DEDUCTIONS
               </p>
               <p className="text-sm font-bold text-red-500">
-                -{formatCurrency(batch.totalTaxes)}
+                -{formatCurrency(totalDeductions)}
               </p>
             </div>
             <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
@@ -498,49 +535,48 @@ const PayrollCardGrid: React.FC<{
                 NET PAY
               </p>
               <p className="text-sm font-bold text-blue-600">
-                {formatCurrency(getNetPay(batch))}
+                {formatCurrency(totalNet)}
               </p>
             </div>
           </div>
 
-          {/* Hours + events count */}
+          {/* Hours + event count */}
           <div className="flex items-center justify-between text-sm text-gray-500">
             <span>
               {totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)}h total
-              {hasOT && (
+              {totalOTHours > 0 && (
                 <span className="ml-1.5 text-xs font-semibold text-orange-500">
-                  {batch.totalOvertimeHours % 1 === 0
-                    ? batch.totalOvertimeHours
-                    : batch.totalOvertimeHours.toFixed(1)}h OT
+                  {totalOTHours % 1 === 0
+                    ? totalOTHours
+                    : totalOTHours.toFixed(1)}h OT
                 </span>
               )}
             </span>
-            <span>{allItems.length} event{allItems.length !== 1 ? 's' : ''}</span>
+            <span>{batches.length} event{batches.length !== 1 ? 's' : ''}</span>
           </div>
 
-          {/* Event list */}
-          {displayItems.length > 0 && (
-            <div className="space-y-1.5">
-              {displayItems.map((item, i) => (
-                <div key={i} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-700 font-medium truncate mr-2">
-                    {getItemLabel(item, batch)}
-                  </span>
-                  <span className="text-gray-800 font-semibold flex-shrink-0">
-                    {formatCurrency(getItemEarnings(item))}
-                  </span>
-                </div>
-              ))}
-              {extraCount > 0 && (
-                <p className="text-xs text-gray-400 text-center">
-                  +{extraCount} more
-                </p>
-              )}
-            </div>
-          )}
+          {/* Event list — one row per batch */}
+          <div className="space-y-1.5">
+            {displayBatches.map((batch) => (
+              <div key={batch._id} className="flex items-center justify-between text-sm">
+                <span className="text-gray-700 font-medium truncate mr-2">
+                  {batch.eventUrl || batch.jobSlug || '–'}
+                </span>
+                <span className="text-gray-800 font-semibold flex-shrink-0">
+                  {formatCurrency(batch.totalGrossPay)}
+                </span>
+              </div>
+            ))}
+            {extraCount > 0 && (
+              <p className="text-xs text-gray-400 text-center">
+                +{extraCount} more
+              </p>
+            )}
+          </div>
 
-          {/* View Paystub button — always visible, disabled if no stub */}
+          {/* View Paystub button */}
           <button
+            type="button"
             onClick={() => stubId && onViewStub(stubId)}
             disabled={!stubId}
             className={clsxm(
@@ -769,8 +805,14 @@ const PayrollPageContent: React.FC = () => {
     isPrism ? applicantId : undefined
   );
 
-  const allBatches = historyData?.payrollBatches ?? [];
-  const stubs = stubsData?.paycheckStubs ?? [];
+  const allBatches = useMemo(
+    () => historyData?.payrollBatches ?? [],
+    [historyData]
+  );
+  const stubs = useMemo(
+    () => stubsData?.paycheckStubs ?? [],
+    [stubsData]
+  );
 
   // Build stubMap with TWO keys per stub for maximum match coverage:
   //   1. voucherNumber  → matches billingVoucher.voucherId (PRISM users)
@@ -873,6 +915,23 @@ const PayrollPageContent: React.FC = () => {
       return sortDir === 'asc' ? va - vb : vb - va;
     });
   }, [searched, sortField, sortDir]);
+
+  // Group sorted batches by pay period (startDate|endDate) for table view
+  const groupedByPeriod = useMemo(() => {
+    const groups: { key: string; batches: EmployeePayrollBatch[] }[] = [];
+    const indexMap = new Map<string, number>();
+    sorted.forEach((batch) => {
+      const key = `${batch.startDate}|${batch.endDate}`;
+      const idx = indexMap.get(key);
+      if (idx !== undefined) {
+        groups[idx].batches.push(batch);
+      } else {
+        indexMap.set(key, groups.length);
+        groups.push({ key, batches: [batch] });
+      }
+    });
+    return groups;
+  }, [sorted]);
 
   const handleSort = useCallback(
     (field: SortField) => {
@@ -1211,22 +1270,18 @@ const PayrollPageContent: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {sorted.map((batch) => {
-                            const sid = getStubId(batch, stubMap);
-                            const matchedStub = stubs.find((s) => s._id === sid);
-                            return (
-                              <PayrollTableRow
-                                key={batch._id}
-                                batch={batch}
-                                stubId={sid}
-                                stubVoucherNumber={matchedStub?.voucherNumber}
-                                detailMode={detailMode}
-                                onViewStub={(id) =>
-                                  router.push(`/paycheck-stubs/${id}?from=${viewMode}`)
-                                }
-                              />
-                            );
-                          })}
+                          {groupedByPeriod.map(({ key, batches: groupBatches }) => (
+                            <PayrollTableRow
+                              key={key}
+                              batches={groupBatches}
+                              stubMap={stubMap}
+                              stubs={stubs}
+                              detailMode={detailMode}
+                              onViewStub={(id) =>
+                                router.push(`/paycheck-stubs/${id}?from=${viewMode}`)
+                              }
+                            />
+                          ))}
                         </tbody>
                       </table>
                     </div>
@@ -1235,15 +1290,15 @@ const PayrollPageContent: React.FC = () => {
               )}
 
               {/* Card view */}
-              {viewMode === 'card' && sorted.length > 0 && (
+              {viewMode === 'card' && groupedByPeriod.length > 0 && (
                 <PayrollCardGrid
-                  batches={sorted}
+                  groups={groupedByPeriod}
                   stubMap={stubMap}
                   onViewStub={(id) => router.push(`/paycheck-stubs/${id}?from=${viewMode}`)}
                 />
               )}
 
-              {viewMode === 'card' && sorted.length === 0 && (
+              {viewMode === 'card' && groupedByPeriod.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20">
                   <TrendingUp className="w-12 h-12 text-gray-200 mb-3" />
                   <p className="text-gray-400 text-sm font-medium">

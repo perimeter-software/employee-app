@@ -1,5 +1,6 @@
 // src/lib/db/mongodb.ts - Updated version
 import { MongoClient, Db } from 'mongodb';
+import os from 'node:os';
 import { MongoConnection } from './types';
 import { env } from '@/lib/config';
 
@@ -18,6 +19,30 @@ const isEdgeRuntime = process.env.NEXT_RUNTIME === 'edge';
 const DEFAULT_DB_NAME = process.env.DEFAULT_TENANT_DB_NAME || 'stadiumpeople';
 const TENANT_DB_NAME = process.env.TENANT_DB_NAME || 'tenant';
 const USER_MASTER_DB_NAME = process.env.USER_MASTER_DB_NAME || 'usermaster';
+
+// Scale connection pool per worker so total connections stay roughly constant.
+// Must match server.mjs: requested workers are capped at 2× vCPU (misconfig safety).
+const TOTAL_MAX_POOL = 50;
+const TOTAL_MIN_POOL = 5;
+const rawWorkers = parseInt(process.env.CLUSTER_WORKERS || '0', 10);
+const clusterEnabled = process.env.CLUSTER_ENABLED === 'true';
+const cpuCount = os.cpus().length;
+const effectiveClusterProcessCount = clusterEnabled
+  ? (() => {
+      const requested =
+        Number.isFinite(rawWorkers) && rawWorkers > 0 ? rawWorkers : cpuCount;
+      const maxWorkers = Math.max(1, cpuCount * 2);
+      return Math.min(Math.max(1, requested), maxWorkers);
+    })()
+  : 1;
+const effectiveMaxPool = Math.max(
+  10,
+  Math.floor(TOTAL_MAX_POOL / effectiveClusterProcessCount)
+);
+const effectiveMinPool = Math.max(
+  2,
+  Math.floor(TOTAL_MIN_POOL / effectiveClusterProcessCount)
+);
 
 export const mongoConn = async (
   dbName = DEFAULT_DB_NAME,
@@ -82,9 +107,9 @@ export const mongoConn = async (
     const client = await MongoClient.connect(connectionString, {
       // Disable client-side field level encryption
       autoEncryption: undefined,
-      // Optimized connection pool for better performance
-      maxPoolSize: 50, // Increased from 10 for better concurrency
-      minPoolSize: 5, // Keep minimum connections alive
+      // Pool scaled by CLUSTER_WORKERS so total connections stay ~50 across all workers
+      maxPoolSize: effectiveMaxPool,
+      minPoolSize: effectiveMinPool,
       maxIdleTimeMS: 30000, // Close idle connections after 30s
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,

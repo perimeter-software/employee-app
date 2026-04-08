@@ -290,6 +290,11 @@ export async function sendQueuedEmail(
   options: QueueEmailOptions,
   db: Db
 ): Promise<{ success: boolean; message?: string }> {
+  const intendedTo = options.to;
+  const deliveryTo = options.to;
+  const mailSubject = options.subject;
+  const mailHtml = options.html;
+
   // ── 1. Dev guard (same check kept from the original emailService) ───────────
   if (env.isDevelopment && process.env.SES_SEND_IN_DEV !== 'true') {
     console.log('[email-queue] Dev mode – not sending:', {
@@ -325,13 +330,13 @@ export async function sendQueuedEmail(
   }
 
   // ── 4. Staging email transforms ─────────────────────────────────────────────
-  const toEmail = checkForStaging(options.to, companyEmail, appEnv);
+  const toEmail = checkForStaging(deliveryTo, companyEmail, appEnv);
   const ccList = changeListToStaging(options.cc, companyEmail, appEnv);
   const bccList = changeListToStaging(options.bcc, companyEmail, appEnv);
 
   // ── 5. Resolve recipient by original email (pre-staging) so DB lookup hits ───
   //       their real address, then run applicant pre-send checks.
-  const resolvedRecipient = await resolvePersonByEmail(db, options.to);
+  const resolvedRecipient = await resolvePersonByEmail(db, intendedTo);
 
   if (resolvedRecipient?.recordLocked === 'Yes') {
     const message = `Not sending email for locked applicant ${resolvedRecipient.applicantId}: ${resolvedRecipient.firstName} ${resolvedRecipient.lastName}`;
@@ -373,9 +378,9 @@ export async function sendQueuedEmail(
     to: toEmail,
     cc: ccList.length ? [...ccList, catchAll] : catchAll,
     bcc: bccList.length ? [...bccList, catchAll] : catchAll,
-    subject: options.subject,
+    subject: mailSubject,
     text: options.text ?? '',
-    html: options.html,
+    html: mailHtml,
     ...(resolvedSender && {
       sender: {
         fromEmail: fromDisplay,
@@ -411,7 +416,7 @@ export async function sendQueuedEmail(
     await getEmailQueue().add(mailPacket);
     console.log('[email-queue] Enqueued email job', {
       to: toEmail,
-      subject: options.subject,
+      subject: mailSubject,
     });
   } catch (err) {
     const code = (err as { Code?: string }).Code;
@@ -425,8 +430,8 @@ export async function sendQueuedEmail(
   // ── 10. Activity log ─────────────────────────────────────────────────────────
   const description =
     resolvedSender && resolvedRecipient
-      ? `From ${resolvedSender.firstName} ${resolvedSender.lastName} to ${resolvedRecipient.firstName} ${resolvedRecipient.lastName}:\n${options.subject}`
-      : `Email sent: ${options.subject}`;
+      ? `From ${resolvedSender.firstName} ${resolvedSender.lastName} to ${resolvedRecipient.firstName} ${resolvedRecipient.lastName}:\n${mailSubject}`
+      : `Email sent: ${mailSubject}`;
 
   await logActivity(db, {
     action: 'Email Message',
@@ -436,7 +441,7 @@ export async function sendQueuedEmail(
     detail: {
       from: fromEmail,
       to: toEmail,
-      subject: options.subject,
+      subject: mailSubject,
       ...(resolvedSender && { sender: resolvedSender }),
       ...(resolvedRecipient && { recipient: resolvedRecipient }),
       ...(options.templateName && { templateName: options.templateName }),
