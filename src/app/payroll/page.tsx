@@ -82,11 +82,10 @@ function getNetPay(batch: EmployeePayrollBatch): number {
   return batch.totalGrossPay - getBatchDeductions(batch);
 }
 
-/** Parse a date string as UTC to avoid timezone-shift issues */
+/** Parse a date-only string (YYYY-MM-DD) as local midnight so date-fns formats the correct calendar day */
 function parseUTC(dateStr: string): Date {
-  // "2026-03-09" → treat as UTC midnight, not local midnight
   const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d));
+  return new Date(y, m - 1, d);
 }
 
 function formatPeriod(start: string, end: string) {
@@ -253,7 +252,7 @@ const PayrollTableRow: React.FC<{
       )
       .find(Boolean) ?? null;
 
-  // Merge all items from all batches in this period into display rows
+  // Merge all items from all batches in this period into display rows — one per event/job
   type ItemRow = {
     label: string;
     venue: string;
@@ -265,54 +264,66 @@ const PayrollTableRow: React.FC<{
   };
 
   const itemRows = useMemo<ItemRow[]>(() => {
-    const rows: ItemRow[] = [];
+    const rowMap = new Map<string, ItemRow>();
+
+    const upsert = (key: string, base: ItemRow, patch: Partial<ItemRow>) => {
+      const existing = rowMap.get(key);
+      if (existing) {
+        existing.regHrs   += patch.regHrs   ?? 0;
+        existing.otHrs    += patch.otHrs    ?? 0;
+        existing.earnings += patch.earnings ?? 0;
+        if (patch.rate && patch.rate !== '–' && existing.rate === '–') existing.rate = patch.rate;
+      } else {
+        rowMap.set(key, { ...base, ...patch });
+      }
+    };
 
     batches.forEach((batch) => {
       const batchDate = format(parseUTC(batch.startDate), 'MMM d, yyyy');
+      const venue = getBatchVenueName(batch);
 
       batch.regularItems.forEach((item) => {
-        const itemDate =
-          'timeIn' in item && item.timeIn
-            ? format(parseUTC(item.timeIn), 'MMM d, yyyy')
-            : batchDate;
-        rows.push({
-          label: getItemLabel(item, batch),
-          venue: getBatchVenueName(batch),
-          date: itemDate,
+        const label = getItemLabel(item, batch);
+        const date = 'timeIn' in item && item.timeIn ? format(parseUTC(item.timeIn), 'MMM d, yyyy') : batchDate;
+        const key = `${label}|${venue}|${date}`;
+        upsert(key, { label, venue, date, regHrs: 0, otHrs: 0, rate: '–', earnings: 0 }, {
           regHrs: item.totalHours ?? 0,
-          otHrs: 0,
           rate: getItemRate(item),
           earnings: getItemEarnings(item),
         });
       });
 
       batch.overtimeItems.forEach((item) => {
-        const itemDate =
-          'timeIn' in item && item.timeIn
-            ? format(parseUTC(item.timeIn), 'MMM d, yyyy')
-            : batchDate;
-        rows.push({
-          label: getItemLabel(item, batch),
-          venue: getBatchVenueName(batch),
-          date: itemDate,
-          regHrs: 0,
+        const label = getItemLabel(item, batch);
+        const date = 'timeIn' in item && item.timeIn ? format(parseUTC(item.timeIn), 'MMM d, yyyy') : batchDate;
+        const key = `${label}|${venue}|${date}`;
+        upsert(key, { label, venue, date, regHrs: 0, otHrs: 0, rate: '–', earnings: 0 }, {
           otHrs: item.totalHours ?? 0,
           rate: getItemRate(item),
           earnings: getItemEarnings(item),
         });
       });
 
-      // Fallback: if no items on this batch, show one summary row
-      if (batch.regularItems.length === 0 && batch.overtimeItems.length === 0) {
-        rows.push({
-          label:
-            batch.eventName ||
-            batch.jobTitle ||
-            batch.eventUrl ||
-            batch.jobSlug ||
-            '–',
-          venue: getBatchVenueName(batch),
-          date: format(new Date(batch.startDate), 'MMM d, yyyy'),
+      // Extras: add earnings only (no hours)
+      (batch.extraItems ?? []).forEach((item) => {
+        const label = getItemLabel(item, batch);
+        const date = 'timeIn' in item && item.timeIn ? format(parseUTC(item.timeIn), 'MMM d, yyyy') : batchDate;
+        const key = `${label}|${venue}|${date}`;
+        upsert(key, { label, venue, date, regHrs: 0, otHrs: 0, rate: '–', earnings: 0 }, {
+          earnings: getItemEarnings(item),
+        });
+      });
+
+      const hasItems =
+        batch.regularItems.length > 0 ||
+        batch.overtimeItems.length > 0 ||
+        (batch.extraItems ?? []).length > 0;
+
+      if (!hasItems) {
+        const label = batch.eventName || batch.jobTitle || batch.eventUrl || batch.jobSlug || '–';
+        rowMap.set(`${label}|${venue}|${batchDate}`, {
+          label, venue,
+          date: batchDate,
           regHrs: batch.totalRegularHours,
           otHrs: batch.totalOvertimeHours,
           rate: '–',
@@ -321,7 +332,7 @@ const PayrollTableRow: React.FC<{
       }
     });
 
-    return rows;
+    return Array.from(rowMap.values());
   }, [batches]);
 
   return (
