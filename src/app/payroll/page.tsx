@@ -66,12 +66,20 @@ function formatCurrency(val: number) {
   }).format(val);
 }
 
-function getNetPay(batch: {
-  totalNetPay: number;
-  totalGrossPay: number;
-  totalTaxes: number;
-}): number {
-  return batch.totalNetPay || batch.totalGrossPay - batch.totalTaxes;
+/** Sum deductions from billing voucher when available, otherwise fall back to totalTaxes */
+function getBatchDeductions(batch: EmployeePayrollBatch): number {
+  if (batch.billingVoucher?.sumBilling?.length) {
+    return batch.billingVoucher.sumBilling.reduce(
+      (s, item) => s + Math.abs(item.billAmt),
+      0
+    );
+  }
+  return batch.totalTaxes;
+}
+
+function getNetPay(batch: EmployeePayrollBatch): number {
+  if (batch.totalNetPay) return batch.totalNetPay;
+  return batch.totalGrossPay - getBatchDeductions(batch);
 }
 
 /** Parse a date string as UTC to avoid timezone-shift issues */
@@ -130,12 +138,19 @@ function getItemLabel(
   if ('shiftName' in item && item.shiftName) return item.shiftName;
   if ('shiftSlug' in item && item.shiftSlug) return item.shiftSlug;
   if ('companySlug' in item && item.companySlug) return item.companySlug;
-  // Fall back to batch-level name
+  // Prefer human-readable batch-level name
+  if (batch?.eventName) return batch.eventName;
+  if (batch?.jobTitle) return batch.jobTitle;
+  // Fall back to slugs
   if (batch?.eventUrl) return batch.eventUrl;
   if (batch?.jobSlug) return batch.jobSlug;
   if ('jobId' in item) return item.jobId;
   if ('rowId' in item && item.rowId) return item.rowId;
   return '–';
+}
+
+function getBatchVenueName(batch: EmployeePayrollBatch): string {
+  return batch.venueName || batch.eventUrl || batch.jobSlug || '–';
 }
 
 function getItemRate(
@@ -220,8 +235,8 @@ const PayrollTableRow: React.FC<{
   );
   const totalOTHours = batches.reduce((s, b) => s + b.totalOvertimeHours, 0);
   const totalGross = batches.reduce((s, b) => s + b.totalGrossPay, 0);
-  const totalDeductions = batches.reduce((s, b) => s + b.totalTaxes, 0);
-  const totalNet = batches.reduce((s, b) => s + getNetPay(b), 0);
+  const totalDeductions = getBatchDeductions(firstBatch);
+  const totalNet = totalGross - totalDeductions;
   const checkDate = getCheckDate(firstBatch);
 
   // First stub found across all batches in this period
@@ -262,7 +277,7 @@ const PayrollTableRow: React.FC<{
             : batchDate;
         rows.push({
           label: getItemLabel(item, batch),
-          venue: batch.eventUrl || batch.jobSlug || '–',
+          venue: getBatchVenueName(batch),
           date: itemDate,
           regHrs: item.totalHours ?? 0,
           otHrs: 0,
@@ -278,7 +293,7 @@ const PayrollTableRow: React.FC<{
             : batchDate;
         rows.push({
           label: getItemLabel(item, batch),
-          venue: batch.eventUrl || batch.jobSlug || '–',
+          venue: getBatchVenueName(batch),
           date: itemDate,
           regHrs: 0,
           otHrs: item.totalHours ?? 0,
@@ -290,8 +305,13 @@ const PayrollTableRow: React.FC<{
       // Fallback: if no items on this batch, show one summary row
       if (batch.regularItems.length === 0 && batch.overtimeItems.length === 0) {
         rows.push({
-          label: batch.eventUrl || batch.jobSlug || '–',
-          venue: batch.eventUrl || batch.jobSlug || '–',
+          label:
+            batch.eventName ||
+            batch.jobTitle ||
+            batch.eventUrl ||
+            batch.jobSlug ||
+            '–',
+          venue: getBatchVenueName(batch),
           date: format(new Date(batch.startDate), 'MMM d, yyyy'),
           regHrs: batch.totalRegularHours,
           otHrs: batch.totalOvertimeHours,
@@ -546,7 +566,7 @@ const PaycheckDetailsModal: React.FC<{
 
       batch.regularItems.forEach((item) => {
         const label = getItemLabel(item, batch);
-        const venue = batch.eventUrl || batch.jobSlug || '–';
+        const venue = getBatchVenueName(batch);
         const date =
           'timeIn' in item && item.timeIn
             ? format(new Date(item.timeIn), 'MMM d, yyyy')
@@ -574,7 +594,7 @@ const PaycheckDetailsModal: React.FC<{
 
       batch.overtimeItems.forEach((item) => {
         const label = getItemLabel(item, batch);
-        const venue = batch.eventUrl || batch.jobSlug || '–';
+        const venue = getBatchVenueName(batch);
         const date =
           'timeIn' in item && item.timeIn
             ? format(new Date(item.timeIn), 'MMM d, yyyy')
@@ -602,10 +622,16 @@ const PaycheckDetailsModal: React.FC<{
       });
 
       if (batch.regularItems.length === 0 && batch.overtimeItems.length === 0) {
-        const label = batch.eventUrl || batch.jobSlug || '–';
-        cardMap.set(`${label}|${label}|${bDate}`, {
+        const label =
+          batch.eventName ||
+          batch.jobTitle ||
+          batch.eventUrl ||
+          batch.jobSlug ||
+          '–';
+        const venue = getBatchVenueName(batch);
+        cardMap.set(`${label}|${venue}|${bDate}`, {
           label,
-          venue: label,
+          venue,
           date: bDate,
           regHrs: batch.totalRegularHours,
           regRate: '–',
@@ -881,8 +907,8 @@ const PayrollCardGrid: React.FC<{
         0
       );
       const totalGross = batches.reduce((s, b) => s + b.totalGrossPay, 0);
-      const totalDeductions = batches.reduce((s, b) => s + b.totalTaxes, 0);
-      const totalNet = batches.reduce((s, b) => s + getNetPay(b), 0);
+      const totalDeductions = getBatchDeductions(firstBatch);
+      const totalNet = totalGross - totalDeductions;
       const checkDate = getCheckDate(firstBatch);
       const stubId = batches.map((b) => getStubId(b, stubMap)).find(Boolean);
 
@@ -967,7 +993,11 @@ const PayrollCardGrid: React.FC<{
                 className="flex items-center justify-between text-sm"
               >
                 <span className="text-gray-700 font-medium truncate mr-2">
-                  {batch.eventUrl || batch.jobSlug || '–'}
+                  {batch.eventName ||
+                    batch.jobTitle ||
+                    batch.eventUrl ||
+                    batch.jobSlug ||
+                    '–'}
                 </span>
                 <span className="text-gray-800 font-semibold flex-shrink-0">
                   {formatCurrency(batch.totalGrossPay)}

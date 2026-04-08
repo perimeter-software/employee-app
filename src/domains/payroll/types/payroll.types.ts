@@ -137,7 +137,10 @@ export interface EmployeePayrollBatch {
   _id: string;
   type: 'event' | 'job';
   eventUrl?: string;
+  eventName?: string;
   jobSlug?: string;
+  jobTitle?: string;
+  venueName?: string;
   startDate: string;
   endDate: string;
   payrollStatus: string;

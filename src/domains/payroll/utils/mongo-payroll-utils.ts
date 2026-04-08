@@ -169,6 +169,52 @@ export async function getEmployeePayrollHistory(
       .sort({ startDate: -1 })
       .toArray();
 
+    // ── Batch-lookup event and job names/venues ───────────────────────────────
+    const eventUrls = [
+      ...new Set(rawBatches.map((b) => b.eventUrl).filter(Boolean)),
+    ];
+    const jobSlugs = [
+      ...new Set(rawBatches.map((b) => b.jobSlug).filter(Boolean)),
+    ];
+
+    const [eventDocs, jobDocs] = await Promise.all([
+      eventUrls.length
+        ? db
+            .collection('events')
+            .find(
+              { eventUrl: { $in: eventUrls } },
+              { projection: { eventUrl: 1, eventName: 1, venueName: 1 } }
+            )
+            .toArray()
+        : Promise.resolve([]),
+      jobSlugs.length
+        ? db
+            .collection('jobs')
+            .find(
+              { jobSlug: { $in: jobSlugs } },
+              { projection: { jobSlug: 1, title: 1, venueName: 1 } }
+            )
+            .toArray()
+        : Promise.resolve([]),
+    ]);
+
+    const eventMap = new Map<
+      string,
+      { eventName?: string; venueName?: string }
+    >(
+      eventDocs.map((e) => [
+        e.eventUrl,
+        { eventName: e.eventName, venueName: e.venueName },
+      ])
+    );
+    const jobMap = new Map<string, { jobTitle?: string; venueName?: string }>(
+      jobDocs.map((j) => [
+        j.jobSlug,
+        { jobTitle: j.title, venueName: j.venueName },
+      ])
+    );
+    // ─────────────────────────────────────────────────────────────────────────
+
     const results: EmployeePayrollBatch[] = [];
 
     for (const batch of rawBatches) {
@@ -209,7 +255,8 @@ export async function getEmployeePayrollHistory(
       const totalFicaMED = sumTaxField(allItems, 'ficaMED');
       const totalFederalTax = sumTaxField(allItems, 'federalTax');
       const totalStateTax = sumTaxField(allItems, 'stateTax');
-      const totalTaxes = totalFicaSS + totalFicaMED + totalFederalTax + totalStateTax;
+      const totalTaxes =
+        totalFicaSS + totalFicaMED + totalFederalTax + totalStateTax;
       const totalNetPay = sumTaxField(allItems, 'checkNet');
 
       // Fetch billing voucher if available
@@ -253,11 +300,19 @@ export async function getEmployeePayrollHistory(
         }
       }
 
+      const eventMeta = batch.eventUrl
+        ? eventMap.get(batch.eventUrl)
+        : undefined;
+      const jobMeta = batch.jobSlug ? jobMap.get(batch.jobSlug) : undefined;
+
       results.push({
         _id: batch._id.toString(),
         type: isEvent ? 'event' : 'job',
         eventUrl: batch.eventUrl,
+        eventName: eventMeta?.eventName,
         jobSlug: batch.jobSlug,
+        jobTitle: jobMeta?.jobTitle,
+        venueName: eventMeta?.venueName ?? jobMeta?.venueName,
         startDate: batch.startDate,
         endDate: batch.endDate,
         payrollStatus: batch.payrollStatus,
@@ -281,8 +336,10 @@ export async function getEmployeePayrollHistory(
           ? {
               batchNumber: batch.lastCreatedPEOBatch.batchNumber,
               batchStatus: batch.lastCreatedPEOBatch.batchStatus,
-              billingVouchersAvailable: batch.lastCreatedPEOBatch.billingVouchersAvailable,
-              payrollVouchersAvailable: batch.lastCreatedPEOBatch.payrollVouchersAvailable,
+              billingVouchersAvailable:
+                batch.lastCreatedPEOBatch.billingVouchersAvailable,
+              payrollVouchersAvailable:
+                batch.lastCreatedPEOBatch.payrollVouchersAvailable,
               lastBillingSync: batch.lastCreatedPEOBatch.lastBillingSync,
             }
           : undefined,
