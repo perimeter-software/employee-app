@@ -238,6 +238,9 @@ export async function getEmployeePayrollHistory(
 
       const regularItems = allItems.filter((item) => item.earningId === 'REG');
       const overtimeItems = allItems.filter((item) => item.earningId === 'OT');
+      const extraItems = allItems.filter(
+        (item) => item.earningId !== 'REG' && item.earningId !== 'OT'
+      );
 
       const totalRegularHours = regularItems.reduce(
         (s, i) => s + (i.totalHours ?? 0),
@@ -249,7 +252,9 @@ export async function getEmployeePayrollHistory(
       );
       const totalGrossRegularPay = sumTaxField(regularItems, 'totalPay');
       const totalGrossOvertimePay = sumTaxField(overtimeItems, 'totalPay');
-      const totalGrossPay = totalGrossRegularPay + totalGrossOvertimePay;
+      const totalExtraEarnings = sumTaxField(extraItems, 'totalPay');
+      const totalGrossPay =
+        totalGrossRegularPay + totalGrossOvertimePay + totalExtraEarnings;
 
       const totalFicaSS = sumTaxField(allItems, 'ficaSS');
       const totalFicaMED = sumTaxField(allItems, 'ficaMED');
@@ -320,10 +325,12 @@ export async function getEmployeePayrollHistory(
         modifiedDate: batch.modifiedDate,
         regularItems,
         overtimeItems,
+        extraItems,
         totalRegularHours,
         totalOvertimeHours,
         totalGrossRegularPay,
         totalGrossOvertimePay,
+        totalExtraEarnings,
         totalGrossPay,
         totalFicaSS,
         totalFicaMED,

@@ -556,79 +556,113 @@ const PaycheckDetailsModal: React.FC<{
     otHrs: number;
     otRate: string;
     otEarnings: number;
+    extraEarnings: number;
   };
 
   const earningCards = useMemo<EarningCard[]>(() => {
     const cardMap = new Map<string, EarningCard>();
 
+    const upsert = (
+      key: string,
+      patch: Partial<EarningCard> & {
+        label: string;
+        venue: string;
+        date: string;
+      }
+    ) => {
+      const existing = cardMap.get(key);
+      if (existing) {
+        if (patch.regHrs) {
+          existing.regHrs += patch.regHrs;
+          existing.regEarnings += patch.regEarnings ?? 0;
+          existing.regRate = patch.regRate ?? existing.regRate;
+        }
+        if (patch.otHrs) {
+          existing.otHrs += patch.otHrs;
+          existing.otEarnings += patch.otEarnings ?? 0;
+          existing.otRate = patch.otRate ?? existing.otRate;
+        }
+        if (patch.extraEarnings) {
+          existing.extraEarnings += patch.extraEarnings;
+        }
+      } else {
+        cardMap.set(key, {
+          label: patch.label,
+          venue: patch.venue,
+          date: patch.date,
+          regHrs: patch.regHrs ?? 0,
+          regRate: patch.regRate ?? '–',
+          regEarnings: patch.regEarnings ?? 0,
+          otHrs: patch.otHrs ?? 0,
+          otRate: patch.otRate ?? '–',
+          otEarnings: patch.otEarnings ?? 0,
+          extraEarnings: patch.extraEarnings ?? 0,
+        });
+      }
+    };
+
     batches.forEach((batch) => {
       const bDate = format(new Date(batch.startDate), 'MMM d, yyyy');
+      const venue = getBatchVenueName(batch);
 
       batch.regularItems.forEach((item) => {
         const label = getItemLabel(item, batch);
-        const venue = getBatchVenueName(batch);
         const date =
           'timeIn' in item && item.timeIn
             ? format(new Date(item.timeIn), 'MMM d, yyyy')
             : bDate;
-        const key = `${label}|${venue}|${date}`;
-        const earnings = getItemEarnings(item);
-        const existing = cardMap.get(key);
-        if (existing) {
-          existing.regHrs += item.totalHours ?? 0;
-          existing.regEarnings += earnings;
-        } else {
-          cardMap.set(key, {
-            label,
-            venue,
-            date,
-            regHrs: item.totalHours ?? 0,
-            regRate: getItemRate(item),
-            regEarnings: earnings,
-            otHrs: 0,
-            otRate: '–',
-            otEarnings: 0,
-          });
-        }
+        upsert(`${label}|${venue}|${date}`, {
+          label,
+          venue,
+          date,
+          regHrs: item.totalHours ?? 0,
+          regRate: getItemRate(item),
+          regEarnings: getItemEarnings(item),
+        });
       });
 
       batch.overtimeItems.forEach((item) => {
         const label = getItemLabel(item, batch);
-        const venue = getBatchVenueName(batch);
         const date =
           'timeIn' in item && item.timeIn
             ? format(new Date(item.timeIn), 'MMM d, yyyy')
             : bDate;
-        const key = `${label}|${venue}|${date}`;
-        const earnings = getItemEarnings(item);
-        const existing = cardMap.get(key);
-        if (existing) {
-          existing.otHrs += item.totalHours ?? 0;
-          existing.otRate = getItemRate(item);
-          existing.otEarnings += earnings;
-        } else {
-          cardMap.set(key, {
-            label,
-            venue,
-            date,
-            regHrs: 0,
-            regRate: '–',
-            regEarnings: 0,
-            otHrs: item.totalHours ?? 0,
-            otRate: getItemRate(item),
-            otEarnings: earnings,
-          });
-        }
+        upsert(`${label}|${venue}|${date}`, {
+          label,
+          venue,
+          date,
+          otHrs: item.totalHours ?? 0,
+          otRate: getItemRate(item),
+          otEarnings: getItemEarnings(item),
+        });
       });
 
-      if (batch.regularItems.length === 0 && batch.overtimeItems.length === 0) {
+      (batch.extraItems ?? []).forEach((item) => {
+        const label = getItemLabel(item, batch);
+        const date =
+          'timeIn' in item && item.timeIn
+            ? format(new Date(item.timeIn), 'MMM d, yyyy')
+            : bDate;
+        upsert(`${label}|${venue}|${date}`, {
+          label,
+          venue,
+          date,
+          extraEarnings: getItemEarnings(item),
+        });
+      });
+
+      const hasItems =
+        batch.regularItems.length > 0 ||
+        batch.overtimeItems.length > 0 ||
+        (batch.extraItems ?? []).length > 0;
+
+      if (!hasItems) {
         const label =
           batch.eventName ||
           batch.jobTitle ||
           batch.eventUrl ||
           batch.jobSlug ||
           '–';
-        const venue = getBatchVenueName(batch);
         cardMap.set(`${label}|${venue}|${bDate}`, {
           label,
           venue,
@@ -639,6 +673,7 @@ const PaycheckDetailsModal: React.FC<{
           otHrs: batch.totalOvertimeHours,
           otRate: '–',
           otEarnings: 0,
+          extraEarnings: 0,
         });
       }
     });
@@ -840,7 +875,8 @@ const PaycheckDetailsModal: React.FC<{
               </p>
               <div className="space-y-2.5">
                 {earningCards.map((card, i) => {
-                  const total = card.regEarnings + card.otEarnings;
+                  const total =
+                    card.regEarnings + card.otEarnings + card.extraEarnings;
                   return (
                     <div
                       key={i}
@@ -873,6 +909,11 @@ const PaycheckDetailsModal: React.FC<{
                             : card.otHrs.toFixed(1)}
                           h OT @ {card.otRate} ={' '}
                           {formatCurrency(card.otEarnings)}
+                        </p>
+                      )}
+                      {card.extraEarnings > 0 && (
+                        <p className="text-xs font-semibold text-blue-500 mt-0.5">
+                          Extras = {formatCurrency(card.extraEarnings)}
                         </p>
                       )}
                     </div>
@@ -1360,7 +1401,10 @@ const PayrollPageContent: React.FC = () => {
     const groups: { key: string; batches: EmployeePayrollBatch[] }[] = [];
     const indexMap = new Map<string, number>();
     sorted.forEach((batch) => {
-      const key = `${batch.startDate}|${batch.endDate}`;
+      const batchNumber = batch.lastCreatedPEOBatch?.batchNumber;
+      const key = batchNumber
+        ? `${batch.startDate}|${batch.endDate}|${batchNumber}`
+        : `${batch.startDate}|${batch.endDate}|`;
       const idx = indexMap.get(key);
       if (idx !== undefined) {
         groups[idx].batches.push(batch);

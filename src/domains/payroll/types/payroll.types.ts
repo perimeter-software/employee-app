@@ -148,10 +148,12 @@ export interface EmployeePayrollBatch {
   modifiedDate: string;
   regularItems: (SubmittedEventApplicant | SubmittedJobTimecard)[];
   overtimeItems: (SubmittedEventApplicant | SubmittedJobTimecard)[];
+  extraItems: (SubmittedEventApplicant | SubmittedJobTimecard)[];
   totalRegularHours: number;
   totalOvertimeHours: number;
   totalGrossRegularPay: number;
   totalGrossOvertimePay: number;
+  totalExtraEarnings: number;
   totalGrossPay: number;
   totalFicaSS: number;
   totalFicaMED: number;
