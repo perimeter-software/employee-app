@@ -121,6 +121,18 @@ export interface BillingVoucher {
   sumBilling: BillingVoucherItem[];
 }
 
+export interface DirectDepositAccount {
+  accountNumber?: string;
+  bankName?: string;
+  routingNumber?: string;
+  [key: string]: unknown;
+}
+
+export interface DirectDeposit {
+  account1?: DirectDepositAccount;
+  account2?: DirectDepositAccount;
+}
+
 export interface EmployeePayrollBatch {
   _id: string;
   type: 'event' | 'job';
@@ -157,4 +169,5 @@ export interface EmployeePayrollBatch {
 export interface EmployeePayrollHistoryResponse {
   payrollBatches: EmployeePayrollBatch[];
   count: number;
+  directDeposit?: DirectDeposit;
 }
