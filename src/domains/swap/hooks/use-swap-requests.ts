@@ -20,7 +20,8 @@ const MODAL_LIST_STALE_MS = 60_000;
 /**
  * Prefetch swap-modal lists so tab switches feel instant.
  * Pickup seekers are always scoped to `pickupSeekersInterestDate` (the row’s shift-day).
- * Willing swaps and pickup opportunities use the table week when `weekStart`/`weekEnd` are set.
+ * Willing swaps use the table week when `weekStart`/`weekEnd` are set.
+ * Pickup opportunities are not prefetched here — that query can be heavy; it loads when the user opens the "Pick Up" tab.
  */
 export function prefetchShiftSwapModalLists(
   queryClient: QueryClient,
@@ -53,22 +54,6 @@ export function prefetchShiftSwapModalLists(
             shiftSlug,
             page: 1,
             limit: WILLING_PAGE_SIZE,
-            startDate: weekStart,
-            endDate: weekEnd,
-          }),
-        staleTime: MODAL_LIST_STALE_MS,
-      }),
-      queryClient.prefetchQuery({
-        queryKey: swapRequestQueryKeys.pickupOpportunities(
-          jobSlug,
-          shiftSlug,
-          weekStart,
-          weekEnd
-        ),
-        queryFn: () =>
-          SwapRequestApi.listPickupOpportunities({
-            jobSlug,
-            shiftSlug,
             startDate: weekStart,
             endDate: weekEnd,
           }),
@@ -142,7 +127,9 @@ export function useWillingSwapCandidatesQuery(params: {
           params.endDate
       ) && params.page >= 1,
     staleTime: MODAL_LIST_STALE_MS,
-    placeholderData: (previousData) => previousData,
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: 1,
   });
 }
 
