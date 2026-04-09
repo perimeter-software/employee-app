@@ -183,11 +183,20 @@ export async function createEventCallOffRequest(
 
   const managerEmail = getEventManagerEmailFromEventDoc(event);
   if (managerEmail) {
+    const rawEventDate = event.eventDate;
+    const eventDateIso =
+      rawEventDate instanceof Date
+        ? rawEventDate.toISOString()
+        : typeof rawEventDate === 'string'
+          ? rawEventDate
+          : '';
     void notifyEventManagerCallOff(db, {
       managerEmail,
       fromEmployeeId,
       eventName: String(event.eventName || 'Event'),
-      eventUrl,
+      eventDate: eventDateIso,
+      eventTimeZone:
+        typeof event.timeZone === 'string' ? event.timeZone : undefined,
       notes: notes?.trim(),
     });
   }

@@ -69,18 +69,43 @@ ${options.closingHtml ?? ''}`;
   return wrapShiftEmailDocument(inner);
 }
 
-function formatEventDateLine(iso: string | undefined): string {
+const EVENT_EMAIL_TZ_FALLBACK = 'America/Chicago';
+
+function resolveEmailTimeZone(preferredTimeZone?: string): string {
+  const tz = preferredTimeZone?.trim();
+  if (tz) return tz;
+  try {
+    const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (localTz?.trim()) return localTz;
+  } catch {
+    // Ignore and fall through to fixed fallback.
+  }
+  return EVENT_EMAIL_TZ_FALLBACK;
+}
+
+function formatEventDateLine(
+  iso: string | undefined,
+  preferredTimeZone?: string
+): string {
   if (!iso?.trim()) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso.trim();
-  return d.toLocaleString('en-US', {
+  const timeZone = resolveEmailTimeZone(preferredTimeZone);
+  const withDateTime = d.toLocaleString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    timeZone,
   });
+  const zoneLabel = d.toLocaleString('en-US', {
+    timeZone,
+    timeZoneName: 'short',
+  });
+  const zone = zoneLabel.split(',').pop()?.trim() || timeZone;
+  return `${withDateTime} (${zone})`;
 }
 
 async function applicantEmail(
@@ -148,7 +173,8 @@ export async function notifyEventManagerCallOff(
     managerEmail: string;
     fromEmployeeId: string;
     eventName: string;
-    eventUrl: string;
+    eventDate: string;
+    eventTimeZone?: string;
     notes?: string;
   }
 ): Promise<void> {
@@ -156,7 +182,10 @@ export async function notifyEventManagerCallOff(
   const intro = `<p style="margin:0 0 18px;">${escapeHtml(who || 'An employee')} submitted a <strong>call-off</strong> request for the event below. They remain responsible for working the event until the request is confirmed.</p>`;
   const rows: { label: string; value: string }[] = [
     { label: 'Event', value: input.eventName },
-    { label: 'Event URL slug', value: input.eventUrl },
+    {
+      label: 'Date & time',
+      value: formatEventDateLine(input.eventDate, input.eventTimeZone),
+    },
   ];
   if (input.notes) rows.push({ label: 'Notes', value: input.notes });
   await safeQueue(
@@ -174,8 +203,8 @@ export async function notifyEventManagerCoverPeerAccepted(
     fromEmployeeId: string;
     toEmployeeId: string;
     eventName: string;
-    eventUrl: string;
     eventDate: string;
+    eventTimeZone?: string;
   }
 ): Promise<void> {
   const [fromName, toName] = await Promise.all([
@@ -188,10 +217,12 @@ export async function notifyEventManagerCoverPeerAccepted(
     introHtml: intro,
     detailRows: [
       { label: 'Event', value: input.eventName },
-      { label: 'Date & time', value: formatEventDateLine(input.eventDate) },
+      {
+        label: 'Date & time',
+        value: formatEventDateLine(input.eventDate, input.eventTimeZone),
+      },
       { label: 'Requested by', value: fromName || '—' },
       { label: 'Accepted by', value: toName || '—' },
-      { label: 'Event URL slug', value: input.eventUrl },
     ],
   });
   await safeQueue(
@@ -208,8 +239,8 @@ export async function notifyEventCoverRequestCreated(
     toEmployeeId: string;
     fromEmployeeId: string;
     eventName: string;
-    eventUrl: string;
     eventDate: string;
+    eventTimeZone?: string;
   }
 ): Promise<void> {
   const [to, fromName, toDisplayName] = await Promise.all([
@@ -217,7 +248,7 @@ export async function notifyEventCoverRequestCreated(
     getApplicantDisplayName(db, input.fromEmployeeId),
     getApplicantDisplayName(db, input.toEmployeeId),
   ]);
-  const whenLine = formatEventDateLine(input.eventDate);
+  const whenLine = formatEventDateLine(input.eventDate, input.eventTimeZone);
   const intro = `<p style="margin:0 0 18px;">${escapeHtml(fromName || 'A coworker')} asked you to cover them for the event below. Sign in to the employee app to accept or decline.</p>`;
   const html = buildEventAppEmail({
     greetingName: toDisplayName,
@@ -225,7 +256,6 @@ export async function notifyEventCoverRequestCreated(
     detailRows: [
       { label: 'Event', value: input.eventName },
       { label: 'Date & time', value: whenLine },
-      { label: 'Event URL slug', value: input.eventUrl },
     ],
   });
   await safeQueue(db, to, 'Event cover request', html);
@@ -238,6 +268,7 @@ export async function notifyEventCoverAcceptedByPeer(
     toEmployeeId: string;
     eventName: string;
     eventDate: string;
+    eventTimeZone?: string;
   }
 ): Promise<void> {
   const [to, fromName] = await Promise.all([
@@ -245,7 +276,7 @@ export async function notifyEventCoverAcceptedByPeer(
     getApplicantDisplayName(db, input.fromEmployeeId),
   ]);
   const peer = await getApplicantDisplayName(db, input.toEmployeeId);
-  const whenLine = formatEventDateLine(input.eventDate);
+  const whenLine = formatEventDateLine(input.eventDate, input.eventTimeZone);
   const intro = `<p style="margin:0 0 18px;"><strong>${escapeHtml(peer || 'Your coworker')}</strong> accepted your event cover request for <strong>${escapeHtml(input.eventName)}</strong>. It is pending administrator approval.</p>`;
   const html = buildEventAppEmail({
     greetingName: fromName,
@@ -263,6 +294,7 @@ export async function notifyEventCoverDeclinedByPeer(
     toEmployeeId: string;
     eventName: string;
     eventDate: string;
+    eventTimeZone?: string;
   }
 ): Promise<void> {
   const [to, fromName] = await Promise.all([
@@ -270,7 +302,7 @@ export async function notifyEventCoverDeclinedByPeer(
     getApplicantDisplayName(db, input.fromEmployeeId),
   ]);
   const peer = await getApplicantDisplayName(db, input.toEmployeeId);
-  const whenLine = formatEventDateLine(input.eventDate);
+  const whenLine = formatEventDateLine(input.eventDate, input.eventTimeZone);
   const intro = `<p style="margin:0 0 18px;"><strong>${escapeHtml(peer || 'Your coworker')}</strong> declined your event cover request for <strong>${escapeHtml(input.eventName)}</strong>.</p>`;
   const html = buildEventAppEmail({
     greetingName: fromName,
@@ -286,6 +318,8 @@ export async function notifyEventCoverApprovedByAdmin(
     fromEmployeeId: string;
     toEmployeeId: string;
     eventName: string;
+    eventDate?: string;
+    eventTimeZone?: string;
   }
 ): Promise<void> {
   const [toFrom, toTo] = await Promise.all([
@@ -300,12 +334,32 @@ export async function notifyEventCoverApprovedByAdmin(
   const htmlFrom = buildEventAppEmail({
     greetingName: fromName,
     introHtml: intro,
-    detailRows: [{ label: 'Event', value: input.eventName }],
+    detailRows: [
+      { label: 'Event', value: input.eventName },
+      ...(input.eventDate
+        ? [
+            {
+              label: 'Date & time',
+              value: formatEventDateLine(input.eventDate, input.eventTimeZone),
+            },
+          ]
+        : []),
+    ],
   });
   const htmlTo = buildEventAppEmail({
     greetingName: toName,
     introHtml: intro,
-    detailRows: [{ label: 'Event', value: input.eventName }],
+    detailRows: [
+      { label: 'Event', value: input.eventName },
+      ...(input.eventDate
+        ? [
+            {
+              label: 'Date & time',
+              value: formatEventDateLine(input.eventDate, input.eventTimeZone),
+            },
+          ]
+        : []),
+    ],
   });
   await safeQueue(db, toFrom, 'Event cover approved', htmlFrom);
   await safeQueue(db, toTo, 'Event cover approved', htmlTo);
@@ -313,7 +367,12 @@ export async function notifyEventCoverApprovedByAdmin(
 
 export async function notifyEventCoverRejectedByAdmin(
   db: Db,
-  input: { fromEmployeeId: string; eventName: string }
+  input: {
+    fromEmployeeId: string;
+    eventName: string;
+    eventDate?: string;
+    eventTimeZone?: string;
+  }
 ): Promise<void> {
   const [to, fromName] = await Promise.all([
     applicantEmail(db, input.fromEmployeeId),
@@ -323,7 +382,17 @@ export async function notifyEventCoverRejectedByAdmin(
   const html = buildEventAppEmail({
     greetingName: fromName,
     introHtml: intro,
-    detailRows: [{ label: 'Event', value: input.eventName }],
+    detailRows: [
+      { label: 'Event', value: input.eventName },
+      ...(input.eventDate
+        ? [
+            {
+              label: 'Date & time',
+              value: formatEventDateLine(input.eventDate, input.eventTimeZone),
+            },
+          ]
+        : []),
+    ],
   });
   await safeQueue(db, to, 'Event cover not approved', html);
 }

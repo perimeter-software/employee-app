@@ -627,9 +627,10 @@ export async function createEventCoverRequest(
   await notifyEventCoverRequestCreated(db, {
     toEmployeeId,
     fromEmployeeId,
-    eventUrl,
     eventName: String(event.eventName || 'Event'),
     eventDate: eventDateIso,
+    eventTimeZone:
+      typeof event.timeZone === 'string' ? event.timeZone : undefined,
   });
 
   const created = await col.findOne({ _id: doc._id });
@@ -706,12 +707,11 @@ export async function acceptEventCoverRequest(
 
   const ev = await loadEventRowByUrl(db, updated.eventUrl, {
     eventName: 1,
-    eventUrl: 1,
     eventDate: 1,
+    timeZone: 1,
     eventManager: 1,
   });
   const eventName = String(ev?.eventName || 'Event');
-  const eventUrl = String(ev?.eventUrl || updated.eventUrl || '').trim();
   const rawDate = ev?.eventDate;
   const eventDateIso =
     rawDate instanceof Date
@@ -725,6 +725,7 @@ export async function acceptEventCoverRequest(
     toEmployeeId: updated.toEmployeeId,
     eventName,
     eventDate: eventDateIso,
+    eventTimeZone: typeof ev?.timeZone === 'string' ? ev.timeZone : undefined,
   });
 
   const managerEmail = getEventManagerEmailFromEventDoc(ev);
@@ -734,8 +735,9 @@ export async function acceptEventCoverRequest(
       fromEmployeeId: updated.fromEmployeeId,
       toEmployeeId: updated.toEmployeeId,
       eventName,
-      eventUrl,
       eventDate: eventDateIso,
+      eventTimeZone:
+        typeof ev?.timeZone === 'string' ? ev.timeZone : undefined,
     });
   }
 
@@ -814,6 +816,7 @@ export async function declineEventCoverRequest(
   const ev = await loadEventRowByUrl(db, updated.eventUrl, {
     eventName: 1,
     eventDate: 1,
+    timeZone: 1,
   });
   const rawDecl = ev?.eventDate;
   const eventDateIso =
@@ -827,6 +830,7 @@ export async function declineEventCoverRequest(
     toEmployeeId: employeeId,
     eventName: String(ev?.eventName || 'Event'),
     eventDate: eventDateIso,
+    eventTimeZone: typeof ev?.timeZone === 'string' ? ev.timeZone : undefined,
   });
 
   return toPublicEventCover(updated) as object;
@@ -1032,12 +1036,25 @@ export async function approveEventCoverRequest(
     );
   }
 
-  const ev = await loadEventRowByUrl(db, after.eventUrl, { eventName: 1 });
+  const ev = await loadEventRowByUrl(db, after.eventUrl, {
+    eventName: 1,
+    eventDate: 1,
+    timeZone: 1,
+  });
   const eventName = String(ev?.eventName || 'Event');
+  const rawApprovedDate = ev?.eventDate;
+  const approvedEventDateIso =
+    rawApprovedDate instanceof Date
+      ? rawApprovedDate.toISOString()
+      : typeof rawApprovedDate === 'string'
+        ? rawApprovedDate
+        : '';
   await notifyEventCoverApprovedByAdmin(db, {
     fromEmployeeId: after.fromEmployeeId,
     toEmployeeId: after.toEmployeeId,
     eventName,
+    eventDate: approvedEventDateIso,
+    eventTimeZone: typeof ev?.timeZone === 'string' ? ev.timeZone : undefined,
   });
 
   return toPublicEventCover(after) as object;
@@ -1105,10 +1122,23 @@ export async function rejectEventCoverRequest(
     );
   }
 
-  const ev = await loadEventRowByUrl(db, updated.eventUrl, { eventName: 1 });
+  const ev = await loadEventRowByUrl(db, updated.eventUrl, {
+    eventName: 1,
+    eventDate: 1,
+    timeZone: 1,
+  });
+  const rawRejectedDate = ev?.eventDate;
+  const rejectedEventDateIso =
+    rawRejectedDate instanceof Date
+      ? rawRejectedDate.toISOString()
+      : typeof rawRejectedDate === 'string'
+        ? rawRejectedDate
+        : '';
   await notifyEventCoverRejectedByAdmin(db, {
     fromEmployeeId: updated.fromEmployeeId,
     eventName: String(ev?.eventName || 'Event'),
+    eventDate: rejectedEventDateIso,
+    eventTimeZone: typeof ev?.timeZone === 'string' ? ev.timeZone : undefined,
   });
 
   return toPublicEventCover(updated) as object;
