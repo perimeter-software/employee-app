@@ -24,7 +24,10 @@ import {
   IncomingCoverRequestsModal,
   INCOMING_COVER_REQUESTS_QUERY_KEY,
 } from '@/domains/event/components/IncomingCoverRequestsModal/IncomingCoverRequestsModal';
-import { EventApiService, eventQueryKeys } from '@/domains/event/services';
+import {
+  EventApiService,
+  invalidateEventListCaches,
+} from '@/domains/event/services';
 import { isEventCoverWindowOpen } from '@/domains/event/utils/event-cover-window';
 
 // ---------------------------------------------------------------------------
@@ -269,7 +272,7 @@ export function EventsTable({
       try {
         await EventApiService.submitEventCallOff(eventId, notes || undefined);
         toast.success('Call-off request submitted.');
-        await queryClient.invalidateQueries({ queryKey: eventQueryKeys.all });
+        await invalidateEventListCaches(queryClient);
         return true;
       } catch (error) {
         toast.error(
@@ -289,7 +292,7 @@ export function EventsTable({
       try {
         await EventApiService.deleteEventCallOffRequest(requestId);
         toast.success('Call-off request removed.');
-        await queryClient.invalidateQueries({ queryKey: eventQueryKeys.all });
+        await invalidateEventListCaches(queryClient);
         return true;
       } catch (error) {
         toast.error(

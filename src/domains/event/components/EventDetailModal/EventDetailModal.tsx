@@ -23,7 +23,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/Dialog';
-import { EventApiService, eventQueryKeys } from '../../services/event-service';
+import {
+  EventApiService,
+  eventQueryKeys,
+  invalidateEventListCaches,
+} from '../../services/event-service';
 import type { GignologyEvent, EventPosition } from '../../types';
 import type {
   EnrollmentCheckResult,
@@ -495,7 +499,7 @@ export const EventDetailModal = ({
       await queryClient.invalidateQueries({
         queryKey: eventQueryKeys.detail(initialEvent._id),
       });
-      await queryClient.invalidateQueries({ queryKey: eventQueryKeys.all });
+      await invalidateEventListCaches(queryClient);
       return true;
     } catch (err) {
       toast.error(
@@ -517,7 +521,7 @@ export const EventDetailModal = ({
       await queryClient.invalidateQueries({
         queryKey: eventQueryKeys.detail(initialEvent._id),
       });
-      await queryClient.invalidateQueries({ queryKey: eventQueryKeys.all });
+      await invalidateEventListCaches(queryClient);
       return true;
     } catch (err) {
       toast.error(

@@ -13,7 +13,10 @@ import {
   type EventCoverModalIntent,
 } from '@/domains/event/components/EventCoverRequestModal/EventCoverRequestModal';
 import { EventCallOffConfirmModal } from '@/domains/event/components/EventCallOffConfirmModal/EventCallOffConfirmModal';
-import { EventApiService, eventQueryKeys } from '@/domains/event/services/event-service';
+import {
+  EventApiService,
+  invalidateEventListCaches,
+} from '@/domains/event/services/event-service';
 import { isEventCoverWindowOpen } from '@/domains/event/utils/event-cover-window';
 
 type Props = {
@@ -85,7 +88,7 @@ export const EventCard = ({ event, imageBaseUrl, onClick }: Props) => {
     try {
       await EventApiService.submitEventCallOff(event._id, notes || undefined);
       toast.success('Call-off request submitted.');
-      await queryClient.invalidateQueries({ queryKey: eventQueryKeys.all });
+      await invalidateEventListCaches(queryClient);
       return true;
     } catch (error) {
       toast.error(
@@ -104,7 +107,7 @@ export const EventCard = ({ event, imageBaseUrl, onClick }: Props) => {
     try {
       await EventApiService.deleteEventCallOffRequest(rid);
       toast.success('Call-off request removed.');
-      await queryClient.invalidateQueries({ queryKey: eventQueryKeys.all });
+      await invalidateEventListCaches(queryClient);
       return true;
     } catch (error) {
       toast.error(

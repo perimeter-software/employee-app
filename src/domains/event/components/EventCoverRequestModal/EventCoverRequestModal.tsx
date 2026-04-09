@@ -12,7 +12,10 @@ import { Button } from '@/components/ui/Button';
 import { baseInstance } from '@/lib/api/instance';
 import type { ApiErrorWithDetails } from '@/lib/api/types';
 import type { GignologyEvent } from '@/domains/event/types';
-import { eventQueryKeys } from '@/domains/event/services/event-service';
+import {
+  INCOMING_COVER_REQUESTS_QUERY_KEY,
+  invalidateEventListCaches,
+} from '@/domains/event/services/event-service';
 
 export type EventCoverModalIntent = 'invite-cover';
 
@@ -67,7 +70,10 @@ export function EventCoverRequestModal({
         notes: notes.trim() || undefined,
       });
       setSuccessEmail(email.trim().toLowerCase());
-      await queryClient.invalidateQueries({ queryKey: eventQueryKeys.all });
+      await invalidateEventListCaches(queryClient);
+      await queryClient.invalidateQueries({
+        queryKey: [...INCOMING_COVER_REQUESTS_QUERY_KEY],
+      });
     } catch (e) {
       const err = e as ApiErrorWithDetails;
       const msg =

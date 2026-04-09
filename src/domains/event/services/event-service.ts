@@ -1,3 +1,4 @@
+import type { QueryClient } from '@tanstack/react-query';
 import { baseInstance } from '@/lib/api/instance';
 import type { GignologyEvent } from '../types';
 
@@ -76,6 +77,27 @@ export const eventQueryKeys = {
   detail: (eventId: string) => [...eventQueryKeys.all, 'detail', eventId] as const,
   enrollment: (eventId: string) => [...eventQueryKeys.all, 'enrollment', eventId] as const,
 } as const;
+
+/** React Query key for pending cover invites (incoming). */
+export const INCOMING_COVER_REQUESTS_QUERY_KEY = [
+  'event-cover-requests',
+  'incoming',
+] as const;
+
+/**
+ * Invalidates `/events` list caches (all / my / past tabs) plus event detail/roster
+ * queries. Use after call-off, cover request, or enrollment changes.
+ */
+export async function invalidateEventListCaches(
+  queryClient: QueryClient
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['events-all'] }),
+    queryClient.invalidateQueries({ queryKey: ['events-my'] }),
+    queryClient.invalidateQueries({ queryKey: ['events-past'] }),
+    queryClient.invalidateQueries({ queryKey: eventQueryKeys.all }),
+  ]);
+}
 
 export class EventApiService {
   static readonly ENDPOINTS = {

@@ -10,12 +10,13 @@ import {
   DialogTitle,
 } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
-import { EventApiService, eventQueryKeys } from '@/domains/event/services/event-service';
+import {
+  EventApiService,
+  INCOMING_COVER_REQUESTS_QUERY_KEY,
+  invalidateEventListCaches,
+} from '@/domains/event/services/event-service';
 
-export const INCOMING_COVER_REQUESTS_QUERY_KEY = [
-  'event-cover-requests',
-  'incoming',
-] as const;
+export { INCOMING_COVER_REQUESTS_QUERY_KEY };
 
 function formatEventWhen(iso?: string) {
   if (!iso) return '—';
@@ -52,9 +53,9 @@ export function IncomingCoverRequestsModal({
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({
-      queryKey: INCOMING_COVER_REQUESTS_QUERY_KEY,
+      queryKey: [...INCOMING_COVER_REQUESTS_QUERY_KEY],
     });
-    await queryClient.invalidateQueries({ queryKey: eventQueryKeys.all });
+    await invalidateEventListCaches(queryClient);
   };
 
   const handleAccept = async (requestId: string) => {
