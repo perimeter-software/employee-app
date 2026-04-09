@@ -1,7 +1,14 @@
 'use client';
 
 import { NextPage } from 'next';
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import {
@@ -1366,7 +1373,9 @@ const PayrollPageContent: React.FC = () => {
   const [sortField, setSortField] = useState<SortField>('startDate');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [searchQuery, setSearchQuery] = useState('');
-  const [detailMode, setDetailMode] = useState(false);
+  const [detailMode, setDetailMode] = useState(
+    () => searchParams.get('detail') === 'true'
+  );
   const [selectedYear, setSelectedYear] = useState<number>(
     new Date().getFullYear()
   );
@@ -1374,6 +1383,7 @@ const PayrollPageContent: React.FC = () => {
     key: string;
     batches: EmployeePayrollBatch[];
   } | null>(null);
+  const restoredModalRef = useRef(false);
 
   // Auth
   const {
@@ -1524,6 +1534,18 @@ const PayrollPageContent: React.FC = () => {
       )
     );
   }, [groupedByPeriod, searchQuery]);
+
+  // Restore modal open state when returning from a stub page
+  useEffect(() => {
+    if (restoredModalRef.current) return;
+    const modalKey = searchParams.get('modal');
+    if (!modalKey) return;
+    const group = groupedByPeriod.find((g) => g.key === modalKey);
+    if (group) {
+      setSelectedGroup({ key: group.key, batches: group.batches });
+      restoredModalRef.current = true;
+    }
+  }, [groupedByPeriod, searchParams]);
 
   const handleSort = useCallback(
     (field: SortField) => {
@@ -1861,7 +1883,7 @@ const PayrollPageContent: React.FC = () => {
                                 detailMode={detailMode}
                                 onViewStub={(id) =>
                                   router.push(
-                                    `/paycheck-stubs/${id}?from=${viewMode}`
+                                    `/paycheck-stubs/${id}?from=${viewMode}&detail=${detailMode}`
                                   )
                                 }
                                 onSelect={(b) =>
@@ -1883,7 +1905,9 @@ const PayrollPageContent: React.FC = () => {
                   groups={filteredGroups}
                   stubMap={stubMap}
                   onViewStub={(id) =>
-                    router.push(`/paycheck-stubs/${id}?from=${viewMode}`)
+                    router.push(
+                      `/paycheck-stubs/${id}?from=${viewMode}&detail=${detailMode}`
+                    )
                   }
                   onSelect={(b) => {
                     const group = filteredGroups.find((g) => g.batches === b);
@@ -1911,7 +1935,11 @@ const PayrollPageContent: React.FC = () => {
               stubs={stubs}
               directDeposit={historyData?.directDeposit}
               onClose={() => setSelectedGroup(null)}
-              onViewStub={(id) => router.push(`/paycheck-stubs/${id}`)}
+              onViewStub={(id) =>
+                router.push(
+                  `/paycheck-stubs/${id}?from=${viewMode}&detail=${detailMode}&modal=${selectedGroup?.key ?? ''}`
+                )
+              }
             />
           )}
 

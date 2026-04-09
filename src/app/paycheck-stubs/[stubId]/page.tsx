@@ -141,18 +141,19 @@ const PaycheckStubViewPage: NextPage = () => {
       // Log paycheck stub PDF viewed activity
       const logPaycheckStubView = async () => {
         try {
-          const agentName = currentUser?.name || 
-            `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() || 
-            currentUser?.email || 
+          const agentName =
+            currentUser?.name ||
+            `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() ||
+            currentUser?.email ||
             'Employee';
-          
+
           console.log('📝 Logging paycheck stub view activity:', {
             stubId: paystub._id,
             applicantId: applicantId,
             userId: currentUser?._id,
             agent: agentName,
           });
-          
+
           const response = await fetch('/api/activities/log', {
             method: 'POST',
             credentials: 'include', // Ensure cookies are sent
@@ -179,11 +180,17 @@ const PaycheckStubViewPage: NextPage = () => {
           });
 
           const result = await response.json();
-          
+
           if (response.ok && result.success) {
-            console.log('✅ Paycheck stub view activity logged successfully:', result);
+            console.log(
+              '✅ Paycheck stub view activity logged successfully:',
+              result
+            );
           } else {
-            console.error('❌ Failed to log paycheck stub view activity:', result);
+            console.error(
+              '❌ Failed to log paycheck stub view activity:',
+              result
+            );
           }
         } catch (error) {
           // Don't fail view if logging fails
@@ -194,7 +201,14 @@ const PaycheckStubViewPage: NextPage = () => {
       logPaycheckStubView();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paystub, isApplicantViewing, applicantId, isPdfLoading, presignedUrl, currentUser]);
+  }, [
+    paystub,
+    isApplicantViewing,
+    applicantId,
+    isPdfLoading,
+    presignedUrl,
+    currentUser,
+  ]);
 
   const handleDownload = useCallback(() => {
     if (presignedUrl) {
@@ -204,8 +218,13 @@ const PaycheckStubViewPage: NextPage = () => {
 
   const handleBack = useCallback(() => {
     const from = searchParams.get('from');
-    const view = from && ['table', 'card', 'paystubs'].includes(from) ? from : 'paystubs';
-    router.push(`/payroll?view=${view}`);
+    const view =
+      from && ['table', 'card', 'paystubs'].includes(from) ? from : 'paystubs';
+    const params = new URLSearchParams({ view });
+    if (searchParams.get('detail') === 'true') params.set('detail', 'true');
+    const modal = searchParams.get('modal');
+    if (modal) params.set('modal', modal);
+    router.push(`/payroll?${params.toString()}`);
   }, [router, searchParams]);
 
   const handlePdfLoad = useCallback(() => {
