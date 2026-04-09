@@ -107,13 +107,18 @@ export function IncomingCoverRequestsModal({
           <ul className="space-y-3">
             {items.map((raw) => {
               const id = String(raw._id ?? '');
+              const urlStr =
+                typeof raw.eventUrl === 'string' ? raw.eventUrl.trim() : '';
               const title =
                 (typeof raw.eventName === 'string' && raw.eventName.trim()
-                  ? raw.eventName
+                  ? raw.eventName.trim()
                   : null) ||
-                (typeof raw.eventUrl === 'string' ? raw.eventUrl : 'Event');
+                urlStr ||
+                'Event';
               const eventDate =
-                typeof raw.eventDate === 'string' ? raw.eventDate : undefined;
+                typeof raw.eventDate === 'string' && raw.eventDate.trim()
+                  ? raw.eventDate
+                  : undefined;
               const notes =
                 typeof raw.notes === 'string' ? raw.notes : undefined;
               const requestedByName =

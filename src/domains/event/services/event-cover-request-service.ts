@@ -139,6 +139,126 @@ function isAdminUser(user: AuthenticatedRequest['user']): boolean {
   return ADMIN_TYPES.has(String(user.userType));
 }
 
+function escapeRegexChars(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeEventUrlKey(s: string): string {
+  const t = String(s || '').trim().replace(/\/+$/g, '');
+  try {
+    return decodeURIComponent(t).toLowerCase();
+  } catch {
+    return t.toLowerCase();
+  }
+}
+
+/** Remove trailing "-sat-apr-04-2026" style segment for prefix/suffix DB matching */
+function stripTrailingDateFromEventUrl(url: string): string {
+  return String(url || '')
+    .trim()
+    .replace(/-(?:mon|tue|wed|thu|fri|sat|sun)-[a-z]{3}-\d{1,2}-\d{4}$/i, '');
+}
+
+function eventDateToIso(raw: unknown): string {
+  if (raw instanceof Date) return raw.toISOString();
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  return '';
+}
+
+type EventMetaProjection = { eventName?: unknown; eventUrl?: unknown; eventDate?: unknown };
+
+/**
+ * Resolve `events` row for a cover `eventUrl` when exact batch match failed.
+ * Date/name for display must come from `events.eventDate` / `events.eventName`.
+ */
+async function findEventDocForCoverRequestUrl(
+  db: Db,
+  requestUrlRaw: string
+): Promise<EventMetaProjection | null> {
+  const requestUrl = String(requestUrlRaw || '').trim();
+  if (!requestUrl) return null;
+
+  const projection = { eventName: 1, eventUrl: 1, eventDate: 1 };
+  const norm = normalizeEventUrlKey(requestUrl);
+
+  let doc = await db.collection('events').findOne(
+    { $expr: { $eq: [{ $toLower: '$eventUrl' }, norm] } },
+    { projection }
+  );
+  if (doc) return doc as EventMetaProjection;
+
+  doc = await db.collection('events').findOne(
+    {
+      eventUrl: {
+        $regex: `^${escapeRegexChars(requestUrl)}$`,
+        $options: 'i',
+      },
+    },
+    { projection }
+  );
+  if (doc) return doc as EventMetaProjection;
+
+  const stripped = stripTrailingDateFromEventUrl(requestUrl);
+  if (stripped.length >= 16 && stripped !== requestUrl) {
+    const c = await db
+      .collection('events')
+      .find(
+        {
+          eventType: 'Event',
+          eventUrl: {
+            $regex: `^${escapeRegexChars(stripped)}`,
+            $options: 'i',
+          },
+        },
+        { projection }
+      )
+      .limit(5)
+      .toArray();
+    if (c.length === 1) return c[0] as EventMetaProjection;
+  }
+
+  if (stripped.length >= 16) {
+    const c = await db
+      .collection('events')
+      .find(
+        {
+          eventType: 'Event',
+          eventUrl: {
+            $regex: `${escapeRegexChars(stripped)}$`,
+            $options: 'i',
+          },
+        },
+        { projection }
+      )
+      .limit(5)
+      .toArray();
+    if (c.length === 1) return c[0] as EventMetaProjection;
+  }
+
+  const prefixOfRequest = await db
+    .collection('events')
+    .find(
+      {
+        eventType: 'Event',
+        $expr: {
+          $eq: [{ $indexOfCP: [requestUrl, '$eventUrl'] }, 0],
+        },
+      },
+      { projection }
+    )
+    .toArray();
+  if (prefixOfRequest.length === 1) {
+    return prefixOfRequest[0] as EventMetaProjection;
+  }
+  if (prefixOfRequest.length > 1) {
+    return prefixOfRequest.reduce((a, b) =>
+      String(a.eventUrl || '').length > String(b.eventUrl || '').length ? a : b
+    ) as EventMetaProjection;
+  }
+
+  return null;
+}
+
 async function loadEventRowByUrl(
   db: Db,
   eventUrl: string,
@@ -224,48 +344,80 @@ async function enrichEventCoverRowsWithEventMeta(
       })
       .filter((x): x is object => x != null);
   }
+  const uniqueNorms = [...new Set(urls.map(normalizeEventUrlKey))].filter(
+    Boolean
+  );
+
   const events = await db
     .collection('events')
     .find(
-      { eventUrl: { $in: urls } },
+      {
+        $expr: {
+          $in: [{ $toLower: '$eventUrl' }, uniqueNorms],
+        },
+      },
       { projection: { eventName: 1, eventUrl: 1, eventDate: 1 } }
     )
     .toArray();
-  const metaByUrl = new Map<string, { eventName: string; eventDate: string }>();
-  for (const e of events) {
+
+  const metaByNorm = new Map<
+    string,
+    { eventName: string; eventDate: string }
+  >();
+  const recordMeta = (e: (typeof events)[number]) => {
     const u = String(e.eventUrl || '').trim();
-    if (!u) continue;
-    const raw = e.eventDate;
-    const eventDate =
-      raw instanceof Date
-        ? raw.toISOString()
-        : typeof raw === 'string'
-          ? raw
-          : '';
-    metaByUrl.set(u, {
+    if (!u) return;
+    const k = normalizeEventUrlKey(u);
+    if (!k || metaByNorm.has(k)) return;
+    const eventDate = eventDateToIso(e.eventDate);
+    metaByNorm.set(k, {
       eventName: String(e.eventName || ''),
       eventDate,
     });
+  };
+  for (const e of events) recordMeta(e);
+
+  const result: object[] = [];
+  for (const r of rows) {
+    const pub = toPublicEventCover(r) as Record<string, unknown> | null;
+    if (!pub) continue;
+    const u = String(r.eventUrl || '').trim();
+    const k = normalizeEventUrlKey(u);
+    let meta = k ? metaByNorm.get(k) : undefined;
+
+    if (!meta && u) {
+      const doc = await findEventDocForCoverRequestUrl(db, u);
+      if (doc) {
+        meta = {
+          eventName: String(doc.eventName ?? ''),
+          eventDate: eventDateToIso(doc.eventDate),
+        };
+        if (k) metaByNorm.set(k, meta);
+        const docKey = normalizeEventUrlKey(String(doc.eventUrl ?? ''));
+        if (docKey && docKey !== k) metaByNorm.set(docKey, meta);
+      }
+    }
+
+    const fromId = String(r.fromEmployeeId || '');
+    const requestedByName = ObjectId.isValid(fromId)
+      ? requestedByNameById.get(fromId)
+      : undefined;
+
+    const nameFromDb = meta?.eventName?.trim();
+    const dateFromDb = meta?.eventDate?.trim();
+    const eventName = nameFromDb || u || 'Event';
+    /** Only `events.eventDate` — no date parsed from URL slug */
+    const eventDate = dateFromDb || undefined;
+
+    result.push({
+      ...pub,
+      eventName,
+      ...(eventDate ? { eventDate } : {}),
+      ...(requestedByName ? { requestedByName } : {}),
+    });
   }
 
-  return rows
-    .map((r) => {
-      const pub = toPublicEventCover(r) as Record<string, unknown> | null;
-      if (!pub) return null;
-      const u = String(r.eventUrl || '').trim();
-      const meta = metaByUrl.get(u);
-      const fromId = String(r.fromEmployeeId || '');
-      const requestedByName = ObjectId.isValid(fromId)
-        ? requestedByNameById.get(fromId)
-        : undefined;
-      return {
-        ...pub,
-        ...(meta?.eventName ? { eventName: meta.eventName } : {}),
-        ...(meta?.eventDate ? { eventDate: meta.eventDate } : {}),
-        ...(requestedByName ? { requestedByName } : {}),
-      };
-    })
-    .filter((x): x is object => x != null);
+  return result;
 }
 
 export async function createEventCoverRequest(
