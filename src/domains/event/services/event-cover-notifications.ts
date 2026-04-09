@@ -13,6 +13,62 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/** Matches swap notification layout (`swap-notifications.ts`) for consistent branding. */
+function shiftDetailRowsHtml(rows: { label: string; value: string }[]): string {
+  const body = rows
+    .map(
+      (r, i) => `<tr>
+<td style="padding:12px 16px;font-size:13px;font-weight:600;color:#475569;width:34%;vertical-align:top;border-bottom:${i < rows.length - 1 ? '1px solid #e2e8f0' : 'none'};">${escapeHtml(r.label)}</td>
+<td style="padding:12px 16px;font-size:14px;color:#0f172a;vertical-align:top;border-bottom:${i < rows.length - 1 ? '1px solid #e2e8f0' : 'none'};">${escapeHtml(r.value)}</td>
+</tr>`
+    )
+    .join('');
+  return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:22px 0;border-collapse:separate;border-spacing:0;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;overflow:hidden;">${body}</table>`;
+}
+
+function wrapShiftEmailDocument(innerBodyHtml: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;background-color:#eef2f7;">
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#eef2f7;padding:28px 14px;">
+<tr><td align="center">
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,0.08);">
+<tr><td style="background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);padding:22px 26px;">
+<p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:21px;color:#ffffff;font-weight:600;letter-spacing:0.02em;">Employee App</p>
+<p style="margin:10px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13px;color:rgba(255,255,255,0.88);line-height:1.4;">Scheduling &amp; shift updates</p>
+</td></tr>
+<tr><td style="padding:30px 26px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:1.65;color:#1e293b;">
+${innerBodyHtml}
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
+function emailGreetingName(displayName: string): string {
+  const t = displayName.trim();
+  return t || 'Colleague';
+}
+
+function buildEventAppEmail(options: {
+  greetingName?: string;
+  introHtml: string;
+  detailRows: { label: string; value: string }[];
+  closingHtml?: string;
+}): string {
+  const greetingBlock = options.greetingName
+    ? `<p style="margin:0 0 8px;font-size:18px;color:#0f172a;font-weight:600;">Dear ${escapeHtml(emailGreetingName(options.greetingName))},</p>`
+    : '';
+  const inner = `${greetingBlock}
+${options.introHtml}
+${shiftDetailRowsHtml(options.detailRows)}
+${options.closingHtml ?? ''}`;
+  return wrapShiftEmailDocument(inner);
+}
+
 function formatEventDateLine(iso: string | undefined): string {
   if (!iso?.trim()) return '—';
   const d = new Date(iso);
@@ -77,39 +133,6 @@ async function safeQueue(
   }
 }
 
-function emailBody(introHtml: string, rows: { label: string; value: string }[]) {
-  const table = rows
-    .map(
-      (r) =>
-        `<tr><td style="padding:8px 12px;font-weight:600;vertical-align:top;">${escapeHtml(r.label)}</td><td style="padding:8px 12px;">${escapeHtml(r.value)}</td></tr>`
-    )
-    .join('');
-  return `<!DOCTYPE html><html><body style="font-family:system-ui,-apple-system,sans-serif;line-height:1.55;color:#0f172a;font-size:15px;">
-${introHtml}
-<table style="border-collapse:collapse;margin-top:14px;width:100%;max-width:520px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">${table}</table>
-</body></html>`;
-}
-
-function managerCoverAcceptedBody(input: {
-  fromName: string;
-  toName: string;
-  eventName: string;
-  eventUrl: string;
-  eventWhen: string;
-}): string {
-  const intro = `<div style="max-width:560px;">
-<p style="margin:0 0 12px;font-size:16px;font-weight:600;color:#0f172a;">Cover request — coworker accepted</p>
-<p style="margin:0 0 16px;color:#334155;">The invited coworker has <strong>accepted</strong> the cover request. Please approve or reject in your admin workflow so the roster can update.</p>
-</div>`;
-  return emailBody(intro, [
-    { label: 'Event', value: input.eventName },
-    { label: 'Date & time', value: input.eventWhen },
-    { label: 'Requested by', value: input.fromName || '—' },
-    { label: 'Accepted by', value: input.toName || '—' },
-    { label: 'Event URL slug', value: input.eventUrl },
-  ]);
-}
-
 export function getEventManagerEmailFromEventDoc(
   event: unknown
 ): string | null {
@@ -130,7 +153,7 @@ export async function notifyEventManagerCallOff(
   }
 ): Promise<void> {
   const who = await getApplicantDisplayName(db, input.fromEmployeeId);
-  const intro = `<p>${escapeHtml(who || 'An employee')} submitted a <strong>call-off</strong> request for the event below. They remain responsible for working the event until the request is confirmed.</p>`;
+  const intro = `<p style="margin:0 0 18px;">${escapeHtml(who || 'An employee')} submitted a <strong>call-off</strong> request for the event below. They remain responsible for working the event until the request is confirmed.</p>`;
   const rows: { label: string; value: string }[] = [
     { label: 'Event', value: input.eventName },
     { label: 'Event URL slug', value: input.eventUrl },
@@ -140,7 +163,7 @@ export async function notifyEventManagerCallOff(
     db,
     input.managerEmail,
     'Event call-off request',
-    emailBody(intro, rows)
+    buildEventAppEmail({ introHtml: intro, detailRows: rows })
   );
 }
 
@@ -159,12 +182,17 @@ export async function notifyEventManagerCoverPeerAccepted(
     getApplicantDisplayName(db, input.fromEmployeeId),
     getApplicantDisplayName(db, input.toEmployeeId),
   ]);
-  const html = managerCoverAcceptedBody({
-    fromName,
-    toName,
-    eventName: input.eventName,
-    eventUrl: input.eventUrl,
-    eventWhen: formatEventDateLine(input.eventDate),
+  const intro = `<p style="margin:0 0 12px;font-size:16px;font-weight:600;color:#0f172a;">Cover request — coworker accepted</p>
+<p style="margin:0 0 18px;color:#334155;">The invited coworker has <strong>accepted</strong> the cover request. Please approve or reject in your admin workflow so the roster can update.</p>`;
+  const html = buildEventAppEmail({
+    introHtml: intro,
+    detailRows: [
+      { label: 'Event', value: input.eventName },
+      { label: 'Date & time', value: formatEventDateLine(input.eventDate) },
+      { label: 'Requested by', value: fromName || '—' },
+      { label: 'Accepted by', value: toName || '—' },
+      { label: 'Event URL slug', value: input.eventUrl },
+    ],
   });
   await safeQueue(
     db,
@@ -184,15 +212,22 @@ export async function notifyEventCoverRequestCreated(
     eventDate: string;
   }
 ): Promise<void> {
-  const to = await applicantEmail(db, input.toEmployeeId);
-  const fromName = await getApplicantDisplayName(db, input.fromEmployeeId);
-  const whenLine = formatEventDateLine(input.eventDate);
-  const intro = `<p>${escapeHtml(fromName || 'A coworker')} asked you to cover them for the event below. Sign in to the employee app to accept or decline.</p>`;
-  const html = emailBody(intro, [
-    { label: 'Event', value: input.eventName },
-    { label: 'Date & time', value: whenLine },
-    { label: 'Event URL slug', value: input.eventUrl },
+  const [to, fromName, toDisplayName] = await Promise.all([
+    applicantEmail(db, input.toEmployeeId),
+    getApplicantDisplayName(db, input.fromEmployeeId),
+    getApplicantDisplayName(db, input.toEmployeeId),
   ]);
+  const whenLine = formatEventDateLine(input.eventDate);
+  const intro = `<p style="margin:0 0 18px;">${escapeHtml(fromName || 'A coworker')} asked you to cover them for the event below. Sign in to the employee app to accept or decline.</p>`;
+  const html = buildEventAppEmail({
+    greetingName: toDisplayName,
+    introHtml: intro,
+    detailRows: [
+      { label: 'Event', value: input.eventName },
+      { label: 'Date & time', value: whenLine },
+      { label: 'Event URL slug', value: input.eventUrl },
+    ],
+  });
   await safeQueue(db, to, 'Event cover request', html);
 }
 
@@ -205,13 +240,19 @@ export async function notifyEventCoverAcceptedByPeer(
     eventDate: string;
   }
 ): Promise<void> {
-  const to = await applicantEmail(db, input.fromEmployeeId);
+  const [to, fromName] = await Promise.all([
+    applicantEmail(db, input.fromEmployeeId),
+    getApplicantDisplayName(db, input.fromEmployeeId),
+  ]);
   const peer = await getApplicantDisplayName(db, input.toEmployeeId);
   const whenLine = formatEventDateLine(input.eventDate);
-  const html = emailBody(
-    `<p><strong>${escapeHtml(peer || 'Your coworker')}</strong> accepted your event cover request for <strong>${escapeHtml(input.eventName)}</strong>. It is pending administrator approval.</p>`,
-    [{ label: 'Date & time', value: whenLine }]
-  );
+  const intro = `<p style="margin:0 0 18px;"><strong>${escapeHtml(peer || 'Your coworker')}</strong> accepted your event cover request for <strong>${escapeHtml(input.eventName)}</strong>. It is pending administrator approval.</p>`;
+  const html = buildEventAppEmail({
+    greetingName: fromName,
+    introHtml: intro,
+    detailRows: [{ label: 'Date & time', value: whenLine }],
+    closingHtml: `<p style="margin:22px 0 0;font-size:14px;color:#64748b;">We will notify you again once an administrator has acted on this request.</p>`,
+  });
   await safeQueue(db, to, 'Event cover — coworker accepted', html);
 }
 
@@ -224,13 +265,18 @@ export async function notifyEventCoverDeclinedByPeer(
     eventDate: string;
   }
 ): Promise<void> {
-  const to = await applicantEmail(db, input.fromEmployeeId);
+  const [to, fromName] = await Promise.all([
+    applicantEmail(db, input.fromEmployeeId),
+    getApplicantDisplayName(db, input.fromEmployeeId),
+  ]);
   const peer = await getApplicantDisplayName(db, input.toEmployeeId);
   const whenLine = formatEventDateLine(input.eventDate);
-  const html = emailBody(
-    `<p><strong>${escapeHtml(peer || 'Your coworker')}</strong> declined your event cover request for <strong>${escapeHtml(input.eventName)}</strong>.</p>`,
-    [{ label: 'Date & time', value: whenLine }]
-  );
+  const intro = `<p style="margin:0 0 18px;"><strong>${escapeHtml(peer || 'Your coworker')}</strong> declined your event cover request for <strong>${escapeHtml(input.eventName)}</strong>.</p>`;
+  const html = buildEventAppEmail({
+    greetingName: fromName,
+    introHtml: intro,
+    detailRows: [{ label: 'Date & time', value: whenLine }],
+  });
   await safeQueue(db, to, 'Event cover — declined', html);
 }
 
@@ -246,22 +292,38 @@ export async function notifyEventCoverApprovedByAdmin(
     applicantEmail(db, input.fromEmployeeId),
     applicantEmail(db, input.toEmployeeId),
   ]);
-  const html = emailBody(
-    `<p>An administrator approved the event cover for ${escapeHtml(input.eventName)}. The roster has been updated.</p>`,
-    [{ label: 'Event', value: input.eventName }]
-  );
-  await safeQueue(db, toFrom, 'Event cover approved', html);
-  await safeQueue(db, toTo, 'Event cover approved', html);
+  const [fromName, toName] = await Promise.all([
+    getApplicantDisplayName(db, input.fromEmployeeId),
+    getApplicantDisplayName(db, input.toEmployeeId),
+  ]);
+  const intro = `<p style="margin:0 0 18px;">An administrator approved the event cover for <strong>${escapeHtml(input.eventName)}</strong>. The roster has been updated.</p>`;
+  const htmlFrom = buildEventAppEmail({
+    greetingName: fromName,
+    introHtml: intro,
+    detailRows: [{ label: 'Event', value: input.eventName }],
+  });
+  const htmlTo = buildEventAppEmail({
+    greetingName: toName,
+    introHtml: intro,
+    detailRows: [{ label: 'Event', value: input.eventName }],
+  });
+  await safeQueue(db, toFrom, 'Event cover approved', htmlFrom);
+  await safeQueue(db, toTo, 'Event cover approved', htmlTo);
 }
 
 export async function notifyEventCoverRejectedByAdmin(
   db: Db,
   input: { fromEmployeeId: string; eventName: string }
 ): Promise<void> {
-  const to = await applicantEmail(db, input.fromEmployeeId);
-  const html = emailBody(
-    `<p>Your event cover request for ${escapeHtml(input.eventName)} was not approved.</p>`,
-    [{ label: 'Event', value: input.eventName }]
-  );
+  const [to, fromName] = await Promise.all([
+    applicantEmail(db, input.fromEmployeeId),
+    getApplicantDisplayName(db, input.fromEmployeeId),
+  ]);
+  const intro = `<p style="margin:0 0 18px;">Your event cover request for <strong>${escapeHtml(input.eventName)}</strong> was not approved.</p>`;
+  const html = buildEventAppEmail({
+    greetingName: fromName,
+    introHtml: intro,
+    detailRows: [{ label: 'Event', value: input.eventName }],
+  });
   await safeQueue(db, to, 'Event cover not approved', html);
 }
