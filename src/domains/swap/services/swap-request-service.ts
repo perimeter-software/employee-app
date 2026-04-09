@@ -118,6 +118,28 @@ export type ListSwapRequestsQuery = {
   status?: string | null;
 };
 
+/** Event cover rows in `swap-requests` carry non-empty `eventUrl`; job swaps omit it. */
+function isEventCoverSwapRow(doc: unknown): boolean {
+  const o = doc as { eventUrl?: unknown };
+  return typeof o.eventUrl === 'string' && o.eventUrl.trim() !== '';
+}
+
+function mergeExcludeEventCoverRows(
+  base: Record<string, unknown>
+): Record<string, unknown> {
+  const notCover = {
+    $or: [
+      { eventUrl: { $exists: false } },
+      { eventUrl: null },
+      { eventUrl: '' },
+    ],
+  };
+  if (Object.keys(base).length === 0) {
+    return notCover;
+  }
+  return { $and: [base, notCover] };
+}
+
 function getEmployeeIdFromUser(user: AuthenticatedRequest['user']): string {
   if (user.applicantId) return String(user.applicantId);
   if (user.userId) return String(user.userId);
@@ -850,7 +872,7 @@ export async function listSwapRequests(
 
   const rows = await db
     .collection<SwapRequestDoc>(COLLECTION)
-    .find(filter)
+    .find(mergeExcludeEventCoverRows(filter))
     .sort({ submittedAt: -1 })
     .toArray();
 
@@ -878,6 +900,14 @@ export async function acceptSwapRequest(
   const existing = await col.findOne({ _id });
   if (!existing) {
     throw new SwapRequestError('not-found', 'Swap request not found.', 404);
+  }
+
+  if (isEventCoverSwapRow(existing)) {
+    throw new SwapRequestError(
+      'wrong-request-kind',
+      'This request is an event cover. Open it from Events / notifications to respond.',
+      400
+    );
   }
 
   if (existing.status !== 'pending_match') {
@@ -1201,6 +1231,14 @@ export async function approveSwapRequest(
     throw new SwapRequestError('not-found', 'Swap request not found.', 404);
   }
 
+  if (isEventCoverSwapRow(req)) {
+    throw new SwapRequestError(
+      'wrong-request-kind',
+      'This request is an event cover. Approve it using event cover admin tools.',
+      400
+    );
+  }
+
   if (req.status !== 'pending_approval') {
     throw new SwapRequestError(
       'invalid-status',
@@ -1372,6 +1410,14 @@ export async function rejectSwapRequest(
     throw new SwapRequestError('not-found', 'Swap request not found.', 404);
   }
 
+  if (isEventCoverSwapRow(existing)) {
+    throw new SwapRequestError(
+      'wrong-request-kind',
+      'This request is an event cover. Reject it using event cover admin tools.',
+      400
+    );
+  }
+
   const resolverId =
     user._id != null
       ? String(user._id)
@@ -1435,6 +1481,14 @@ export async function withdrawSwapRequest(
   const existing = await col.findOne({ _id });
   if (!existing) {
     throw new SwapRequestError('not-found', 'Swap request not found.', 404);
+  }
+
+  if (isEventCoverSwapRow(existing)) {
+    throw new SwapRequestError(
+      'wrong-request-kind',
+      'Event cover requests cannot be withdrawn from shift-swap. Contact an administrator.',
+      400
+    );
   }
 
   const isAdmin = isSwapRequestAdmin(user);

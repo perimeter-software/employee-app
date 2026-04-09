@@ -4,6 +4,10 @@ import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
 import { ObjectId } from 'mongodb';
+import {
+  EVENT_CALL_OFF_DOC_FILTER,
+  EVENT_COVER_DOC_FILTER,
+} from '@/domains/event/services/event-cover-constants';
 
 /**
  * GET /api/events/roster?applicantId=<id>[&startDate=<iso>&endDate=<iso>]
@@ -128,7 +132,102 @@ async function getRosterEventsHandler(request: AuthenticatedRequest) {
       .sort({ eventDate: 1 })
       .toArray();
 
-    const converted = events.map((e) => convertToJSON(e)).filter(Boolean);
+    const converted = events.map((e) => convertToJSON(e)).filter(Boolean) as Record<
+      string,
+      unknown
+    >[];
+
+    const eventUrls = converted
+      .map((e) => (e.eventUrl != null ? String(e.eventUrl).trim() : ''))
+      .filter(Boolean);
+
+    if (eventUrls.length > 0) {
+      const [callOffRows, coverRows, incomingCoverRows] = await Promise.all([
+        db
+          .collection('swap-requests')
+          .find({
+            ...EVENT_CALL_OFF_DOC_FILTER,
+            fromEmployeeId: applicantId,
+            eventUrl: { $in: eventUrls },
+          })
+          .project({ _id: 1, eventUrl: 1 })
+          .toArray(),
+        db
+          .collection('swap-requests')
+          .find({
+            ...EVENT_COVER_DOC_FILTER,
+            fromEmployeeId: applicantId,
+            eventUrl: { $in: eventUrls },
+            status: { $in: ['pending_match', 'pending_approval'] },
+          })
+          .project({ _id: 1, eventUrl: 1, toEmployeeId: 1 })
+          .toArray(),
+        db
+          .collection('swap-requests')
+          .find({
+            ...EVENT_COVER_DOC_FILTER,
+            toEmployeeId: applicantId,
+            eventUrl: { $in: eventUrls },
+            status: 'pending_match',
+          })
+          .project({ _id: 1, eventUrl: 1 })
+          .toArray(),
+      ]);
+
+      const callOffByUrl = new Map(
+        callOffRows.map((p) => [String(p.eventUrl), String(p._id)])
+      );
+      const coverByUrl = new Map(
+        coverRows.map((p) => [
+          String(p.eventUrl),
+          { id: String(p._id), toEmployeeId: String(p.toEmployeeId) },
+        ])
+      );
+      const incomingCoverByUrl = new Map(
+        incomingCoverRows.map((p) => [String(p.eventUrl), String(p._id)])
+      );
+
+      const peerIds = [
+        ...new Set(coverRows.map((r) => String(r.toEmployeeId)).filter(Boolean)),
+      ];
+      const peerObjectIds = peerIds
+        .filter((id) => ObjectId.isValid(id))
+        .map((id) => new ObjectId(id));
+      const peers =
+        peerObjectIds.length > 0
+          ? await db
+              .collection('applicants')
+              .find(
+                { _id: { $in: peerObjectIds } },
+                { projection: { email: 1, emailAddress: 1 } }
+              )
+              .toArray()
+          : [];
+      const peerEmailById = new Map<string, string>();
+      for (const p of peers) {
+        const em = p.email ?? p.emailAddress;
+        if (typeof em === 'string' && em.trim()) {
+          peerEmailById.set(String(p._id), em.trim());
+        }
+      }
+
+      for (const e of converted) {
+        const url = e.eventUrl != null ? String(e.eventUrl).trim() : '';
+        e.pendingCallOffRequestId = url ? callOffByUrl.get(url) ?? null : null;
+        e.incomingCoverRequestId = url
+          ? incomingCoverByUrl.get(url) ?? null
+          : null;
+        const cover = url ? coverByUrl.get(url) : undefined;
+        if (cover) {
+          e.pendingCoverRequestId = cover.id;
+          e.pendingCoverPeerEmail =
+            peerEmailById.get(cover.toEmployeeId) ?? null;
+        } else {
+          e.pendingCoverRequestId = null;
+          e.pendingCoverPeerEmail = null;
+        }
+      }
+    }
 
     return NextResponse.json(
       {

@@ -6,6 +6,7 @@ import type { GignologyJob } from '@/domains/job/types/job.types';
 import { emailService } from '@/lib/services/email-service';
 import { sendQueuedEmail } from '@/lib/services/email-queue';
 import { findJobByJobSlug } from '@/domains/swap/utils/swap-roster-utils';
+import { EVENT_COVER_JOB_SLUG } from '@/domains/event/services/event-cover-constants';
 
 /** Calendar YYYY-MM-DD → e.g. "April 12, 2026" (date-only, UTC). */
 function formatCalendarDateYmd(ymd: string): string {
@@ -673,6 +674,13 @@ export async function notifySwapApprovedByAdmin(
 }
 
 function rejectedEmailCopy(doc: SwapDocLike): { subject: string; leadHtml: string } {
+  if (doc.jobSlug === EVENT_COVER_JOB_SLUG) {
+    return {
+      subject: 'Event cover update',
+      leadHtml:
+        'An administrator has <strong>not approved</strong> this event cover request. The event roster was <strong>not</strong> changed.',
+    };
+  }
   const t = doc.type;
   if (t === 'giveaway') {
     return {

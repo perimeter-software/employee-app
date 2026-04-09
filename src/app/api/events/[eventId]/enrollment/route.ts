@@ -3,9 +3,10 @@ import { ObjectId } from 'mongodb';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
-import { getSp1Client } from '@/lib/sp1Client';
-
-// ─── GET — check enrollment status ───────────────────────────────────────────
+import {
+  applyEnrollmentChange,
+  getEnrollmentForApplicant,
+} from '@/domains/event/services/event-enrollment-service';
 
 async function getEnrollmentHandler(
   request: AuthenticatedRequest,
@@ -22,8 +23,9 @@ async function getEnrollmentHandler(
       );
     }
 
-    const user = request.user;
-    const applicantId = user.applicantId ? String(user.applicantId) : '';
+    const applicantId = request.user.applicantId
+      ? String(request.user.applicantId)
+      : '';
     if (!applicantId) {
       return NextResponse.json(
         { success: false, message: 'No applicant ID in session' },
@@ -31,45 +33,21 @@ async function getEnrollmentHandler(
       );
     }
 
-    // Resolve the eventUrl needed for the sp1-api URL pattern
     const { db } = await getTenantAwareConnection(request);
-    const event = await db
-      .collection('events')
-      .findOne({ _id: new ObjectId(eventId) }, { projection: { eventUrl: 1 } });
-
-    if (!event) {
-      return NextResponse.json(
-        { success: false, message: 'Event not found' },
-        { status: 404 }
-      );
-    }
-
-    const { sub: userSub, email } = request.user || {};
-
-    const eventUrl = event.eventUrl as string;
-    const sp1 = getSp1Client(userSub, email || '');
-    const { data } = await sp1.get(
-      `/events/url/${eventUrl}/enroll/${applicantId}`
-    );
-
-    return NextResponse.json(data);
+    const data = await getEnrollmentForApplicant(db, eventId, applicantId);
+    return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
     console.error('[Enrollment GET] Error:', error);
-    const axiosError = error as {
-      response?: { status?: number; data?: unknown };
-    };
-    const status = axiosError.response?.status ?? 500;
     return NextResponse.json(
-      axiosError.response?.data ?? {
+      {
         success: false,
-        message: 'Internal server error',
+        message:
+          error instanceof Error ? error.message : 'Internal server error',
       },
-      { status }
+      { status: 500 }
     );
   }
 }
-
-// ─── PUT — perform enrollment action ─────────────────────────────────────────
 
 async function putEnrollmentHandler(
   request: AuthenticatedRequest,
@@ -86,8 +64,9 @@ async function putEnrollmentHandler(
       );
     }
 
-    const user = request.user;
-    const applicantId = user.applicantId ? String(user.applicantId) : '';
+    const applicantId = request.user.applicantId
+      ? String(request.user.applicantId)
+      : '';
     if (!applicantId) {
       return NextResponse.json(
         { success: false, message: 'No applicant ID in session' },
@@ -95,42 +74,35 @@ async function putEnrollmentHandler(
       );
     }
 
-    const body = await request.json();
+    const body = (await request.json().catch(() => ({}))) as {
+      requestType?: string;
+      positionName?: string;
+    };
 
-    // Resolve eventUrl from DB (needed for the sp1-api URL pattern)
     const { db } = await getTenantAwareConnection(request);
-    const event = await db
-      .collection('events')
-      .findOne({ _id: new ObjectId(eventId) }, { projection: { eventUrl: 1 } });
-
-    if (!event) {
+    const data = await applyEnrollmentChange(db, eventId, applicantId, {
+      requestType: String(body.requestType || ''),
+      positionName: body.positionName,
+    });
+    if (data.status === 'Error') {
       return NextResponse.json(
-        { success: false, message: 'Event not found' },
-        { status: 404 }
+        {
+          success: false,
+          message: data.message || 'Enrollment could not be completed.',
+        },
+        { status: 400 }
       );
     }
-
-    const { sub: userSub, email } = user;
-    const eventUrl = event.eventUrl as string;
-    const sp1 = getSp1Client(userSub, email || '');
-    const { data } = await sp1.put(
-      `/events/url/${eventUrl}/enroll/${applicantId}`,
-      body
-    );
-
-    return NextResponse.json(data);
+    return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
     console.error('[Enrollment PUT] Error:', error);
-    const axiosError = error as {
-      response?: { status?: number; data?: unknown };
-    };
-    const status = axiosError.response?.status ?? 500;
     return NextResponse.json(
-      axiosError.response?.data ?? {
+      {
         success: false,
-        message: 'Internal server error',
+        message:
+          error instanceof Error ? error.message : 'Internal server error',
       },
-      { status }
+      { status: 500 }
     );
   }
 }

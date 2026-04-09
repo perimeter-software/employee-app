@@ -4,6 +4,10 @@ import { withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
+import {
+  EVENT_CALL_OFF_DOC_FILTER,
+  EVENT_COVER_DOC_FILTER,
+} from '@/domains/event/services/event-cover-constants';
 
 // ─── Filter parser ────────────────────────────────────────────────────────────
 // Parses "timeFrame:Current,eventType:Event,venueSlug:a;b,applicants.id:xxx"
@@ -189,6 +193,7 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       applicants: 1,
       timeZone: 1,
       jobSlug: 1,
+      eventUrl: 1,
     };
 
     console.log('options', JSON.stringify(options));
@@ -216,8 +221,99 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       });
     }
 
+    // Pending call-off / “cover for me” rows (swap-requests keyed by eventUrl)
+    if (requestApplicantId && events.length > 0) {
+      const eventUrls = [
+        ...new Set(
+          events
+            .map((e) => (e.eventUrl != null ? String(e.eventUrl).trim() : ''))
+            .filter(Boolean)
+        ),
+      ];
+
+      if (eventUrls.length > 0) {
+        const applicantId = requestApplicantId;
+        const [callOffRows, coverRows] = await Promise.all([
+          db
+            .collection('swap-requests')
+            .find({
+              ...EVENT_CALL_OFF_DOC_FILTER,
+              fromEmployeeId: applicantId,
+              eventUrl: { $in: eventUrls },
+            })
+            .project({ _id: 1, eventUrl: 1 })
+            .toArray(),
+          db
+            .collection('swap-requests')
+            .find({
+              ...EVENT_COVER_DOC_FILTER,
+              fromEmployeeId: applicantId,
+              eventUrl: { $in: eventUrls },
+              status: { $in: ['pending_match', 'pending_approval'] },
+            })
+            .project({ _id: 1, eventUrl: 1, toEmployeeId: 1 })
+            .toArray(),
+        ]);
+
+        const callOffByUrl = new Map(
+          callOffRows.map((p) => [String(p.eventUrl), String(p._id)])
+        );
+        const coverByUrl = new Map(
+          coverRows.map((p) => [
+            String(p.eventUrl),
+            { id: String(p._id), toEmployeeId: String(p.toEmployeeId) },
+          ])
+        );
+
+        const peerIds = [
+          ...new Set(
+            coverRows.map((r) => String(r.toEmployeeId)).filter(Boolean)
+          ),
+        ];
+        const peerObjectIds = peerIds
+          .filter((id) => ObjectId.isValid(id))
+          .map((id) => new ObjectId(id));
+        const peers =
+          peerObjectIds.length > 0
+            ? await db
+                .collection('applicants')
+                .find(
+                  { _id: { $in: peerObjectIds } },
+                  { projection: { email: 1, emailAddress: 1 } }
+                )
+                .toArray()
+            : [];
+        const peerEmailById = new Map<string, string>();
+        for (const p of peers) {
+          const em = p.email ?? p.emailAddress;
+          if (typeof em === 'string' && em.trim()) {
+            peerEmailById.set(String(p._id), em.trim());
+          }
+        }
+
+        events = events.map((ev) => {
+          const url = ev.eventUrl != null ? String(ev.eventUrl).trim() : '';
+          const cover = url ? coverByUrl.get(url) : undefined;
+          return {
+            ...ev,
+            pendingCallOffRequestId: url
+              ? (callOffByUrl.get(url) ?? null)
+              : null,
+            pendingCoverRequestId: cover ? cover.id : null,
+            pendingCoverPeerEmail: cover
+              ? (peerEmailById.get(cover.toEmployeeId) ?? null)
+              : null,
+          };
+        });
+      }
+    }
+
     // Strip applicants array from response (not needed on the listing page)
-    events = events.map(({ applicants: _applicants, ...rest }) => rest);
+    events = events.map((ev) => {
+      const rest = { ...ev };
+      delete rest.applicants;
+      return rest;
+    });
 
     // ── Pagination meta ──────────────────────────────────────────────────────
     const totalPages = Math.ceil(total / limit);

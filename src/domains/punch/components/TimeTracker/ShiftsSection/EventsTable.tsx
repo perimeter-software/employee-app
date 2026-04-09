@@ -1,18 +1,31 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Table } from '@/components/ui/Table';
 import { TableColumn } from '@/components/ui/Table/types';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Clock } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   useRosterEvents,
   useEventClockIn,
   useEventClockOut,
 } from '@/domains/event/hooks';
 import type { GignologyEvent, EventApplicant } from '@/domains/event/types';
+import {
+  EventCoverRequestModal,
+  type EventCoverModalIntent,
+} from '@/domains/event/components/EventCoverRequestModal/EventCoverRequestModal';
+import { EventCallOffConfirmModal } from '@/domains/event/components/EventCallOffConfirmModal/EventCallOffConfirmModal';
+import {
+  IncomingCoverRequestsModal,
+  INCOMING_COVER_REQUESTS_QUERY_KEY,
+} from '@/domains/event/components/IncomingCoverRequestsModal/IncomingCoverRequestsModal';
+import { EventApiService, eventQueryKeys } from '@/domains/event/services';
+import { isEventCoverWindowOpen } from '@/domains/event/utils/event-cover-window';
 
 // ---------------------------------------------------------------------------
 // Clock-state logic — replicates the backend showClockIn function.
@@ -215,6 +228,18 @@ export function EventsTable({
   hasActiveEventClockIn = false,
   onEventClick,
 }: EventsTableProps) {
+  const queryClient = useQueryClient();
+  const [incomingListModalOpen, setIncomingListModalOpen] = useState(false);
+  const {
+    data: incomingCoverList = [],
+    isLoading: incomingCoverListLoading,
+  } = useQuery({
+    queryKey: INCOMING_COVER_REQUESTS_QUERY_KEY,
+    queryFn: () => EventApiService.listIncomingCoverRequests(),
+    staleTime: 30 * 1000,
+  });
+  const incomingCoverCount = incomingCoverList.length;
+
   const {
     data: events,
     isLoading,
@@ -227,6 +252,56 @@ export function EventsTable({
 
   const clockInMutation = useEventClockIn();
   const clockOutMutation = useEventClockOut();
+
+  const [coverModal, setCoverModal] = useState<{
+    event: GignologyEvent;
+    intent: EventCoverModalIntent;
+  } | null>(null);
+  const [callOffTarget, setCallOffTarget] = useState<{
+    eventId: string;
+    pendingRequestId: string | null;
+  } | null>(null);
+  const [callOffEventId, setCallOffEventId] = useState<string | null>(null);
+
+  const handleSubmitCallOff = useCallback(
+    async (eventId: string, notes: string): Promise<boolean> => {
+      setCallOffEventId(eventId);
+      try {
+        await EventApiService.submitEventCallOff(eventId, notes || undefined);
+        toast.success('Call-off request submitted.');
+        await queryClient.invalidateQueries({ queryKey: eventQueryKeys.all });
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : 'Unable to submit call-off.'
+        );
+        return false;
+      } finally {
+        setCallOffEventId(null);
+      }
+    },
+    [queryClient]
+  );
+
+  const handleRemoveCallOffRequest = useCallback(
+    async (eventId: string, requestId: string): Promise<boolean> => {
+      setCallOffEventId(eventId);
+      try {
+        await EventApiService.deleteEventCallOffRequest(requestId);
+        toast.success('Call-off request removed.');
+        await queryClient.invalidateQueries({ queryKey: eventQueryKeys.all });
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : 'Unable to remove request.'
+        );
+        return false;
+      } finally {
+        setCallOffEventId(null);
+      }
+    },
+    [queryClient]
+  );
 
   const eventRows = useMemo(() => {
     if (!events?.length) return [];
@@ -365,83 +440,146 @@ export function EventsTable({
             row.actualTimeOut
           );
 
-          if (clockInTime && clockOutTime) {
-            return null;
-          }
+          const showCover =
+            !row.isPast && isEventCoverWindowOpen(row.rawEvent.eventDate);
 
-          if (!showClockIn && !showClockOut) {
+          const clockButtons =
+            !(clockInTime && clockOutTime) &&
+            (showClockIn || showClockOut) ? (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      isMutating ||
+                      !showClockIn ||
+                      clockInButtonDisabled ||
+                      isBlockedByJobPunch ||
+                      hasActiveEventClockIn
+                    }
+                    onClick={() =>
+                      clockInMutation.mutate({
+                        eventId,
+                        payload: {
+                          applicantId,
+                          agent: agentName,
+                          createAgent: userId,
+                        },
+                      })
+                    }
+                    className="border-blue-500 text-blue-500 hover:bg-blue-50 disabled:opacity-50"
+                    title={
+                      isBlockedByJobPunch
+                        ? 'You are clocked into a job shift. Please clock out first.'
+                        : hasActiveEventClockIn
+                          ? 'You are already clocked into another event. Please clock out first.'
+                          : showEarlyClockInWarning
+                            ? 'Early clock-in — arriving before your scheduled report time'
+                            : undefined
+                    }
+                  >
+                    {clockInMutation.isPending ? (
+                      <Clock className="h-3 w-3 animate-spin" />
+                    ) : (
+                      'Clock In'
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      isMutating || !showClockOut || clockOutButtonDisabled
+                    }
+                    onClick={() =>
+                      clockOutMutation.mutate({
+                        eventId,
+                        payload: {
+                          applicantId,
+                          agent: agentName,
+                          createAgent: userId,
+                        },
+                      })
+                    }
+                    className="border-red-500 text-red-500 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {clockOutMutation.isPending ? (
+                      <Clock className="h-3 w-3 animate-spin" />
+                    ) : (
+                      'Clock Out'
+                    )}
+                  </Button>
+                </div>
+                {showEarlyClockInWarning && (
+                  <p className="text-xs text-amber-600">
+                    Early clock-in is enabled for this event
+                  </p>
+                )}
+              </div>
+            ) : null;
+
+          const coverButtons = showCover ? (
+            <div className="flex flex-wrap gap-3 items-start max-w-[260px]">
+              <div className="flex flex-col gap-0.5 items-start">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-8 px-2.5 border-violet-500 text-violet-600 hover:bg-violet-50"
+                  title="Ask a coworker to cover for you"
+                  onClick={() =>
+                    setCoverModal({
+                      event: row.rawEvent,
+                      intent: 'invite-cover',
+                    })
+                  }
+                >
+                  Let someone cover for me
+                </Button>
+                {row.rawEvent.pendingCoverRequestId ? (
+                  <span className="text-[10px] text-violet-600 font-medium">
+                    Requested
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex flex-col gap-0.5 items-start">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-8 px-2.5 border-amber-600 text-amber-800 hover:bg-amber-50"
+                  title="Submit a call-off request for the event manager"
+                  onClick={() =>
+                    setCallOffTarget({
+                      eventId,
+                      pendingRequestId:
+                        row.rawEvent.pendingCallOffRequestId ?? null,
+                    })
+                  }
+                >
+                  Call off
+                </Button>
+                {row.rawEvent.pendingCallOffRequestId ? (
+                  <span className="text-[10px] text-amber-800 font-medium">
+                    Requested
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ) : null;
+
+          if (!coverButtons && !clockButtons) {
             return null;
           }
 
           return (
-            <div className="flex flex-col gap-1.5">
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={
-                    isMutating ||
-                    !showClockIn ||
-                    clockInButtonDisabled ||
-                    isBlockedByJobPunch ||
-                    hasActiveEventClockIn
-                  }
-                  onClick={() =>
-                    clockInMutation.mutate({
-                      eventId,
-                      payload: {
-                        applicantId,
-                        agent: agentName,
-                        createAgent: userId,
-                      },
-                    })
-                  }
-                  className="border-blue-500 text-blue-500 hover:bg-blue-50 disabled:opacity-50"
-                  title={
-                    isBlockedByJobPunch
-                      ? 'You are clocked into a job shift. Please clock out first.'
-                      : hasActiveEventClockIn
-                        ? 'You are already clocked into another event. Please clock out first.'
-                        : showEarlyClockInWarning
-                          ? 'Early clock-in — arriving before your scheduled report time'
-                          : undefined
-                  }
-                >
-                  {clockInMutation.isPending ? (
-                    <Clock className="h-3 w-3 animate-spin" />
-                  ) : (
-                    'Clock In'
-                  )}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={
-                    isMutating || !showClockOut || clockOutButtonDisabled
-                  }
-                  onClick={() =>
-                    clockOutMutation.mutate({
-                      eventId,
-                      payload: {
-                        applicantId,
-                        agent: agentName,
-                        createAgent: userId,
-                      },
-                    })
-                  }
-                  className="border-red-500 text-red-500 hover:bg-red-50 disabled:opacity-50"
-                >
-                  {clockOutMutation.isPending ? (
-                    <Clock className="h-3 w-3 animate-spin" />
-                  ) : (
-                    'Clock Out'
-                  )}
-                </Button>
-              </div>
-              {showEarlyClockInWarning && (
-                <p className="text-xs text-amber-600">
-                  Early clock-in is enabled for this event
-                </p>
+            <div
+              className="flex flex-col gap-2 min-w-[140px] items-start"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {clockButtons != null && (
+                <div className="order-1 w-full">{clockButtons}</div>
+              )}
+              {coverButtons != null && (
+                <div className="order-2 w-full">{coverButtons}</div>
               )}
             </div>
           );
@@ -502,7 +640,7 @@ export function EventsTable({
                     <Skeleton className="h-4 w-16" />
                   </td>
                   <td className="py-3 px-4">
-                    <Skeleton className="h-8 w-20" />
+                    <Skeleton className="h-8 w-28" />
                   </td>
                 </tr>
               ))}
@@ -528,6 +666,22 @@ export function EventsTable({
       <Table
         title="Events"
         description={`Events for ${dateRange.displayRange}`}
+        headerAction={
+          incomingCoverCount > 0 ? (
+            <Button
+              type="button"
+              variant="outline-primary"
+              size="sm"
+              className="whitespace-nowrap shrink-0"
+              onClick={() => setIncomingListModalOpen(true)}
+            >
+              Cover requests for you
+              <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-appPrimary/15 px-1.5 text-xs font-semibold tabular-nums">
+                {incomingCoverCount}
+              </span>
+            </Button>
+          ) : undefined
+        }
         columns={columns}
         data={eventRows}
         showPagination={false}
@@ -545,6 +699,41 @@ export function EventsTable({
         onRowClick={
           onEventClick ? (row) => onEventClick(row.rawEvent) : undefined
         }
+      />
+
+      {coverModal && (
+        <EventCoverRequestModal
+          open
+          onClose={() => setCoverModal(null)}
+          event={coverModal.event}
+          intent={coverModal.intent}
+          pendingPeerEmail={coverModal.event.pendingCoverPeerEmail ?? null}
+        />
+      )}
+      <IncomingCoverRequestsModal
+        open={incomingListModalOpen}
+        onClose={() => setIncomingListModalOpen(false)}
+        items={incomingCoverList}
+        isLoading={incomingCoverListLoading}
+      />
+      <EventCallOffConfirmModal
+        open={!!callOffTarget}
+        onClose={() => setCallOffTarget(null)}
+        pendingRequestId={callOffTarget?.pendingRequestId ?? null}
+        onConfirm={async (notes) => {
+          if (!callOffTarget) return;
+          const ok = await handleSubmitCallOff(callOffTarget.eventId, notes);
+          if (ok) setCallOffTarget(null);
+        }}
+        onRemoveRequest={async () => {
+          if (!callOffTarget?.pendingRequestId) return;
+          const ok = await handleRemoveCallOffRequest(
+            callOffTarget.eventId,
+            callOffTarget.pendingRequestId
+          );
+          if (ok) setCallOffTarget(null);
+        }}
+        loading={!!callOffTarget && callOffEventId === callOffTarget.eventId}
       />
     </div>
   );
