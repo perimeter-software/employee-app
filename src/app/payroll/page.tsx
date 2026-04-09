@@ -254,6 +254,7 @@ const PayrollTableRow: React.FC<{
 
   // Merge all items from all batches in this period into display rows — one per event/job
   type ItemRow = {
+    type: 'event' | 'job';
     label: string;
     venue: string;
     date: string;
@@ -269,10 +270,11 @@ const PayrollTableRow: React.FC<{
     const upsert = (key: string, base: ItemRow, patch: Partial<ItemRow>) => {
       const existing = rowMap.get(key);
       if (existing) {
-        existing.regHrs   += patch.regHrs   ?? 0;
-        existing.otHrs    += patch.otHrs    ?? 0;
+        existing.regHrs += patch.regHrs ?? 0;
+        existing.otHrs += patch.otHrs ?? 0;
         existing.earnings += patch.earnings ?? 0;
-        if (patch.rate && patch.rate !== '–' && existing.rate === '–') existing.rate = patch.rate;
+        if (patch.rate && patch.rate !== '–' && existing.rate === '–')
+          existing.rate = patch.rate;
       } else {
         rowMap.set(key, { ...base, ...patch });
       }
@@ -282,36 +284,86 @@ const PayrollTableRow: React.FC<{
       const batchDate = format(parseUTC(batch.startDate), 'MMM d, yyyy');
       const venue = getBatchVenueName(batch);
 
+      const batchType = batch.type;
+
       batch.regularItems.forEach((item) => {
         const label = getItemLabel(item, batch);
-        const date = 'timeIn' in item && item.timeIn ? format(parseUTC(item.timeIn), 'MMM d, yyyy') : batchDate;
+        const date =
+          'timeIn' in item && item.timeIn
+            ? format(parseUTC(item.timeIn), 'MMM d, yyyy')
+            : batchDate;
         const key = `${label}|${venue}|${date}`;
-        upsert(key, { label, venue, date, regHrs: 0, otHrs: 0, rate: '–', earnings: 0 }, {
-          regHrs: item.totalHours ?? 0,
-          rate: getItemRate(item),
-          earnings: getItemEarnings(item),
-        });
+        upsert(
+          key,
+          {
+            type: batchType,
+            label,
+            venue,
+            date,
+            regHrs: 0,
+            otHrs: 0,
+            rate: '–',
+            earnings: 0,
+          },
+          {
+            regHrs: item.totalHours ?? 0,
+            rate: getItemRate(item),
+            earnings: getItemEarnings(item),
+          }
+        );
       });
 
       batch.overtimeItems.forEach((item) => {
         const label = getItemLabel(item, batch);
-        const date = 'timeIn' in item && item.timeIn ? format(parseUTC(item.timeIn), 'MMM d, yyyy') : batchDate;
+        const date =
+          'timeIn' in item && item.timeIn
+            ? format(parseUTC(item.timeIn), 'MMM d, yyyy')
+            : batchDate;
         const key = `${label}|${venue}|${date}`;
-        upsert(key, { label, venue, date, regHrs: 0, otHrs: 0, rate: '–', earnings: 0 }, {
-          otHrs: item.totalHours ?? 0,
-          rate: getItemRate(item),
-          earnings: getItemEarnings(item),
-        });
+        upsert(
+          key,
+          {
+            type: batchType,
+            label,
+            venue,
+            date,
+            regHrs: 0,
+            otHrs: 0,
+            rate: '–',
+            earnings: 0,
+          },
+          {
+            otHrs: item.totalHours ?? 0,
+            rate: getItemRate(item),
+            earnings: getItemEarnings(item),
+          }
+        );
       });
 
       // Extras: add earnings only (no hours)
       (batch.extraItems ?? []).forEach((item) => {
         const label = getItemLabel(item, batch);
-        const date = 'timeIn' in item && item.timeIn ? format(parseUTC(item.timeIn), 'MMM d, yyyy') : batchDate;
+        const date =
+          'timeIn' in item && item.timeIn
+            ? format(parseUTC(item.timeIn), 'MMM d, yyyy')
+            : batchDate;
         const key = `${label}|${venue}|${date}`;
-        upsert(key, { label, venue, date, regHrs: 0, otHrs: 0, rate: '–', earnings: 0 }, {
-          earnings: getItemEarnings(item),
-        });
+        upsert(
+          key,
+          {
+            type: batchType,
+            label,
+            venue,
+            date,
+            regHrs: 0,
+            otHrs: 0,
+            rate: '–',
+            earnings: 0,
+          },
+          {
+            earnings: getItemEarnings(item),
+          }
+        );
       });
 
       const hasItems =
@@ -320,9 +372,16 @@ const PayrollTableRow: React.FC<{
         (batch.extraItems ?? []).length > 0;
 
       if (!hasItems) {
-        const label = batch.eventName || batch.jobTitle || batch.eventUrl || batch.jobSlug || '–';
+        const label =
+          batch.eventName ||
+          batch.jobTitle ||
+          batch.eventUrl ||
+          batch.jobSlug ||
+          '–';
         rowMap.set(`${label}|${venue}|${batchDate}`, {
-          label, venue,
+          type: batchType,
+          label,
+          venue,
           date: batchDate,
           regHrs: batch.totalRegularHours,
           otHrs: batch.totalOvertimeHours,
@@ -451,6 +510,7 @@ const PayrollTableRow: React.FC<{
               <thead>
                 <tr className="border-b border-gray-200">
                   {[
+                    'Type',
                     'Event',
                     'Venue',
                     'Date',
@@ -482,6 +542,18 @@ const PayrollTableRow: React.FC<{
                     key={i}
                     className="border-b border-gray-100 last:border-0"
                   >
+                    <td className="pr-4 py-2">
+                      <span
+                        className={clsxm(
+                          'text-xs font-semibold px-1.5 py-0.5 rounded',
+                          row.type === 'event'
+                            ? 'bg-purple-100 text-purple-600'
+                            : 'bg-sky-100 text-sky-600'
+                        )}
+                      >
+                        {row.type === 'event' ? 'Event' : 'Job'}
+                      </span>
+                    </td>
                     <td className="text-sm font-semibold text-gray-800 pr-4 py-2">
                       {row.label}
                     </td>
@@ -558,6 +630,7 @@ const PaycheckDetailsModal: React.FC<{
   const ddDisplay = formatDirectDeposit(directDeposit);
 
   type EarningCard = {
+    type: 'event' | 'job';
     label: string;
     venue: string;
     date: string;
@@ -576,6 +649,7 @@ const PaycheckDetailsModal: React.FC<{
     const upsert = (
       key: string,
       patch: Partial<EarningCard> & {
+        type: 'event' | 'job';
         label: string;
         venue: string;
         date: string;
@@ -598,6 +672,7 @@ const PaycheckDetailsModal: React.FC<{
         }
       } else {
         cardMap.set(key, {
+          type: patch.type,
           label: patch.label,
           venue: patch.venue,
           date: patch.date,
@@ -615,6 +690,7 @@ const PaycheckDetailsModal: React.FC<{
     batches.forEach((batch) => {
       const bDate = format(new Date(batch.startDate), 'MMM d, yyyy');
       const venue = getBatchVenueName(batch);
+      const batchType = batch.type;
 
       batch.regularItems.forEach((item) => {
         const label = getItemLabel(item, batch);
@@ -623,6 +699,7 @@ const PaycheckDetailsModal: React.FC<{
             ? format(new Date(item.timeIn), 'MMM d, yyyy')
             : bDate;
         upsert(`${label}|${venue}|${date}`, {
+          type: batchType,
           label,
           venue,
           date,
@@ -639,6 +716,7 @@ const PaycheckDetailsModal: React.FC<{
             ? format(new Date(item.timeIn), 'MMM d, yyyy')
             : bDate;
         upsert(`${label}|${venue}|${date}`, {
+          type: batchType,
           label,
           venue,
           date,
@@ -655,6 +733,7 @@ const PaycheckDetailsModal: React.FC<{
             ? format(new Date(item.timeIn), 'MMM d, yyyy')
             : bDate;
         upsert(`${label}|${venue}|${date}`, {
+          type: batchType,
           label,
           venue,
           date,
@@ -675,6 +754,7 @@ const PaycheckDetailsModal: React.FC<{
           batch.jobSlug ||
           '–';
         cardMap.set(`${label}|${venue}|${bDate}`, {
+          type: batchType,
           label,
           venue,
           date: bDate,
@@ -902,6 +982,16 @@ const PaycheckDetailsModal: React.FC<{
                         </p>
                       </div>
                       <p className="text-xs text-gray-400 mb-2">
+                        <span
+                          className={clsxm(
+                            'font-semibold mr-1',
+                            card.type === 'event'
+                              ? 'text-purple-400'
+                              : 'text-sky-400'
+                          )}
+                        >
+                          {card.type === 'event' ? 'Event' : 'Job'} -
+                        </span>
                         {card.venue} · {card.date}
                       </p>
                       {card.regHrs > 0 && (
@@ -1045,6 +1135,16 @@ const PayrollCardGrid: React.FC<{
                 className="flex items-center justify-between text-sm"
               >
                 <span className="text-gray-700 font-medium truncate mr-2">
+                  <span
+                    className={clsxm(
+                      'text-xs font-semibold mr-1',
+                      batch.type === 'event'
+                        ? 'text-purple-500'
+                        : 'text-sky-500'
+                    )}
+                  >
+                    [{batch.type === 'event' ? 'Event' : 'Job'}]
+                  </span>
                   {batch.eventName ||
                     batch.jobTitle ||
                     batch.eventUrl ||
