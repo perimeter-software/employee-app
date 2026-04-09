@@ -28,7 +28,20 @@ import {
   usePickupOpportunitiesQuery,
   useWillingSwapCandidatesQuery,
 } from '@/domains/swap/hooks/use-swap-requests';
-import { ArrowLeftRight, ArrowRightLeft, Plus, Zap } from 'lucide-react';
+import {
+  addCalendarDaysToYmd,
+  firstForwardYmdMeetingSwapLead,
+  shiftDayMeetsSwapLead,
+  todayYmdLocal,
+} from '@/domains/swap/utils/swap-lead-eligibility';
+import {
+  ArrowLeftRight,
+  ArrowRightLeft,
+  Loader2,
+  Plus,
+  Zap,
+} from 'lucide-react';
+import { toast } from 'sonner';
 
 type SwapMode = 'swap' | 'giveaway' | 'pickup_interest';
 
@@ -166,7 +179,9 @@ const PickupOpportunityListRow = memo(function PickupOpportunityListRow({
     [row.shiftDate]
   );
   const disabled =
-    row.viewerAlreadyAssigned || Boolean(row.viewerPickedUp);
+    row.viewerAlreadyAssigned ||
+    Boolean(row.viewerPickedUp) ||
+    row.viewerScheduleOverlap;
   return (
     <button
       type="button"
@@ -202,6 +217,14 @@ const PickupOpportunityListRow = memo(function PickupOpportunityListRow({
               className="border-violet-300 bg-violet-50 text-[10px] uppercase text-violet-800"
             >
               Picked up
+            </Badge>
+          )}
+          {row.viewerScheduleOverlap && (
+            <Badge
+              variant="outline"
+              className="border-rose-300 bg-rose-50 text-[10px] uppercase text-rose-900"
+            >
+              Overlaps your shift
             </Badge>
           )}
           {row.availableNow && (
@@ -622,6 +645,14 @@ export function ShiftSwapRequestModal({
   const [pickupSelectedDate, setPickupSelectedDate] = useState<string | null>(
     null
   );
+  /** `null` = use full schedule week for willing-swap list; set to YYYY-MM-DD to filter peers by that offered day only. */
+  const [willingPeerDayFilter, setWillingPeerDayFilter] = useState<
+    string | null
+  >(null);
+  /** Debounced for API only — avoids a network request on every calendar keystroke. */
+  const [debouncedWillingPeerDay, setDebouncedWillingPeerDay] = useState<
+    string | null
+  >(null);
   const [notes, setNotes] = useState('');
 
   const queryClient = useQueryClient();
@@ -630,8 +661,57 @@ export function ShiftSwapRequestModal({
   const listRangeStart = pickupListDateRange?.startDate ?? '';
   const listRangeEnd = pickupListDateRange?.endDate ?? '';
   const hasListDateRange = Boolean(listRangeStart && listRangeEnd);
+  const willingQueryStart = debouncedWillingPeerDay ?? listRangeStart;
+  const willingQueryEnd = debouncedWillingPeerDay ?? listRangeEnd;
+
+  useEffect(() => {
+    if (willingPeerDayFilter == null) {
+      setDebouncedWillingPeerDay(null);
+      return;
+    }
+    const id = window.setTimeout(() => {
+      setDebouncedWillingPeerDay(willingPeerDayFilter);
+    }, 280);
+    return () => window.clearTimeout(id);
+  }, [willingPeerDayFilter]);
   const giveawaySeekersDay = shiftInfo?.fromShiftDate?.trim() ?? '';
   const hasGiveawaySeekersDay = Boolean(giveawaySeekersDay);
+
+  const minSwapLeadHours = useMemo(() => {
+    const n = Number(contextJob?.additionalConfig?.swapBeforeHours);
+    return Number.isFinite(n) && n >= 0 ? n : 48;
+  }, [contextJob]);
+
+  /** Any future day up to ~1y; min is first day that satisfies advance-notice when job schedule is known. */
+  const willingDayPickerMaxYmd = addCalendarDaysToYmd(todayYmdLocal(), 365);
+  const willingDayPickerMinYmd = useMemo(() => {
+    const today = todayYmdLocal();
+    if (!contextJob || !shiftSlug) return today;
+    return (
+      firstForwardYmdMeetingSwapLead(
+        contextJob,
+        shiftSlug,
+        minSwapLeadHours,
+        today,
+        365
+      ) ?? today
+    );
+  }, [contextJob, shiftSlug, minSwapLeadHours]);
+
+  const canFilterWillingByEligibleDay = useMemo(() => {
+    if (!hasListDateRange) return false;
+    if (!contextJob || !shiftSlug) return true;
+    const today = todayYmdLocal();
+    return (
+      firstForwardYmdMeetingSwapLead(
+        contextJob,
+        shiftSlug,
+        minSwapLeadHours,
+        today,
+        365
+      ) != null
+    );
+  }, [hasListDateRange, contextJob, shiftSlug, minSwapLeadHours]);
 
   useEffect(() => {
     if (!isOpen || existingRequest || !jobSlug || !shiftSlug) {
@@ -667,8 +747,8 @@ export function ShiftSwapRequestModal({
     jobSlug,
     shiftSlug,
     page: willingPage,
-    startDate: listRangeStart,
-    endDate: listRangeEnd,
+    startDate: willingQueryStart,
+    endDate: willingQueryEnd,
     enabled:
       isOpen &&
       mode === 'swap' &&
@@ -715,6 +795,8 @@ export function ShiftSwapRequestModal({
       setGiveawaySelection(null);
       setGiveawayAcceptAny(false);
       setPickupSelectedDate(null);
+      setWillingPeerDayFilter(null);
+      setDebouncedWillingPeerDay(null);
       setNotes('');
     }
   }, [isOpen]);
@@ -726,11 +808,40 @@ export function ShiftSwapRequestModal({
     setGiveawaySelection(null);
     setGiveawayAcceptAny(false);
     setPickupSelectedDate(null);
+    setWillingPeerDayFilter(null);
+    setDebouncedWillingPeerDay(null);
   }, [mode, jobSlug, shiftSlug, listRangeStart, listRangeEnd, giveawaySeekersDay]);
 
   useEffect(() => {
     if (acceptAny) setSelectedSwapRequestId(null);
   }, [acceptAny]);
+
+  useEffect(() => {
+    setSelectedSwapRequestId(null);
+    setWillingPage(1);
+  }, [willingPeerDayFilter]);
+
+  useEffect(() => {
+    if (!willingPeerDayFilter) return;
+    const today = todayYmdLocal();
+    const maxY = addCalendarDaysToYmd(today, 365);
+    if (willingPeerDayFilter < today || willingPeerDayFilter > maxY) {
+      setWillingPeerDayFilter(null);
+      return;
+    }
+    if (contextJob && shiftSlug) {
+      if (
+        !shiftDayMeetsSwapLead(
+          contextJob,
+          shiftSlug,
+          willingPeerDayFilter,
+          minSwapLeadHours
+        )
+      ) {
+        setWillingPeerDayFilter(null);
+      }
+    }
+  }, [willingPeerDayFilter, contextJob, shiftSlug, minSwapLeadHours]);
 
   /** Drop pickup selection if that day is no longer selectable (e.g. already picked up). */
   useEffect(() => {
@@ -740,7 +851,9 @@ export function ShiftSwapRequestModal({
     const row = items.find((r) => r.shiftDate === pickupSelectedDate);
     if (
       row &&
-      (row.viewerPickedUp || row.viewerAlreadyAssigned)
+      (row.viewerPickedUp ||
+        row.viewerAlreadyAssigned ||
+        row.viewerScheduleOverlap)
     ) {
       setPickupSelectedDate(null);
     }
@@ -765,6 +878,51 @@ export function ShiftSwapRequestModal({
   const handleSelectPickupDate = useCallback((shiftDate: string) => {
     setPickupSelectedDate(shiftDate);
   }, []);
+
+  const opportunityDefaultTitle = useMemo(
+    () => shiftLabel(contextJob, shiftSlug) || 'Shift',
+    [contextJob, shiftSlug]
+  );
+
+  const pickupOpportunityRows = useMemo(() => {
+    const items = opportunitiesQuery.data?.items;
+    if (!items?.length) return null;
+    return items.map((row) => {
+      const rowDisabled =
+        row.viewerAlreadyAssigned ||
+        Boolean(row.viewerPickedUp) ||
+        row.viewerScheduleOverlap;
+      return (
+        <PickupOpportunityListRow
+          key={row.shiftDate}
+          row={row}
+          title={row.shiftName || opportunityDefaultTitle}
+          selected={
+            !rowDisabled && pickupSelectedDate === row.shiftDate
+          }
+          onSelect={handleSelectPickupDate}
+        />
+      );
+    });
+  }, [
+    opportunitiesQuery.data?.items,
+    opportunityDefaultTitle,
+    pickupSelectedDate,
+    handleSelectPickupDate,
+  ]);
+
+  const willingSwapRows = useMemo(() => {
+    const items = willingQuery.data?.items;
+    if (!items?.length) return null;
+    return items.map((c) => (
+      <WillingSwapListRow
+        key={c.swapRequestId}
+        candidate={c}
+        selected={selectedSwapRequestId === c.swapRequestId}
+        onSelect={handleSelectWilling}
+      />
+    ));
+  }, [willingQuery.data?.items, selectedSwapRequestId, handleSelectWilling]);
 
   const selectedCandidate = useMemo(() => {
     if (!selectedSwapRequestId || !willingQuery.data?.items) return null;
@@ -796,7 +954,8 @@ export function ShiftSwapRequestModal({
       return Boolean(
         row &&
           !row.viewerAlreadyAssigned &&
-          !row.viewerPickedUp
+          !row.viewerPickedUp &&
+          !row.viewerScheduleOverlap
       );
     }
     return false;
@@ -876,6 +1035,7 @@ export function ShiftSwapRequestModal({
     if (!opp) return;
     if (opp.viewerAlreadyAssigned) return;
     if (opp.viewerPickedUp) return;
+    if (opp.viewerScheduleOverlap) return;
 
     const matchOpenGiveaway =
       opp.giveawayRequestId &&
@@ -908,6 +1068,11 @@ export function ShiftSwapRequestModal({
       notes: notes.trim() || undefined,
     });
   };
+
+  const willingBlockingLoad =
+    willingQuery.isFetching && willingQuery.data == null;
+  const willingSoftRefresh =
+    willingQuery.isFetching && willingQuery.data != null;
 
   const totalPages = willingQuery.data
     ? Math.max(1, Math.ceil(willingQuery.data.total / willingQuery.data.limit))
@@ -953,7 +1118,7 @@ export function ShiftSwapRequestModal({
         ) : (
         <div className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 space-y-4">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -975,10 +1140,10 @@ export function ShiftSwapRequestModal({
           ))}
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           {mode === 'swap' && (
             <>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 Select a shift-day from another employee who is willing to swap.
                 Or check <strong>Accept any available</strong> to match with the
                 first employee who agrees.
@@ -989,19 +1154,119 @@ export function ShiftSwapRequestModal({
                   this modal from the schedule when a date range is visible.
                 </p>
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  Willing swap offers are limited to the peer&apos;s offered day
-                  in{' '}
-                  <strong>
-                    {formatYmdUs(listRangeStart)} – {formatYmdUs(listRangeEnd)}
-                  </strong>{' '}
-                  (your current schedule week).
-                </p>
+                <div className="space-y-3 rounded-xl border border-gray-100 bg-gradient-to-b from-slate-50/90 to-white p-4 shadow-sm">
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    {willingPeerDayFilter ? (
+                      <>
+                        Showing coworkers whose <strong>offered</strong>{' '}
+                        shift-day is{' '}
+                        <strong>{formatYmdUs(willingPeerDayFilter)}</strong>. That
+                        day must be at least{' '}
+                        <strong>{minSwapLeadHours} hours</strong> before the
+                        shift starts (job advance-notice).
+                      </>
+                    ) : (
+                      <>
+                        By default, willing swaps are listed for the peer&apos;s
+                        offered day within your table week{' '}
+                        <strong>
+                          {formatYmdUs(listRangeStart)} –{' '}
+                          {formatYmdUs(listRangeEnd)}
+                        </strong>
+                        . Use the optional date filter to narrow to{' '}
+                        <strong>any future day</strong> (up to one year ahead)
+                        where this shift starts at least{' '}
+                        <strong>{minSwapLeadHours} hours</strong> from now — same
+                        rule as &quot;Pick Up&quot; opportunities.
+                      </>
+                    )}
+                  </p>
+                  {contextJob && shiftSlug && !canFilterWillingByEligibleDay ? (
+                    <p className="text-xs text-amber-800 rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2">
+                      No upcoming day in the next year meets the advance-notice
+                      rule ({minSwapLeadHours}h before shift start) for this
+                      shift. You can still browse the default week list, or try
+                      again later.
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+                    <div className="flex min-w-[200px] flex-col gap-1.5">
+                      <span className="text-xs font-medium text-gray-700">
+                        Peer&apos;s offered day{' '}
+                        <span className="font-normal text-muted-foreground">
+                          (optional)
+                        </span>
+                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="date"
+                          className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 shadow-sm transition-shadow focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          min={
+                            contextJob && shiftSlug
+                              ? willingDayPickerMinYmd
+                              : todayYmdLocal()
+                          }
+                          max={willingDayPickerMaxYmd}
+                          value={willingPeerDayFilter ?? ''}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (!v.length) {
+                              setWillingPeerDayFilter(null);
+                              return;
+                            }
+                            const today = todayYmdLocal();
+                            if (v < today) {
+                              toast.info('Pick a date from today onward.');
+                              return;
+                            }
+                            if (v > willingDayPickerMaxYmd) {
+                              toast.info(
+                                'Pick a date within the next year from today.'
+                              );
+                              return;
+                            }
+                            if (contextJob && shiftSlug) {
+                              if (
+                                !shiftDayMeetsSwapLead(
+                                  contextJob,
+                                  shiftSlug,
+                                  v,
+                                  minSwapLeadHours
+                                )
+                              ) {
+                                toast.info(
+                                  `That shift-day is within the advance-notice window. Choose a day whose shift starts at least ${minSwapLeadHours} hours from now.`
+                                );
+                                return;
+                              }
+                            }
+                            setWillingPeerDayFilter(v);
+                          }}
+                          disabled={
+                            loading ||
+                            (Boolean(contextJob && shiftSlug) &&
+                              !canFilterWillingByEligibleDay)
+                          }
+                          aria-label="Filter willing swaps by peer offered day"
+                        />
+                        {willingPeerDayFilter ? (
+                          <button
+                            type="button"
+                            className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline"
+                            onClick={() => setWillingPeerDayFilter(null)}
+                          >
+                            Clear
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
 
               <label
-                className={`flex cursor-pointer flex-col gap-1 rounded-xl border p-4 text-sm ${
-                  acceptAny ? 'border-blue-400 bg-blue-50/50' : 'border-gray-200'
+                className={`mt-1 flex cursor-pointer flex-col gap-1.5 rounded-xl border p-4 text-sm transition-colors ${
+                  acceptAny ? 'border-sky-300 bg-sky-50/60' : 'border-gray-200 bg-white'
                 }`}
               >
                 <span className="flex items-center gap-2 font-medium">
@@ -1021,44 +1286,67 @@ export function ShiftSwapRequestModal({
 
               {!acceptAny && hasListDateRange && (
                 <>
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <div className="flex items-center justify-between gap-3 border-b border-gray-100 pb-2">
+                    <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                       Employees willing to swap
                     </h3>
                     {willingQuery.data != null && (
-                      <span className="text-xs text-muted-foreground">
-                        {willingQuery.data.total} total
+                      <span className="inline-flex shrink-0 items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium tabular-nums text-slate-700">
+                        {willingQuery.data.total}{' '}
+                        {willingQuery.data.total === 1 ? 'person' : 'people'}
                       </span>
                     )}
                   </div>
 
-                  <div className={SWAP_MODAL_LIST_SCROLL}>
-                    {willingQuery.isLoading && (
-                      <div className="p-4 text-sm text-muted-foreground">
-                        Loading…
+                  <div
+                    className={`${SWAP_MODAL_LIST_SCROLL} relative ${willingBlockingLoad ? 'min-h-[120px]' : ''}`}
+                  >
+                    {willingBlockingLoad && (
+                      <div
+                        className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-[10px] bg-white/90 px-4"
+                        aria-live="polite"
+                        aria-busy="true"
+                      >
+                        <Loader2 className="h-8 w-8 animate-spin text-sky-600" />
+                        <p className="text-center text-sm text-muted-foreground">
+                          Loading coworkers…
+                        </p>
                       </div>
                     )}
-                    {willingQuery.isError && (
+                    {willingSoftRefresh && (
+                      <div
+                        className="pointer-events-none absolute inset-x-0 top-1 z-[5] flex justify-center"
+                        aria-hidden
+                      >
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/80 bg-white/95 px-2.5 py-0.5 text-[11px] font-medium text-sky-800 shadow-sm">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Updating list…
+                        </span>
+                      </div>
+                    )}
+                    {willingQuery.isError && !willingQuery.isFetching && (
                       <div className="p-4 text-sm text-red-600">
                         Could not load the list. Try again.
                       </div>
                     )}
                     {willingQuery.data &&
-                      willingQuery.data.items.length === 0 && (
-                        <div className="p-4 text-sm text-muted-foreground">
+                      willingQuery.data.items.length === 0 &&
+                      !willingQuery.isFetching && (
+                        <div className="p-4 text-sm leading-relaxed text-muted-foreground">
                           No open swap offers from coworkers yet. Turn on{' '}
                           <strong>Accept any available</strong> or try again
                           later.
                         </div>
                       )}
-                    {willingQuery.data?.items.map((c) => (
-                      <WillingSwapListRow
-                        key={c.swapRequestId}
-                        candidate={c}
-                        selected={selectedSwapRequestId === c.swapRequestId}
-                        onSelect={handleSelectWilling}
-                      />
-                    ))}
+                    {!willingBlockingLoad && (
+                      <div
+                        className={
+                          willingSoftRefresh ? 'opacity-[0.65] transition-opacity' : undefined
+                        }
+                      >
+                        {willingSwapRows}
+                      </div>
+                    )}
                   </div>
 
                   {willingQuery.data && willingQuery.data.total > WILLING_LIMIT && (
@@ -1222,11 +1510,13 @@ export function ShiftSwapRequestModal({
 
           {mode === 'pickup_interest' && (
             <>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 Tag shift-days or events you&apos;re interested in taking on.{' '}
                 <Zap className="inline h-3.5 w-3.5 text-amber-500 align-[-2px]" />{' '}
                 <strong>Available now</strong> means someone has already offered
-                that slot — the exchange can be completed right here.
+                that slot — the exchange can be completed right here. Days where
+                you already work another overlapping shift on the same calendar
+                day can&apos;t be selected.
               </p>
               {!pickupListDateRange?.startDate ||
               !pickupListDateRange?.endDate ? (
@@ -1279,27 +1569,7 @@ export function ShiftSwapRequestModal({
                           weekdays.
                         </div>
                       )}
-                    {opportunitiesQuery.data?.items.map((row) => {
-                      const rowDisabled =
-                        row.viewerAlreadyAssigned ||
-                        Boolean(row.viewerPickedUp);
-                      return (
-                        <PickupOpportunityListRow
-                          key={row.shiftDate}
-                          row={row}
-                          title={
-                            row.shiftName ||
-                            shiftLabel(contextJob, shiftSlug) ||
-                            'Shift'
-                          }
-                          selected={
-                            !rowDisabled &&
-                            pickupSelectedDate === row.shiftDate
-                          }
-                          onSelect={handleSelectPickupDate}
-                        />
-                      );
-                    })}
+                    {pickupOpportunityRows}
                   </div>
                 </div>
               )}
@@ -1314,12 +1584,6 @@ export function ShiftSwapRequestModal({
             disabled={loading}
           />
         </div>
-
-        {mode === 'swap' && (
-          <p className="text-xs text-muted-foreground">
-            Both employees must agree before admin approval is required.
-          </p>
-        )}
 
         </div>
 
