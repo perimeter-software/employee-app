@@ -141,9 +141,9 @@ function getItemLabel(
   item: SubmittedEventApplicant | SubmittedJobTimecard,
   batch?: EmployeePayrollBatch
 ): string {
-  if ('shiftName' in item && item.shiftName) return item.shiftName;
-  if ('shiftSlug' in item && item.shiftSlug) return item.shiftSlug;
-  if ('companySlug' in item && item.companySlug) return item.companySlug;
+  // if ('shiftName' in item && item.shiftName) return item.shiftName;
+  // if ('shiftSlug' in item && item.shiftSlug) return item.shiftSlug;
+  // if ('companySlug' in item && item.companySlug) return item.companySlug;
   // Prefer human-readable batch-level name
   if (batch?.eventName) return batch.eventName;
   if (batch?.jobTitle) return batch.jobTitle;
@@ -512,7 +512,7 @@ const PayrollTableRow: React.FC<{
                 <tr className="border-b border-gray-200">
                   {[
                     'Type',
-                    'Event',
+                    'Event/Job',
                     'Venue',
                     'Date',
                     'Reg Hrs',
