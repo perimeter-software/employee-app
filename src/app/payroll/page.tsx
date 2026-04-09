@@ -1,7 +1,7 @@
 'use client';
 
 import { NextPage } from 'next';
-import { Suspense, useCallback, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import {
@@ -222,8 +222,11 @@ const PayrollTableRow: React.FC<{
   onViewStub: (id: string) => void;
   onSelect: (batches: EmployeePayrollBatch[]) => void;
 }> = ({ batches, stubMap, stubs, detailMode, onViewStub, onSelect }) => {
-  const [localExpanded, setLocalExpanded] = useState(false);
-  const expanded = detailMode || localExpanded;
+  const [localExpanded, setLocalExpanded] = useState(detailMode);
+  useEffect(() => {
+    setLocalExpanded(detailMode);
+  }, [detailMode]);
+  const expanded = localExpanded;
 
   const firstBatch = batches[0];
   const totalHours = batches.reduce(
@@ -488,19 +491,12 @@ const PayrollTableRow: React.FC<{
             <span className="text-xs text-gray-300">–</span>
           )}
         </td>
-
-        {/* Voucher # (detail mode only) */}
-        {detailMode && (
-          <td className="px-4 py-4 text-sm text-gray-500 font-mono">
-            {voucherNumber ?? '–'}
-          </td>
-        )}
       </tr>
 
       {/* Expanded events table */}
       {expanded && (
         <tr className="bg-slate-50/60 border-b border-gray-100">
-          <td colSpan={detailMode ? 11 : 10} className="px-8 py-4">
+          <td colSpan={10} className="px-8 py-4">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
               Events / Jobs in this Pay Period
             </p>
@@ -1625,9 +1621,7 @@ const PayrollPageContent: React.FC = () => {
               <StatCard
                 label="Paychecks Paid"
                 value={
-                  isPrism
-                    ? `${ytd.paidCount}/${ytd.count}`
-                    : String(ytd.count)
+                  isPrism ? `${ytd.paidCount}/${ytd.count}` : String(ytd.count)
                 }
                 sub={
                   isPrism
@@ -1854,9 +1848,6 @@ const PayrollPageContent: React.FC = () => {
                             <th className={thClass}>Status</th>
                             <th className={thClass}>Voucher #</th>
                             <th className={thClass}>Stub</th>
-                            {detailMode && (
-                              <th className={thClass}>Voucher #</th>
-                            )}
                           </tr>
                         </thead>
                         <tbody>
