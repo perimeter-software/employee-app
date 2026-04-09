@@ -168,9 +168,7 @@ function getItemEarnings(
 }
 
 function formatDirectDeposit(dd?: DirectDeposit): string {
-  const account = dd?.account1 ?? dd?.account2;
-  if (!account) return '–';
-  const raw = String(account.accountNumber ?? '');
+  const raw = dd?.account1 || dd?.account2 || '';
   if (!raw) return '–';
   return raw.length >= 4 ? `•••• ${raw.slice(-4)}` : `•••• ${raw}`;
 }

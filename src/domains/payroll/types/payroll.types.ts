@@ -136,16 +136,14 @@ export interface PayrollVoucher {
   deductions: PayrollVoucherDeductionItem[];
 }
 
-export interface DirectDepositAccount {
-  accountNumber?: string;
-  bankName?: string;
-  routingNumber?: string;
-  [key: string]: unknown;
-}
-
 export interface DirectDeposit {
-  account1?: DirectDepositAccount;
-  account2?: DirectDepositAccount;
+  account1?: string;
+  account2?: string;
+  bankName1?: string;
+  bankName2?: string;
+  accountType1?: string;
+  accountType2?: string;
+  [key: string]: unknown;
 }
 
 export interface EmployeePayrollBatch {
