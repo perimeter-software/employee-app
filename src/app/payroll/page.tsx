@@ -1455,23 +1455,9 @@ const PayrollPageContent: React.FC = () => {
     return yearBatches; // 'custom' - no-op for now
   }, [yearBatches, statusFilter, currentMonth]);
 
-  // Search
-  const searched = useMemo(() => {
-    if (!searchQuery.trim()) return statusFiltered;
-    const q = searchQuery.toLowerCase();
-    return statusFiltered.filter(
-      (b) =>
-        formatPeriod(b.startDate, b.endDate).toLowerCase().includes(q) ||
-        (b.eventUrl && b.eventUrl.toLowerCase().includes(q)) ||
-        (b.jobSlug && b.jobSlug.toLowerCase().includes(q)) ||
-        (b.payrollVoucher?.voucherId &&
-          b.payrollVoucher.voucherId.toLowerCase().includes(q))
-    );
-  }, [statusFiltered, searchQuery]);
-
   // Sort
   const sorted = useMemo(() => {
-    return [...searched].sort((a, b) => {
+    return [...statusFiltered].sort((a, b) => {
       let va: number, vb: number;
       switch (sortField) {
         case 'checkDate': {
@@ -1503,7 +1489,7 @@ const PayrollPageContent: React.FC = () => {
       }
       return sortDir === 'asc' ? va - vb : vb - va;
     });
-  }, [searched, sortField, sortDir]);
+  }, [statusFiltered, sortField, sortDir]);
 
   // Group sorted batches by pay period (startDate|endDate) for table view
   const groupedByPeriod = useMemo(() => {
@@ -1525,6 +1511,24 @@ const PayrollPageContent: React.FC = () => {
     return groups;
   }, [sorted]);
 
+  // Search filters whole groups — any batch within a group matching keeps the full group
+  const filteredGroups = useMemo(() => {
+    if (!searchQuery.trim()) return groupedByPeriod;
+    const q = searchQuery.toLowerCase();
+    return groupedByPeriod.filter(({ batches }) =>
+      batches.some(
+        (b) =>
+          formatPeriod(b.startDate, b.endDate).toLowerCase().includes(q) ||
+          (b.eventName && b.eventName.toLowerCase().includes(q)) ||
+          (b.jobTitle && b.jobTitle.toLowerCase().includes(q)) ||
+          (b.eventUrl && b.eventUrl.toLowerCase().includes(q)) ||
+          (b.jobSlug && b.jobSlug.toLowerCase().includes(q)) ||
+          (b.payrollVoucher?.voucherId &&
+            b.payrollVoucher.voucherId.toLowerCase().includes(q))
+      )
+    );
+  }, [groupedByPeriod, searchQuery]);
+
   const handleSort = useCallback(
     (field: SortField) => {
       if (sortField === field) {
@@ -1539,10 +1543,9 @@ const PayrollPageContent: React.FC = () => {
 
   // YTD stats
   const ytd = useMemo(() => {
-    const viewedCount = stubs.filter(
-      (s) =>
-        new Date(s.checkDate).getFullYear() === selectedYear &&
-        s.viewStatus === 'viewed'
+    const totalGroups = groupedByPeriod.length;
+    const paidGroups = groupedByPeriod.filter(({ batches }) =>
+      batches.some((b) => getStubId(b, stubMap))
     ).length;
     return {
       gross: yearBatches.reduce((s, b) => s + b.totalGrossPay, 0),
@@ -1551,10 +1554,10 @@ const PayrollPageContent: React.FC = () => {
         (s, b) => s + b.totalRegularHours + b.totalOvertimeHours,
         0
       ),
-      count: yearBatches.length,
-      stubsViewed: viewedCount,
+      count: totalGroups,
+      paidCount: paidGroups,
     };
-  }, [yearBatches, stubs, selectedYear]);
+  }, [yearBatches, groupedByPeriod, stubMap]);
 
   // Handle legacy stubId redirect
   const stubId = searchParams.get('stubId');
@@ -1623,12 +1626,12 @@ const PayrollPageContent: React.FC = () => {
                 label="Paychecks Paid"
                 value={
                   isPrism
-                    ? `${ytd.stubsViewed}/${ytd.count}`
+                    ? `${ytd.paidCount}/${ytd.count}`
                     : String(ytd.count)
                 }
                 sub={
                   isPrism
-                    ? `${ytd.stubsViewed} stub${ytd.stubsViewed !== 1 ? 's' : ''} viewed`
+                    ? `${ytd.paidCount} of ${ytd.count} paid`
                     : `${ytd.count} period${ytd.count !== 1 ? 's' : ''}`
                 }
                 iconBg="bg-orange-100"
@@ -1743,14 +1746,14 @@ const PayrollPageContent: React.FC = () => {
           ) : (
             <>
               {/* Results header */}
-              {sorted.length > 0 && (
+              {filteredGroups.length > 0 && (
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-gray-500">
                     Showing{' '}
                     <span className="font-semibold text-gray-700">
-                      {sorted.length}
+                      {filteredGroups.length}
                     </span>{' '}
-                    paycheck{sorted.length !== 1 ? 's' : ''}
+                    paycheck{filteredGroups.length !== 1 ? 's' : ''}
                   </p>
                   <button
                     onClick={() => setDetailMode((p) => !p)}
@@ -1769,7 +1772,7 @@ const PayrollPageContent: React.FC = () => {
               {/* Table view */}
               {viewMode === 'table' && (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                  {sorted.length === 0 ? (
+                  {filteredGroups.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20">
                       <TrendingUp className="w-12 h-12 text-gray-200 mb-3" />
                       <p className="text-gray-400 text-sm font-medium">
@@ -1857,7 +1860,7 @@ const PayrollPageContent: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {groupedByPeriod.map(
+                          {filteredGroups.map(
                             ({ key, batches: groupBatches }) => (
                               <PayrollTableRow
                                 key={key}
@@ -1884,21 +1887,21 @@ const PayrollPageContent: React.FC = () => {
               )}
 
               {/* Card view */}
-              {viewMode === 'card' && groupedByPeriod.length > 0 && (
+              {viewMode === 'card' && filteredGroups.length > 0 && (
                 <PayrollCardGrid
-                  groups={groupedByPeriod}
+                  groups={filteredGroups}
                   stubMap={stubMap}
                   onViewStub={(id) =>
                     router.push(`/paycheck-stubs/${id}?from=${viewMode}`)
                   }
                   onSelect={(b) => {
-                    const group = groupedByPeriod.find((g) => g.batches === b);
+                    const group = filteredGroups.find((g) => g.batches === b);
                     setSelectedGroup({ key: group?.key ?? '', batches: b });
                   }}
                 />
               )}
 
-              {viewMode === 'card' && groupedByPeriod.length === 0 && (
+              {viewMode === 'card' && filteredGroups.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20">
                   <TrendingUp className="w-12 h-12 text-gray-200 mb-3" />
                   <p className="text-gray-400 text-sm font-medium">
