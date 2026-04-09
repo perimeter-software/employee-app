@@ -1,8 +1,8 @@
 import { Db } from 'mongodb';
 import {
-  BillingVoucher,
   EmployeePayrollBatch,
   PayrollBatch,
+  PayrollVoucher,
   SubmittedEventApplicant,
   SubmittedJobTimecard,
   TaxDetails,
@@ -264,44 +264,61 @@ export async function getEmployeePayrollHistory(
         totalFicaSS + totalFicaMED + totalFederalTax + totalStateTax;
       const totalNetPay = sumTaxField(allItems, 'checkNet');
 
-      // Fetch billing voucher if available
-      let billingVoucher: BillingVoucher | undefined;
+      // Fetch payroll voucher (employee deductions + taxes)
+      let payrollVoucher: PayrollVoucher | undefined;
       const batchNumber = batch.lastCreatedPEOBatch?.batchNumber;
       if (batchNumber && employeeID) {
         try {
-          const voucherDoc = await db
-            .collection('prism-billing-vouchers')
+          const payrollDoc = await db
+            .collection('prism-payroll-vouchers')
             .findOne(
-              { batchNumber: String(batchNumber), employeeId: employeeID },
+              { batchId: String(batchNumber), employeeId: employeeID },
               {
                 projection: {
-                  sumBilling: 1,
-                  batchNumber: 1,
+                  batchId: 1,
                   employeeId: 1,
                   voucherId: 1,
                   payDate: 1,
-                  voucherStatus: 1,
+                  deduction: 1,
+                  employeeTax: 1,
                 },
               }
             );
 
-          if (voucherDoc) {
-            const filteredBilling = (voucherDoc.sumBilling || []).filter(
-              (item: { billCode: string }) =>
-                item.billCode !== 'EXPS' && item.billCode !== '000'
+          if (payrollDoc) {
+            const deductions = (payrollDoc.deduction || []).map(
+              (item: {
+                deductCode: string;
+                deductDescription: string;
+                deductAmount: number;
+              }) => ({
+                code: item.deductCode,
+                description: item.deductDescription,
+                amount: item.deductAmount,
+              })
             );
-            billingVoucher = {
-              _id: voucherDoc._id?.toString(),
-              employeeId: voucherDoc.employeeId,
-              batchNumber: voucherDoc.batchNumber,
-              voucherId: voucherDoc.voucherId,
-              payDate: voucherDoc.payDate,
-              voucherStatus: voucherDoc.voucherStatus,
-              sumBilling: filteredBilling,
+            const taxes = (payrollDoc.employeeTax || []).map(
+              (item: {
+                empTaxDeductCode: string;
+                empTaxDeductCodeDesc: string;
+                empTaxAmount: number;
+              }) => ({
+                code: item.empTaxDeductCode,
+                description: item.empTaxDeductCodeDesc,
+                amount: item.empTaxAmount,
+              })
+            );
+            payrollVoucher = {
+              _id: payrollDoc._id?.toString(),
+              employeeId: payrollDoc.employeeId,
+              batchNumber: payrollDoc.batchId,
+              voucherId: payrollDoc.voucherId,
+              payDate: payrollDoc.payDate,
+              deductions: [...deductions, ...taxes],
             };
           }
         } catch (voucherError) {
-          console.warn('Could not fetch billing voucher:', voucherError);
+          console.warn('Could not fetch payroll voucher:', voucherError);
         }
       }
 
@@ -338,7 +355,7 @@ export async function getEmployeePayrollHistory(
         totalStateTax,
         totalTaxes,
         totalNetPay,
-        billingVoucher,
+        payrollVoucher,
         lastCreatedPEOBatch: batch.lastCreatedPEOBatch
           ? {
               batchNumber: batch.lastCreatedPEOBatch.batchNumber,

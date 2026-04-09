@@ -121,6 +121,21 @@ export interface BillingVoucher {
   sumBilling: BillingVoucherItem[];
 }
 
+export interface PayrollVoucherDeductionItem {
+  code: string;
+  description: string;
+  amount: number;
+}
+
+export interface PayrollVoucher {
+  _id?: string;
+  employeeId: string;
+  batchNumber: string;
+  voucherId?: string;
+  payDate?: string;
+  deductions: PayrollVoucherDeductionItem[];
+}
+
 export interface DirectDepositAccount {
   accountNumber?: string;
   bankName?: string;
@@ -161,7 +176,7 @@ export interface EmployeePayrollBatch {
   totalStateTax: number;
   totalTaxes: number;
   totalNetPay: number;
-  billingVoucher?: BillingVoucher;
+  payrollVoucher?: PayrollVoucher;
   lastCreatedPEOBatch?: {
     batchNumber: string;
     batchStatus?: string;

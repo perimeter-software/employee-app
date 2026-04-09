@@ -66,11 +66,11 @@ function formatCurrency(val: number) {
   }).format(val);
 }
 
-/** Sum deductions from billing voucher when available, otherwise fall back to totalTaxes */
+/** Sum deductions from payroll voucher when available, otherwise fall back to totalTaxes */
 function getBatchDeductions(batch: EmployeePayrollBatch): number {
-  if (batch.billingVoucher?.sumBilling?.length) {
-    return batch.billingVoucher.sumBilling.reduce(
-      (s, item) => s + Math.abs(item.billAmt),
+  if (batch.payrollVoucher?.deductions?.length) {
+    return batch.payrollVoucher.deductions.reduce(
+      (s, item) => s + Math.abs(item.amount),
       0
     );
   }
@@ -100,9 +100,9 @@ function getStubId(
   batch: EmployeePayrollBatch,
   stubMap: Map<string, string>
 ): string | undefined {
-  // Strategy 1: match via billingVoucher.voucherId (PRISM users)
-  if (batch.billingVoucher?.voucherId) {
-    const id = stubMap.get(batch.billingVoucher.voucherId);
+  // Strategy 1: match via payrollVoucher.voucherId (PRISM users)
+  if (batch.payrollVoucher?.voucherId) {
+    const id = stubMap.get(batch.payrollVoucher.voucherId);
     if (id) return id;
   }
   // Strategy 2: match via lastBillingSync date (format "YYYY-MM-DD")
@@ -115,7 +115,7 @@ function getStubId(
 }
 
 function getCheckDate(batch: EmployeePayrollBatch): string | null {
-  const pd = batch.billingVoucher?.payDate;
+  const pd = batch.payrollVoucher?.payDate;
   if (pd) {
     try {
       return format(new Date(pd), 'MMM d, yyyy');
@@ -248,7 +248,7 @@ const PayrollTableRow: React.FC<{
   const voucherNumber =
     batches
       .map(
-        (b) => b.billingVoucher?.voucherId || b.lastCreatedPEOBatch?.batchNumber
+        (b) => b.payrollVoucher?.voucherId || b.lastCreatedPEOBatch?.batchNumber
       )
       .find(Boolean) ?? null;
 
@@ -607,7 +607,7 @@ const PaycheckDetailsModal: React.FC<{
   onViewStub: (id: string) => void;
 }> = ({ batches, stubMap, stubs, directDeposit, onClose, onViewStub }) => {
   const firstBatch = batches[0];
-  const billingVoucher = batches.map((b) => b.billingVoucher).find(Boolean);
+  const payrollVoucher = batches.map((b) => b.payrollVoucher).find(Boolean);
   const stubId = batches.map((b) => getStubId(b, stubMap)).find(Boolean);
   const stub = stubId ? stubs.find((s) => s._id === stubId) : undefined;
 
@@ -616,16 +616,16 @@ const PaycheckDetailsModal: React.FC<{
   const totalOTHours = batches.reduce((s, b) => s + b.totalOvertimeHours, 0);
   const totalHours = totalRegHours + totalOTHours;
 
-  const deductionItems = billingVoucher?.sumBilling ?? [];
+  const deductionItems = payrollVoucher?.deductions ?? [];
   const totalDeductions = deductionItems.reduce(
-    (s, item) => s + Math.abs(item.billAmt),
+    (s, item) => s + Math.abs(item.amount),
     0
   );
   const netPay = totalGross - totalDeductions;
 
   const checkDate = getCheckDate(firstBatch);
-  const status = billingVoucher?.voucherStatus ?? 'PAID';
-  const voucherId = billingVoucher?.voucherId;
+  const status = stub ? 'PAID' : 'UNPAID';
+  const voucherId = payrollVoucher?.voucherId;
   const batchId = stub?.batchId;
   const ddDisplay = formatDirectDeposit(directDeposit);
 
@@ -939,10 +939,10 @@ const PaycheckDetailsModal: React.FC<{
                     className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50 last:border-b-0"
                   >
                     <span className="text-sm text-gray-700">
-                      {item.billCodeDescription}
+                      {item.description}
                     </span>
                     <span className="text-sm font-semibold text-red-500">
-                      -{formatCurrency(Math.abs(item.billAmt))}
+                      -{formatCurrency(Math.abs(item.amount))}
                     </span>
                   </div>
                 ))}
@@ -1466,8 +1466,8 @@ const PayrollPageContent: React.FC = () => {
         formatPeriod(b.startDate, b.endDate).toLowerCase().includes(q) ||
         (b.eventUrl && b.eventUrl.toLowerCase().includes(q)) ||
         (b.jobSlug && b.jobSlug.toLowerCase().includes(q)) ||
-        (b.billingVoucher?.voucherId &&
-          b.billingVoucher.voucherId.toLowerCase().includes(q))
+        (b.payrollVoucher?.voucherId &&
+          b.payrollVoucher.voucherId.toLowerCase().includes(q))
     );
   }, [statusFiltered, searchQuery]);
 
@@ -1477,8 +1477,8 @@ const PayrollPageContent: React.FC = () => {
       let va: number, vb: number;
       switch (sortField) {
         case 'checkDate': {
-          const ad = a.billingVoucher?.payDate ?? a.endDate;
-          const bd = b.billingVoucher?.payDate ?? b.endDate;
+          const ad = a.payrollVoucher?.payDate ?? a.endDate;
+          const bd = b.payrollVoucher?.payDate ?? b.endDate;
           va = new Date(ad).getTime();
           vb = new Date(bd).getTime();
           break;
