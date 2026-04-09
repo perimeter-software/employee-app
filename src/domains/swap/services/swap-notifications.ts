@@ -278,7 +278,12 @@ function eventManagerEmailsFromJob(job: GignologyJob | null): string[] {
  */
 async function notifyAdminsPendingSwap(
   db: Db,
-  summary: string,
+  input: {
+    requestTypeLabel: string;
+    jobName: string;
+    shiftName: string;
+    shiftDate: string;
+  },
   jobSlug: string
 ): Promise<void> {
   try {
@@ -293,11 +298,15 @@ async function notifyAdminsPendingSwap(
       return;
     }
 
-    const adminHtml = wrapShiftEmailDocument(
-      `<p style="margin:0 0 8px;font-size:18px;color:#0f172a;font-weight:600;">Hello,</p>
-<p style="margin:0 0 14px;">${escapeHtml(summary)}</p>
-<p style="margin:0;">Please open the admin schedule tools to <strong>approve</strong> or <strong>reject</strong> this request.</p>`
-    );
+    const adminHtml = wrapShiftEmailDocument(`
+<p style="margin:0 0 8px;font-size:18px;color:#0f172a;font-weight:600;">Hello,</p>
+<p style="margin:0 0 14px;">A ${escapeHtml(input.requestTypeLabel)} is ready for approval.</p>
+${shiftDetailRowsHtml([
+  { label: 'Job', value: input.jobName },
+  { label: 'Shift', value: input.shiftName },
+  { label: 'Shift Date', value: input.shiftDate },
+])}
+<p style="margin:0;">Please open the admin schedule tools to <strong>approve</strong> or <strong>reject</strong> this request.</p>`);
 
     await Promise.all(
       recipients.map((adminTo) =>
@@ -534,7 +543,12 @@ ${acceptLine}`;
     });
     await notifyAdminsPendingSwap(
       db,
-      `A shift giveaway is ready for approval: ${ctx.jobName} on ${ctx.dateFormatted}.`,
+      {
+        requestTypeLabel: 'shift giveaway',
+        jobName: ctx.jobName,
+        shiftName: ctx.shiftName,
+        shiftDate: ctx.dateFormatted,
+      },
       doc.jobSlug
     );
   } catch (e) {
@@ -584,7 +598,12 @@ ${agreeLine}`;
     });
     await notifyAdminsPendingSwap(
       db,
-      `A shift swap is ready for approval: ${ctx.jobName} on ${ctx.dateFormatted}.`,
+      {
+        requestTypeLabel: 'shift swap',
+        jobName: ctx.jobName,
+        shiftName: ctx.shiftName,
+        shiftDate: ctx.dateFormatted,
+      },
       doc.jobSlug
     );
   } catch (e) {
