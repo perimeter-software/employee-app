@@ -4,9 +4,7 @@ import { getTenantAwareConnection } from '@/lib/db';
 import { getEmployeePayrollHistory } from '@/domains/payroll/utils';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 
-async function getEmployeePayrollHistoryHandler(
-  request: AuthenticatedRequest
-) {
+async function getEmployeePayrollHistoryHandler(request: AuthenticatedRequest) {
   try {
     const user = request.user;
     const applicantId = user.applicantId;
@@ -27,21 +25,28 @@ async function getEmployeePayrollHistoryHandler(
     // Look up the applicant's PRISM employeeID for billing voucher cross-reference.
     // applicantId may be stored as an ObjectId or as a plain string — try both.
     let employeeID: string | undefined;
+    let directDeposit: Record<string, unknown> | undefined;
     try {
       const { ObjectId } = await import('mongodb');
-      const applicantDoc = await db.collection('applicants').findOne(
-        { _id: new ObjectId(applicantId) },
-        { projection: { employeeID: 1 } }
-      );
+      const applicantDoc = await db
+        .collection('applicants')
+        .findOne(
+          { _id: new ObjectId(applicantId) },
+          { projection: { employeeID: 1, directDeposit: 1 } }
+        );
       employeeID = applicantDoc?.employeeID;
+      directDeposit = applicantDoc?.directDeposit;
     } catch {
       // Not a valid ObjectId — try matching as a plain string _id
       try {
-        const applicantDoc = await db.collection('applicants').findOne(
-          { _id: applicantId as any },
-          { projection: { employeeID: 1 } }
-        );
+        const applicantDoc = await db
+          .collection('applicants')
+          .findOne(
+            { _id: applicantId as any },
+            { projection: { employeeID: 1, directDeposit: 1 } }
+          );
         employeeID = applicantDoc?.employeeID;
+        directDeposit = applicantDoc?.directDeposit;
       } catch {
         // Proceed without employeeID; billing vouchers won't be fetched
       }
@@ -59,6 +64,7 @@ async function getEmployeePayrollHistoryHandler(
       data: {
         payrollBatches,
         count: payrollBatches.length,
+        directDeposit,
       },
     });
   } catch (error) {
