@@ -1,3 +1,4 @@
+import type { QueryClient } from '@tanstack/react-query';
 import { baseInstance } from '@/lib/api/instance';
 import type { GignologyEvent } from '../types';
 
@@ -77,6 +78,27 @@ export const eventQueryKeys = {
   enrollment: (eventId: string) => [...eventQueryKeys.all, 'enrollment', eventId] as const,
 } as const;
 
+/** React Query key for pending cover invites (incoming). */
+export const INCOMING_COVER_REQUESTS_QUERY_KEY = [
+  'event-cover-requests',
+  'incoming',
+] as const;
+
+/**
+ * Invalidates `/events` list caches (all / my / past tabs) plus event detail/roster
+ * queries. Use after call-off, cover request, or enrollment changes.
+ */
+export async function invalidateEventListCaches(
+  queryClient: QueryClient
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['events-all'] }),
+    queryClient.invalidateQueries({ queryKey: ['events-my'] }),
+    queryClient.invalidateQueries({ queryKey: ['events-past'] }),
+    queryClient.invalidateQueries({ queryKey: eventQueryKeys.all }),
+  ]);
+}
+
 export class EventApiService {
   static readonly ENDPOINTS = {
     ROSTER: () => `/events/roster`,
@@ -84,6 +106,14 @@ export class EventApiService {
     CLOCK_OUT: (eventId: string) => `/events/${eventId}/clock-out`,
     DETAIL: (eventId: string) => `/events/${eventId}`,
     ENROLLMENT: (eventId: string) => `/events/${eventId}/enrollment`,
+    EVENT_CALL_OFF: (eventId: string) => `/events/${eventId}/call-off`,
+    EVENT_CALL_OFF_REQUEST: (requestId: string) =>
+      `/event-call-off-requests/${requestId}`,
+    EVENT_COVER_ACCEPT: (requestId: string) =>
+      `/event-cover-requests/${requestId}/accept`,
+    EVENT_COVER_DECLINE: (requestId: string) =>
+      `/event-cover-requests/${requestId}/decline`,
+    EVENT_COVER_REQUESTS: () => `/event-cover-requests`,
   } as const;
 
   static async getRosterEvents(
@@ -207,10 +237,13 @@ export class EventApiService {
   }
 
   static async checkEnrollment(eventId: string): Promise<EnrollmentCheckResult> {
-    // The external API returns the enrollment object at the top level (not wrapped
-    // in { data }), so we return the raw response body directly.
-    const res = await baseInstance.get<never>(EventApiService.ENDPOINTS.ENROLLMENT(eventId));
-    return res as unknown as EnrollmentCheckResult;
+    const res = await baseInstance.get<EnrollmentCheckResult>(
+      EventApiService.ENDPOINTS.ENROLLMENT(eventId)
+    );
+    if (!res.success || res.data === undefined) {
+      throw new Error(res.message || 'Failed to load enrollment');
+    }
+    return res.data;
   }
 
   static async submitEnrollment(
@@ -218,12 +251,76 @@ export class EventApiService {
     requestType: EnrollmentType,
     positionName?: string
   ): Promise<EnrollmentCheckResult> {
-    // Same as checkEnrollment: external API returns the object at the top level.
-    const res = await baseInstance.put<never>(
+    const res = await baseInstance.put<EnrollmentCheckResult>(
       EventApiService.ENDPOINTS.ENROLLMENT(eventId),
       { requestType, ...(positionName && { positionName }) }
     );
-    return res as unknown as EnrollmentCheckResult;
+    if (!res.success || res.data === undefined) {
+      throw new Error(res.message || 'Enrollment failed');
+    }
+    return res.data;
+  }
+
+  static async submitEventCallOff(
+    eventId: string,
+    notes?: string
+  ): Promise<unknown> {
+    const res = await baseInstance.post<{ data: unknown }>(
+      EventApiService.ENDPOINTS.EVENT_CALL_OFF(eventId),
+      { notes }
+    );
+    if (!res.success || res.data === undefined) {
+      throw new Error(res.message || 'Call-off request failed');
+    }
+    return res.data;
+  }
+
+  static async deleteEventCallOffRequest(requestId: string): Promise<void> {
+    const res = await baseInstance.delete(
+      EventApiService.ENDPOINTS.EVENT_CALL_OFF_REQUEST(requestId)
+    );
+    if (!res.success) {
+      throw new Error(res.message || 'Failed to remove call-off request');
+    }
+  }
+
+  static async acceptEventCoverRequest(requestId: string): Promise<unknown> {
+    const res = await baseInstance.patch<{ data: unknown }>(
+      EventApiService.ENDPOINTS.EVENT_COVER_ACCEPT(requestId),
+      {}
+    );
+    if (!res.success || res.data === undefined) {
+      throw new Error(res.message || 'Unable to accept cover request.');
+    }
+    return res.data;
+  }
+
+  static async declineEventCoverRequest(requestId: string): Promise<unknown> {
+    const res = await baseInstance.patch<{ data: unknown }>(
+      EventApiService.ENDPOINTS.EVENT_COVER_DECLINE(requestId),
+      {}
+    );
+    if (!res.success || res.data === undefined) {
+      throw new Error(res.message || 'Unable to decline cover request.');
+    }
+    return res.data;
+  }
+
+  /** Pending cover invites where you are the invitee (`pending_match`). Includes `eventName` / `eventDate` when the event exists. */
+  static async listIncomingCoverRequests(
+    limit = 50
+  ): Promise<Record<string, unknown>[]> {
+    const qs = new URLSearchParams({
+      scope: 'incoming',
+      limit: String(limit),
+    });
+    const res = await baseInstance.get<Record<string, unknown>[]>(
+      `${EventApiService.ENDPOINTS.EVENT_COVER_REQUESTS()}?${qs.toString()}`
+    );
+    if (!res.success || res.data === undefined) {
+      throw new Error(res.message || 'Unable to load cover requests.');
+    }
+    return Array.isArray(res.data) ? res.data : [];
   }
 
   static async clockOut(

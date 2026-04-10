@@ -23,7 +23,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/Dialog';
-import { EventApiService, eventQueryKeys } from '../../services/event-service';
+import {
+  EventApiService,
+  eventQueryKeys,
+  invalidateEventListCaches,
+} from '../../services/event-service';
 import type { GignologyEvent, EventPosition } from '../../types';
 import type {
   EnrollmentCheckResult,
@@ -32,6 +36,12 @@ import type {
 import { VenueMap } from '@/domains/venue/components/VenueMap';
 import { VenueVideo } from '@/domains/venue/components/VenueVideo';
 import { baseInstance } from '@/lib/api/instance';
+import {
+  EventCoverRequestModal,
+  type EventCoverModalIntent,
+} from '@/domains/event/components/EventCoverRequestModal/EventCoverRequestModal';
+import { EventCallOffConfirmModal } from '@/domains/event/components/EventCallOffConfirmModal/EventCallOffConfirmModal';
+import { isEventCoverWindowOpen } from '@/domains/event/utils/event-cover-window';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -117,8 +127,7 @@ function getAvailablePositions(
     if (pos.numberPositions == null) return true;
     const assigned = (existingApplicants ?? []).filter(
       (a) =>
-        a.status === 'Roster' &&
-        (a as Record<string, unknown>).primaryPosition === pos.positionName
+        a.status === 'Roster' && a.primaryPosition === pos.positionName
     ).length;
     return assigned < pos.numberPositions;
   });
@@ -342,12 +351,21 @@ export const EventDetailModal = ({
   const [descExpanded, setDescExpanded] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [coverModalOpen, setCoverModalOpen] = useState(false);
+  const [callOffConfirmOpen, setCallOffConfirmOpen] = useState(false);
+  const [callOffSubmitting, setCallOffSubmitting] = useState(false);
+  const [coverIntent, setCoverIntent] =
+    useState<EventCoverModalIntent>('invite-cover');
 
   // Reset state when modal opens for a different event
   useEffect(() => {
     setDescExpanded(false);
     setLogoError(false);
   }, [initialEvent._id]);
+
+  useEffect(() => {
+    if (!open) setCoverModalOpen(false);
+  }, [open]);
 
   // ── Fetch venue detail (contact, map, videos) ────────────────────────────
   const { data: venueDetail } = useQuery({
@@ -473,13 +491,57 @@ export const EventDetailModal = ({
     }
   };
 
+  const handleSubmitCallOff = async (notes: string): Promise<boolean> => {
+    setCallOffSubmitting(true);
+    try {
+      await EventApiService.submitEventCallOff(initialEvent._id, notes || undefined);
+      toast.success('Call-off request submitted.');
+      await queryClient.invalidateQueries({
+        queryKey: eventQueryKeys.detail(initialEvent._id),
+      });
+      await invalidateEventListCaches(queryClient);
+      return true;
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Unable to submit call-off.'
+      );
+      return false;
+    } finally {
+      setCallOffSubmitting(false);
+    }
+  };
+
+  const handleRemoveCallOff = async (): Promise<boolean> => {
+    const rid = event.pendingCallOffRequestId;
+    if (!rid) return false;
+    setCallOffSubmitting(true);
+    try {
+      await EventApiService.deleteEventCallOffRequest(rid);
+      toast.success('Call-off request removed.');
+      await queryClient.invalidateQueries({
+        queryKey: eventQueryKeys.detail(initialEvent._id),
+      });
+      await invalidateEventListCaches(queryClient);
+      return true;
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Unable to remove request.'
+      );
+      return false;
+    } finally {
+      setCallOffSubmitting(false);
+    }
+  };
+
   const location = [event.venueCity, event.venueState]
     .filter(Boolean)
     .join(', ');
 
-  console.log('enrollment', enrollment);
+  const showEventCoverActions =
+    enrollment?.type === 'Roster' && isEventCoverWindowOpen(event.eventDate);
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg p-0 overflow-hidden max-h-[90vh] flex flex-col">
         {/* Header band — gradient with logo */}
@@ -573,6 +635,44 @@ export const EventDetailModal = ({
               submitting={submitting}
             />
           ) : null}
+
+          {showEventCoverActions && (
+            <div className="flex flex-wrap gap-3 items-start">
+              <div className="flex flex-col gap-0.5 items-start">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setCoverIntent('invite-cover');
+                    setCoverModalOpen(true);
+                  }}
+                >
+                  Let someone cover for me
+                </Button>
+                {event.pendingCoverRequestId ? (
+                  <span className="text-[10px] text-violet-600 font-medium">
+                    Requested
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex flex-col gap-0.5 items-start">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCallOffConfirmOpen(true)}
+                >
+                  Call off
+                </Button>
+                {event.pendingCallOffRequestId ? (
+                  <span className="text-[10px] text-amber-700 font-medium">
+                    Requested
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          )}
 
           {/* Description */}
           {description ? (
@@ -696,5 +796,28 @@ export const EventDetailModal = ({
         </div>
       </DialogContent>
     </Dialog>
+
+      <EventCoverRequestModal
+        open={coverModalOpen}
+        onClose={() => setCoverModalOpen(false)}
+        event={event}
+        intent={coverIntent}
+        pendingPeerEmail={event.pendingCoverPeerEmail ?? null}
+      />
+      <EventCallOffConfirmModal
+        open={callOffConfirmOpen}
+        onClose={() => setCallOffConfirmOpen(false)}
+        pendingRequestId={event.pendingCallOffRequestId ?? null}
+        onConfirm={async (notes) => {
+          const ok = await handleSubmitCallOff(notes);
+          if (ok) setCallOffConfirmOpen(false);
+        }}
+        onRemoveRequest={async () => {
+          const ok = await handleRemoveCallOff();
+          if (ok) setCallOffConfirmOpen(false);
+        }}
+        loading={callOffSubmitting}
+      />
+    </>
   );
 };

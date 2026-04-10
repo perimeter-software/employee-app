@@ -5,6 +5,7 @@ import { CalendarRange, Search } from 'lucide-react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import Layout from '@/components/layout/Layout';
+import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import {
@@ -17,7 +18,13 @@ import {
 import { useCurrentUser } from '@/domains/user';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { clsxm } from '@/lib/utils';
-import { EventApiService, EventCard, EventDetailModal } from '@/domains/event';
+import {
+  EventApiService,
+  EventCard,
+  EventDetailModal,
+  INCOMING_COVER_REQUESTS_QUERY_KEY,
+  IncomingCoverRequestsModal,
+} from '@/domains/event';
 import type { GignologyEvent, EventListPage } from '@/domains/event';
 import { baseInstance } from '@/lib/api/instance';
 import type { VenueWithStatus } from '@/domains/venue';
@@ -52,12 +59,22 @@ export default function EventsPage() {
   const debouncedSearch = useDebounce(search, 400);
   const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(null);
   const [venueSlug, setVenueSlug] = useState('');
+  const [incomingCoverModalOpen, setIncomingCoverModalOpen] = useState(false);
 
   const queryClient = useQueryClient();
   const applicantId = currentUser?.applicantId;
   const isEmployee = currentUser?.userType === 'User';
 
   // ── StaffingPool venues for the filter dropdown ──────────────────────────────
+  const { data: incomingCoverList = [], isLoading: incomingCoverListLoading } =
+    useQuery({
+      queryKey: INCOMING_COVER_REQUESTS_QUERY_KEY,
+      queryFn: () => EventApiService.listIncomingCoverRequests(),
+      enabled: !!applicantId && isEmployee,
+      staleTime: 60 * 1000,
+    });
+  const incomingCoverCount = incomingCoverList.length;
+
   const { data: staffingVenues = [] } = useQuery<VenueWithStatus[]>({
     queryKey: ['venues', 'staffing-pool'],
     queryFn: async () => {
@@ -234,18 +251,34 @@ export default function EventsPage() {
         <Card>
           <CardHeader className="pb-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <CalendarRange className="h-5 w-5 text-appPrimary" />
-                <div>
-                  <CardTitle className="text-base">
-                    {tab === 'all' ? 'All Events' : tab === 'my' ? 'My Events' : 'Past Events'}
-                  </CardTitle>
-                  {!isLoading && !isSearching && (
-                    <p className="text-xs text-slate-600">
-                      {activeEvents.length} event{activeEvents.length !== 1 ? 's' : ''}
-                    </p>
-                  )}
+              <div className="flex flex-wrap items-center justify-between gap-2 min-w-0 w-full sm:w-auto sm:justify-start sm:gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <CalendarRange className="h-5 w-5 shrink-0 text-appPrimary" />
+                  <div className="min-w-0">
+                    <CardTitle className="text-base">
+                      {tab === 'all' ? 'All Events' : tab === 'my' ? 'My Events' : 'Past Events'}
+                    </CardTitle>
+                    {!isLoading && !isSearching && (
+                      <p className="text-xs text-slate-600">
+                        {activeEvents.length} event{activeEvents.length !== 1 ? 's' : ''}
+                      </p>
+                    )}
+                  </div>
                 </div>
+                {incomingCoverCount > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline-primary"
+                    size="sm"
+                    className="shrink-0 whitespace-nowrap"
+                    onClick={() => setIncomingCoverModalOpen(true)}
+                  >
+                    Cover requests for you
+                    <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-appPrimary/15 px-1.5 text-xs font-semibold tabular-nums">
+                      {incomingCoverCount}
+                    </span>
+                  </Button>
+                )}
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -343,6 +376,13 @@ export default function EventsPage() {
           }}
         />
       )}
+
+      <IncomingCoverRequestsModal
+        open={incomingCoverModalOpen}
+        onClose={() => setIncomingCoverModalOpen(false)}
+        items={incomingCoverList}
+        isLoading={incomingCoverListLoading}
+      />
     </Layout>
   );
 }
