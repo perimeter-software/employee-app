@@ -1567,7 +1567,11 @@ const PayrollPageContent: React.FC = () => {
     ).length;
     return {
       gross: yearBatches.reduce((s, b) => s + b.totalGrossPay, 0),
-      net: yearBatches.reduce((s, b) => s + getNetPay(b), 0),
+      net: groupedByPeriod.reduce((s, { batches }) => {
+        const gross = batches.reduce((gs, b) => gs + b.totalGrossPay, 0);
+        const deductions = getBatchDeductions(batches[0]);
+        return s + gross - deductions;
+      }, 0),
       hours: yearBatches.reduce(
         (s, b) => s + b.totalRegularHours + b.totalOvertimeHours,
         0
