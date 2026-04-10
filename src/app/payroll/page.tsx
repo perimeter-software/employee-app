@@ -1370,6 +1370,8 @@ const PayrollPageContent: React.FC = () => {
     () => (searchParams.get('view') as ViewMode) || 'table'
   );
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [sortField, setSortField] = useState<SortField>('startDate');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [searchQuery, setSearchQuery] = useState('');
@@ -1451,15 +1453,28 @@ const PayrollPageContent: React.FC = () => {
   const statusFiltered = useMemo(() => {
     if (statusFilter === 'all') return yearBatches;
     if (statusFilter === 'current')
+      return yearBatches.filter((b) => {
+        const d = new Date(b.startDate);
+        return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+      });
+    if (statusFilter === 'past') {
+      const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
       return yearBatches.filter(
-        (b) => new Date(b.startDate).getMonth() === currentMonth
+        (b) => new Date(b.startDate) < startOfCurrentMonth
       );
-    if (statusFilter === 'past')
-      return yearBatches.filter(
-        (b) => new Date(b.startDate).getMonth() < currentMonth
-      );
-    return yearBatches; // 'custom' - no-op for now
-  }, [yearBatches, statusFilter, currentMonth]);
+    }
+    if (statusFilter === 'custom') {
+      const from = customFrom ? new Date(customFrom) : null;
+      const to = customTo ? new Date(customTo) : null;
+      return yearBatches.filter((b) => {
+        const start = new Date(b.startDate);
+        if (from && start < from) return false;
+        if (to && start > to) return false;
+        return true;
+      });
+    }
+    return yearBatches;
+  }, [yearBatches, statusFilter, currentMonth, currentYear, customFrom, customTo]);
 
   // Sort
   const sorted = useMemo(() => {
@@ -1695,7 +1710,7 @@ const PayrollPageContent: React.FC = () => {
                 {(
                   [
                     ['all', 'All'],
-                    ['current', 'Current'],
+                    ['current', 'Current Month'],
                     ['past', 'Past'],
                     ['custom', 'Custom'],
                   ] as [StatusFilter, string][]
@@ -1714,6 +1729,31 @@ const PayrollPageContent: React.FC = () => {
                   </button>
                 ))}
               </div>
+
+              {/* Custom date range */}
+              {statusFilter === 'custom' && (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    defaultValue={customFrom}
+                    max={customTo || undefined}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    title="From date"
+                    placeholder="mm/dd/yyyy"
+                    className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-700"
+                  />
+                  <span className="text-sm text-gray-400">to</span>
+                  <input
+                    type="date"
+                    defaultValue={customTo}
+                    min={customFrom || undefined}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    title="To date"
+                    placeholder="mm/dd/yyyy"
+                    className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-700"
+                  />
+                </div>
+              )}
 
               {/* Search */}
               <div className="relative flex-1 min-w-0">
