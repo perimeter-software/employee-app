@@ -1474,7 +1474,14 @@ const PayrollPageContent: React.FC = () => {
       });
     }
     return yearBatches;
-  }, [yearBatches, statusFilter, currentMonth, currentYear, customFrom, customTo]);
+  }, [
+    yearBatches,
+    statusFilter,
+    currentMonth,
+    currentYear,
+    customFrom,
+    customTo,
+  ]);
 
   // Sort
   const sorted = useMemo(() => {
@@ -1581,20 +1588,29 @@ const PayrollPageContent: React.FC = () => {
       batches.some((b) => getStubId(b, stubMap))
     ).length;
     return {
-      gross: yearBatches.reduce((s, b) => s + b.totalGrossPay, 0),
+      gross: groupedByPeriod.reduce(
+        (s, { batches }) =>
+          s + batches.reduce((gs, b) => gs + b.totalGrossPay, 0),
+        0
+      ),
       net: groupedByPeriod.reduce((s, { batches }) => {
         const gross = batches.reduce((gs, b) => gs + b.totalGrossPay, 0);
         const deductions = getBatchDeductions(batches[0]);
         return s + gross - deductions;
       }, 0),
-      hours: yearBatches.reduce(
-        (s, b) => s + b.totalRegularHours + b.totalOvertimeHours,
+      hours: groupedByPeriod.reduce(
+        (s, { batches }) =>
+          s +
+          batches.reduce(
+            (hs, b) => hs + b.totalRegularHours + b.totalOvertimeHours,
+            0
+          ),
         0
       ),
       count: totalGroups,
       paidCount: paidGroups,
     };
-  }, [yearBatches, groupedByPeriod, stubMap]);
+  }, [groupedByPeriod, stubMap]);
 
   // Handle legacy stubId redirect
   const stubId = searchParams.get('stubId');
@@ -1807,7 +1823,7 @@ const PayrollPageContent: React.FC = () => {
             <>
               {/* Results header */}
               {filteredGroups.length > 0 && (
-                <div className="flex items-center justify-between">
+                <div className="flex items-center align-center justify-between mh-30">
                   <p className="text-sm text-gray-500">
                     Showing{' '}
                     <span className="font-semibold text-gray-700">
@@ -1815,17 +1831,19 @@ const PayrollPageContent: React.FC = () => {
                     </span>{' '}
                     paycheck{filteredGroups.length !== 1 ? 's' : ''}
                   </p>
-                  <button
-                    onClick={() => setDetailMode((p) => !p)}
-                    className={clsxm(
-                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
-                      detailMode
-                        ? 'bg-blue-50 border-blue-300 text-blue-600'
-                        : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                    )}
-                  >
-                    {detailMode ? '● Detail Mode' : '◇ Summary Mode'}
-                  </button>
+                  {viewMode === 'table' && (
+                    <button
+                      onClick={() => setDetailMode((p) => !p)}
+                      className={clsxm(
+                        'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                        detailMode
+                          ? 'bg-blue-50 border-blue-300 text-blue-600'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                      )}
+                    >
+                      {detailMode ? '● Detail Mode' : '◇ Summary Mode'}
+                    </button>
+                  )}
                 </div>
               )}
 
