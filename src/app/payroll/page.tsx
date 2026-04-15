@@ -1581,20 +1581,29 @@ const PayrollPageContent: React.FC = () => {
       batches.some((b) => getStubId(b, stubMap))
     ).length;
     return {
-      gross: yearBatches.reduce((s, b) => s + b.totalGrossPay, 0),
+      gross: groupedByPeriod.reduce(
+        (s, { batches }) =>
+          s + batches.reduce((gs, b) => gs + b.totalGrossPay, 0),
+        0
+      ),
       net: groupedByPeriod.reduce((s, { batches }) => {
         const gross = batches.reduce((gs, b) => gs + b.totalGrossPay, 0);
         const deductions = getBatchDeductions(batches[0]);
         return s + gross - deductions;
       }, 0),
-      hours: yearBatches.reduce(
-        (s, b) => s + b.totalRegularHours + b.totalOvertimeHours,
+      hours: groupedByPeriod.reduce(
+        (s, { batches }) =>
+          s +
+          batches.reduce(
+            (hs, b) => hs + b.totalRegularHours + b.totalOvertimeHours,
+            0
+          ),
         0
       ),
       count: totalGroups,
       paidCount: paidGroups,
     };
-  }, [yearBatches, groupedByPeriod, stubMap]);
+  }, [groupedByPeriod, stubMap]);
 
   // Handle legacy stubId redirect
   const stubId = searchParams.get('stubId');
