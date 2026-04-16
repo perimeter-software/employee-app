@@ -64,20 +64,12 @@ const URL_STEP_TO_APPLICANT_OBJECT: Record<string, string> = {
 
 const initialState: NewApplicantState = {
   applicant: {},
-  registrationSteps: [
-    {
-      id: 0,
-      label: 'Verification',
-      altLabel: 'verification',
-      applicantObject: 'verification',
-      iconKey: 'shield',
-    },
-  ],
+  registrationSteps: [],
   registrationSubSteps: ONBOARDING_STEPS.filter((s) =>
     DEFAULT_APPLICANT_SUB_STEPS.includes(s.applicantObject)
   ),
   activeStepId: 0,
-  activeStep: 'verification',
+  activeStep: '',
   activeSubStepId: DEFAULT_APPLICANT_SUB_STEP_ID,
   activeSubStep: DEFAULT_APPLICANT_SUB_STEP,
   onboardingProgressId: 1,
@@ -388,9 +380,14 @@ export const NewApplicantContextProvider: React.FC<ProviderProps> = ({
         ),
       });
 
-      if (initialStep && URL_STEP_TO_APPLICANT_OBJECT[initialStep]) {
-        setStepToGo(URL_STEP_TO_APPLICANT_OBJECT[initialStep]);
-      }
+      // Default start: onboarding → first step (Job Application); pre-onboarding → Contact Info.
+      // A URL step param overrides the default.
+      const defaultStart = showOnboarding
+        ? ONBOARDING_OBJECTS_ENUM.JOB_APPLICATION
+        : APPLICANT_OBJECTS_ENUM.APPLICANT_INFO;
+      setStepToGo(
+        (initialStep && URL_STEP_TO_APPLICANT_OBJECT[initialStep]) || defaultStart
+      );
       setStepsRefreshed((p) => (!p || forceRefreshSteps ? p + 1 : p));
     },
     [allowedStages, stripEmployerI9]

@@ -15,16 +15,6 @@ const AUTH_ROUTES = ['/', '/api/auth'];
 // (payroll/paystub access only – existing behaviour)
 const EMPLOYEE_APPLICANT_ROUTES = ['/payroll', '/paycheck-stubs'];
 
-// Routes accessible to applicants who are in pre-onboarding or post-onboarding sub-types
-const APPLICANT_SCREENS = [
-  '/applicant/overview',
-  '/applicant/contact-info',
-  '/applicant/resume',
-  '/applicant/recommended-jobs',
-  '/applicant/job-applications',
-  '/applicant/additional-forms',
-];
-
 // The onboarding route (step-based multi-form wizard)
 const ONBOARDING_ROUTE = '/onboarding';
 
@@ -111,36 +101,15 @@ export function useApplicantRouteProtection() {
       return;
     }
 
-    // ── "Applicant"-status applicants ─────────────────────────────────────────
+    // ── "Applicant"-status applicants: all sub-types land on /onboarding ────────
     if (applicantRecordStatus === 'Applicant') {
-      switch (applicantSubType) {
-        case 'onboarding': {
-          // Only /onboarding is accessible
-          if (isAllowedRoute(pathname, [ONBOARDING_ROUTE])) return;
-          console.log(
-            `[ApplicantRouteProtection] onboarding applicant: redirecting ${pathname} → /onboarding`
-          );
-          router.replace(ONBOARDING_ROUTE);
-          return;
-        }
-        case 'pre-onboarding':
-        case 'post-onboarding': {
-          // All applicant screens + post-onboarding can also visit /onboarding
-          const allowedPrefixes = [
-            ...APPLICANT_SCREENS,
-            ...(applicantSubType === 'post-onboarding' ? [ONBOARDING_ROUTE] : []),
-          ];
-          if (isAllowedRoute(pathname, allowedPrefixes)) return;
-          console.log(
-            `[ApplicantRouteProtection] ${applicantSubType} applicant: redirecting ${pathname} → /applicant/overview`
-          );
-          router.replace('/applicant/overview');
-          return;
-        }
-        default:
-          // Sub-type not yet resolved (company data still loading) – do nothing
-          return;
-      }
+      if (applicantSubType === null) return; // sub-type not yet resolved – wait
+      if (isAllowedRoute(pathname, [ONBOARDING_ROUTE])) return;
+      console.log(
+        `[ApplicantRouteProtection] ${applicantSubType} applicant: redirecting ${pathname} → /onboarding`
+      );
+      router.replace(ONBOARDING_ROUTE);
+      return;
     }
 
     // Unknown status – fall back to root

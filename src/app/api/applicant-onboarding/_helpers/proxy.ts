@@ -52,9 +52,15 @@ export async function proxyToBackend({
     }
     return NextResponse.json(res.data);
   } catch (error: unknown) {
-    const e = error as { response?: { status?: number; data?: unknown }; message?: string };
+    const e = error as {
+      response?: { status?: number; data?: unknown };
+      message?: string;
+    };
     const status = e.response?.status ?? 500;
-    console.error(`[applicant-onboarding proxy] ${method.toUpperCase()} ${path}:`, e.message);
+    console.error(
+      `[applicant-onboarding proxy] ${method.toUpperCase()} ${path}:`,
+      e.message
+    );
     return NextResponse.json(
       e.response?.data ?? { success: false, message: 'Proxy request failed' },
       { status }
@@ -63,7 +69,9 @@ export async function proxyToBackend({
 }
 
 export async function readParam(
-  context: { params: Promise<Record<string, string | string[] | undefined>> } | undefined,
+  context:
+    | { params: Promise<Record<string, string | string[] | undefined>> }
+    | undefined,
   key: string
 ): Promise<string | undefined> {
   const p = (await context?.params) ?? {};
@@ -71,7 +79,9 @@ export async function readParam(
   return Array.isArray(v) ? v[0] : v;
 }
 
-export async function readJsonBody(request: AuthenticatedRequest): Promise<unknown> {
+export async function readJsonBody(
+  request: AuthenticatedRequest
+): Promise<unknown> {
   try {
     return await request.json();
   } catch {
@@ -81,7 +91,7 @@ export async function readJsonBody(request: AuthenticatedRequest): Promise<unkno
 
 export function pickOutsideModePath(
   base: string,
-  mode: 'public' | 'protected' | undefined
+  mode: 'public' | 'protected' | '' | undefined
 ): string {
   const prefix = mode ? `/outside-${mode}` : '';
   return `${prefix}${base}`;

@@ -23,9 +23,7 @@ const NewOnboarding: React.FC = () => {
   const { user } = useUser();
   const contextOutsideMode: OutsideMode = user ? '' : 'protected';
 
-  const { data: currentApplicant, isLoading } = useCurrentApplicant('protected', {
-    enabled: !!urlStep,
-  });
+  const { data: currentApplicant, isLoading } = useCurrentApplicant('protected');
   const { data: company } = usePrimaryOnboardingCompany();
   const { data: venues } = useOnboardingVenues();
 
@@ -41,7 +39,7 @@ const NewOnboarding: React.FC = () => {
         <PageSelectorSection isAvailable={isAvailable} />
         <AlertsSection isAvailable={isAvailable} currentApplicant={currentApplicant} />
         <MessageSection isAvailable={isAvailable} />
-        {isAvailable && (!urlStep || !isLoading) && (
+        {isAvailable && !isLoading && (
           <FormContainer
             currentApplicant={currentApplicant}
             companyType={
@@ -51,7 +49,7 @@ const NewOnboarding: React.FC = () => {
             }
           />
         )}
-        {!!urlStep && isLoading && (
+        {isLoading && (
           <div className="mt-8">
             <Skeleton className="h-96 w-full" />
           </div>

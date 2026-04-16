@@ -97,7 +97,9 @@ const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, company
     }
   }, [redirectKey, urlStep, setActiveStep]);
 
-  if (activeStep?.applicantObject === 'overview')
+  if (!activeStep) return null;
+
+  if (activeStep.applicantObject === 'overview')
     return <OverviewSection companyType={companyType} currentApplicant={currentApplicant} />;
 
   const submitLabel =
