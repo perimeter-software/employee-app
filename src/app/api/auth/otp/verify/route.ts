@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
         }
       }
     } else {
-      // NEW: APPLICANT-ONLY FLOW
+      // APPLICANT-ONLY FLOW
       const { findApplicantAndTenantsByEmail } = await import(
         '@/domains/user/utils/mongo-user-utils'
       );
@@ -132,11 +132,64 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const { status, applicantStatus, acknowledgedDate } =
+        applicantData.applicantInfo;
+
+      // Block login if the applicant record status is not a recognized value
+      if (status !== 'Employee' && status !== 'Applicant') {
+        await redisService.del(otpKey);
+        return NextResponse.json(
+          {
+            error:
+              'Your account is not currently active. Please contact your supervisor.',
+          },
+          { status: 403 }
+        );
+      }
+
+      // For "Applicant" status, also validate applicantStatus is a known pipeline stage
+      if (status === 'Applicant') {
+        const ALL_APPLICANT_STAGES = ['New', 'ATC', 'Screened', 'Pre-Hire'];
+        if (!applicantStatus || !ALL_APPLICANT_STAGES.includes(applicantStatus)) {
+          await redisService.del(otpKey);
+          return NextResponse.json(
+            {
+              error:
+                'Your application is not in an eligible stage. Please contact your supervisor.',
+            },
+            { status: 403 }
+          );
+        }
+      }
+
       isApplicantOnly = true;
 
+      // Determine the redirect URL.
+      // For "Employee" status applicants: existing payroll flow.
+      // For "Applicant" status: determine sub-type using the default minStageToOnboarding
+      // ("Screened"). The client-side protection hook will enforce the actual company setting.
+      if (status === 'Applicant') {
+        const DEFAULT_MIN_STAGE = 'Screened';
+        const ALL_STAGES = ['New', 'ATC', 'Screened', 'Pre-Hire'];
+        const minStageIndex = ALL_STAGES.indexOf(DEFAULT_MIN_STAGE);
+        const stageIndex = ALL_STAGES.indexOf(applicantStatus ?? '');
+        const isAllowedForOnboarding = stageIndex >= minStageIndex && stageIndex !== -1;
+
+        if (isAllowedForOnboarding && !acknowledgedDate) {
+          // Ready for onboarding, hasn't completed it yet
+          redirectUrl = '/onboarding';
+        } else {
+          // Pre-onboarding stages OR post-onboarding (acknowledged) → applicant overview
+          redirectUrl = '/applicant/overview';
+        }
+      } else {
+        // status === 'Employee': payroll/paystub access only
+        redirectUrl = '/payroll';
+      }
+
       sessionData = {
-        userId: applicantData.applicantId, // Use applicantId as userId (applicant._id)
-        applicantId: applicantData.applicantId, // Same as userId for applicants
+        userId: applicantData.applicantId,
+        applicantId: applicantData.applicantId,
         email: normalizedEmail,
         name:
           applicantData.applicantInfo.firstName &&
@@ -148,16 +201,15 @@ export async function POST(request: NextRequest) {
         firstName: applicantData.applicantInfo.firstName,
         lastName: applicantData.applicantInfo.lastName,
         loginMethod: 'otp',
-        isLimitedAccess: true, // Applicants only get paycheck stub access
-        isApplicantOnly: true, // Flag to indicate applicant-only session
-        userType: 'applicant', // Indicates applicant-only
-        status: applicantData.applicantInfo.status, // e.g., "Employee"
-        employmentStatus: applicantData.applicantInfo.employmentStatus, // e.g., "Active"
+        isLimitedAccess: true,
+        isApplicantOnly: true,
+        userType: 'applicant',
+        status, // "Employee" | "Applicant"
+        employmentStatus: applicantData.applicantInfo.employmentStatus,
+        applicantStatus: applicantData.applicantInfo.applicantStatus,
+        acknowledgedDate: applicantData.applicantInfo.acknowledgedDate,
         createdAt: new Date().toISOString(),
       };
-
-      // Applicants always redirect to paycheck stubs
-      redirectUrl = '/payroll';
     }
 
     // Delete OTP after successful verification

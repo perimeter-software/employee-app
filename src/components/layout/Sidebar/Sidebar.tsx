@@ -19,11 +19,17 @@ import {
   CalendarDays,
   CalendarRange,
   MapPin,
+  Briefcase,
+  Star,
+  UserRound,
+  GraduationCap,
+  ScrollText,
 } from 'lucide-react';
 import { clsxm } from '@/lib/utils';
 import { Button } from '@/components/ui/Button/Button';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { useCurrentUser } from '@/domains/user/hooks/use-current-user';
+import { useApplicantSubType } from '@/lib/hooks/use-applicant-route-protection';
 
 interface NavigationItem {
   name: string;
@@ -41,14 +47,111 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
   const pathname = usePathname();
   const { data: primaryCompany } = usePrimaryCompany();
   const { data: currentUser } = useCurrentUser();
-  // Check if user has limited access (applicants or terminated/inactive employees)
+  const applicantSubType = useApplicantSubType();
+
   const isLimitedAccess = currentUser?.isLimitedAccess || false;
+  const isApplicantOnly = currentUser?.isApplicantOnly || false;
+  const applicantRecordStatus = currentUser?.status; // "Employee" | "Applicant"
 
   const navigation: NavigationItem[] = useMemo(() => {
-    // Check if user is a Client
     const isClient = currentUser?.userType === 'Client';
 
-    // For limited access users (applicants or terminated/inactive employees), only show Payroll
+    // ── Applicant-only sessions ───────────────────────────────────────────────
+    if (isApplicantOnly) {
+      // "Employee"-status applicants: paycheck stubs only (existing behaviour)
+      if (applicantRecordStatus === 'Employee' || applicantRecordStatus !== 'Applicant') {
+        return [
+          {
+            name: 'Payroll',
+            href: '/payroll',
+            icon: Receipt,
+            current:
+              pathname === '/payroll' ||
+              pathname.startsWith('/payroll') ||
+              pathname.startsWith('/paycheck-stubs'),
+          },
+        ];
+      }
+
+      // "Applicant"-status: sub-type determines which screens are visible
+      const inOnboardingPath =
+        pathname === '/onboarding' || pathname.startsWith('/onboarding/');
+
+      if (applicantSubType === 'onboarding') {
+        // Only Onboarding is accessible
+        return [
+          {
+            name: 'Onboarding',
+            href: '/onboarding',
+            icon: GraduationCap,
+            current: inOnboardingPath,
+          },
+        ];
+      }
+
+      // pre-onboarding and post-onboarding: all applicant screens
+      const applicantNav: NavigationItem[] = [
+        {
+          name: 'Overview',
+          href: '/applicant/overview',
+          icon: LayoutGrid,
+          current:
+            pathname === '/applicant/overview' ||
+            pathname.startsWith('/applicant/overview/'),
+        },
+        {
+          name: 'Contact Info',
+          href: '/applicant/contact-info',
+          icon: UserRound,
+          current:
+            pathname === '/applicant/contact-info' ||
+            pathname.startsWith('/applicant/contact-info/'),
+        },
+        {
+          name: 'Resume & Job History',
+          href: '/applicant/resume',
+          icon: ScrollText,
+          current:
+            pathname === '/applicant/resume' ||
+            pathname.startsWith('/applicant/resume/'),
+        },
+        {
+          name: 'Recommended Jobs',
+          href: '/applicant/recommended-jobs',
+          icon: Star,
+          current:
+            pathname === '/applicant/recommended-jobs' ||
+            pathname.startsWith('/applicant/recommended-jobs/'),
+        },
+        {
+          name: 'Job Applications',
+          href: '/applicant/job-applications',
+          icon: Briefcase,
+          current:
+            pathname === '/applicant/job-applications' ||
+            pathname.startsWith('/applicant/job-applications/'),
+        },
+        {
+          name: 'Additional Forms',
+          href: '/applicant/additional-forms',
+          icon: ClipboardList,
+          current:
+            pathname === '/applicant/additional-forms' ||
+            pathname.startsWith('/applicant/additional-forms/'),
+        },
+        // Onboarding is available for all, but limited steps for post-onboarding
+        {
+          name: 'Onboarding',
+          href: '/onboarding',
+          icon: GraduationCap,
+          current: inOnboardingPath,
+        },
+      ];
+
+      return applicantNav;
+    }
+
+    // ── Terminated/Inactive employees (non-applicant limited access) ──────────
     if (isLimitedAccess) {
       return [
         {
@@ -179,7 +282,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     }
 
     return baseNavigation;
-  }, [pathname, primaryCompany, isLimitedAccess, currentUser?.userType]);
+  }, [pathname, primaryCompany, isLimitedAccess, isApplicantOnly, applicantRecordStatus, applicantSubType, currentUser?.userType]);
 
   const handleLinkClick = () => {
     // Close mobile menu when a link is clicked

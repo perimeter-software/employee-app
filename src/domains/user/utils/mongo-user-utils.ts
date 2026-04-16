@@ -623,35 +623,39 @@ export async function findApplicantAndTenantsByEmail(
     email: string;
     status?: string;
     employmentStatus?: string;
+    applicantStatus?: string;
+    acknowledgedDate?: string | null;
   };
 } | null> {
   try {
     const normalizedEmail = email.toLowerCase().trim();
-    
+
     // Get all tenants
     const { mongoConn } = await import('@/lib/db/mongodb');
     const { dbTenant } = await mongoConn();
     const Tenants = dbTenant.collection<TenantDocument>('tenants');
     const tenants = await Tenants.find({}).toArray();
-    
+
     const foundTenants: TenantInfo[] = [];
-    
+
     let applicantInfo: {
       firstName?: string;
       lastName?: string;
       email: string;
       status?: string;
       employmentStatus?: string;
+      applicantStatus?: string;
+      acknowledgedDate?: string | null;
     } | null = null;
     let applicantId: string | null = null;
-    
+
     // Search each tenant's applicants collection
     for (const tenant of tenants) {
       if (!tenant.dbName) continue;
-      
+
       try {
         const { db } = await mongoConn(tenant.dbName);
-        
+
         // Find applicant by email
         const Applicants = db.collection('applicants');
         const applicant = await Applicants.findOne(
@@ -664,10 +668,12 @@ export async function findApplicantAndTenantsByEmail(
               lastName: 1,
               status: 1,
               employmentStatus: 1,
+              applicantStatus: 1,
+              acknowledged: 1,
             },
           }
         );
-        
+
         if (applicant) {
           // Store applicant info (should be same across tenants, but use first found)
           if (!applicantInfo) {
@@ -677,6 +683,10 @@ export async function findApplicantAndTenantsByEmail(
               email: applicant.email,
               status: applicant.status,
               employmentStatus: applicant.employmentStatus,
+              applicantStatus: applicant.applicantStatus,
+              acknowledgedDate: applicant.acknowledged?.date
+                ? new Date(applicant.acknowledged.date).toISOString()
+                : null,
             };
             applicantId = applicant._id.toString();
           }
