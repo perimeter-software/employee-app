@@ -370,7 +370,17 @@ export const NewApplicantContextProvider: React.FC<ProviderProps> = ({
       // show ONBOARDING_STEPS; otherwise show APPLICANT_STEPS.
       const showOnboarding =
         allowedStages.includes(applicantStatus ?? '') && !ackBool;
-      const base = showOnboarding ? ONBOARDING_STEPS : APPLICANT_STEPS;
+
+      let base = showOnboarding ? ONBOARDING_STEPS : APPLICANT_STEPS;
+      if (!showOnboarding) {
+        // "Complete!" is only meaningful as the final step of the onboarding wizard.
+        // "Onboarding" is only relevant once the applicant has acknowledged (post-onboarding).
+        base = base.filter((s) => {
+          if (s.applicantObject === APPLICANT_OBJECTS_ENUM.COMPLETE) return false;
+          if (s.applicantObject === APPLICANT_OBJECTS_ENUM.ONBOARDING && !ackBool) return false;
+          return true;
+        });
+      }
       dispatch({ type: 'SET_REGISTRATION_STEPS', data: stripEmployerI9(base) });
 
       dispatch({
