@@ -7,6 +7,8 @@ import {
   logActivity,
   createActivityLogData,
 } from '@/lib/services/activity-logger';
+import { processClockCoordinates } from '@/domains/event/utils/event-clock-geo';
+import type { ApplicantNote } from '@/domains/user/types/applicant.types';
 
 /**
  * POST /api/events/[eventId]/clock-in
@@ -16,8 +18,11 @@ import {
  * Mirrors the behaviour of processEventClockIn in the legacy API:
  *  - Validates venue StaffingPool membership (skipped for Member applicants)
  *  - Confirms the roster record exists and has not yet clocked in
- *  - Clock-in time = now  if now is between reportTime and eventEndTime,
- *                  else reportTime (scheduled time)
+ *  - Geofence check: if coordinates provided, validates against event/venue geofence;
+ *    blocks clock-in when outside and event.geoFence === 'Yes', otherwise flags the record
+ *  - Clock-in time = now  if current time is between reportTime and eventEndTime,
+ *                   reportTime if before reportTime,
+ *                   reportTime (admins) or now (employees) if after eventEndTime
  *  - Updates the full roster record entry via arrayFilters
  */
 async function clockInHandler(
@@ -141,15 +146,94 @@ async function clockInHandler(
       );
     }
 
-    // Compute actual clock-in time:
-    //   now  if current time is between reportTime and eventEndTime
-    //   else reportTime (use the scheduled start)
+    // Admins and Masters default to report time when clocking in after the event has ended
+    const userType = request.user?.userType;
+    const isAdmin = userType === 'Admin' || userType === 'Master';
+
+    // Compute actual clock-in time (mirrors legacy processEventClockIn logic)
     const reportTime = rosterRecord.reportTime
       ? new Date(rosterRecord.reportTime as string)
       : new Date(event.eventDate as string);
     const now = new Date();
+    const eventEndTime = event.eventEndTime
+      ? new Date(event.eventEndTime as string)
+      : null;
 
-    const clockInTime = now > reportTime ? now : reportTime;
+    let clockInTime: Date;
+    if (eventEndTime && now >= eventEndTime) {
+      // After event ended: admins default to report time, employees use current time
+      clockInTime = isAdmin ? reportTime : now;
+    } else if (now > reportTime) {
+      clockInTime = now;
+    } else {
+      clockInTime = reportTime;
+    }
+
+    console.log('[Event Clock-In] clock-in info', {
+      clockInTime,
+      eventEndTime: eventEndTime?.toISOString(),
+      reportTime,
+      now,
+    });
+
+    // Coordinates are mandatory when the event enforces a geofence
+    if (!coordinates && event.geoFence === 'Yes') {
+      return NextResponse.json(
+        {
+          error: 'coordinates-required',
+          message:
+            'This event requires location access to clock in. Please enable location services and try again.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Geofence check
+    const applicantNotes: ApplicantNote[] = [];
+    const [agentFirstName, ...agentLastParts] = (agent as string).split(' ');
+    const agentLastName = agentLastParts.join(' ');
+
+    if (coordinates) {
+      const withinGeoFence = await processClockCoordinates({
+        db,
+        coordinates,
+        direction: 'in',
+        event: event as Record<string, unknown>,
+        rosterRecord,
+        agentFirstName,
+        agentLastName,
+        createAgent: createAgent as string,
+        agent: agent as string,
+        applicantNotes,
+      });
+
+      if (withinGeoFence === false && event.geoFence === 'Yes') {
+        return NextResponse.json(
+          {
+            error: 'outside-geofence',
+            message:
+              'You are unable to clock in because you are outside of the geofence. Please move closer to the location and try again.',
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // If outside geofence (but not blocked), push a note to the applicant record
+    if (applicantNotes.length) {
+      await db.collection('applicants').updateOne(
+        { _id: applicantObjectId },
+        {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          $push: { notes: { $each: applicantNotes } } as any,
+          $set: {
+            modifiedDate: now,
+            modifiedAgent: createAgent,
+            modifiedAgentName: agent,
+          },
+        }
+      );
+    }
 
     // Build the updated roster record (full replacement, matching legacy API)
     const updatedRecord = {

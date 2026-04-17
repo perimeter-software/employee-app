@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { baseInstance } from '@/lib/api/instance';
 import type { GignologyEvent } from '../types';
+import type { ClockInCoordinates } from '@/domains/job/types/location.types';
 
 export interface EventListPage {
   data: GignologyEvent[];
@@ -28,6 +29,8 @@ export interface EventClockPayload {
   agent: string;
   /** _id of the acting user */
   createAgent: string;
+  /** GPS coordinates collected at clock-in time */
+  coordinates?: ClockInCoordinates | null;
 }
 
 export type EnrollmentType = 'Not Roster' | 'Roster' | 'Waitlist' | 'Request';
@@ -147,6 +150,7 @@ export class EventApiService {
         agent: payload.agent,
         createAgent: payload.createAgent,
         timeIn: new Date().toISOString(),
+        ...(payload.coordinates && { coordinates: payload.coordinates }),
       }
     );
 
@@ -329,6 +333,7 @@ export class EventApiService {
         agent: payload.agent,
         createAgent: payload.createAgent,
         timeOut: new Date().toISOString(),
+        ...(payload.coordinates && { coordinates: payload.coordinates }),
       }
     );
 
