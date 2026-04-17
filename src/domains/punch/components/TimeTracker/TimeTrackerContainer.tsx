@@ -118,7 +118,7 @@ export const TimeTrackerContainer = () => {
   }, []);
 
   const { data: rosterCheckEvents } = useRosterEvents({
-    applicantId: userData?.applicantId || '',
+    applicantId: isVenueCompany ? (userData?.applicantId || '') : '',
     startDate: rosterCheckRange.startDate,
     endDate: rosterCheckRange.endDate,
   });
