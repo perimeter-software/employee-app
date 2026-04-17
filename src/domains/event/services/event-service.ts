@@ -237,13 +237,10 @@ export class EventApiService {
   }
 
   static async checkEnrollment(eventId: string): Promise<EnrollmentCheckResult> {
-    const res = await baseInstance.get<EnrollmentCheckResult>(
-      EventApiService.ENDPOINTS.ENROLLMENT(eventId)
-    );
-    if (!res.success || res.data === undefined) {
-      throw new Error(res.message || 'Failed to load enrollment');
-    }
-    return res.data;
+    // The external API returns the enrollment object at the top level (not wrapped
+    // in { data }), so we return the raw response body directly.
+    const res = await baseInstance.get<never>(EventApiService.ENDPOINTS.ENROLLMENT(eventId));
+    return res as unknown as EnrollmentCheckResult;
   }
 
   static async submitEnrollment(
@@ -251,14 +248,12 @@ export class EventApiService {
     requestType: EnrollmentType,
     positionName?: string
   ): Promise<EnrollmentCheckResult> {
-    const res = await baseInstance.put<EnrollmentCheckResult>(
+    // Same as checkEnrollment: external API returns the object at the top level.
+    const res = await baseInstance.put<never>(
       EventApiService.ENDPOINTS.ENROLLMENT(eventId),
       { requestType, ...(positionName && { positionName }) }
     );
-    if (!res.success || res.data === undefined) {
-      throw new Error(res.message || 'Enrollment failed');
-    }
-    return res.data;
+    return res as unknown as EnrollmentCheckResult;
   }
 
   static async submitEventCallOff(
