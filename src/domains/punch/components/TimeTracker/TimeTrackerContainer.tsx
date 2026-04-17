@@ -4,6 +4,8 @@ import { useUser } from '@auth0/nextjs-auth0/client';
 import { useUserApplicantJob } from '@/domains/job/hooks';
 import { useAllOpenPunches, useFindPunches } from '@/domains/punch/hooks';
 import { useCurrentUser } from '@/domains/user';
+import { useRosterEvents } from '@/domains/event/hooks';
+import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { ErrorState, LoadingState } from './States';
 import { TimerCard } from './TimerCard';
 import { ShiftsSection } from './ShiftsSection';
@@ -11,6 +13,10 @@ import { EmployeeTimeAttendanceTable } from './EmployeeTimeAttendanceTable';
 import { useMemo, useState, useEffect } from 'react';
 import { useCompanyWorkWeek } from '@/domains/shared/hooks/use-company-work-week';
 import { startOfWeek, endOfWeek } from 'date-fns';
+import {
+  getUserShiftForToday,
+  resolveShiftDates,
+} from '@/domains/punch/utils/shift-job-utils';
 
 export const TimeTrackerContainer = () => {
   const { user: auth0User, isLoading: auth0Loading } = useUser();
@@ -20,6 +26,10 @@ export const TimeTrackerContainer = () => {
 
   // Get current user data to check userType (this is already cached by Header component)
   const { data: currentUser, isLoading: currentUserLoading } = useCurrentUser();
+
+  // Get primary company to check companyType
+  const { data: primaryCompany } = usePrimaryCompany();
+  const isVenueCompany = primaryCompany?.companyType === 'Venue';
 
   // Check if user is Client - userType comes from API, not Auth0
   const isClient = currentUser?.userType === 'Client';
@@ -33,6 +43,10 @@ export const TimeTrackerContainer = () => {
   } = useUserApplicantJob(auth0User?.email || '', {
     enabled: shouldFetchUserData,
   });
+
+  // True when the user is assigned to at least one shift job (the pipeline already
+  // filters to shiftJob === 'Yes' / true, so any entry in jobs[] counts).
+  const hasShiftJobs = !!userData?.jobs?.length;
 
   // Track the current view type to adjust date range
   const [currentViewType, setCurrentViewType] = useState<'table' | 'calendar'>(
@@ -96,8 +110,94 @@ export const TimeTrackerContainer = () => {
     return ids;
   }, [userData?.jobs]);
 
+  // Check if user has any rostered events — start from yesterday to catch events that began yesterday
+  const rosterCheckRange = useMemo(() => {
+    const start = new Date();
+    start.setDate(start.getDate() - 1);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setMonth(end.getMonth() + 6);
+    end.setHours(23, 59, 59, 999);
+    return { startDate: start.toISOString(), endDate: end.toISOString() };
+  }, []);
+
+  const { data: rosterCheckEvents } = useRosterEvents({
+    applicantId: isVenueCompany ? userData?.applicantId || '' : '',
+    startDate: rosterCheckRange.startDate,
+    endDate: rosterCheckRange.endDate,
+  });
+
+  const hasRosterEvents = useMemo(() => {
+    if (!isVenueCompany) return false;
+    if (!rosterCheckEvents?.length || !userData?.applicantId) return false;
+    return rosterCheckEvents.some((event) =>
+      event.applicants?.some(
+        (a) => a.id === userData.applicantId && a.status === 'Roster'
+      )
+    );
+  }, [isVenueCompany, rosterCheckEvents, userData?.applicantId]);
+
   // Still need open punches for the timer card (only enabled for non-Client users)
   const { data: openPunches } = useAllOpenPunches(userData?._id || '');
+
+  // True when there is an active job punch whose scheduled shift has NOT yet ended.
+  // Once the shift ends the user is forgiven and can clock in to something else.
+  const isBlockedByJobPunch = useMemo(() => {
+    if (!openPunches?.length || !userData) return false;
+    const openPunch = openPunches.find((p) => !p.timeOut);
+    if (!openPunch) return false;
+
+    // Forgiveness: punch older than 24 h is considered stale
+    const punchAge = Date.now() - new Date(openPunch.timeIn).getTime();
+    if (punchAge > 24 * 60 * 60 * 1000) return false;
+
+    const openJob = userData.jobs?.find((j) => j._id === openPunch.jobId);
+    if (!openJob) return true; // can't determine end time → conservative
+
+    const openShift = openJob.shifts?.find(
+      (s) => s.slug === openPunch.shiftSlug
+    );
+    if (!openShift) return true; // can't determine end time → conservative
+
+    const now = new Date().toISOString();
+    const { start, end, isOvernightFromPreviousDay } = getUserShiftForToday(
+      openJob,
+      userData.applicantId,
+      now,
+      openShift
+    );
+    if (!start || !end) return true; // can't determine end time → conservative
+
+    const { shiftEndTime } = resolveShiftDates(
+      start,
+      end,
+      now,
+      isOvernightFromPreviousDay
+    );
+    // Forgiveness: shift has already ended
+    return new Date() <= shiftEndTime;
+  }, [openPunches, userData]);
+
+  // True when the user is clocked into an event that has NOT yet ended.
+  const hasActiveEventClockIn = useMemo(() => {
+    if (!isVenueCompany || !rosterCheckEvents?.length || !userData?.applicantId)
+      return false;
+    const now = new Date();
+    return rosterCheckEvents.some((event) => {
+      const applicantEntry = event.applicants?.find(
+        (a) => a.id === userData.applicantId && a.status === 'Roster'
+      );
+      if (!applicantEntry?.timeIn || applicantEntry?.timeOut) return false;
+      // Forgiveness: clock-in older than 24 h
+      const punchAge =
+        now.getTime() - new Date(applicantEntry.timeIn).getTime();
+      if (punchAge > 24 * 60 * 60 * 1000) return false;
+      // Forgiveness: event has ended
+      if (event.eventEndTime && now > new Date(event.eventEndTime))
+        return false;
+      return true;
+    });
+  }, [isVenueCompany, rosterCheckEvents, userData?.applicantId]);
 
   // Fetch punches based on current date range (only enabled for non-Client users)
   const { data: allPunches, isLoading: punchesLoading } = useFindPunches({
@@ -132,7 +232,9 @@ export const TimeTrackerContainer = () => {
     const hideEmployeesDetails = !!currentUser?.hideEmployeesDetails;
     return (
       <div className="max-w-6xl mx-auto space-y-6">
-        <EmployeeTimeAttendanceTable hideEmployeesDetails={hideEmployeesDetails} />
+        <EmployeeTimeAttendanceTable
+          hideEmployeesDetails={hideEmployeesDetails}
+        />
       </div>
     );
   }
@@ -153,7 +255,14 @@ export const TimeTrackerContainer = () => {
   // For regular users, show the normal time tracker with TimerCard and ShiftsSection
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <TimerCard userData={userData} openPunches={openPunches} />
+      <TimerCard
+        userData={userData}
+        openPunches={openPunches}
+        hasRosterEvents={hasRosterEvents}
+        hasShiftJobs={hasShiftJobs}
+        isBlockedByJobPunch={isBlockedByJobPunch}
+        hasActiveEventClockIn={hasActiveEventClockIn}
+      />
 
       <ShiftsSection
         userData={userData}
@@ -164,6 +273,10 @@ export const TimeTrackerContainer = () => {
         onViewTypeChange={handleViewTypeChange}
         onDateNavigation={handleDateNavigation}
         currentViewType={currentViewType}
+        hasRosterEvents={hasRosterEvents}
+        hasShiftJobs={hasShiftJobs}
+        isBlockedByJobPunch={isBlockedByJobPunch}
+        hasActiveEventClockIn={hasActiveEventClockIn}
       />
     </div>
   );

@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
+set -e
 
-yarn install 
+echo "[YARN HOOK] Installing dependencies"
+yarn install --frozen-lockfile

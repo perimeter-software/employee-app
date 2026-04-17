@@ -1,4 +1,4 @@
-import { ApiResponse } from "@/lib/api";
+import { ApiResponse } from '@/lib/api';
 
 export type TenantInfo = {
   _id: string;
@@ -10,6 +10,7 @@ export type TenantInfo = {
   tenantLogo?: string;
   dbName?: string;
   peoIntegration?: string;
+  clientDomain?: string;
 };
 
 export type TenantDocument = {

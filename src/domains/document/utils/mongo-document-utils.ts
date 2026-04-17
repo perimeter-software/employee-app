@@ -6,6 +6,11 @@ import {
   type InsertOneResult,
 } from 'mongodb';
 import { Document, MongoAttachment } from '../types';
+import { DEFAULT_APPLICANT_PROJECTION } from '@/lib/db';
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 // Helper function to convert MongoAttachment to Document
 function attachmentToDocument(
@@ -42,9 +47,12 @@ export async function getAllDocuments(
   }
 
   try {
-    const applicantDoc = await db.collection('applicants').findOne({
-      _id: new ObjectId(applicantId),
-    });
+    const applicantDoc = await db
+      .collection('applicants')
+      .findOne(
+        { _id: new ObjectId(applicantId) },
+        { projection: DEFAULT_APPLICANT_PROJECTION }
+      );
 
     console.log('🔍 Query result:', applicantDoc ? 'Found' : 'Not found');
     console.log('🔍 Applicant result:', applicantDoc);
@@ -83,11 +91,16 @@ export async function findDocumentById(
   documentId: string
 ): Promise<Document | null> {
   try {
-    const documentDoc = await db.collection('applicants').findOne({
-      _id: new ObjectId(documentId),
-      status: { $ne: 'Deleted' },
-      isActive: true,
-    });
+    const documentDoc = await db
+      .collection('applicants')
+      .findOne(
+        {
+          _id: new ObjectId(documentId),
+          status: { $ne: 'Deleted' },
+          isActive: true,
+        },
+        { projection: DEFAULT_APPLICANT_PROJECTION }
+      );
 
     if (!documentDoc) {
       return null;
@@ -198,6 +211,7 @@ export async function searchDocuments(
   query: string
 ): Promise<Document[]> {
   let documents: Document[] = [];
+  const escapedQuery = escapeRegex(query);
 
   try {
     const documentDocs = await db
@@ -207,11 +221,11 @@ export async function searchDocuments(
           $match: {
             status: { $ne: 'Deleted' },
             $or: [
-              { name: { $regex: query, $options: 'i' } },
-              { description: { $regex: query, $options: 'i' } },
-              { tags: { $in: [new RegExp(query, 'i')] } },
-              { category: { $regex: query, $options: 'i' } },
-              { company: { $regex: query, $options: 'i' } },
+              { name: { $regex: escapedQuery, $options: 'i' } },
+              { description: { $regex: escapedQuery, $options: 'i' } },
+              { tags: { $in: [new RegExp(escapedQuery, 'i')] } },
+              { category: { $regex: escapedQuery, $options: 'i' } },
+              { company: { $regex: escapedQuery, $options: 'i' } },
             ],
           },
         },

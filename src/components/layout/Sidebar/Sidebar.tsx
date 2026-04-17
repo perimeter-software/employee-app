@@ -14,8 +14,11 @@ import {
   CalendarClock,
   MessageCircleQuestion,
   Receipt,
+  ClipboardList,
   X,
   CalendarDays,
+  CalendarRange,
+  MapPin,
 } from 'lucide-react';
 import { clsxm } from '@/lib/utils';
 import { Button } from '@/components/ui/Button/Button';
@@ -45,15 +48,19 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     // Check if user is a Client
     const isClient = currentUser?.userType === 'Client';
 
-    // For limited access users (applicants or terminated/inactive employees), only show Paycheck Stubs
+    const isPrism = primaryCompany?.peoIntegration === 'Prism';
+
+    // For limited access users (applicants or terminated/inactive employees), only show Payroll
     if (isLimitedAccess) {
+      if (!isPrism) return [];
       return [
         {
-          name: 'Paycheck Stubs',
-          href: '/paycheck-stubs',
+          name: 'Payroll',
+          href: '/payroll',
           icon: Receipt,
           current:
-            pathname === '/paycheck-stubs' ||
+            pathname === '/payroll' ||
+            pathname.startsWith('/payroll') ||
             pathname.startsWith('/paycheck-stubs'),
         },
       ];
@@ -91,6 +98,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     }
 
     // Employee shift requests (non-client users)
+    const isVenueCompany = primaryCompany?.companyType === 'Venue';
+
     if (!isClient) {
       baseNavigation.push({
         name: 'Shift Requests',
@@ -100,30 +109,55 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
           pathname === '/shift-requests' ||
           pathname.startsWith('/shift-requests'),
       });
+
+      if (isVenueCompany) {
+        baseNavigation.push({
+          name: 'Venues',
+          href: '/venue-requests',
+          icon: MapPin,
+          current:
+            pathname === '/venue-requests' ||
+            pathname.startsWith('/venue-requests'),
+        });
+
+        baseNavigation.push({
+          name: 'Events',
+          href: '/events',
+          icon: CalendarRange,
+          current: pathname === '/events' || pathname.startsWith('/events'),
+        });
+      }
     }
 
-    // Conditionally add Paycheck Stubs link for Prism companies (exclude for Client users)
-    const isPrism = primaryCompany?.peoIntegration === 'Prism';
-    if (isPrism && !isClient) {
+    // Add Payroll link only for non-Client users on Prism tenants
+    if (!isClient && isPrism) {
       baseNavigation.push({
-        name: 'Paycheck Stubs',
-        href: '/paycheck-stubs',
+        name: 'Payroll',
+        href: '/payroll',
         icon: Receipt,
         current:
-          pathname === '/paycheck-stubs' ||
+          pathname === '/payroll' ||
+          pathname.startsWith('/payroll') ||
           pathname.startsWith('/paycheck-stubs'),
       });
     }
 
-    // Add Invoices link for Client users only
+    // Add Invoices and Forms links for Client users only
     if (isClient) {
-      baseNavigation.push({
-        name: 'Invoices',
-        href: '/invoices',
-        icon: FileSpreadsheet,
-        current:
-          pathname === '/invoices' || pathname.startsWith('/invoices'),
-      });
+      baseNavigation.push(
+        {
+          name: 'Invoices',
+          href: '/invoices',
+          icon: FileSpreadsheet,
+          current: pathname === '/invoices' || pathname.startsWith('/invoices'),
+        },
+        {
+          name: 'Forms',
+          href: '/forms',
+          icon: ClipboardList,
+          current: pathname === '/forms' || pathname.startsWith('/forms'),
+        }
+      );
     }
 
     // Add remaining navigation items (exclude for Client users)
@@ -134,13 +168,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
           href: '/conversation',
           icon: MessageCircleQuestion,
           current:
-            pathname === '/conversation' || pathname.startsWith('/conversation'),
+            pathname === '/conversation' ||
+            pathname.startsWith('/conversation'),
         },
         {
           name: 'Documents',
           href: '/documents',
           icon: FileText,
-          current: pathname === '/documents' || pathname.startsWith('/documents'),
+          current:
+            pathname === '/documents' || pathname.startsWith('/documents'),
         }
       );
     }

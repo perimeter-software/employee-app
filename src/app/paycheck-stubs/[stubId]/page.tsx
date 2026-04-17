@@ -1,8 +1,8 @@
 'use client';
 
 import { NextPage } from 'next';
-import { useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import {
   AlertCircle,
@@ -36,11 +36,13 @@ import { clsxm } from '@/lib/utils';
 const PaycheckStubViewPage: NextPage = () => {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const stubId = params?.stubId as string;
 
   const [pdfLoadError, setPdfLoadError] = useState(false);
   const [isPdfLoading, setIsPdfLoading] = useState(true);
   const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
+  const hasLoggedView = useRef(false);
 
   // Auth check
   const {
@@ -105,7 +107,7 @@ const PaycheckStubViewPage: NextPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paystub, applicantId, stubId, presignedUrl]);
 
-  // Update view status when PDF is viewed
+  // Update view status when PDF is viewed (only for unviewed stubs)
   useEffect(() => {
     if (
       paystub &&
@@ -121,7 +123,92 @@ const PaycheckStubViewPage: NextPage = () => {
         viewStatus: 'viewed',
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paystub, isApplicantViewing, applicantId, isPdfLoading, presignedUrl]);
+
+  // Log paycheck stub PDF viewed activity every time PDF is successfully loaded
+  useEffect(() => {
+    if (
+      paystub &&
+      isApplicantViewing &&
+      applicantId &&
+      !isPdfLoading &&
+      presignedUrl &&
+      !hasLoggedView.current
+    ) {
+      hasLoggedView.current = true;
+
+      // Log paycheck stub PDF viewed activity
+      const logPaycheckStubView = async () => {
+        try {
+          const agentName =
+            currentUser?.name ||
+            `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() ||
+            currentUser?.email ||
+            'Employee';
+
+          console.log('📝 Logging paycheck stub view activity:', {
+            stubId: paystub._id,
+            applicantId: applicantId,
+            userId: currentUser?._id,
+            agent: agentName,
+          });
+
+          const response = await fetch('/api/activities/log', {
+            method: 'POST',
+            credentials: 'include', // Ensure cookies are sent
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              action: 'Paycheck Stub PDF Viewed',
+              description: `${agentName} viewed paycheck stub PDF: ${paystub.fileName}`,
+              applicantId: applicantId,
+              userId: currentUser?._id,
+              agent: agentName,
+              email: currentUser?.email,
+              details: {
+                stubId: paystub._id,
+                fileName: paystub.fileName,
+                batchId: paystub.batchId,
+                voucherNumber: paystub.voucherNumber,
+                checkDate: paystub.checkDate,
+                uploadedAt: paystub.uploadedAt,
+                viewStatus: paystub.viewStatus,
+              },
+            }),
+          });
+
+          const result = await response.json();
+
+          if (response.ok && result.success) {
+            console.log(
+              '✅ Paycheck stub view activity logged successfully:',
+              result
+            );
+          } else {
+            console.error(
+              '❌ Failed to log paycheck stub view activity:',
+              result
+            );
+          }
+        } catch (error) {
+          // Don't fail view if logging fails
+          console.error('❌ Error logging paycheck stub view activity:', error);
+        }
+      };
+
+      logPaycheckStubView();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    paystub,
+    isApplicantViewing,
+    applicantId,
+    isPdfLoading,
+    presignedUrl,
+    currentUser,
+  ]);
 
   const handleDownload = useCallback(() => {
     if (presignedUrl) {
@@ -130,8 +217,15 @@ const PaycheckStubViewPage: NextPage = () => {
   }, [presignedUrl]);
 
   const handleBack = useCallback(() => {
-    router.push('/paycheck-stubs');
-  }, [router]);
+    const from = searchParams.get('from');
+    const view =
+      from && ['table', 'card', 'paystubs'].includes(from) ? from : 'paystubs';
+    const params = new URLSearchParams({ view });
+    if (searchParams.get('detail') === 'true') params.set('detail', 'true');
+    const modal = searchParams.get('modal');
+    if (modal) params.set('modal', modal);
+    router.push(`/payroll?${params.toString()}`);
+  }, [router, searchParams]);
 
   const handlePdfLoad = useCallback(() => {
     setIsPdfLoading(false);
@@ -170,9 +264,9 @@ const PaycheckStubViewPage: NextPage = () => {
   // Check if peoIntegration is Prism
   const isPrism = primaryCompany?.peoIntegration === 'Prism';
 
-  // If not Prism, redirect to paycheck stubs page
+  // If not Prism, redirect to payroll page
   if (!isPrism) {
-    router.push('/paycheck-stubs');
+    router.push('/payroll');
     return null;
   }
 

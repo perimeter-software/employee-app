@@ -38,7 +38,10 @@ export async function GET() {
       redis: { status: 'unhealthy' },
       auth: { status: 'unhealthy', configured: false },
     },
-    environment: process.env.NODE_ENV || 'development',
+    environment:
+      process.env.NEXT_PUBLIC_APP_ENV === 'development'
+        ? 'development'
+        : process.env.NODE_ENV || 'development',
   };
 
   // Check database connection

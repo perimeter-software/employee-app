@@ -1,4 +1,5 @@
 'use client';
+import DOMPurify from 'dompurify';
 
 import React, { useMemo } from 'react';
 import { formatDistanceToNow } from 'date-fns';
@@ -89,7 +90,7 @@ export const NotificationDetailModal: React.FC<
 
   // Helper function to safely render HTML content
   const createMarkup = (html: string) => {
-    return { __html: html };
+    return { __html: DOMPurify.sanitize(html) };
   };
 
   // Use body field directly since that's where the content is

@@ -47,3 +47,15 @@ export function useTimecardPayrollStatus(timecardId: string | undefined) {
     },
   });
 }
+
+/**
+ * Hook to get payroll history for the authenticated employee
+ */
+export function useEmployeePayrollHistory(enabled = true) {
+  return useQuery({
+    queryKey: payrollQueryKeys.employeeHistory(),
+    queryFn: () => PayrollService.getEmployeePayrollHistory(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled,
+  });
+}

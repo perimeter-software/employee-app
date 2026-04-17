@@ -27,6 +27,7 @@ export type GeoCoordinates = {
   coordinates: Coordinates;
   geoFenceRadius: number;
   type: string;
+  polygon?: number[][];
 };
 
 export type JobLocation = {
