@@ -300,34 +300,6 @@ export function ShiftsTable({
     [callOffConfirmRow, callOffMutation]
   );
 
-  const callOffMutation = useCallOffShift(
-    userData._id || userData.applicantId || ''
-  );
-  const [callOffConfirmRow, setCallOffConfirmRow] =
-    useState<ShiftRowData | null>(null);
-
-  const confirmCallOff = useCallback(
-    (reason: string) => {
-      if (
-        !callOffConfirmRow?.dateYyyyMmDd ||
-        !callOffConfirmRow?.dayKey ||
-        !reason.trim()
-      )
-        return;
-      callOffMutation.mutate(
-        {
-          jobId: callOffConfirmRow.jobId,
-          shiftSlug: callOffConfirmRow.shift.slug,
-          date: callOffConfirmRow.dateYyyyMmDd,
-          dayKey: callOffConfirmRow.dayKey,
-          reason: reason.trim(),
-        },
-        { onSettled: () => setCallOffConfirmRow(null) }
-      );
-    },
-    [callOffConfirmRow, callOffMutation]
-  );
-
   // Get job IDs for the user
   const jobIds = useMemo(() => {
     return userData?.jobs?.map((job) => job._id) || [];
