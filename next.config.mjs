@@ -50,6 +50,11 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'pureblue-gignology',
       },
+      {
+        // Covers all S3 virtual-hosted URLs: bucket.s3.region.amazonaws.com
+        protocol: 'https',
+        hostname: '**.amazonaws.com',
+      },
     ],
   },
 
