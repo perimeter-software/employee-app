@@ -15,10 +15,7 @@ export async function POST(request: NextRequest) {
     const { email, code, returnTo } = body;
 
     if (!email || typeof email !== 'string') {
-      return NextResponse.json(
-        { error: 'Email is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
     if (!code || typeof code !== 'string') {
@@ -60,10 +57,14 @@ export async function POST(request: NextRequest) {
     // Verify code
     if (otpData.code !== code) {
       // Increment attempts
-      await redisService.set(otpKey, {
-        ...otpData,
-        attempts: otpData.attempts + 1,
-      }, 600);
+      await redisService.set(
+        otpKey,
+        {
+          ...otpData,
+          attempts: otpData.attempts + 1,
+        },
+        600
+      );
 
       return NextResponse.json(
         { error: 'Invalid code. Please try again.' },
@@ -82,15 +83,20 @@ export async function POST(request: NextRequest) {
     if (user && user._id) {
       // EXISTING USER FLOW
       const employmentStatus = user.status || '';
-      const isTerminatedOrInactive = employmentStatus === 'Terminated' || employmentStatus === 'Inactive';
-      
+      const isTerminatedOrInactive =
+        employmentStatus === 'Terminated' || employmentStatus === 'Inactive';
+
       sessionData = {
         userId: user._id.toString(),
         applicantId: user.applicantId, // May be null
         email: user.emailAddress || normalizedEmail,
-        name: user.firstName && user.lastName 
-          ? `${user.firstName} ${user.lastName}`.trim()
-          : user.firstName || user.lastName || user.emailAddress || normalizedEmail,
+        name:
+          user.firstName && user.lastName
+            ? `${user.firstName} ${user.lastName}`.trim()
+            : user.firstName ||
+              user.lastName ||
+              user.emailAddress ||
+              normalizedEmail,
         firstName: user.firstName,
         lastName: user.lastName,
         picture: user.picture,
@@ -102,7 +108,7 @@ export async function POST(request: NextRequest) {
       };
 
       if (isTerminatedOrInactive) {
-        redirectUrl = '/paycheck-stubs';
+        redirectUrl = '/payroll';
       } else if (returnTo) {
         const decoded = decodeURIComponent(returnTo);
         // Only allow relative paths to prevent open redirect
@@ -112,8 +118,11 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // NEW: APPLICANT-ONLY FLOW
-      const { findApplicantAndTenantsByEmail } = await import('@/domains/user/utils/mongo-user-utils');
-      const applicantData = await findApplicantAndTenantsByEmail(normalizedEmail);
+      const { findApplicantAndTenantsByEmail } = await import(
+        '@/domains/user/utils/mongo-user-utils'
+      );
+      const applicantData =
+        await findApplicantAndTenantsByEmail(normalizedEmail);
 
       if (!applicantData || applicantData.tenants.length === 0) {
         await redisService.del(otpKey);
@@ -124,14 +133,18 @@ export async function POST(request: NextRequest) {
       }
 
       isApplicantOnly = true;
-      
+
       sessionData = {
         userId: applicantData.applicantId, // Use applicantId as userId (applicant._id)
         applicantId: applicantData.applicantId, // Same as userId for applicants
         email: normalizedEmail,
-        name: applicantData.applicantInfo.firstName && applicantData.applicantInfo.lastName
-          ? `${applicantData.applicantInfo.firstName} ${applicantData.applicantInfo.lastName}`.trim()
-          : applicantData.applicantInfo.firstName || applicantData.applicantInfo.lastName || normalizedEmail,
+        name:
+          applicantData.applicantInfo.firstName &&
+          applicantData.applicantInfo.lastName
+            ? `${applicantData.applicantInfo.firstName} ${applicantData.applicantInfo.lastName}`.trim()
+            : applicantData.applicantInfo.firstName ||
+              applicantData.applicantInfo.lastName ||
+              normalizedEmail,
         firstName: applicantData.applicantInfo.firstName,
         lastName: applicantData.applicantInfo.lastName,
         loginMethod: 'otp',
@@ -144,7 +157,7 @@ export async function POST(request: NextRequest) {
       };
 
       // Applicants always redirect to paycheck stubs
-      redirectUrl = '/paycheck-stubs';
+      redirectUrl = '/payroll';
     }
 
     // Delete OTP after successful verification
@@ -152,14 +165,20 @@ export async function POST(request: NextRequest) {
 
     // Create OTP session in Redis (24 hours)
     const sessionId = `otp_session_${crypto.randomUUID()}`;
-    await redisService.set(`otp_session:${sessionId}`, sessionData, 24 * 60 * 60);
+    await redisService.set(
+      `otp_session:${sessionId}`,
+      sessionData,
+      24 * 60 * 60
+    );
 
     // Note: Tenant data caching is handled in /api/current-user for consistency
     // This ensures fresh cache on every page load, same as regular users
 
     // Log OTP login activity
     try {
-      const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
+      const { logActivity, createActivityLogData } = await import(
+        '@/lib/services/activity-logger'
+      );
       const tenantData = await redisService.getTenantData(normalizedEmail);
       const tenantDbName = tenantData?.tenant?.dbName;
       if (!tenantDbName) {
@@ -167,41 +186,56 @@ export async function POST(request: NextRequest) {
           `Skipping OTP login activity log: tenant dbName unavailable for ${normalizedEmail}`
         );
       } else {
-      const { db } = await mongoConn(tenantDbName);
-      const { resolveActivityIdentityByEmail } = await import('@/lib/services/activity-identity');
-      const resolvedIdentity = await resolveActivityIdentityByEmail(db, normalizedEmail);
-      const userId = resolvedIdentity.userId || (sessionData.userId ? String(sessionData.userId) : undefined);
-      const applicantId = resolvedIdentity.applicantId || (sessionData.applicantId ? String(sessionData.applicantId) : undefined);
-      if (!userId || !applicantId) {
-        console.warn(
-          `Skipping OTP login activity log: unresolved DB IDs for ${normalizedEmail}`
+        const { db } = await mongoConn(tenantDbName);
+        const { resolveActivityIdentityByEmail } = await import(
+          '@/lib/services/activity-identity'
         );
-      } else {
-        const agentName: string = sessionData.firstName && sessionData.lastName 
-          ? `${sessionData.firstName} ${sessionData.lastName}`.trim()
-          : (sessionData.firstName || sessionData.lastName || sessionData.email || normalizedEmail) as string;
-        
-        await logActivity(
+        const resolvedIdentity = await resolveActivityIdentityByEmail(
           db,
-          createActivityLogData(
-            'OTP Login',
-            `${agentName} logged in using OTP (Email: ${normalizedEmail})${isApplicantOnly ? ' [Applicant-Only]' : ''}`,
-            {
-              applicantId,
-              userId,
-              agent: agentName,
-              email: normalizedEmail,
-              details: {
-                loginMethod: 'OTP',
-                email: normalizedEmail,
-                employmentStatus: sessionData.employmentStatus,
-                isLimitedAccess: sessionData.isLimitedAccess,
-                isApplicantOnly: isApplicantOnly,
-              },
-            }
-          )
+          normalizedEmail
         );
-      }
+        const userId =
+          resolvedIdentity.userId ||
+          (sessionData.userId ? String(sessionData.userId) : undefined);
+        const applicantId =
+          resolvedIdentity.applicantId ||
+          (sessionData.applicantId
+            ? String(sessionData.applicantId)
+            : undefined);
+        if (!userId || !applicantId) {
+          console.warn(
+            `Skipping OTP login activity log: unresolved DB IDs for ${normalizedEmail}`
+          );
+        } else {
+          const agentName: string =
+            sessionData.firstName && sessionData.lastName
+              ? `${sessionData.firstName} ${sessionData.lastName}`.trim()
+              : ((sessionData.firstName ||
+                  sessionData.lastName ||
+                  sessionData.email ||
+                  normalizedEmail) as string);
+
+          await logActivity(
+            db,
+            createActivityLogData(
+              'OTP Login',
+              `${agentName} logged in using OTP (Email: ${normalizedEmail})${isApplicantOnly ? ' [Applicant-Only]' : ''}`,
+              {
+                applicantId,
+                userId,
+                agent: agentName,
+                email: normalizedEmail,
+                details: {
+                  loginMethod: 'OTP',
+                  email: normalizedEmail,
+                  employmentStatus: sessionData.employmentStatus,
+                  isLimitedAccess: sessionData.isLimitedAccess,
+                  isApplicantOnly: isApplicantOnly,
+                },
+              }
+            )
+          );
+        }
       }
     } catch (error) {
       // Don't fail login if logging fails
@@ -242,4 +276,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

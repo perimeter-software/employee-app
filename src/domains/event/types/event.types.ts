@@ -13,6 +13,7 @@ export interface EventAttachment {
 export interface EventApplicant {
   id: string;
   status: string;
+  primaryPosition?: string;
   note?: string;
   /** Actual clock-in time (null/undefined until the employee clocks in) */
   timeIn?: string | null;
@@ -66,4 +67,12 @@ export interface GignologyEvent {
   favorite?: boolean;
   isEventAdmin?: boolean;
   rosterStatus?: string;
+  /** Pending call-off row id in `swap-requests` for the current user, if any */
+  pendingCallOffRequestId?: string | null;
+  /** Pending “let someone cover” row id for the current user as requester */
+  pendingCoverRequestId?: string | null;
+  /** Invited peer email when `pendingCoverRequestId` is set */
+  pendingCoverPeerEmail?: string | null;
+  /** Invite cover request where current user is `toEmployeeId` (pending_match) */
+  incomingCoverRequestId?: string | null;
 }

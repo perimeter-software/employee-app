@@ -98,6 +98,11 @@ export type PickupOpportunityRow = {
   /** True when the viewer is already on the roster for this shift-day. */
   viewerAlreadyAssigned: boolean;
   /**
+   * True when the viewer works another shift the same day whose hours overlap
+   * this slot (cannot pick up without double-booking).
+   */
+  viewerScheduleOverlap: boolean;
+  /**
    * True when the viewer has a `pickup_interest` for this shift-day
    * (pending_match, pending_approval, or approved).
    */

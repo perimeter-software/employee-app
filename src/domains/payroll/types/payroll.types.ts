@@ -121,11 +121,39 @@ export interface BillingVoucher {
   sumBilling: BillingVoucherItem[];
 }
 
+export interface PayrollVoucherDeductionItem {
+  code: string;
+  description: string;
+  amount: number;
+}
+
+export interface PayrollVoucher {
+  _id?: string;
+  employeeId: string;
+  batchNumber: string;
+  voucherId?: string;
+  payDate?: string;
+  deductions: PayrollVoucherDeductionItem[];
+}
+
+export interface DirectDeposit {
+  account1?: string;
+  account2?: string;
+  bankName1?: string;
+  bankName2?: string;
+  accountType1?: string;
+  accountType2?: string;
+  [key: string]: unknown;
+}
+
 export interface EmployeePayrollBatch {
   _id: string;
   type: 'event' | 'job';
   eventUrl?: string;
+  eventName?: string;
   jobSlug?: string;
+  jobTitle?: string;
+  venueName?: string;
   startDate: string;
   endDate: string;
   payrollStatus: string;
@@ -133,10 +161,12 @@ export interface EmployeePayrollBatch {
   modifiedDate: string;
   regularItems: (SubmittedEventApplicant | SubmittedJobTimecard)[];
   overtimeItems: (SubmittedEventApplicant | SubmittedJobTimecard)[];
+  extraItems: (SubmittedEventApplicant | SubmittedJobTimecard)[];
   totalRegularHours: number;
   totalOvertimeHours: number;
   totalGrossRegularPay: number;
   totalGrossOvertimePay: number;
+  totalExtraEarnings: number;
   totalGrossPay: number;
   totalFicaSS: number;
   totalFicaMED: number;
@@ -144,7 +174,7 @@ export interface EmployeePayrollBatch {
   totalStateTax: number;
   totalTaxes: number;
   totalNetPay: number;
-  billingVoucher?: BillingVoucher;
+  payrollVoucher?: PayrollVoucher;
   lastCreatedPEOBatch?: {
     batchNumber: string;
     batchStatus?: string;
@@ -157,4 +187,5 @@ export interface EmployeePayrollBatch {
 export interface EmployeePayrollHistoryResponse {
   payrollBatches: EmployeePayrollBatch[];
   count: number;
+  directDeposit?: DirectDeposit;
 }

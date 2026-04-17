@@ -1,7 +1,14 @@
 'use client';
 
 import { NextPage } from 'next';
-import { Suspense, useCallback, useMemo, useState } from 'react';
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import {
@@ -21,6 +28,7 @@ import {
   Search,
   Table as TableIcon,
   TrendingUp,
+  X,
 } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -36,10 +44,12 @@ import { usePaycheckStubs } from '@/domains/paycheck-stubs';
 import { useEmployeePayrollHistory } from '@/domains/payroll';
 import { clsxm } from '@/lib/utils';
 import type {
+  DirectDeposit,
   EmployeePayrollBatch,
   SubmittedEventApplicant,
   SubmittedJobTimecard,
 } from '@/domains/payroll/types/payroll.types';
+import type { PaycheckStub } from '@/domains/paycheck-stubs';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -63,14 +73,32 @@ function formatCurrency(val: number) {
   }).format(val);
 }
 
-function getNetPay(batch: { totalNetPay: number; totalGrossPay: number; totalTaxes: number }): number {
-  return batch.totalNetPay || (batch.totalGrossPay - batch.totalTaxes);
+/** Sum deductions from payroll voucher when available, otherwise fall back to totalTaxes */
+function getBatchDeductions(batch: EmployeePayrollBatch): number {
+  if (batch.payrollVoucher?.deductions?.length) {
+    return batch.payrollVoucher.deductions.reduce(
+      (s, item) => s + Math.abs(item.amount),
+      0
+    );
+  }
+  return batch.totalTaxes;
+}
+
+function getNetPay(batch: EmployeePayrollBatch): number {
+  if (batch.totalNetPay) return batch.totalNetPay;
+  return batch.totalGrossPay - getBatchDeductions(batch);
+}
+
+/** Parse a date-only string (YYYY-MM-DD) as local midnight so date-fns formats the correct calendar day */
+function parseUTC(dateStr: string): Date {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d);
 }
 
 function formatPeriod(start: string, end: string) {
-  const s = new Date(start);
-  const e = new Date(end);
-  const sameYear = s.getFullYear() === e.getFullYear();
+  const s = parseUTC(start);
+  const e = parseUTC(end);
+  const sameYear = s.getUTCFullYear() === e.getUTCFullYear();
   return `${format(s, 'MMM d')} – ${format(e, sameYear ? 'MMM d' : 'MMM d, yyyy')}`;
 }
 
@@ -79,9 +107,9 @@ function getStubId(
   batch: EmployeePayrollBatch,
   stubMap: Map<string, string>
 ): string | undefined {
-  // Strategy 1: match via billingVoucher.voucherId (PRISM users)
-  if (batch.billingVoucher?.voucherId) {
-    const id = stubMap.get(batch.billingVoucher.voucherId);
+  // Strategy 1: match via payrollVoucher.voucherId (PRISM users)
+  if (batch.payrollVoucher?.voucherId) {
+    const id = stubMap.get(batch.payrollVoucher.voucherId);
     if (id) return id;
   }
   // Strategy 2: match via lastBillingSync date (format "YYYY-MM-DD")
@@ -94,7 +122,7 @@ function getStubId(
 }
 
 function getCheckDate(batch: EmployeePayrollBatch): string | null {
-  const pd = batch.billingVoucher?.payDate;
+  const pd = batch.payrollVoucher?.payDate;
   if (pd) {
     try {
       return format(new Date(pd), 'MMM d, yyyy');
@@ -103,7 +131,7 @@ function getCheckDate(batch: EmployeePayrollBatch): string | null {
     }
   }
   try {
-    return format(new Date(batch.endDate), 'MMM d, yyyy');
+    return format(parseUTC(batch.endDate), 'MMM d, yyyy');
   } catch {
     return null;
   }
@@ -113,10 +141,13 @@ function getItemLabel(
   item: SubmittedEventApplicant | SubmittedJobTimecard,
   batch?: EmployeePayrollBatch
 ): string {
-  if ('shiftName' in item && item.shiftName) return item.shiftName;
-  if ('shiftSlug' in item && item.shiftSlug) return item.shiftSlug;
-  if ('companySlug' in item && item.companySlug) return item.companySlug;
-  // Fall back to batch-level name
+  // if ('shiftName' in item && item.shiftName) return item.shiftName;
+  // if ('shiftSlug' in item && item.shiftSlug) return item.shiftSlug;
+  // if ('companySlug' in item && item.companySlug) return item.companySlug;
+  // Prefer human-readable batch-level name
+  if (batch?.eventName) return batch.eventName;
+  if (batch?.jobTitle) return batch.jobTitle;
+  // Fall back to slugs
   if (batch?.eventUrl) return batch.eventUrl;
   if (batch?.jobSlug) return batch.jobSlug;
   if ('jobId' in item) return item.jobId;
@@ -124,7 +155,13 @@ function getItemLabel(
   return '–';
 }
 
-function getItemRate(item: SubmittedEventApplicant | SubmittedJobTimecard): string {
+function getBatchVenueName(batch: EmployeePayrollBatch): string {
+  return batch.venueName || batch.eventUrl || batch.jobSlug || '–';
+}
+
+function getItemRate(
+  item: SubmittedEventApplicant | SubmittedJobTimecard
+): string {
   const rate = 'payRate' in item ? Number(item.payRate) : undefined;
   if (!rate) return '–';
   return `$${rate.toFixed(2)}/hr`;
@@ -135,6 +172,12 @@ function getItemEarnings(
 ): number {
   if (item.taxDetails?.totalPay) return item.taxDetails.totalPay;
   return (item.totalHours ?? 0) * (item.payRate ?? 0);
+}
+
+function formatDirectDeposit(dd?: DirectDeposit): string {
+  const raw = dd?.account1 || dd?.account2 || '';
+  if (!raw) return '–';
+  return raw.length >= 4 ? `•••• ${raw.slice(-4)}` : `•••• ${raw}`;
 }
 
 // ── Sort icon ─────────────────────────────────────────────────────────────────
@@ -176,28 +219,52 @@ const StatCard: React.FC<{
   </div>
 );
 
-// ── Table row (expandable) ────────────────────────────────────────────────────
+// ── Table row (expandable, groups all batches in a period) ───────────────────
 
 const PayrollTableRow: React.FC<{
-  batch: EmployeePayrollBatch;
-  stubId?: string;
-  stubVoucherNumber?: string;
+  batches: EmployeePayrollBatch[];
+  stubMap: Map<string, string>;
+  stubs: PaycheckStub[];
   detailMode: boolean;
   onViewStub: (id: string) => void;
-}> = ({ batch, stubId, stubVoucherNumber, detailMode, onViewStub }) => {
-  const [localExpanded, setLocalExpanded] = useState(false);
-  const expanded = detailMode || localExpanded;
-  const totalHours = batch.totalRegularHours + batch.totalOvertimeHours;
-  const hasOT = batch.totalOvertimeHours > 0;
-  const checkDate = getCheckDate(batch);
-  const voucherNumber =
-    batch.billingVoucher?.voucherId ||
-    batch.lastCreatedPEOBatch?.batchNumber ||
-    null;
+  onSelect: (batches: EmployeePayrollBatch[]) => void;
+}> = ({ batches, stubMap, stubs, detailMode, onViewStub, onSelect }) => {
+  const [localExpanded, setLocalExpanded] = useState(detailMode);
+  useEffect(() => {
+    setLocalExpanded(detailMode);
+  }, [detailMode]);
+  const expanded = localExpanded;
 
-  // Merge REG and OT items into display rows
+  const firstBatch = batches[0];
+  const totalHours = batches.reduce(
+    (s, b) => s + b.totalRegularHours + b.totalOvertimeHours,
+    0
+  );
+  const totalOTHours = batches.reduce((s, b) => s + b.totalOvertimeHours, 0);
+  const totalGross = batches.reduce((s, b) => s + b.totalGrossPay, 0);
+  const totalDeductions = getBatchDeductions(firstBatch);
+  const totalNet = totalGross - totalDeductions;
+  const checkDate = getCheckDate(firstBatch);
+
+  // First stub found across all batches in this period
+  const firstStubId = batches.map((b) => getStubId(b, stubMap)).find(Boolean);
+  const firstStubVoucherNumber = firstStubId
+    ? stubs.find((s) => s._id === firstStubId)?.voucherNumber
+    : undefined;
+
+  // Voucher # for detail mode — from first batch that has one
+  const voucherNumber =
+    batches
+      .map(
+        (b) => b.payrollVoucher?.voucherId || b.lastCreatedPEOBatch?.batchNumber
+      )
+      .find(Boolean) ?? null;
+
+  // Merge all items from all batches in this period into display rows — one per event/job
   type ItemRow = {
+    type: 'event' | 'job';
     label: string;
+    venue: string;
     date: string;
     regHrs: number;
     otHrs: number;
@@ -206,57 +273,152 @@ const PayrollTableRow: React.FC<{
   };
 
   const itemRows = useMemo<ItemRow[]>(() => {
-    const rows: ItemRow[] = [];
+    const rowMap = new Map<string, ItemRow>();
 
-    batch.regularItems.forEach((item) => {
-      rows.push({
-        label: getItemLabel(item, batch),
-        date: format(new Date(batch.startDate), 'MMM d, yyyy'),
-        regHrs: item.totalHours ?? 0,
-        otHrs: 0,
-        rate: getItemRate(item),
-        earnings: getItemEarnings(item),
+    const upsert = (key: string, base: ItemRow, patch: Partial<ItemRow>) => {
+      const existing = rowMap.get(key);
+      if (existing) {
+        existing.regHrs += patch.regHrs ?? 0;
+        existing.otHrs += patch.otHrs ?? 0;
+        existing.earnings += patch.earnings ?? 0;
+        if (patch.rate && patch.rate !== '–' && existing.rate === '–')
+          existing.rate = patch.rate;
+      } else {
+        rowMap.set(key, { ...base, ...patch });
+      }
+    };
+
+    batches.forEach((batch) => {
+      const batchDate = format(parseUTC(batch.startDate), 'MMM d, yyyy');
+      const venue = getBatchVenueName(batch);
+
+      const batchType = batch.type;
+
+      batch.regularItems.forEach((item) => {
+        const label = getItemLabel(item, batch);
+        const date =
+          'timeIn' in item && item.timeIn
+            ? format(parseUTC(item.timeIn), 'MMM d, yyyy')
+            : batchDate;
+        const key = `${label}|${venue}|${date}`;
+        upsert(
+          key,
+          {
+            type: batchType,
+            label,
+            venue,
+            date,
+            regHrs: 0,
+            otHrs: 0,
+            rate: '–',
+            earnings: 0,
+          },
+          {
+            regHrs: item.totalHours ?? 0,
+            rate: getItemRate(item),
+            earnings: getItemEarnings(item),
+          }
+        );
       });
+
+      batch.overtimeItems.forEach((item) => {
+        const label = getItemLabel(item, batch);
+        const date =
+          'timeIn' in item && item.timeIn
+            ? format(parseUTC(item.timeIn), 'MMM d, yyyy')
+            : batchDate;
+        const key = `${label}|${venue}|${date}`;
+        upsert(
+          key,
+          {
+            type: batchType,
+            label,
+            venue,
+            date,
+            regHrs: 0,
+            otHrs: 0,
+            rate: '–',
+            earnings: 0,
+          },
+          {
+            otHrs: item.totalHours ?? 0,
+            rate: getItemRate(item),
+            earnings: getItemEarnings(item),
+          }
+        );
+      });
+
+      // Extras: add earnings only (no hours)
+      (batch.extraItems ?? []).forEach((item) => {
+        const label = getItemLabel(item, batch);
+        const date =
+          'timeIn' in item && item.timeIn
+            ? format(parseUTC(item.timeIn), 'MMM d, yyyy')
+            : batchDate;
+        const key = `${label}|${venue}|${date}`;
+        upsert(
+          key,
+          {
+            type: batchType,
+            label,
+            venue,
+            date,
+            regHrs: 0,
+            otHrs: 0,
+            rate: '–',
+            earnings: 0,
+          },
+          {
+            earnings: getItemEarnings(item),
+          }
+        );
+      });
+
+      const hasItems =
+        batch.regularItems.length > 0 ||
+        batch.overtimeItems.length > 0 ||
+        (batch.extraItems ?? []).length > 0;
+
+      if (!hasItems) {
+        const label =
+          batch.eventName ||
+          batch.jobTitle ||
+          batch.eventUrl ||
+          batch.jobSlug ||
+          '–';
+        rowMap.set(`${label}|${venue}|${batchDate}`, {
+          type: batchType,
+          label,
+          venue,
+          date: batchDate,
+          regHrs: batch.totalRegularHours,
+          otHrs: batch.totalOvertimeHours,
+          rate: '–',
+          earnings: batch.totalGrossPay,
+        });
+      }
     });
 
-    batch.overtimeItems.forEach((item) => {
-      rows.push({
-        label: getItemLabel(item, batch),
-        date: format(new Date(batch.startDate), 'MMM d, yyyy'),
-        regHrs: 0,
-        otHrs: item.totalHours ?? 0,
-        rate: getItemRate(item),
-        earnings: getItemEarnings(item),
-      });
-    });
-
-    // Fallback: if no items, show one summary row
-    if (rows.length === 0) {
-      rows.push({
-        label: batch.eventUrl || batch.jobSlug || '–',
-        date: format(new Date(batch.startDate), 'MMM d, yyyy'),
-        regHrs: batch.totalRegularHours,
-        otHrs: batch.totalOvertimeHours,
-        rate: '–',
-        earnings: batch.totalGrossPay,
-      });
-    }
-
-    return rows;
-  }, [batch]);
+    return Array.from(rowMap.values());
+  }, [batches]);
 
   return (
     <>
       <tr
         className={clsxm(
-          'border-b border-gray-100 transition-colors',
+          'border-b border-gray-100 transition-colors cursor-pointer',
           expanded ? 'bg-blue-50/20' : 'hover:bg-gray-50/60'
         )}
+        onClick={() => onSelect(batches)}
       >
         {/* Expand toggle */}
         <td className="pl-4 pr-2 py-4 w-8">
           <button
-            onClick={() => setLocalExpanded((p) => !p)}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setLocalExpanded((p) => !p);
+            }}
             className="text-gray-400 hover:text-gray-600 transition-colors"
           >
             {expanded ? (
@@ -270,42 +432,39 @@ const PayrollTableRow: React.FC<{
         {/* Pay Period */}
         <td className="px-4 py-4">
           <span className="text-sm font-semibold text-gray-900">
-            {formatPeriod(batch.startDate, batch.endDate)}
+            {formatPeriod(firstBatch.startDate, firstBatch.endDate)}
           </span>
         </td>
 
         {/* Check Date */}
-        <td className="px-4 py-4 text-sm text-gray-600">
-          {checkDate ?? '–'}
-        </td>
+        <td className="px-4 py-4 text-sm text-gray-600">{checkDate ?? '–'}</td>
 
         {/* Hours */}
         <td className="px-4 py-4">
           <span className="text-sm text-gray-800 font-medium">
             {totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)}
           </span>
-          {hasOT && (
+          {totalOTHours > 0 && (
             <span className="ml-1.5 text-xs font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-600">
-              +{batch.totalOvertimeHours % 1 === 0
-                ? batch.totalOvertimeHours
-                : batch.totalOvertimeHours.toFixed(1)}OT
+              +{totalOTHours % 1 === 0 ? totalOTHours : totalOTHours.toFixed(1)}
+              OT
             </span>
           )}
         </td>
 
         {/* Gross Pay */}
         <td className="px-4 py-4 text-sm font-semibold text-green-600">
-          {formatCurrency(batch.totalGrossPay)}
+          {formatCurrency(totalGross)}
         </td>
 
         {/* Deductions */}
         <td className="px-4 py-4 text-sm font-semibold text-red-500">
-          -{formatCurrency(batch.totalTaxes)}
+          -{formatCurrency(totalDeductions)}
         </td>
 
         {/* Net Pay */}
         <td className="px-4 py-4 text-sm font-bold text-blue-600">
-          {formatCurrency(getNetPay(batch))}
+          {formatCurrency(totalNet)}
         </td>
 
         {/* Status */}
@@ -318,14 +477,18 @@ const PayrollTableRow: React.FC<{
 
         {/* Voucher # */}
         <td className="px-4 py-4 text-xs text-gray-500 font-mono">
-          {stubVoucherNumber ?? '–'}
+          {firstStubVoucherNumber ?? '–'}
         </td>
 
         {/* Stub */}
         <td className="px-4 py-4">
-          {stubId ? (
+          {firstStubId ? (
             <button
-              onClick={() => onViewStub(stubId)}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewStub(firstStubId);
+              }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-600 border border-blue-200 bg-white hover:bg-blue-50 transition-colors"
             >
               <FileText className="w-3.5 h-3.5" />
@@ -335,19 +498,12 @@ const PayrollTableRow: React.FC<{
             <span className="text-xs text-gray-300">–</span>
           )}
         </td>
-
-        {/* Voucher # (detail mode only) */}
-        {detailMode && (
-          <td className="px-4 py-4 text-sm text-gray-500 font-mono">
-            {voucherNumber ?? '–'}
-          </td>
-        )}
       </tr>
 
       {/* Expanded events table */}
       {expanded && (
         <tr className="bg-slate-50/60 border-b border-gray-100">
-          <td colSpan={detailMode ? 11 : 10} className="px-8 py-4">
+          <td colSpan={10} className="px-8 py-4">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
               Events / Jobs in this Pay Period
             </p>
@@ -355,7 +511,8 @@ const PayrollTableRow: React.FC<{
               <thead>
                 <tr className="border-b border-gray-200">
                   {[
-                    'Event',
+                    'Type',
+                    'Event/Job',
                     'Venue',
                     'Date',
                     'Reg Hrs',
@@ -382,18 +539,35 @@ const PayrollTableRow: React.FC<{
               </thead>
               <tbody>
                 {itemRows.map((row, i) => (
-                  <tr key={i} className="border-b border-gray-100 last:border-0">
+                  <tr
+                    key={i}
+                    className="border-b border-gray-100 last:border-0"
+                  >
+                    <td className="pr-4 py-2">
+                      <span
+                        className={clsxm(
+                          'text-xs font-semibold px-1.5 py-0.5 rounded',
+                          row.type === 'event'
+                            ? 'bg-purple-100 text-purple-600'
+                            : 'bg-sky-100 text-sky-600'
+                        )}
+                      >
+                        {row.type === 'event' ? 'Event' : 'Job'}
+                      </span>
+                    </td>
                     <td className="text-sm font-semibold text-gray-800 pr-4 py-2">
                       {row.label}
                     </td>
                     <td className="text-sm text-gray-500 pr-4 py-2">
-                      {batch.eventUrl || batch.jobSlug || '–'}
+                      {row.venue}
                     </td>
                     <td className="text-sm text-gray-500 pr-4 py-2">
                       {row.date}
                     </td>
                     <td className="text-sm text-right text-gray-700 pr-4 py-2">
-                      {row.regHrs > 0 ? row.regHrs : (
+                      {row.regHrs > 0 ? (
+                        row.regHrs
+                      ) : (
                         <span className="text-gray-300">0</span>
                       )}
                     </td>
@@ -423,38 +597,478 @@ const PayrollTableRow: React.FC<{
   );
 };
 
+// ── Paycheck Details Modal ────────────────────────────────────────────────────
+
+const PaycheckDetailsModal: React.FC<{
+  batches: EmployeePayrollBatch[];
+  stubMap: Map<string, string>;
+  stubs: PaycheckStub[];
+  directDeposit?: DirectDeposit;
+  onClose: () => void;
+  onViewStub: (id: string) => void;
+}> = ({ batches, stubMap, stubs, directDeposit, onClose, onViewStub }) => {
+  const firstBatch = batches[0];
+  const payrollVoucher = batches.map((b) => b.payrollVoucher).find(Boolean);
+  const stubId = batches.map((b) => getStubId(b, stubMap)).find(Boolean);
+  const stub = stubId ? stubs.find((s) => s._id === stubId) : undefined;
+
+  const totalGross = batches.reduce((s, b) => s + b.totalGrossPay, 0);
+  const totalRegHours = batches.reduce((s, b) => s + b.totalRegularHours, 0);
+  const totalOTHours = batches.reduce((s, b) => s + b.totalOvertimeHours, 0);
+  const totalHours = totalRegHours + totalOTHours;
+
+  const deductionItems = payrollVoucher?.deductions ?? [];
+  const totalDeductions = deductionItems.reduce(
+    (s, item) => s + Math.abs(item.amount),
+    0
+  );
+  const netPay = totalGross - totalDeductions;
+
+  const checkDate = getCheckDate(firstBatch);
+  const status = stub ? 'PAID' : 'UNPAID';
+  const voucherId = payrollVoucher?.voucherId;
+  const batchId = stub?.batchId;
+  const ddDisplay = formatDirectDeposit(directDeposit);
+
+  type EarningCard = {
+    type: 'event' | 'job';
+    label: string;
+    venue: string;
+    date: string;
+    regHrs: number;
+    regRate: string;
+    regEarnings: number;
+    otHrs: number;
+    otRate: string;
+    otEarnings: number;
+    extraEarnings: number;
+  };
+
+  const earningCards = useMemo<EarningCard[]>(() => {
+    const cardMap = new Map<string, EarningCard>();
+
+    const upsert = (
+      key: string,
+      patch: Partial<EarningCard> & {
+        type: 'event' | 'job';
+        label: string;
+        venue: string;
+        date: string;
+      }
+    ) => {
+      const existing = cardMap.get(key);
+      if (existing) {
+        if (patch.regHrs) {
+          existing.regHrs += patch.regHrs;
+          existing.regEarnings += patch.regEarnings ?? 0;
+          existing.regRate = patch.regRate ?? existing.regRate;
+        }
+        if (patch.otHrs) {
+          existing.otHrs += patch.otHrs;
+          existing.otEarnings += patch.otEarnings ?? 0;
+          existing.otRate = patch.otRate ?? existing.otRate;
+        }
+        if (patch.extraEarnings) {
+          existing.extraEarnings += patch.extraEarnings;
+        }
+      } else {
+        cardMap.set(key, {
+          type: patch.type,
+          label: patch.label,
+          venue: patch.venue,
+          date: patch.date,
+          regHrs: patch.regHrs ?? 0,
+          regRate: patch.regRate ?? '–',
+          regEarnings: patch.regEarnings ?? 0,
+          otHrs: patch.otHrs ?? 0,
+          otRate: patch.otRate ?? '–',
+          otEarnings: patch.otEarnings ?? 0,
+          extraEarnings: patch.extraEarnings ?? 0,
+        });
+      }
+    };
+
+    batches.forEach((batch) => {
+      const bDate = format(new Date(batch.startDate), 'MMM d, yyyy');
+      const venue = getBatchVenueName(batch);
+      const batchType = batch.type;
+
+      batch.regularItems.forEach((item) => {
+        const label = getItemLabel(item, batch);
+        const date =
+          'timeIn' in item && item.timeIn
+            ? format(new Date(item.timeIn), 'MMM d, yyyy')
+            : bDate;
+        upsert(`${label}|${venue}|${date}`, {
+          type: batchType,
+          label,
+          venue,
+          date,
+          regHrs: item.totalHours ?? 0,
+          regRate: getItemRate(item),
+          regEarnings: getItemEarnings(item),
+        });
+      });
+
+      batch.overtimeItems.forEach((item) => {
+        const label = getItemLabel(item, batch);
+        const date =
+          'timeIn' in item && item.timeIn
+            ? format(new Date(item.timeIn), 'MMM d, yyyy')
+            : bDate;
+        upsert(`${label}|${venue}|${date}`, {
+          type: batchType,
+          label,
+          venue,
+          date,
+          otHrs: item.totalHours ?? 0,
+          otRate: getItemRate(item),
+          otEarnings: getItemEarnings(item),
+        });
+      });
+
+      (batch.extraItems ?? []).forEach((item) => {
+        const label = getItemLabel(item, batch);
+        const date =
+          'timeIn' in item && item.timeIn
+            ? format(new Date(item.timeIn), 'MMM d, yyyy')
+            : bDate;
+        upsert(`${label}|${venue}|${date}`, {
+          type: batchType,
+          label,
+          venue,
+          date,
+          extraEarnings: getItemEarnings(item),
+        });
+      });
+
+      const hasItems =
+        batch.regularItems.length > 0 ||
+        batch.overtimeItems.length > 0 ||
+        (batch.extraItems ?? []).length > 0;
+
+      if (!hasItems) {
+        const label =
+          batch.eventName ||
+          batch.jobTitle ||
+          batch.eventUrl ||
+          batch.jobSlug ||
+          '–';
+        cardMap.set(`${label}|${venue}|${bDate}`, {
+          type: batchType,
+          label,
+          venue,
+          date: bDate,
+          regHrs: batch.totalRegularHours,
+          regRate: '–',
+          regEarnings: batch.totalGrossPay,
+          otHrs: batch.totalOvertimeHours,
+          otRate: '–',
+          otEarnings: 0,
+          extraEarnings: 0,
+        });
+      }
+    });
+
+    return Array.from(cardMap.values());
+  }, [batches]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">
+              Paycheck Details
+            </h2>
+            <p className="text-sm text-gray-400 mt-0.5">
+              Pay Period:{' '}
+              {formatPeriod(firstBatch.startDate, firstBatch.endDate)}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+            {stubId && (
+              <button
+                type="button"
+                onClick={() => onViewStub(stubId)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-600 border border-blue-300 bg-white hover:bg-blue-50 transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                View Paystub
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
+          {/* Stat boxes */}
+          <div className="grid grid-cols-4 gap-3">
+            {(
+              [
+                {
+                  label: 'GROSS PAY',
+                  value: formatCurrency(totalGross),
+                  valueColor: 'text-green-600',
+                  labelColor: 'text-green-500',
+                },
+                {
+                  label: 'DEDUCTIONS',
+                  value: formatCurrency(totalDeductions),
+                  valueColor: 'text-red-500',
+                  labelColor: 'text-red-400',
+                },
+                {
+                  label: 'NET PAY',
+                  value: formatCurrency(netPay),
+                  valueColor: 'text-blue-600',
+                  labelColor: 'text-blue-500',
+                },
+                {
+                  label: 'TOTAL HOURS',
+                  value:
+                    totalHours % 1 === 0
+                      ? String(totalHours)
+                      : totalHours.toFixed(1),
+                  valueColor: 'text-purple-600',
+                  labelColor: 'text-purple-400',
+                },
+              ] as const
+            ).map(({ label, value, valueColor, labelColor }) => (
+              <div
+                key={label}
+                className="bg-gray-50 rounded-xl p-3 border border-gray-100"
+              >
+                <p
+                  className={clsxm(
+                    'text-[10px] font-semibold uppercase tracking-wider leading-tight',
+                    labelColor
+                  )}
+                >
+                  {label}
+                </p>
+                <p className={clsxm('text-sm font-bold mt-1', valueColor)}>
+                  {value}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* Details rows */}
+          <div className="rounded-xl border border-gray-100 divide-y divide-gray-100 text-sm">
+            {/* Check Date + Status */}
+            <div className="grid grid-cols-2 divide-x divide-gray-100">
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-gray-400">Check Date</span>
+                <span className="font-semibold text-gray-800">
+                  {checkDate ?? '–'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-gray-400">Status</span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                  {status.toUpperCase()}
+                </span>
+              </div>
+            </div>
+            {/* Voucher # + Batch ID */}
+            <div className="grid grid-cols-2 divide-x divide-gray-100">
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-gray-400">Voucher #</span>
+                <span className="font-semibold text-gray-800 font-mono">
+                  {voucherId ?? '–'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-gray-400">Batch ID</span>
+                <span className="font-semibold text-gray-800 font-mono">
+                  {batchId ?? '–'}
+                </span>
+              </div>
+            </div>
+            {/* Regular Hours + Overtime Hours */}
+            <div className="grid grid-cols-2 divide-x divide-gray-100">
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-gray-400">Regular Hours</span>
+                <span className="font-semibold text-gray-800">
+                  {totalRegHours % 1 === 0
+                    ? totalRegHours
+                    : totalRegHours.toFixed(1)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-gray-400">Overtime Hours</span>
+                <span className="font-semibold text-orange-500">
+                  {totalOTHours % 1 === 0
+                    ? totalOTHours
+                    : totalOTHours.toFixed(1)}
+                </span>
+              </div>
+            </div>
+            {/* Direct Deposit — full width */}
+            <div className="flex items-center justify-between px-4 py-3">
+              <span className="text-gray-400">Direct Deposit</span>
+              <span className="font-semibold text-gray-800">{ddDisplay}</span>
+            </div>
+          </div>
+
+          {/* Deduction Breakdown */}
+          {deductionItems.length > 0 && (
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+                Deduction Breakdown
+              </p>
+              <div className="rounded-xl border border-gray-100 overflow-hidden">
+                {deductionItems.map((item, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50 last:border-b-0"
+                  >
+                    <span className="text-sm text-gray-700">
+                      {item.description}
+                    </span>
+                    <span className="text-sm font-semibold text-red-500">
+                      -{formatCurrency(Math.abs(item.amount))}
+                    </span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-t border-gray-200">
+                  <span className="text-sm font-bold text-gray-800">
+                    Total Deductions
+                  </span>
+                  <span className="text-sm font-bold text-red-600">
+                    -{formatCurrency(totalDeductions)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Earnings by Event / Job */}
+          {earningCards.length > 0 && (
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+                Earnings by Event / Job
+              </p>
+              <div className="space-y-2.5">
+                {earningCards.map((card, i) => {
+                  const total =
+                    card.regEarnings + card.otEarnings + card.extraEarnings;
+                  return (
+                    <div
+                      key={i}
+                      className="rounded-xl border border-gray-100 p-4"
+                    >
+                      <div className="flex items-start justify-between mb-1">
+                        <p className="text-sm font-bold text-gray-900">
+                          {card.label}
+                        </p>
+                        <p className="text-sm font-bold text-green-600 flex-shrink-0 ml-2">
+                          {formatCurrency(total)}
+                        </p>
+                      </div>
+                      <p className="text-xs text-gray-400 mb-2">
+                        <span
+                          className={clsxm(
+                            'font-semibold mr-1',
+                            card.type === 'event'
+                              ? 'text-purple-400'
+                              : 'text-sky-400'
+                          )}
+                        >
+                          {card.type === 'event' ? 'Event' : 'Job'} -
+                        </span>
+                        {card.venue} · {card.date}
+                      </p>
+                      {card.regHrs > 0 && (
+                        <p className="text-xs text-gray-500">
+                          {card.regHrs % 1 === 0
+                            ? card.regHrs
+                            : card.regHrs.toFixed(1)}
+                          h reg @ {card.regRate} ={' '}
+                          {formatCurrency(card.regEarnings)}
+                        </p>
+                      )}
+                      {card.otHrs > 0 && (
+                        <p className="text-xs font-semibold text-orange-500 mt-0.5">
+                          {card.otHrs % 1 === 0
+                            ? card.otHrs
+                            : card.otHrs.toFixed(1)}
+                          h OT @ {card.otRate} ={' '}
+                          {formatCurrency(card.otEarnings)}
+                        </p>
+                      )}
+                      {card.extraEarnings > 0 && (
+                        <p className="text-xs font-semibold text-blue-500 mt-0.5">
+                          Extras = {formatCurrency(card.extraEarnings)}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Card view ─────────────────────────────────────────────────────────────────
 
 const PayrollCardGrid: React.FC<{
-  batches: EmployeePayrollBatch[];
+  groups: { key: string; batches: EmployeePayrollBatch[] }[];
   stubMap: Map<string, string>;
   onViewStub: (id: string) => void;
-}> = ({ batches, stubMap, onViewStub }) => (
+  onSelect: (batches: EmployeePayrollBatch[]) => void;
+}> = ({ groups, stubMap, onViewStub, onSelect }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-    {batches.map((batch) => {
-      const totalHours = batch.totalRegularHours + batch.totalOvertimeHours;
-      const hasOT = batch.totalOvertimeHours > 0;
-      const checkDate = getCheckDate(batch);
-      const stubId = getStubId(batch, stubMap);
+    {groups.map(({ key, batches }) => {
+      const firstBatch = batches[0];
+      const totalHours = batches.reduce(
+        (s, b) => s + b.totalRegularHours + b.totalOvertimeHours,
+        0
+      );
+      const totalOTHours = batches.reduce(
+        (s, b) => s + b.totalOvertimeHours,
+        0
+      );
+      const totalGross = batches.reduce((s, b) => s + b.totalGrossPay, 0);
+      const totalDeductions = getBatchDeductions(firstBatch);
+      const totalNet = totalGross - totalDeductions;
+      const checkDate = getCheckDate(firstBatch);
+      const stubId = batches.map((b) => getStubId(b, stubMap)).find(Boolean);
 
-      // Build event items for the card
-      const allItems = [
-        ...batch.regularItems,
-        ...batch.overtimeItems,
-      ];
-      const displayItems = allItems.slice(0, 2);
-      const extraCount = allItems.length - displayItems.length;
+      const displayBatches = batches.slice(0, 4);
+      const extraCount = batches.length - displayBatches.length;
 
       return (
         <div
-          key={batch._id}
-          className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col gap-4"
+          key={key}
+          className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col gap-4 cursor-pointer hover:border-blue-200 transition-colors"
+          onClick={() => onSelect(batches)}
         >
           {/* Header */}
           <div className="flex items-start justify-between">
             <div>
               <p className="text-base font-bold text-gray-900">
-                {formatPeriod(batch.startDate, batch.endDate)}
+                {formatPeriod(firstBatch.startDate, firstBatch.endDate)}
               </p>
               {checkDate && (
                 <p className="text-xs text-gray-400 mt-0.5">
@@ -475,7 +1089,7 @@ const PayrollCardGrid: React.FC<{
                 GROSS
               </p>
               <p className="text-sm font-bold text-green-600">
-                {formatCurrency(batch.totalGrossPay)}
+                {formatCurrency(totalGross)}
               </p>
             </div>
             <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
@@ -483,7 +1097,7 @@ const PayrollCardGrid: React.FC<{
                 DEDUCTIONS
               </p>
               <p className="text-sm font-bold text-red-500">
-                -{formatCurrency(batch.totalTaxes)}
+                -{formatCurrency(totalDeductions)}
               </p>
             </div>
             <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
@@ -491,50 +1105,72 @@ const PayrollCardGrid: React.FC<{
                 NET PAY
               </p>
               <p className="text-sm font-bold text-blue-600">
-                {formatCurrency(getNetPay(batch))}
+                {formatCurrency(totalNet)}
               </p>
             </div>
           </div>
 
-          {/* Hours + events count */}
+          {/* Hours + event count */}
           <div className="flex items-center justify-between text-sm text-gray-500">
             <span>
               {totalHours % 1 === 0 ? totalHours : totalHours.toFixed(1)}h total
-              {hasOT && (
+              {totalOTHours > 0 && (
                 <span className="ml-1.5 text-xs font-semibold text-orange-500">
-                  {batch.totalOvertimeHours % 1 === 0
-                    ? batch.totalOvertimeHours
-                    : batch.totalOvertimeHours.toFixed(1)}h OT
+                  {totalOTHours % 1 === 0
+                    ? totalOTHours
+                    : totalOTHours.toFixed(1)}
+                  h OT
                 </span>
               )}
             </span>
-            <span>{allItems.length} event{allItems.length !== 1 ? 's' : ''}</span>
+            <span>
+              {batches.length} event{batches.length !== 1 ? 's' : ''}
+            </span>
           </div>
 
-          {/* Event list */}
-          {displayItems.length > 0 && (
-            <div className="space-y-1.5">
-              {displayItems.map((item, i) => (
-                <div key={i} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-700 font-medium truncate mr-2">
-                    {getItemLabel(item, batch)}
+          {/* Event list — one row per batch */}
+          <div className="space-y-1.5">
+            {displayBatches.map((batch) => (
+              <div
+                key={batch._id}
+                className="flex items-center justify-between text-sm"
+              >
+                <span className="text-gray-700 font-medium truncate mr-2">
+                  <span
+                    className={clsxm(
+                      'text-xs font-semibold mr-1',
+                      batch.type === 'event'
+                        ? 'text-purple-500'
+                        : 'text-sky-500'
+                    )}
+                  >
+                    [{batch.type === 'event' ? 'Event' : 'Job'}]
                   </span>
-                  <span className="text-gray-800 font-semibold flex-shrink-0">
-                    {formatCurrency(getItemEarnings(item))}
-                  </span>
-                </div>
-              ))}
-              {extraCount > 0 && (
-                <p className="text-xs text-gray-400 text-center">
-                  +{extraCount} more
-                </p>
-              )}
-            </div>
-          )}
+                  {batch.eventName ||
+                    batch.jobTitle ||
+                    batch.eventUrl ||
+                    batch.jobSlug ||
+                    '–'}
+                </span>
+                <span className="text-gray-800 font-semibold flex-shrink-0">
+                  {formatCurrency(batch.totalGrossPay)}
+                </span>
+              </div>
+            ))}
+            {extraCount > 0 && (
+              <p className="text-xs text-gray-400 text-center">
+                +{extraCount} more
+              </p>
+            )}
+          </div>
 
-          {/* View Paystub button — always visible, disabled if no stub */}
+          {/* View Paystub button */}
           <button
-            onClick={() => stubId && onViewStub(stubId)}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (stubId) onViewStub(stubId);
+            }}
             disabled={!stubId}
             className={clsxm(
               'w-full py-2.5 rounded-lg text-sm font-semibold border flex items-center justify-center gap-1.5 mt-auto transition-colors',
@@ -734,13 +1370,22 @@ const PayrollPageContent: React.FC = () => {
     () => (searchParams.get('view') as ViewMode) || 'table'
   );
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [sortField, setSortField] = useState<SortField>('startDate');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [searchQuery, setSearchQuery] = useState('');
-  const [detailMode, setDetailMode] = useState(false);
+  const [detailMode, setDetailMode] = useState(
+    () => searchParams.get('detail') === 'true'
+  );
   const [selectedYear, setSelectedYear] = useState<number>(
     new Date().getFullYear()
   );
+  const [selectedGroup, setSelectedGroup] = useState<{
+    key: string;
+    batches: EmployeePayrollBatch[];
+  } | null>(null);
+  const restoredModalRef = useRef(false);
 
   // Auth
   const {
@@ -762,8 +1407,11 @@ const PayrollPageContent: React.FC = () => {
     isPrism ? applicantId : undefined
   );
 
-  const allBatches = historyData?.payrollBatches ?? [];
-  const stubs = stubsData?.paycheckStubs ?? [];
+  const allBatches = useMemo(
+    () => historyData?.payrollBatches ?? [],
+    [historyData]
+  );
+  const stubs = useMemo(() => stubsData?.paycheckStubs ?? [], [stubsData]);
 
   // Build stubMap with TWO keys per stub for maximum match coverage:
   //   1. voucherNumber  → matches billingVoucher.voucherId (PRISM users)
@@ -786,9 +1434,7 @@ const PayrollPageContent: React.FC = () => {
   const availableYears = useMemo(() => {
     const current = new Date().getFullYear();
     const years = new Set<number>([current]);
-    allBatches.forEach((b) =>
-      years.add(new Date(b.startDate).getFullYear())
-    );
+    allBatches.forEach((b) => years.add(new Date(b.startDate).getFullYear()));
     return Array.from(years).sort((a, b) => b - a);
   }, [allBatches]);
 
@@ -807,38 +1453,44 @@ const PayrollPageContent: React.FC = () => {
   const statusFiltered = useMemo(() => {
     if (statusFilter === 'all') return yearBatches;
     if (statusFilter === 'current')
+      return yearBatches.filter((b) => {
+        const d = new Date(b.startDate);
+        return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+      });
+    if (statusFilter === 'past') {
+      const startOfCurrentMonth = new Date(currentYear, currentMonth, 1);
       return yearBatches.filter(
-        (b) => new Date(b.startDate).getMonth() === currentMonth
+        (b) => new Date(b.startDate) < startOfCurrentMonth
       );
-    if (statusFilter === 'past')
-      return yearBatches.filter(
-        (b) => new Date(b.startDate).getMonth() < currentMonth
-      );
-    return yearBatches; // 'custom' - no-op for now
-  }, [yearBatches, statusFilter, currentMonth]);
-
-  // Search
-  const searched = useMemo(() => {
-    if (!searchQuery.trim()) return statusFiltered;
-    const q = searchQuery.toLowerCase();
-    return statusFiltered.filter(
-      (b) =>
-        formatPeriod(b.startDate, b.endDate).toLowerCase().includes(q) ||
-        (b.eventUrl && b.eventUrl.toLowerCase().includes(q)) ||
-        (b.jobSlug && b.jobSlug.toLowerCase().includes(q)) ||
-        (b.billingVoucher?.voucherId &&
-          b.billingVoucher.voucherId.toLowerCase().includes(q))
-    );
-  }, [statusFiltered, searchQuery]);
+    }
+    if (statusFilter === 'custom') {
+      const from = customFrom ? new Date(customFrom) : null;
+      const to = customTo ? new Date(customTo) : null;
+      return yearBatches.filter((b) => {
+        const start = new Date(b.startDate);
+        if (from && start < from) return false;
+        if (to && start > to) return false;
+        return true;
+      });
+    }
+    return yearBatches;
+  }, [
+    yearBatches,
+    statusFilter,
+    currentMonth,
+    currentYear,
+    customFrom,
+    customTo,
+  ]);
 
   // Sort
   const sorted = useMemo(() => {
-    return [...searched].sort((a, b) => {
+    return [...statusFiltered].sort((a, b) => {
       let va: number, vb: number;
       switch (sortField) {
         case 'checkDate': {
-          const ad = a.billingVoucher?.payDate ?? a.endDate;
-          const bd = b.billingVoucher?.payDate ?? b.endDate;
+          const ad = a.payrollVoucher?.payDate ?? a.endDate;
+          const bd = b.payrollVoucher?.payDate ?? b.endDate;
           va = new Date(ad).getTime();
           vb = new Date(bd).getTime();
           break;
@@ -865,7 +1517,57 @@ const PayrollPageContent: React.FC = () => {
       }
       return sortDir === 'asc' ? va - vb : vb - va;
     });
-  }, [searched, sortField, sortDir]);
+  }, [statusFiltered, sortField, sortDir]);
+
+  // Group sorted batches by pay period (startDate|endDate) for table view
+  const groupedByPeriod = useMemo(() => {
+    const groups: { key: string; batches: EmployeePayrollBatch[] }[] = [];
+    const indexMap = new Map<string, number>();
+    sorted.forEach((batch) => {
+      const batchNumber = batch.lastCreatedPEOBatch?.batchNumber;
+      const key = batchNumber
+        ? `${batch.startDate}|${batch.endDate}|${batchNumber}`
+        : `${batch.startDate}|${batch.endDate}|`;
+      const idx = indexMap.get(key);
+      if (idx !== undefined) {
+        groups[idx].batches.push(batch);
+      } else {
+        indexMap.set(key, groups.length);
+        groups.push({ key, batches: [batch] });
+      }
+    });
+    return groups;
+  }, [sorted]);
+
+  // Search filters whole groups — any batch within a group matching keeps the full group
+  const filteredGroups = useMemo(() => {
+    if (!searchQuery.trim()) return groupedByPeriod;
+    const q = searchQuery.toLowerCase();
+    return groupedByPeriod.filter(({ batches }) =>
+      batches.some(
+        (b) =>
+          formatPeriod(b.startDate, b.endDate).toLowerCase().includes(q) ||
+          (b.eventName && b.eventName.toLowerCase().includes(q)) ||
+          (b.jobTitle && b.jobTitle.toLowerCase().includes(q)) ||
+          (b.eventUrl && b.eventUrl.toLowerCase().includes(q)) ||
+          (b.jobSlug && b.jobSlug.toLowerCase().includes(q)) ||
+          (b.payrollVoucher?.voucherId &&
+            b.payrollVoucher.voucherId.toLowerCase().includes(q))
+      )
+    );
+  }, [groupedByPeriod, searchQuery]);
+
+  // Restore modal open state when returning from a stub page
+  useEffect(() => {
+    if (restoredModalRef.current) return;
+    const modalKey = searchParams.get('modal');
+    if (!modalKey) return;
+    const group = groupedByPeriod.find((g) => g.key === modalKey);
+    if (group) {
+      setSelectedGroup({ key: group.key, batches: group.batches });
+      restoredModalRef.current = true;
+    }
+  }, [groupedByPeriod, searchParams]);
 
   const handleSort = useCallback(
     (field: SortField) => {
@@ -881,22 +1583,34 @@ const PayrollPageContent: React.FC = () => {
 
   // YTD stats
   const ytd = useMemo(() => {
-    const viewedCount = stubs.filter(
-      (s) =>
-        new Date(s.checkDate).getFullYear() === selectedYear &&
-        s.viewStatus === 'viewed'
+    const totalGroups = groupedByPeriod.length;
+    const paidGroups = groupedByPeriod.filter(({ batches }) =>
+      batches.some((b) => getStubId(b, stubMap))
     ).length;
     return {
-      gross: yearBatches.reduce((s, b) => s + b.totalGrossPay, 0),
-      net: yearBatches.reduce((s, b) => s + getNetPay(b), 0),
-      hours: yearBatches.reduce(
-        (s, b) => s + b.totalRegularHours + b.totalOvertimeHours,
+      gross: groupedByPeriod.reduce(
+        (s, { batches }) =>
+          s + batches.reduce((gs, b) => gs + b.totalGrossPay, 0),
         0
       ),
-      count: yearBatches.length,
-      stubsViewed: viewedCount,
+      net: groupedByPeriod.reduce((s, { batches }) => {
+        const gross = batches.reduce((gs, b) => gs + b.totalGrossPay, 0);
+        const deductions = getBatchDeductions(batches[0]);
+        return s + gross - deductions;
+      }, 0),
+      hours: groupedByPeriod.reduce(
+        (s, { batches }) =>
+          s +
+          batches.reduce(
+            (hs, b) => hs + b.totalRegularHours + b.totalOvertimeHours,
+            0
+          ),
+        0
+      ),
+      count: totalGroups,
+      paidCount: paidGroups,
     };
-  }, [yearBatches, stubs, selectedYear]);
+  }, [groupedByPeriod, stubMap]);
 
   // Handle legacy stubId redirect
   const stubId = searchParams.get('stubId');
@@ -917,7 +1631,6 @@ const PayrollPageContent: React.FC = () => {
     <div className="min-h-screen bg-slate-100">
       <Layout>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-
           {/* ── Page Header ─────────────────────────────────────────────── */}
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Payroll</h1>
@@ -956,9 +1669,7 @@ const PayrollPageContent: React.FC = () => {
               <StatCard
                 label="Total Hours"
                 value={
-                  ytd.hours % 1 === 0
-                    ? String(ytd.hours)
-                    : ytd.hours.toFixed(1)
+                  ytd.hours % 1 === 0 ? String(ytd.hours) : ytd.hours.toFixed(1)
                 }
                 sub={`Across ${ytd.count} paycheck${ytd.count !== 1 ? 's' : ''}`}
                 iconBg="bg-purple-100"
@@ -967,13 +1678,11 @@ const PayrollPageContent: React.FC = () => {
               <StatCard
                 label="Paychecks Paid"
                 value={
-                  isPrism
-                    ? `${ytd.stubsViewed}/${ytd.count}`
-                    : String(ytd.count)
+                  isPrism ? `${ytd.paidCount}/${ytd.count}` : String(ytd.count)
                 }
                 sub={
                   isPrism
-                    ? `${ytd.stubsViewed} stub${ytd.stubsViewed !== 1 ? 's' : ''} viewed`
+                    ? `${ytd.paidCount} of ${ytd.count} paid`
                     : `${ytd.count} period${ytd.count !== 1 ? 's' : ''}`
                 }
                 iconBg="bg-orange-100"
@@ -1003,9 +1712,7 @@ const PayrollPageContent: React.FC = () => {
                   >
                     {yr}
                     {yr === currentYear && (
-                      <span className="ml-1 text-xs opacity-75">
-                        (Current)
-                      </span>
+                      <span className="ml-1 text-xs opacity-75">(Current)</span>
                     )}
                   </button>
                 ))}
@@ -1019,7 +1726,7 @@ const PayrollPageContent: React.FC = () => {
                 {(
                   [
                     ['all', 'All'],
-                    ['current', 'Current'],
+                    ['current', 'Current Month'],
                     ['past', 'Past'],
                     ['custom', 'Custom'],
                   ] as [StatusFilter, string][]
@@ -1038,6 +1745,31 @@ const PayrollPageContent: React.FC = () => {
                   </button>
                 ))}
               </div>
+
+              {/* Custom date range */}
+              {statusFilter === 'custom' && (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    defaultValue={customFrom}
+                    max={customTo || undefined}
+                    onChange={(e) => setCustomFrom(e.target.value)}
+                    title="From date"
+                    placeholder="mm/dd/yyyy"
+                    className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-700"
+                  />
+                  <span className="text-sm text-gray-400">to</span>
+                  <input
+                    type="date"
+                    defaultValue={customTo}
+                    min={customFrom || undefined}
+                    onChange={(e) => setCustomTo(e.target.value)}
+                    title="To date"
+                    placeholder="mm/dd/yyyy"
+                    className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-700"
+                  />
+                </div>
+              )}
 
               {/* Search */}
               <div className="relative flex-1 min-w-0">
@@ -1090,33 +1822,35 @@ const PayrollPageContent: React.FC = () => {
           ) : (
             <>
               {/* Results header */}
-              {sorted.length > 0 && (
-                <div className="flex items-center justify-between">
+              {filteredGroups.length > 0 && (
+                <div className="flex items-center align-center justify-between mh-30">
                   <p className="text-sm text-gray-500">
                     Showing{' '}
                     <span className="font-semibold text-gray-700">
-                      {sorted.length}
+                      {filteredGroups.length}
                     </span>{' '}
-                    paycheck{sorted.length !== 1 ? 's' : ''}
+                    paycheck{filteredGroups.length !== 1 ? 's' : ''}
                   </p>
-                  <button
-                    onClick={() => setDetailMode((p) => !p)}
-                    className={clsxm(
-                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
-                      detailMode
-                        ? 'bg-blue-50 border-blue-300 text-blue-600'
-                        : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                    )}
-                  >
-                    {detailMode ? '● Detail Mode' : '◇ Summary Mode'}
-                  </button>
+                  {viewMode === 'table' && (
+                    <button
+                      onClick={() => setDetailMode((p) => !p)}
+                      className={clsxm(
+                        'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                        detailMode
+                          ? 'bg-blue-50 border-blue-300 text-blue-600'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                      )}
+                    >
+                      {detailMode ? '● Detail Mode' : '◇ Summary Mode'}
+                    </button>
+                  )}
                 </div>
               )}
 
               {/* Table view */}
               {viewMode === 'table' && (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                  {sorted.length === 0 ? (
+                  {filteredGroups.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20">
                       <TrendingUp className="w-12 h-12 text-gray-200 mb-3" />
                       <p className="text-gray-400 text-sm font-medium">
@@ -1198,28 +1932,28 @@ const PayrollPageContent: React.FC = () => {
                             <th className={thClass}>Status</th>
                             <th className={thClass}>Voucher #</th>
                             <th className={thClass}>Stub</th>
-                            {detailMode && (
-                              <th className={thClass}>Voucher #</th>
-                            )}
                           </tr>
                         </thead>
                         <tbody>
-                          {sorted.map((batch) => {
-                            const sid = getStubId(batch, stubMap);
-                            const matchedStub = stubs.find((s) => s._id === sid);
-                            return (
+                          {filteredGroups.map(
+                            ({ key, batches: groupBatches }) => (
                               <PayrollTableRow
-                                key={batch._id}
-                                batch={batch}
-                                stubId={sid}
-                                stubVoucherNumber={matchedStub?.voucherNumber}
+                                key={key}
+                                batches={groupBatches}
+                                stubMap={stubMap}
+                                stubs={stubs}
                                 detailMode={detailMode}
                                 onViewStub={(id) =>
-                                  router.push(`/paycheck-stubs/${id}?from=${viewMode}`)
+                                  router.push(
+                                    `/paycheck-stubs/${id}?from=${viewMode}&detail=${detailMode}`
+                                  )
+                                }
+                                onSelect={(b) =>
+                                  setSelectedGroup({ key, batches: b })
                                 }
                               />
-                            );
-                          })}
+                            )
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -1228,15 +1962,23 @@ const PayrollPageContent: React.FC = () => {
               )}
 
               {/* Card view */}
-              {viewMode === 'card' && sorted.length > 0 && (
+              {viewMode === 'card' && filteredGroups.length > 0 && (
                 <PayrollCardGrid
-                  batches={sorted}
+                  groups={filteredGroups}
                   stubMap={stubMap}
-                  onViewStub={(id) => router.push(`/paycheck-stubs/${id}?from=${viewMode}`)}
+                  onViewStub={(id) =>
+                    router.push(
+                      `/paycheck-stubs/${id}?from=${viewMode}&detail=${detailMode}`
+                    )
+                  }
+                  onSelect={(b) => {
+                    const group = filteredGroups.find((g) => g.batches === b);
+                    setSelectedGroup({ key: group?.key ?? '', batches: b });
+                  }}
                 />
               )}
 
-              {viewMode === 'card' && sorted.length === 0 && (
+              {viewMode === 'card' && filteredGroups.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20">
                   <TrendingUp className="w-12 h-12 text-gray-200 mb-3" />
                   <p className="text-gray-400 text-sm font-medium">
@@ -1245,6 +1987,22 @@ const PayrollPageContent: React.FC = () => {
                 </div>
               )}
             </>
+          )}
+
+          {/* ── Paycheck Details Modal ──────────────────────────────────── */}
+          {selectedGroup && (
+            <PaycheckDetailsModal
+              batches={selectedGroup.batches}
+              stubMap={stubMap}
+              stubs={stubs}
+              directDeposit={historyData?.directDeposit}
+              onClose={() => setSelectedGroup(null)}
+              onViewStub={(id) =>
+                router.push(
+                  `/paycheck-stubs/${id}?from=${viewMode}&detail=${detailMode}&modal=${selectedGroup?.key ?? ''}`
+                )
+              }
+            />
           )}
 
           {/* ── Footer ───────────────────────────────────────────────────── */}

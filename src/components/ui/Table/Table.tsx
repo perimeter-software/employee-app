@@ -20,6 +20,7 @@ import { TableProps } from "./types";
 export function Table<T extends Record<string, unknown>>({
   title,
   description,
+  headerAction,
   columns,
   data,
   showPagination = true,
@@ -173,10 +174,23 @@ export function Table<T extends Record<string, unknown>>({
 
   return (
     <Card className={`flex flex-col min-h-0 ${className || ""}`.trim()}>
-      {(title || description) && (
-        <CardHeader>
-          {title && <CardTitle className="text-lg">{title}</CardTitle>}
-          {description && <CardDescription>{description}</CardDescription>}
+      {(title || description || headerAction) && (
+        <CardHeader className="space-y-0">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 w-full">
+            {(title || description) && (
+              <div className="min-w-0 flex-1 space-y-1 text-left">
+                {title && <CardTitle className="text-lg">{title}</CardTitle>}
+                {description && (
+                  <CardDescription>{description}</CardDescription>
+                )}
+              </div>
+            )}
+            {headerAction ? (
+              <div className="flex-shrink-0 self-start sm:mt-0.5 sm:ml-auto">
+                {headerAction}
+              </div>
+            ) : null}
+          </div>
         </CardHeader>
       )}
       <CardContent className="flex flex-col min-h-0 flex-1">

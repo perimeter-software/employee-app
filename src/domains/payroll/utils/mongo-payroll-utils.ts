@@ -1,8 +1,8 @@
 import { Db } from 'mongodb';
 import {
-  BillingVoucher,
   EmployeePayrollBatch,
   PayrollBatch,
+  PayrollVoucher,
   SubmittedEventApplicant,
   SubmittedJobTimecard,
   TaxDetails,
@@ -169,6 +169,52 @@ export async function getEmployeePayrollHistory(
       .sort({ startDate: -1 })
       .toArray();
 
+    // ── Batch-lookup event and job names/venues ───────────────────────────────
+    const eventUrls = [
+      ...new Set(rawBatches.map((b) => b.eventUrl).filter(Boolean)),
+    ];
+    const jobSlugs = [
+      ...new Set(rawBatches.map((b) => b.jobSlug).filter(Boolean)),
+    ];
+
+    const [eventDocs, jobDocs] = await Promise.all([
+      eventUrls.length
+        ? db
+            .collection('events')
+            .find(
+              { eventUrl: { $in: eventUrls } },
+              { projection: { eventUrl: 1, eventName: 1, venueName: 1 } }
+            )
+            .toArray()
+        : Promise.resolve([]),
+      jobSlugs.length
+        ? db
+            .collection('jobs')
+            .find(
+              { jobSlug: { $in: jobSlugs } },
+              { projection: { jobSlug: 1, title: 1, venueName: 1 } }
+            )
+            .toArray()
+        : Promise.resolve([]),
+    ]);
+
+    const eventMap = new Map<
+      string,
+      { eventName?: string; venueName?: string }
+    >(
+      eventDocs.map((e) => [
+        e.eventUrl,
+        { eventName: e.eventName, venueName: e.venueName },
+      ])
+    );
+    const jobMap = new Map<string, { jobTitle?: string; venueName?: string }>(
+      jobDocs.map((j) => [
+        j.jobSlug,
+        { jobTitle: j.title, venueName: j.venueName },
+      ])
+    );
+    // ─────────────────────────────────────────────────────────────────────────
+
     const results: EmployeePayrollBatch[] = [];
 
     for (const batch of rawBatches) {
@@ -192,6 +238,9 @@ export async function getEmployeePayrollHistory(
 
       const regularItems = allItems.filter((item) => item.earningId === 'REG');
       const overtimeItems = allItems.filter((item) => item.earningId === 'OT');
+      const extraItems = allItems.filter(
+        (item) => item.earningId !== 'REG' && item.earningId !== 'OT'
+      );
 
       const totalRegularHours = regularItems.reduce(
         (s, i) => s + (i.totalHours ?? 0),
@@ -203,61 +252,89 @@ export async function getEmployeePayrollHistory(
       );
       const totalGrossRegularPay = sumTaxField(regularItems, 'totalPay');
       const totalGrossOvertimePay = sumTaxField(overtimeItems, 'totalPay');
-      const totalGrossPay = totalGrossRegularPay + totalGrossOvertimePay;
+      const totalExtraEarnings = sumTaxField(extraItems, 'totalPay');
+      const totalGrossPay =
+        totalGrossRegularPay + totalGrossOvertimePay + totalExtraEarnings;
 
       const totalFicaSS = sumTaxField(allItems, 'ficaSS');
       const totalFicaMED = sumTaxField(allItems, 'ficaMED');
       const totalFederalTax = sumTaxField(allItems, 'federalTax');
       const totalStateTax = sumTaxField(allItems, 'stateTax');
-      const totalTaxes = totalFicaSS + totalFicaMED + totalFederalTax + totalStateTax;
+      const totalTaxes =
+        totalFicaSS + totalFicaMED + totalFederalTax + totalStateTax;
       const totalNetPay = sumTaxField(allItems, 'checkNet');
 
-      // Fetch billing voucher if available
-      let billingVoucher: BillingVoucher | undefined;
+      // Fetch payroll voucher (employee deductions + taxes)
+      let payrollVoucher: PayrollVoucher | undefined;
       const batchNumber = batch.lastCreatedPEOBatch?.batchNumber;
       if (batchNumber && employeeID) {
         try {
-          const voucherDoc = await db
-            .collection('prism-billing-vouchers')
+          const payrollDoc = await db
+            .collection('prism-payroll-vouchers')
             .findOne(
-              { batchNumber: String(batchNumber), employeeId: employeeID },
+              { batchId: String(batchNumber), employeeId: employeeID },
               {
                 projection: {
-                  sumBilling: 1,
-                  batchNumber: 1,
+                  batchId: 1,
                   employeeId: 1,
                   voucherId: 1,
                   payDate: 1,
-                  voucherStatus: 1,
+                  deduction: 1,
+                  employeeTax: 1,
                 },
               }
             );
 
-          if (voucherDoc) {
-            const filteredBilling = (voucherDoc.sumBilling || []).filter(
-              (item: { billCode: string }) =>
-                item.billCode !== 'EXPS' && item.billCode !== '000'
+          if (payrollDoc) {
+            const deductions = (payrollDoc.deduction || []).map(
+              (item: {
+                deductCode: string;
+                deductDescription: string;
+                deductAmount: number;
+              }) => ({
+                code: item.deductCode,
+                description: item.deductDescription,
+                amount: item.deductAmount,
+              })
             );
-            billingVoucher = {
-              _id: voucherDoc._id?.toString(),
-              employeeId: voucherDoc.employeeId,
-              batchNumber: voucherDoc.batchNumber,
-              voucherId: voucherDoc.voucherId,
-              payDate: voucherDoc.payDate,
-              voucherStatus: voucherDoc.voucherStatus,
-              sumBilling: filteredBilling,
+            const taxes = (payrollDoc.employeeTax || []).map(
+              (item: {
+                empTaxDeductCode: string;
+                empTaxDeductCodeDesc: string;
+                empTaxAmount: number;
+              }) => ({
+                code: item.empTaxDeductCode,
+                description: item.empTaxDeductCodeDesc,
+                amount: item.empTaxAmount,
+              })
+            );
+            payrollVoucher = {
+              _id: payrollDoc._id?.toString(),
+              employeeId: payrollDoc.employeeId,
+              batchNumber: payrollDoc.batchId,
+              voucherId: payrollDoc.voucherId,
+              payDate: payrollDoc.payDate,
+              deductions: [...deductions, ...taxes],
             };
           }
         } catch (voucherError) {
-          console.warn('Could not fetch billing voucher:', voucherError);
+          console.warn('Could not fetch payroll voucher:', voucherError);
         }
       }
+
+      const eventMeta = batch.eventUrl
+        ? eventMap.get(batch.eventUrl)
+        : undefined;
+      const jobMeta = batch.jobSlug ? jobMap.get(batch.jobSlug) : undefined;
 
       results.push({
         _id: batch._id.toString(),
         type: isEvent ? 'event' : 'job',
         eventUrl: batch.eventUrl,
+        eventName: eventMeta?.eventName,
         jobSlug: batch.jobSlug,
+        jobTitle: jobMeta?.jobTitle,
+        venueName: eventMeta?.venueName ?? jobMeta?.venueName,
         startDate: batch.startDate,
         endDate: batch.endDate,
         payrollStatus: batch.payrollStatus,
@@ -265,10 +342,12 @@ export async function getEmployeePayrollHistory(
         modifiedDate: batch.modifiedDate,
         regularItems,
         overtimeItems,
+        extraItems,
         totalRegularHours,
         totalOvertimeHours,
         totalGrossRegularPay,
         totalGrossOvertimePay,
+        totalExtraEarnings,
         totalGrossPay,
         totalFicaSS,
         totalFicaMED,
@@ -276,13 +355,15 @@ export async function getEmployeePayrollHistory(
         totalStateTax,
         totalTaxes,
         totalNetPay,
-        billingVoucher,
+        payrollVoucher,
         lastCreatedPEOBatch: batch.lastCreatedPEOBatch
           ? {
               batchNumber: batch.lastCreatedPEOBatch.batchNumber,
               batchStatus: batch.lastCreatedPEOBatch.batchStatus,
-              billingVouchersAvailable: batch.lastCreatedPEOBatch.billingVouchersAvailable,
-              payrollVouchersAvailable: batch.lastCreatedPEOBatch.payrollVouchersAvailable,
+              billingVouchersAvailable:
+                batch.lastCreatedPEOBatch.billingVouchersAvailable,
+              payrollVouchersAvailable:
+                batch.lastCreatedPEOBatch.payrollVouchersAvailable,
               lastBillingSync: batch.lastCreatedPEOBatch.lastBillingSync,
             }
           : undefined,

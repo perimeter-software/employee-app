@@ -13,6 +13,8 @@ export interface TableColumn<T extends Record<string, unknown>> {
 export interface TableProps<T extends Record<string, unknown>> {
   title?: string;
   description?: string;
+  /** Renders on the right of the title row (e.g. action button). */
+  headerAction?: ReactNode;
   columns: TableColumn<T>[];
   data: T[];
   showPagination?: boolean;

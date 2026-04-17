@@ -180,28 +180,54 @@ export function validateSwapOverlap(
   }
 }
 
+/**
+ * True if the assignee already works another shift on the same calendar day whose
+ * hours overlap the target shift (excluding the target shift’s own roster cell).
+ * Used for pickup interest and giveaway recipient checks.
+ */
+export function assigneeHasScheduleConflictForShiftDay(
+  job: GignologyJob,
+  targetShiftSlug: string,
+  assigneeId: string,
+  targetShiftDay: ShiftDaySnapshot
+): boolean {
+  const fromKey = toDayKey(targetShiftDay.dayOfWeek);
+  if (!fromKey) return false;
+
+  for (const x of listAssignmentsOnDate(job, assigneeId, targetShiftDay.date)) {
+    if (
+      x.shiftSlug === targetShiftSlug &&
+      x.dayKey === fromKey &&
+      x.date === targetShiftDay.date
+    ) {
+      continue;
+    }
+    if (
+      timeRangesOverlap(x.start, x.end, targetShiftDay.start, targetShiftDay.end)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function validateGiveawayOverlap(
   job: GignologyJob,
   shiftSlug: string,
   toEmployeeId: string,
   fromShiftDay: ShiftDaySnapshot
 ): void {
-  const fromKey = toDayKey(fromShiftDay.dayOfWeek);
-  if (!fromKey) throw new Error('invalid dayOfWeek');
-
-  for (const x of listAssignmentsOnDate(job, toEmployeeId, fromShiftDay.date)) {
-    if (
-      x.shiftSlug === shiftSlug &&
-      x.dayKey === fromKey &&
-      x.date === fromShiftDay.date
-    ) {
-      continue;
-    }
-    if (timeRangesOverlap(x.start, x.end, fromShiftDay.start, fromShiftDay.end)) {
-      throw new Error(
-        `overlap: assignee has conflicting work on ${fromShiftDay.date}`
-      );
-    }
+  if (
+    assigneeHasScheduleConflictForShiftDay(
+      job,
+      shiftSlug,
+      toEmployeeId,
+      fromShiftDay
+    )
+  ) {
+    throw new Error(
+      `overlap: assignee has conflicting work on ${fromShiftDay.date}`
+    );
   }
 }
 

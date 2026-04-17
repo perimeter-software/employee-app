@@ -6,6 +6,13 @@ import type { GignologyJob } from '@/domains/job/types/job.types';
 import { emailService } from '@/lib/services/email-service';
 import { sendQueuedEmail } from '@/lib/services/email-queue';
 import { findJobByJobSlug } from '@/domains/swap/utils/swap-roster-utils';
+import { EVENT_COVER_JOB_SLUG } from '@/domains/event/services/event-cover-constants';
+import {
+  buildDearGreetingLine,
+  buildSchedulingInnerHtml,
+  escapeHtml,
+} from '@/lib/email/employee-app-email-layout';
+import { resolveSchedulingNotificationEmail } from '@/lib/email/scheduling-notification-email';
 
 /** Calendar YYYY-MM-DD → e.g. "April 12, 2026" (date-only, UTC). */
 function formatCalendarDateYmd(ymd: string): string {
@@ -51,12 +58,6 @@ async function applicantDisplayName(
   return [fn, ln].filter(Boolean).join(' ');
 }
 
-/** Salutation when first/last are missing in DB. */
-function emailGreetingName(displayName: string): string {
-  const t = displayName.trim();
-  return t || 'Colleague';
-}
-
 /** "A coworker, **Name**, …" vs "A coworker …" when name unknown. */
 function coworkerNamedClause(displayName: string, restSentence: string): string {
   const t = displayName.trim();
@@ -87,55 +88,63 @@ async function loadSwapEmailContext(
   return { jobName, shiftName, dateFormatted };
 }
 
-function shiftDetailRowsHtml(
-  rows: { label: string; value: string }[]
-): string {
-  const body = rows
-    .map(
-      (r, i) => `<tr>
-<td style="padding:12px 16px;font-size:13px;font-weight:600;color:#475569;width:34%;vertical-align:top;border-bottom:${i < rows.length - 1 ? '1px solid #e2e8f0' : 'none'};">${escapeHtml(r.label)}</td>
-<td style="padding:12px 16px;font-size:14px;color:#0f172a;vertical-align:top;border-bottom:${i < rows.length - 1 ? '1px solid #e2e8f0' : 'none'};">${escapeHtml(r.value)}</td>
-</tr>`
-    )
-    .join('');
-  return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:22px 0;border-collapse:separate;border-spacing:0;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;overflow:hidden;">${body}</table>`;
+/** Both legs of a swap (initiator vs peer) for clear email copy. */
+async function loadSwapTwoSidedContext(
+  db: Db,
+  doc: SwapDocLike
+): Promise<{
+  jobName: string;
+  fromShiftName: string;
+  fromDateFormatted: string;
+  toShiftName: string;
+  toDateFormatted: string;
+}> {
+  const jobSlug = doc.jobSlug?.trim() || '';
+  const jobRecord = jobSlug
+    ? await findJobByJobSlug(db, jobSlug)
+    : null;
+  const fromSide = jobAndShiftDisplayNames(
+    jobRecord,
+    doc.fromShiftSlug,
+    jobSlug
+  );
+  const toSlug = doc.toShiftSlug?.trim() || '';
+  const toSide = toSlug
+    ? jobAndShiftDisplayNames(jobRecord, toSlug, jobSlug)
+    : { jobName: fromSide.jobName, shiftName: '—' };
+  return {
+    jobName: fromSide.jobName,
+    fromShiftName: fromSide.shiftName,
+    fromDateFormatted: formatCalendarDateYmd(doc.fromShiftDate || ''),
+    toShiftName: toSide.shiftName,
+    toDateFormatted: doc.toShiftDate?.trim()
+      ? formatCalendarDateYmd(doc.toShiftDate)
+      : '—',
+  };
 }
 
-/** Inline-styled HTML suitable for SES; all dynamic text must be passed through escapeHtml at call sites except this wrapper. */
-function wrapShiftEmailDocument(innerBodyHtml: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;background-color:#eef2f7;">
-<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:#eef2f7;padding:28px 14px;">
-<tr><td align="center">
-<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,0.08);">
-<tr><td style="background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);padding:22px 26px;">
-<p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:21px;color:#ffffff;font-weight:600;letter-spacing:0.02em;">Employee App</p>
-<p style="margin:10px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:13px;color:rgba(255,255,255,0.88);line-height:1.4;">Scheduling &amp; shift updates</p>
-</td></tr>
-<tr><td style="padding:30px 26px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:15px;line-height:1.65;color:#1e293b;">
-${innerBodyHtml}
-</td></tr>
-</table>
-</td></tr>
-</table>
-</body>
-</html>`;
-}
-
-function buildEmployeeShiftEmail(options: {
-  greetingName: string;
-  introHtml: string;
-  detailRows: { label: string; value: string }[];
-  closingHtml?: string;
-}): string {
-  const g = escapeHtml(options.greetingName);
-  const inner = `<p style="margin:0 0 8px;font-size:18px;color:#0f172a;font-weight:600;">Dear ${g},</p>
-${options.introHtml}
-${shiftDetailRowsHtml(options.detailRows)}
-${options.closingHtml ?? ''}`;
-  return wrapShiftEmailDocument(inner);
+function swapDetailRowsForEmail(
+  initiatorDisplayName: string,
+  peerDisplayName: string,
+  sides: Awaited<ReturnType<typeof loadSwapTwoSidedContext>>
+): { label: string; value: string }[] {
+  const reqLabel = initiatorDisplayName.trim()
+    ? `${initiatorDisplayName.trim()}'s shift`
+    : "Requester's shift";
+  const peerLabel = peerDisplayName.trim()
+    ? `${peerDisplayName.trim()}'s shift`
+    : "Coworker's shift";
+  return [
+    { label: 'Job', value: sides.jobName },
+    {
+      label: reqLabel,
+      value: `${sides.fromShiftName} — ${sides.fromDateFormatted}`,
+    },
+    {
+      label: peerLabel,
+      value: `${sides.toShiftName} — ${sides.toDateFormatted}`,
+    },
+  ];
 }
 
 /**
@@ -171,14 +180,6 @@ type SwapEmailLogContext = {
   recipientApplicantId?: string;
   extra?: Record<string, unknown>;
 };
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 async function applicantEmail(
   db: Db,
@@ -262,6 +263,22 @@ async function safeQueue(
   }
 }
 
+async function queueSchedulingNotificationEmail(
+  db: Db,
+  to: string | null | undefined,
+  subjectLine: string,
+  inner: Parameters<typeof buildSchedulingInnerHtml>[0],
+  log?: SwapEmailLogContext
+): Promise<void> {
+  const innerBody = buildSchedulingInnerHtml(inner);
+  const { subject, html } = await resolveSchedulingNotificationEmail(
+    db,
+    subjectLine,
+    innerBody
+  );
+  await safeQueue(db, to, subject, html, log);
+}
+
 function eventManagerEmailsFromJob(job: GignologyJob | null): string[] {
   const list = job?.additionalConfig?.eventManagerNotificationRecipients;
   if (!Array.isArray(list)) return [];
@@ -271,64 +288,47 @@ function eventManagerEmailsFromJob(job: GignologyJob | null): string[] {
   return [...new Set(emails)];
 }
 
-async function fallbackAdminEmailsFromUsers(db: Db): Promise<string[]> {
-  const admins = await db
-    .collection('users')
-    .find(
-      { userType: { $in: ['Admin', 'Master'] } },
-      { projection: { emailAddress: 1 } }
-    )
-    .limit(25)
-    .toArray();
-  const emails = admins
-    .map((u) => u.emailAddress)
-    .filter((e): e is string => typeof e === 'string' && e.includes('@'));
-  return [...new Set(emails)];
-}
-
 /**
  * Notify job event managers that a swap/giveaway needs admin approval.
- * Recipients: `job.additionalConfig.eventManagerNotificationRecipients[].email`, else legacy Admin/Master users.
+ * Recipients only: `job.additionalConfig.eventManagerNotificationRecipients[].email`.
  */
 async function notifyAdminsPendingSwap(
   db: Db,
-  summary: string,
+  requestTypeLabel: string,
+  detailRows: { label: string; value: string }[],
   jobSlug: string
 ): Promise<void> {
   try {
     const job = await findJobByJobSlug(db, jobSlug.trim());
-    let recipients = eventManagerEmailsFromJob(job);
-    if (recipients.length === 0) {
-      recipients = await fallbackAdminEmailsFromUsers(db);
-    }
+    const recipients = eventManagerEmailsFromJob(job);
 
     if (recipients.length === 0) {
       console.warn(
-        '[swap-notifications] pending-approval email skipped: no eventManagerNotificationRecipients and no Admin/Master emails',
+        '[swap-notifications] pending-approval email skipped: job has no eventManagerNotificationRecipients',
         jobSlug
       );
       return;
     }
 
-    const adminHtml = wrapShiftEmailDocument(
-      `<p style="margin:0 0 8px;font-size:18px;color:#0f172a;font-weight:600;">Hello,</p>
-<p style="margin:0 0 14px;">${escapeHtml(summary)}</p>
-<p style="margin:0;">Please open the admin schedule tools to <strong>approve</strong> or <strong>reject</strong> this request.</p>`
+    const innerBody = buildSchedulingInnerHtml({
+      greetingHtml: `<p style="margin:0 0 8px;font-size:18px;color:#0f172a;font-weight:600;">Hello,</p>`,
+      introHtml: `<p style="margin:0 0 14px;">A ${escapeHtml(requestTypeLabel)} is ready for approval.</p>`,
+      detailRows,
+      closingHtml: `<p style="margin:0;">Please open the admin schedule tools to <strong>approve</strong> or <strong>reject</strong> this request.</p>`,
+    });
+    const { subject, html } = await resolveSchedulingNotificationEmail(
+      db,
+      'Shift swap — pending your approval',
+      innerBody
     );
 
     await Promise.all(
       recipients.map((adminTo) =>
-        safeQueue(
-          db,
-          adminTo,
-          'Shift swap — pending your approval',
-          adminHtml,
-          {
-            event: 'admin-pending-approval',
-            jobSlug: jobSlug.trim(),
-            extra: { adminRecipient: true },
-          }
-        )
+        safeQueue(db, adminTo, subject, html, {
+          event: 'admin-pending-approval',
+          jobSlug: jobSlug.trim(),
+          extra: { adminRecipient: true },
+        })
       )
     );
   } catch (e) {
@@ -355,27 +355,32 @@ export async function notifySwapRequestCreated(
       const intro = `<p style="margin:0 0 14px;">I hope this message finds you well.</p>
 <p style="margin:0 0 14px;">${swapLine}</p>`;
       const closing = `<p style="margin:16px 0 0;">Thank you for your prompt attention.</p>`;
-      const html = buildEmployeeShiftEmail({
-        greetingName: emailGreetingName(peerName),
-        introHtml: intro,
-        detailRows: [
-          { label: 'Job', value: ctx.jobName },
-          { label: 'Shift', value: ctx.shiftName },
-          { label: 'Shift Date', value: ctx.dateFormatted },
-        ],
-        closingHtml: closing,
-      });
-      await safeQueue(db, to, 'Shift swap request', html, {
-        event: 'swap-request-created-peer',
-        jobSlug: doc.jobSlug,
-        fromShiftDate: doc.fromShiftDate,
-        fromShiftSlug: doc.fromShiftSlug,
-        toShiftDate: doc.toShiftDate,
-        toShiftSlug: doc.toShiftSlug,
-        fromEmployeeId: doc.fromEmployeeId,
-        toEmployeeId: doc.toEmployeeId,
-        recipientApplicantId: doc.toEmployeeId,
-      });
+      await queueSchedulingNotificationEmail(
+        db,
+        to,
+        'Shift swap request',
+        {
+          greetingHtml: buildDearGreetingLine(peerName),
+          introHtml: intro,
+          detailRows: [
+            { label: 'Job', value: ctx.jobName },
+            { label: 'Shift', value: ctx.shiftName },
+            { label: 'Shift Date', value: ctx.dateFormatted },
+          ],
+          closingHtml: closing,
+        },
+        {
+          event: 'swap-request-created-peer',
+          jobSlug: doc.jobSlug,
+          fromShiftDate: doc.fromShiftDate,
+          fromShiftSlug: doc.fromShiftSlug,
+          toShiftDate: doc.toShiftDate,
+          toShiftSlug: doc.toShiftSlug,
+          fromEmployeeId: doc.fromEmployeeId,
+          toEmployeeId: doc.toEmployeeId,
+          recipientApplicantId: doc.toEmployeeId,
+        }
+      );
     }
 
     if (doc.type === 'giveaway' && doc.toEmployeeId) {
@@ -391,26 +396,31 @@ export async function notifySwapRequestCreated(
       );
       const intro = `<p style="margin:0 0 14px;">I hope this message finds you well.</p>
 <p style="margin:0 0 14px;">${offerLine}</p>${extraTagged}`;
-      const html = buildEmployeeShiftEmail({
-        greetingName: emailGreetingName(peerName),
-        introHtml: intro,
-        detailRows: [
-          { label: 'Job', value: ctx.jobName },
-          { label: 'Shift', value: ctx.shiftName },
-          { label: 'Shift Date', value: ctx.dateFormatted },
-        ],
-      });
-      await safeQueue(db, to, 'Shift offered to you', html, {
-        event: 'giveaway-directed-created-peer',
-        jobSlug: doc.jobSlug,
-        fromShiftDate: doc.fromShiftDate,
-        fromShiftSlug: doc.fromShiftSlug,
-        toShiftDate: doc.toShiftDate,
-        toShiftSlug: doc.toShiftSlug,
-        fromEmployeeId: doc.fromEmployeeId,
-        toEmployeeId: doc.toEmployeeId,
-        recipientApplicantId: doc.toEmployeeId,
-      });
+      await queueSchedulingNotificationEmail(
+        db,
+        to,
+        'Shift offered to you',
+        {
+          greetingHtml: buildDearGreetingLine(peerName),
+          introHtml: intro,
+          detailRows: [
+            { label: 'Job', value: ctx.jobName },
+            { label: 'Shift', value: ctx.shiftName },
+            { label: 'Shift Date', value: ctx.dateFormatted },
+          ],
+        },
+        {
+          event: 'giveaway-directed-created-peer',
+          jobSlug: doc.jobSlug,
+          fromShiftDate: doc.fromShiftDate,
+          fromShiftSlug: doc.fromShiftSlug,
+          toShiftDate: doc.toShiftDate,
+          toShiftSlug: doc.toShiftSlug,
+          fromEmployeeId: doc.fromEmployeeId,
+          toEmployeeId: doc.toEmployeeId,
+          recipientApplicantId: doc.toEmployeeId,
+        }
+      );
     }
 
     // TODO: Option 1 accept-any (no named peer) — broadcast to eligible coworkers on the shift roster.
@@ -479,21 +489,20 @@ export async function notifyPickupSeekersOfOpenGiveaway(
       const intro = `<p style="margin:0 0 14px;">I hope this message finds you well.</p>
 ${offerLead}`;
       const closing = `<p style="margin:16px 0 0;">Sign in to the employee app to see whether this offer is still available.</p>`;
-      const html = buildEmployeeShiftEmail({
-        greetingName: emailGreetingName(seekerName),
-        introHtml: intro,
-        detailRows: [
-          { label: 'Job', value: jobName },
-          { label: 'Shift', value: shiftName },
-          { label: 'Shift Date', value: dateFormatted },
-        ],
-        closingHtml: closing,
-      });
-      await safeQueue(
+      await queueSchedulingNotificationEmail(
         db,
         to,
         'Shift you may want — coworker offering a day',
-        html,
+        {
+          greetingHtml: buildDearGreetingLine(seekerName),
+          introHtml: intro,
+          detailRows: [
+            { label: 'Job', value: jobName },
+            { label: 'Shift', value: shiftName },
+            { label: 'Shift Date', value: dateFormatted },
+          ],
+          closingHtml: closing,
+        },
         {
           event: 'open-giveaway-notify-pickup-seeker',
           jobSlug,
@@ -513,7 +522,7 @@ ${offerLead}`;
   }
 }
 
-/** After employee claims an open or directed giveaway — notify initiator + admins. */
+/** After employee claims an open or directed giveaway — notify initiator + job event managers (if configured). */
 export async function notifyGiveawayClaimedByPeer(
   db: Db,
   doc: SwapDocLike
@@ -531,27 +540,37 @@ export async function notifyGiveawayClaimedByPeer(
       : `<p style="margin:0 0 14px;">A coworker has agreed to take this shift, pending administrator approval.</p>`;
     const intro = `<p style="margin:0 0 14px;">I hope this message finds you well.</p>
 ${acceptLine}`;
-    const html = buildEmployeeShiftEmail({
-      greetingName: emailGreetingName(giverName),
-      introHtml: intro,
-      detailRows: [
+    await queueSchedulingNotificationEmail(
+      db,
+      from,
+      'Your shift offer was accepted',
+      {
+        greetingHtml: buildDearGreetingLine(giverName),
+        introHtml: intro,
+        detailRows: [
+          { label: 'Job', value: ctx.jobName },
+          { label: 'Shift', value: ctx.shiftName },
+          { label: 'Shift Date', value: ctx.dateFormatted },
+        ],
+      },
+      {
+        event: 'giveaway-claimed-notify-giver',
+        jobSlug: doc.jobSlug,
+        fromShiftDate: doc.fromShiftDate,
+        fromShiftSlug: doc.fromShiftSlug,
+        fromEmployeeId: doc.fromEmployeeId,
+        toEmployeeId: doc.toEmployeeId,
+        recipientApplicantId: doc.fromEmployeeId,
+      }
+    );
+    await notifyAdminsPendingSwap(
+      db,
+      'shift giveaway',
+      [
         { label: 'Job', value: ctx.jobName },
         { label: 'Shift', value: ctx.shiftName },
         { label: 'Shift Date', value: ctx.dateFormatted },
       ],
-    });
-    await safeQueue(db, from, 'Your shift offer was accepted', html, {
-      event: 'giveaway-claimed-notify-giver',
-      jobSlug: doc.jobSlug,
-      fromShiftDate: doc.fromShiftDate,
-      fromShiftSlug: doc.fromShiftSlug,
-      fromEmployeeId: doc.fromEmployeeId,
-      toEmployeeId: doc.toEmployeeId,
-      recipientApplicantId: doc.fromEmployeeId,
-    });
-    await notifyAdminsPendingSwap(
-      db,
-      `A shift giveaway is ready for approval: ${ctx.jobName} on ${ctx.dateFormatted}.`,
       doc.jobSlug
     );
   } catch (e) {
@@ -559,49 +578,59 @@ ${acceptLine}`;
   }
 }
 
-/** After peer PATCH accept — initiator + admins. */
+/** After peer PATCH accept — notify initiator + job event managers (if configured). */
 export async function notifySwapAcceptedByPeer(
   db: Db,
   doc: SwapDocLike
 ): Promise<void> {
   try {
     if (doc.type !== 'swap') return;
-    const ctx = await loadSwapEmailContext(db, doc);
+    const sides = await loadSwapTwoSidedContext(db, doc);
     const from = await applicantEmail(db, doc.fromEmployeeId);
     const initiatorName = await applicantDisplayName(db, doc.fromEmployeeId);
     const peerName = doc.toEmployeeId
       ? await applicantDisplayName(db, doc.toEmployeeId)
       : '';
     const agreeLine = peerName.trim()
-      ? `<p style="margin:0 0 14px;"><strong>${escapeHtml(peerName)}</strong> has agreed to the shift swap. The request is now waiting for administrator approval.</p>`
+      ? `<p style="margin:0 0 14px;"><strong>${escapeHtml(peerName)}</strong> accepted your swap. You are giving up <strong>${escapeHtml(sides.fromShiftName)}</strong> on <strong>${escapeHtml(sides.fromDateFormatted)}</strong>; they are offering <strong>${escapeHtml(sides.toShiftName)}</strong> on <strong>${escapeHtml(sides.toDateFormatted)}</strong> in exchange. The request is pending administrator approval.</p>`
       : `<p style="margin:0 0 14px;">The other employee has agreed to the shift swap. The request is now waiting for administrator approval.</p>`;
     const intro = `<p style="margin:0 0 14px;">I hope this message finds you well.</p>
 ${agreeLine}`;
-    const closing = `<p style="margin:16px 0 0;">We will notify you again once an administrator has acted on this request.</p>`;
-    const html = buildEmployeeShiftEmail({
-      greetingName: emailGreetingName(initiatorName),
-      introHtml: intro,
-      detailRows: [
-        { label: 'Job', value: ctx.jobName },
-        { label: 'Shift', value: ctx.shiftName },
-        { label: 'Shift Date', value: ctx.dateFormatted },
-      ],
-      closingHtml: closing,
-    });
-    await safeQueue(db, from, 'Your shift swap was matched', html, {
-      event: 'swap-accepted-notify-initiator',
-      jobSlug: doc.jobSlug,
-      fromShiftDate: doc.fromShiftDate,
-      fromShiftSlug: doc.fromShiftSlug,
-      toShiftDate: doc.toShiftDate,
-      toShiftSlug: doc.toShiftSlug,
-      fromEmployeeId: doc.fromEmployeeId,
-      toEmployeeId: doc.toEmployeeId,
-      recipientApplicantId: doc.fromEmployeeId,
-    });
+    const closing = `<p style="margin:16px 0 0;font-size:14px;color:#64748b;">You will receive another email when an administrator <strong>approves</strong> or <strong>rejects</strong> this request.</p>`;
+    await queueSchedulingNotificationEmail(
+      db,
+      from,
+      'Your shift swap was matched',
+      {
+        greetingHtml: buildDearGreetingLine(initiatorName),
+        introHtml: intro,
+        detailRows: swapDetailRowsForEmail(
+          initiatorName,
+          peerName.trim() || 'Coworker',
+          sides
+        ),
+        closingHtml: closing,
+      },
+      {
+        event: 'swap-accepted-notify-initiator',
+        jobSlug: doc.jobSlug,
+        fromShiftDate: doc.fromShiftDate,
+        fromShiftSlug: doc.fromShiftSlug,
+        toShiftDate: doc.toShiftDate,
+        toShiftSlug: doc.toShiftSlug,
+        fromEmployeeId: doc.fromEmployeeId,
+        toEmployeeId: doc.toEmployeeId,
+        recipientApplicantId: doc.fromEmployeeId,
+      }
+    );
     await notifyAdminsPendingSwap(
       db,
-      `A shift swap is ready for approval: ${ctx.jobName} on ${ctx.dateFormatted}.`,
+      'shift swap',
+      swapDetailRowsForEmail(
+        initiatorName,
+        peerName.trim() || 'Coworker',
+        sides
+      ),
       doc.jobSlug
     );
   } catch (e) {
@@ -638,6 +667,14 @@ export async function notifySwapApprovedByAdmin(
 ): Promise<void> {
   try {
     const ctx = await loadSwapEmailContext(db, doc);
+    const sides =
+      doc.type === 'swap'
+        ? await loadSwapTwoSidedContext(db, doc)
+        : null;
+    const fromLabelName = await applicantDisplayName(db, doc.fromEmployeeId);
+    const toLabelName = doc.toEmployeeId
+      ? await applicantDisplayName(db, doc.toEmployeeId)
+      : '';
     const { subject, leadHtml } = approvedEmailCopy(doc);
     const closing = `<p style="margin:16px 0 0;">If anything looks incorrect, please contact your manager or scheduling team.</p>`;
 
@@ -645,16 +682,30 @@ export async function notifySwapApprovedByAdmin(
       const name = await applicantDisplayName(db, applicantId);
       const intro = `<p style="margin:0 0 14px;">I hope this message finds you well.</p>
 <p style="margin:0 0 14px;">${leadHtml}</p>`;
-      return buildEmployeeShiftEmail({
-        greetingName: emailGreetingName(name),
+      const detailRows =
+        doc.type === 'swap' && sides
+          ? swapDetailRowsForEmail(
+              fromLabelName,
+              toLabelName.trim() || 'Coworker',
+              sides
+            )
+          : [
+              { label: 'Job', value: ctx.jobName },
+              { label: 'Shift', value: ctx.shiftName },
+              { label: 'Shift Date', value: ctx.dateFormatted },
+            ];
+      const innerBody = buildSchedulingInnerHtml({
+        greetingHtml: buildDearGreetingLine(name),
         introHtml: intro,
-        detailRows: [
-          { label: 'Job', value: ctx.jobName },
-          { label: 'Shift', value: ctx.shiftName },
-          { label: 'Shift Date', value: ctx.dateFormatted },
-        ],
+        detailRows,
         closingHtml: closing,
       });
+      const { html } = await resolveSchedulingNotificationEmail(
+        db,
+        subject,
+        innerBody
+      );
+      return html;
     };
 
     const a = await applicantEmail(db, doc.fromEmployeeId);
@@ -691,6 +742,13 @@ export async function notifySwapApprovedByAdmin(
 }
 
 function rejectedEmailCopy(doc: SwapDocLike): { subject: string; leadHtml: string } {
+  if (doc.jobSlug === EVENT_COVER_JOB_SLUG) {
+    return {
+      subject: 'Event cover update',
+      leadHtml:
+        'An administrator has <strong>not approved</strong> this event cover request. The event roster was <strong>not</strong> changed.',
+    };
+  }
   const t = doc.type;
   if (t === 'giveaway') {
     return {
@@ -719,21 +777,42 @@ export async function notifySwapRejectedByAdmin(
 ): Promise<void> {
   try {
     const ctx = await loadSwapEmailContext(db, doc);
+    const sides =
+      doc.type === 'swap'
+        ? await loadSwapTwoSidedContext(db, doc)
+        : null;
+    const fromLabelName = await applicantDisplayName(db, doc.fromEmployeeId);
+    const toLabelName = doc.toEmployeeId
+      ? await applicantDisplayName(db, doc.toEmployeeId)
+      : '';
     const { subject, leadHtml } = rejectedEmailCopy(doc);
     const initiatorName = await applicantDisplayName(db, doc.fromEmployeeId);
     const intro = `<p style="margin:0 0 14px;">I hope this message finds you well.</p>
 <p style="margin:0 0 14px;">${leadHtml}</p>`;
     const closing = `<p style="margin:16px 0 0;">If you have questions, please reach out to your manager or scheduling team.</p>`;
-    const html = buildEmployeeShiftEmail({
-      greetingName: emailGreetingName(initiatorName),
+    const detailRows =
+      doc.type === 'swap' && sides
+        ? swapDetailRowsForEmail(
+            fromLabelName,
+            toLabelName.trim() || 'Coworker',
+            sides
+          )
+        : [
+            { label: 'Job', value: ctx.jobName },
+            { label: 'Shift', value: ctx.shiftName },
+            { label: 'Shift Date', value: ctx.dateFormatted },
+          ];
+    const innerBody = buildSchedulingInnerHtml({
+      greetingHtml: buildDearGreetingLine(initiatorName),
       introHtml: intro,
-      detailRows: [
-        { label: 'Job', value: ctx.jobName },
-        { label: 'Shift', value: ctx.shiftName },
-        { label: 'Shift Date', value: ctx.dateFormatted },
-      ],
+      detailRows,
       closingHtml: closing,
     });
+    const { html } = await resolveSchedulingNotificationEmail(
+      db,
+      subject,
+      innerBody
+    );
     const a = await applicantEmail(db, doc.fromEmployeeId);
     await safeQueue(db, a, subject, html, {
       event: 'admin-rejected-notify-initiator',
