@@ -10,6 +10,7 @@ export type TenantInfo = {
   tenantLogo?: string;
   dbName?: string;
   peoIntegration?: string;
+  clientDomain?: string;
 };
 
 export type TenantDocument = {

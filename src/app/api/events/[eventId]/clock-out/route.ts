@@ -4,6 +4,8 @@ import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { ObjectId } from 'mongodb';
 import { logActivity, createActivityLogData } from '@/lib/services/activity-logger';
+import { processClockCoordinates } from '@/domains/event/utils/event-clock-geo';
+import type { ApplicantNote } from '@/domains/user/types/applicant.types';
 
 /**
  * POST /api/events/[eventId]/clock-out
@@ -13,6 +15,8 @@ import { logActivity, createActivityLogData } from '@/lib/services/activity-logg
  * Mirrors the behaviour of eventClockOut in the legacy API:
  *  - Validates venue StaffingPool membership
  *  - Confirms the roster record has clocked in and has not yet clocked out
+ *  - Geofence check: flags the record and adds a note when outside — never blocks clock-out
+ *  - Adds a note when clocking out after the estimated event end time
  *  - Handles overnight shifts (timeOut < timeIn → add 1 day)
  *  - Updates the full roster record entry via arrayFilters
  */
@@ -130,9 +134,64 @@ async function clockOutHandler(
     }
 
     const now = new Date();
-    let clockOutTime = now;
+    const applicantNotes: ApplicantNote[] = [];
+    const [agentFirstName, ...agentLastParts] = (agent as string).split(' ');
+    const agentLastName = agentLastParts.join(' ');
 
-    // Overnight shift: if timeOut is before timeIn, assume next day
+    // Geofence check — never blocks clock-out, only flags
+    if (coordinates) {
+      await processClockCoordinates({
+        db,
+        coordinates,
+        direction: 'out',
+        event: event as Record<string, unknown>,
+        rosterRecord,
+        agentFirstName,
+        agentLastName,
+        createAgent: createAgent as string,
+        agent: agent as string,
+        applicantNotes,
+      });
+    }
+
+    // Late clock-out note: flag when clocking out after the estimated event end time
+    const eventEndTime = event.eventEndTime ? new Date(event.eventEndTime as string) : null;
+    if (eventEndTime && eventEndTime < now) {
+      applicantNotes.push({
+        type: 'Clock-out after event end time',
+        text: `<p>Event: ${(event.eventUrl as string) ?? eventId}
+          <blockquote><div>Applicant clocked out at ${now.toISOString()}, after estimated event end time of ${eventEndTime.toISOString()}</div></blockquote></p>`,
+        firstName: agentFirstName,
+        lastName: agentLastName,
+        userId: createAgent as string,
+        date: new Date(),
+      });
+      // Only set flag if not already flagged by geofence check (geofence flag takes precedence)
+      if (!rosterRecord.flag) {
+        rosterRecord.flag = 'Yes';
+        rosterRecord.flagColor = 'warning';
+        rosterRecord.flagTooltip = 'Clock-out after est end time';
+      }
+    }
+
+    // Push any notes to the applicant record
+    if (applicantNotes.length) {
+      await db.collection('applicants').updateOne(
+        { _id: applicantObjectId },
+        {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          $push: { notes: { $each: applicantNotes } } as any,
+          $set: {
+            modifiedDate: now,
+            modifiedAgent: createAgent,
+            modifiedAgentName: agent,
+          },
+        }
+      );
+    }
+
+    // Compute clock-out time; handle overnight shift
+    let clockOutTime = now;
     const timeInDate = new Date(rosterRecord.timeIn as string);
     if (clockOutTime < timeInDate) {
       clockOutTime = new Date(clockOutTime.getTime() + 24 * 60 * 60 * 1000);

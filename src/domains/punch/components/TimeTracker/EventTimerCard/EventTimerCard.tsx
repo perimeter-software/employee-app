@@ -244,6 +244,7 @@ export function EventTimerCardContent({ userData, isBlockedByJobPunch = false, h
     clockInMutation.mutate({
       eventId: selectedEventId,
       payload: { applicantId, agent: agentName, createAgent: userId },
+      geoFence: selectedItem.event.geoFence,
     });
   };
 

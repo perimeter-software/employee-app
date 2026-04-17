@@ -75,4 +75,6 @@ export interface GignologyEvent {
   pendingCoverPeerEmail?: string | null;
   /** Invite cover request where current user is `toEmployeeId` (pending_match) */
   incomingCoverRequestId?: string | null;
+  /** 'Yes' when the event enforces a geofence check on clock-in */
+  geoFence?: string;
 }

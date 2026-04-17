@@ -48,8 +48,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     // Check if user is a Client
     const isClient = currentUser?.userType === 'Client';
 
+    const isPrism = primaryCompany?.peoIntegration === 'Prism';
+
     // For limited access users (applicants or terminated/inactive employees), only show Payroll
     if (isLimitedAccess) {
+      if (!isPrism) return [];
       return [
         {
           name: 'Payroll',
@@ -126,8 +129,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       }
     }
 
-    // Add Payroll link for non-Client users (shows pay history; Paycheck Stubs tab only for Prism)
-    if (!isClient) {
+    // Add Payroll link only for non-Client users on Prism tenants
+    if (!isClient && isPrism) {
       baseNavigation.push({
         name: 'Payroll',
         href: '/payroll',

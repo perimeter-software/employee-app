@@ -4,6 +4,7 @@
 
 import { useUser } from '@auth0/nextjs-auth0/client';
 import Image from 'next/image';
+import { useState } from 'react';
 import { Button } from '@/components/ui/Button/Button';
 import {
   DropdownMenu,
@@ -16,6 +17,40 @@ import { ChevronDown, LogOut, Settings, User, Menu } from 'lucide-react';
 import { TenantInfo, useSwitchTenant } from '@/domains/tenant';
 import { useCurrentUser } from '@/domains/user';
 import { NotificationBell } from '@/components/shared/NotificationBell';
+
+function TenantLogo({
+  src,
+  size,
+  sizeClass,
+  initials,
+}: {
+  src: string;
+  size: number;
+  sizeClass: string;
+  initials: string;
+}) {
+  const [errored, setErrored] = useState(false);
+  if (errored) {
+    return (
+      <div
+        className={`${sizeClass} rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}
+      >
+        {initials}
+      </div>
+    );
+  }
+  return (
+    <Image
+      src={src}
+      alt="logo"
+      width={size}
+      height={size}
+      unoptimized
+      className="rounded-full object-cover flex-shrink-0"
+      onError={() => setErrored(true)}
+    />
+  );
+}
 
 interface HeaderProps {
   onMobileMenuToggle?: () => void;
@@ -135,12 +170,13 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                   >
                     <div className="flex items-center gap-2">
                       {enhancedUser?.tenant?.tenantLogo ? (
-                        <Image
+                        <TenantLogo
                           src={enhancedUser.tenant.tenantLogo}
-                          alt="logo"
-                          width={20}
-                          height={20}
-                          className="rounded-full object-cover"
+                          size={20}
+                          sizeClass="w-5 h-5"
+                          initials={getTenantInitials(
+                            enhancedUser.tenant as TenantInfo
+                          )}
                         />
                       ) : (
                         <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
@@ -184,12 +220,11 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                           disabled={tenantSwitchLoading}
                         >
                           {tenant.tenantLogo ? (
-                            <Image
+                            <TenantLogo
                               src={tenant.tenantLogo}
-                              alt="logo"
-                              width={24}
-                              height={24}
-                              className="rounded-full object-cover flex-shrink-0"
+                              size={24}
+                              sizeClass="w-6 h-6"
+                              initials={getTenantInitials(tenant)}
                             />
                           ) : (
                             <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
@@ -232,7 +267,10 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                     <p className="text-sm font-medium text-gray-900">
                       {displayUser?.firstName && displayUser?.lastName
                         ? `${displayUser.firstName} ${displayUser.lastName}`
-                        : displayUser?.firstName || displayUser?.name || displayUser?.given_name || 'User'}
+                        : displayUser?.firstName ||
+                          displayUser?.name ||
+                          displayUser?.given_name ||
+                          'User'}
                     </p>
                     <p className="text-xs text-gray-500">
                       {displayUser?.email || ''}
@@ -253,11 +291,11 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                   ) : (
                     <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
                       <span className="text-white font-medium text-sm">
-                        {displayUser?.firstName?.[0] || 
-                         displayUser?.lastName?.[0] ||
-                         displayUser?.name?.[0] ||
-                         displayUser?.given_name?.[0] ||
-                         'U'}
+                        {displayUser?.firstName?.[0] ||
+                          displayUser?.lastName?.[0] ||
+                          displayUser?.name?.[0] ||
+                          displayUser?.given_name?.[0] ||
+                          'U'}
                       </span>
                     </div>
                   )}
@@ -295,12 +333,11 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                         disabled={tenantSwitchLoading}
                       >
                         {tenant.tenantLogo ? (
-                          <Image
+                          <TenantLogo
                             src={tenant.tenantLogo}
-                            alt="logo"
-                            width={20}
-                            height={20}
-                            className="rounded-full object-cover"
+                            size={20}
+                            sizeClass="w-5 h-5"
+                            initials={getTenantInitials(tenant)}
                           />
                         ) : (
                           <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">

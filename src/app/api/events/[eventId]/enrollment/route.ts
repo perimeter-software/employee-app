@@ -44,10 +44,10 @@ async function getEnrollmentHandler(
       );
     }
 
-    const { sub: userSub, email } = request.user || {};
+    const { sub: userSub, email, tenant } = request.user || {};
 
     const eventUrl = event.eventUrl as string;
-    const sp1 = getSp1Client(userSub, email || '');
+    const sp1 = getSp1Client(userSub, email || '', tenant?.clientDomain || tenant?.url);
     const { data } = await sp1.get(
       `/events/url/${eventUrl}/enroll/${applicantId}`
     );
@@ -110,9 +110,9 @@ async function putEnrollmentHandler(
       );
     }
 
-    const { sub: userSub, email } = user;
+    const { sub: userSub, email, tenant } = user;
     const eventUrl = event.eventUrl as string;
-    const sp1 = getSp1Client(userSub, email || '');
+    const sp1 = getSp1Client(userSub, email || '', tenant?.clientDomain || tenant?.url);
     const { data } = await sp1.put(
       `/events/url/${eventUrl}/enroll/${applicantId}`,
       body
