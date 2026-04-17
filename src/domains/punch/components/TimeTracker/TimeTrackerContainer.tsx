@@ -44,6 +44,10 @@ export const TimeTrackerContainer = () => {
     enabled: shouldFetchUserData,
   });
 
+  // True when the user is assigned to at least one shift job (the pipeline already
+  // filters to shiftJob === 'Yes' / true, so any entry in jobs[] counts).
+  const hasShiftJobs = !!userData?.jobs?.length;
+
   // Track the current view type to adjust date range
   const [currentViewType, setCurrentViewType] = useState<'table' | 'calendar'>(
     'table'
@@ -118,7 +122,7 @@ export const TimeTrackerContainer = () => {
   }, []);
 
   const { data: rosterCheckEvents } = useRosterEvents({
-    applicantId: isVenueCompany ? (userData?.applicantId || '') : '',
+    applicantId: isVenueCompany ? userData?.applicantId || '' : '',
     startDate: rosterCheckRange.startDate,
     endDate: rosterCheckRange.endDate,
   });
@@ -150,7 +154,9 @@ export const TimeTrackerContainer = () => {
     const openJob = userData.jobs?.find((j) => j._id === openPunch.jobId);
     if (!openJob) return true; // can't determine end time → conservative
 
-    const openShift = openJob.shifts?.find((s) => s.slug === openPunch.shiftSlug);
+    const openShift = openJob.shifts?.find(
+      (s) => s.slug === openPunch.shiftSlug
+    );
     if (!openShift) return true; // can't determine end time → conservative
 
     const now = new Date().toISOString();
@@ -162,14 +168,20 @@ export const TimeTrackerContainer = () => {
     );
     if (!start || !end) return true; // can't determine end time → conservative
 
-    const { shiftEndTime } = resolveShiftDates(start, end, now, isOvernightFromPreviousDay);
+    const { shiftEndTime } = resolveShiftDates(
+      start,
+      end,
+      now,
+      isOvernightFromPreviousDay
+    );
     // Forgiveness: shift has already ended
     return new Date() <= shiftEndTime;
   }, [openPunches, userData]);
 
   // True when the user is clocked into an event that has NOT yet ended.
   const hasActiveEventClockIn = useMemo(() => {
-    if (!isVenueCompany || !rosterCheckEvents?.length || !userData?.applicantId) return false;
+    if (!isVenueCompany || !rosterCheckEvents?.length || !userData?.applicantId)
+      return false;
     const now = new Date();
     return rosterCheckEvents.some((event) => {
       const applicantEntry = event.applicants?.find(
@@ -177,10 +189,12 @@ export const TimeTrackerContainer = () => {
       );
       if (!applicantEntry?.timeIn || applicantEntry?.timeOut) return false;
       // Forgiveness: clock-in older than 24 h
-      const punchAge = now.getTime() - new Date(applicantEntry.timeIn).getTime();
+      const punchAge =
+        now.getTime() - new Date(applicantEntry.timeIn).getTime();
       if (punchAge > 24 * 60 * 60 * 1000) return false;
       // Forgiveness: event has ended
-      if (event.eventEndTime && now > new Date(event.eventEndTime)) return false;
+      if (event.eventEndTime && now > new Date(event.eventEndTime))
+        return false;
       return true;
     });
   }, [isVenueCompany, rosterCheckEvents, userData?.applicantId]);
@@ -245,6 +259,7 @@ export const TimeTrackerContainer = () => {
         userData={userData}
         openPunches={openPunches}
         hasRosterEvents={hasRosterEvents}
+        hasShiftJobs={hasShiftJobs}
         isBlockedByJobPunch={isBlockedByJobPunch}
         hasActiveEventClockIn={hasActiveEventClockIn}
       />
@@ -259,6 +274,7 @@ export const TimeTrackerContainer = () => {
         onDateNavigation={handleDateNavigation}
         currentViewType={currentViewType}
         hasRosterEvents={hasRosterEvents}
+        hasShiftJobs={hasShiftJobs}
         isBlockedByJobPunch={isBlockedByJobPunch}
         hasActiveEventClockIn={hasActiveEventClockIn}
       />

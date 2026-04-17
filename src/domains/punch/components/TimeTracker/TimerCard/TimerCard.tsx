@@ -21,6 +21,7 @@ interface TimerCardProps {
   userData: GignologyUser;
   openPunches: PunchWithJobInfo[] | undefined;
   hasRosterEvents?: boolean;
+  hasShiftJobs?: boolean;
   isBlockedByJobPunch?: boolean;
   hasActiveEventClockIn?: boolean;
 }
@@ -29,11 +30,23 @@ export function TimerCard({
   userData,
   openPunches,
   hasRosterEvents,
+  hasShiftJobs = true,
   isBlockedByJobPunch = false,
   hasActiveEventClockIn = false,
 }: TimerCardProps) {
   const { initializeFromServerData } = usePunchViewerStore();
   const [activeTab, setActiveTab] = useState<'jobs' | 'events'>('jobs');
+
+  // Resolve which tab's content to display.
+  // - Both present → respect activeTab toggle
+  // - Only jobs     → always 'jobs'
+  // - Only events   → always 'events'
+  const effectiveTab =
+    hasShiftJobs && hasRosterEvents
+      ? activeTab
+      : hasShiftJobs
+        ? 'jobs'
+        : 'events';
 
   // Initialize store from server data when component mounts or data changes
   useEffect(() => {
@@ -114,8 +127,8 @@ export function TimerCard({
         {/* REMOVED: Location Display - no more showing coordinates at the top */}
 
         <CardContent className="py-8 px-8">
-          {/* Tab selector — only shown when user has rostered events */}
-          {hasRosterEvents && (
+          {/* Tab selector — only shown when the user has both shift jobs and rostered events */}
+          {hasShiftJobs && hasRosterEvents && (
             <div className="flex justify-center mb-6">
               <ToggleGroup
                 type="single"
@@ -152,7 +165,7 @@ export function TimerCard({
               </ToggleGroup>
             </div>
           )}
-          {(hasRosterEvents ? activeTab : 'jobs') === 'jobs' ? (
+          {effectiveTab === 'jobs' ? (
             <>
               {/* Warning: blocked by an active event clock-in */}
               {hasActiveEventClockIn && !isClocked && (
