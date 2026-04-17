@@ -55,14 +55,6 @@ const calculateDistance = (
   return distance;
 };
 
-function escapeHtml(s: string): string {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 function createNewPunch(
   userId: string,
   applicantId: string,
