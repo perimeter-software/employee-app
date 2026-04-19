@@ -1,10 +1,8 @@
 'use client';
 
-// Ported from stadium-people/.../NewApplicantForms/ApplicantContactForm (429 lines).
-// MUI + CustomTextField replaced by shadcn Input/Label; Autocomplete for state replaced by
-// a native-backed shadcn Select; PatternFormat by a simple pattern-formatting controller.
-import { useEffect, useMemo } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { useMemo } from 'react';
+import { useForm, type Resolver } from 'react-hook-form';
+import { Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/Input';
@@ -24,6 +22,7 @@ import {
 } from '../../schemas/onboard-applicant-schema';
 import { STATE_CODES } from '../../utils/state-codes';
 import { parseApplicantPhone } from '../../utils/applicant-helpers';
+import { StepScaffold } from './_StepScaffold';
 
 function formatPhone(digits: string): string {
   const d = digits.replace(/\D/g, '').slice(0, 10);
@@ -35,16 +34,15 @@ function formatPhone(digits: string): string {
   return `(${a}) ${b} ${c}`;
 }
 
-type AvailabilityMode = '' | 'Immediate' | 'WithinTwoWeeks' | 'Within30Days' | 'enterDate';
+type AvailabilityMode =
+  | ''
+  | 'Immediate'
+  | 'WithinTwoWeeks'
+  | 'Within30Days'
+  | 'enterDate';
 
 const ApplicantContactForm: React.FC = () => {
-  const {
-    applicant,
-    updateApplicantAction,
-    updateButtons,
-    updateCurrentFormState,
-    submitRef,
-  } = useNewApplicantContext();
+  const { applicant } = useNewApplicantContext();
 
   const defaultValues: OnboardApplicantValues = useMemo(
     () => ({
@@ -58,78 +56,63 @@ const ApplicantContactForm: React.FC = () => {
       city: (applicant?.city as string) ?? '',
       state: (applicant?.state as string) ?? '',
       zip: (applicant?.zip as string) ?? '',
-      phone: applicant?.phone ? parseApplicantPhone(applicant.phone as string) : '',
+      phone: applicant?.phone
+        ? parseApplicantPhone(applicant.phone as string)
+        : '',
       altPhone: (applicant?.altPhone as string) ?? '',
       availability: (applicant?.availability as string | null) ?? null,
     }),
     [applicant]
   );
 
+  return (
+    <StepScaffold<OnboardApplicantValues>
+      // title="Contact Information"
+      resolver={
+        yupResolver(onboardApplicantSchema) as Resolver<OnboardApplicantValues>
+      }
+      defaultValues={defaultValues}
+      toPayload={(values) => ({
+        firstName: values.firstName,
+        lastName: values.lastName,
+        middleInitial: values.middleInitial ?? '',
+        address1: values.address1,
+        city: values.city,
+        state: (values.state ?? '').toUpperCase(),
+        zip: (values.zip ?? '').replace(/\D/g, ''),
+        phone: (values.phone ?? '').replace(/\D/g, ''),
+        altPhone: (values.altPhone ?? '').replace(/\D/g, ''),
+        availability: values.availability ?? null,
+      })}
+    >
+      {(form) => (
+        <ContactFormBody
+          form={form}
+          email={(applicant?.email as string) ?? ''}
+        />
+      )}
+    </StepScaffold>
+  );
+};
+
+// ---------- Inner form body (needs hooks, so extracted as a component) ----------
+
+const ContactFormBody: React.FC<{
+  form: ReturnType<typeof useForm<OnboardApplicantValues>>;
+  email: string;
+}> = ({ form, email }) => {
   const {
     control,
-    handleSubmit,
-    setValue,
     watch,
-    reset,
-    formState: { errors, isDirty, isValid, isSubmitSuccessful },
-  } = useForm<OnboardApplicantValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: yupResolver(onboardApplicantSchema) as any,
-    defaultValues,
-    mode: 'onBlur',
-  });
+    setValue,
+    formState: { errors },
+  } = form;
 
-  // Keep the form in sync when the applicant in context changes.
-  useEffect(() => {
-    reset(defaultValues);
-  }, [applicant, defaultValues, reset]);
-
-  // Mirror stadium-people: show Save enabled while dirty or after a successful submit.
-  useEffect(() => {
-    updateCurrentFormState({ isDirty });
-    updateButtons({ submit: { show: true, disabled: !isDirty } });
-  }, [isDirty, updateButtons, updateCurrentFormState]);
-
-  useEffect(() => {
-    updateButtons({
-      previous: { show: true, disabled: true },
-      next: { show: true, disabled: !isValid },
-      submit: { show: true, disabled: !isDirty && !isSubmitSuccessful },
-    });
-  }, [isValid, isSubmitSuccessful, isDirty, updateButtons]);
-
-  const onSubmit = async (values: OnboardApplicantValues) => {
-    if (!applicant?._id) return;
-    const payload = {
-      firstName: values.firstName,
-      lastName: values.lastName,
-      middleInitial: values.middleInitial ?? '',
-      address1: values.address1,
-      city: values.city,
-      state: (values.state ?? '').toUpperCase(),
-      zip: (values.zip ?? '').replace(/\D/g, ''),
-      phone: (values.phone ?? '').replace(/\D/g, ''),
-      altPhone: (values.altPhone ?? '').replace(/\D/g, ''),
-      availability: values.availability ?? null,
-    };
-    await updateApplicantAction(applicant._id, payload);
-  };
-
-  // Register this form's submit with the parent FormContainer so its header Save button works.
-  useEffect(() => {
-    submitRef.current = handleSubmit(onSubmit);
-    return () => {
-      submitRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleSubmit]);
-
-  // Availability helpers: enterDate requires manual date; other options compute a future date.
   const availability = watch('availability');
-  const availabilityMode: AvailabilityMode = useMemo(() => {
-    if (!availability) return 'enterDate';
-    return 'enterDate';
-  }, [availability]);
+
+  // Simplified: always use enterDate mode (stadium-people parity pending)
+  const availabilityMode: AvailabilityMode = 'enterDate';
+  void availability; // consumed by watch to stay reactive
 
   const handleAvailabilityChange = (mode: AvailabilityMode) => {
     const now = new Date();
@@ -149,12 +132,13 @@ const ApplicantContactForm: React.FC = () => {
   };
 
   return (
-    <form id="current-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <div className="space-y-6">
       <p className="text-sm text-gray-700">
-        Please review your email address, first and last name for accuracy before proceeding.
+        Please review your email address, first and last name for accuracy
+        before proceeding.
       </p>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ReadonlyField label="Email Address" value={(applicant?.email as string) ?? ''} />
+        <ReadonlyField label="Email Address" value={email} />
         <Controller
           name="applicationDate"
           control={control}
@@ -175,7 +159,10 @@ const ApplicantContactForm: React.FC = () => {
           name="middleInitial"
           control={control}
           render={({ field }) => (
-            <FormField label="Middle Initial" error={errors.middleInitial?.message}>
+            <FormField
+              label="Middle Initial"
+              error={errors.middleInitial?.message}
+            >
               <Input {...field} value={field.value ?? ''} maxLength={1} />
             </FormField>
           )}
@@ -208,7 +195,10 @@ const ApplicantContactForm: React.FC = () => {
           control={control}
           render={({ field }) => (
             <div className="lg:col-span-2">
-              <FormField label="Address (include Unit #)" error={errors.address1?.message}>
+              <FormField
+                label="Address (include Unit #)"
+                error={errors.address1?.message}
+              >
                 <Input {...field} value={field.value ?? ''} />
               </FormField>
             </div>
@@ -259,7 +249,10 @@ const ApplicantContactForm: React.FC = () => {
           name="altPhone"
           control={control}
           render={({ field }) => (
-            <FormField label="Alternate Mobile Number" error={errors.altPhone?.message}>
+            <FormField
+              label="Alternate Mobile Number"
+              error={errors.altPhone?.message}
+            >
               <Input
                 placeholder="(555) 555 5555"
                 value={field.value ?? ''}
@@ -272,27 +265,34 @@ const ApplicantContactForm: React.FC = () => {
       </div>
 
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium text-gray-700">Availability</legend>
+        <legend className="text-sm font-medium text-gray-700">
+          Availability
+        </legend>
         <div className="flex flex-wrap gap-4 text-sm">
-          {(['Immediate', 'WithinTwoWeeks', 'Within30Days', 'enterDate'] as AvailabilityMode[]).map(
-            (mode) => (
-              <label key={mode} className="inline-flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="availability-mode"
-                  value={mode}
-                  checked={availabilityMode === mode}
-                  onChange={() => handleAvailabilityChange(mode)}
-                />
-                <span>
-                  {mode === 'Immediate' && 'Immediate'}
-                  {mode === 'WithinTwoWeeks' && 'Within 2 weeks'}
-                  {mode === 'Within30Days' && 'Within 30 days'}
-                  {mode === 'enterDate' && 'Enter a date'}
-                </span>
-              </label>
-            )
-          )}
+          {(
+            [
+              'Immediate',
+              'WithinTwoWeeks',
+              'Within30Days',
+              'enterDate',
+            ] as AvailabilityMode[]
+          ).map((mode) => (
+            <label key={mode} className="inline-flex items-center gap-2">
+              <input
+                type="radio"
+                name="availability-mode"
+                value={mode}
+                checked={availabilityMode === mode}
+                onChange={() => handleAvailabilityChange(mode)}
+              />
+              <span>
+                {mode === 'Immediate' && 'Immediate'}
+                {mode === 'WithinTwoWeeks' && 'Within 2 weeks'}
+                {mode === 'Within30Days' && 'Within 30 days'}
+                {mode === 'enterDate' && 'Enter a date'}
+              </span>
+            </label>
+          ))}
         </div>
         {availabilityMode === 'enterDate' && (
           <Controller
@@ -301,10 +301,16 @@ const ApplicantContactForm: React.FC = () => {
             render={({ field }) => (
               <Input
                 type="date"
-                value={field.value ? format(new Date(field.value as string), 'yyyy-MM-dd') : ''}
+                value={
+                  field.value
+                    ? format(new Date(field.value as string), 'yyyy-MM-dd')
+                    : ''
+                }
                 onChange={(e) =>
                   field.onChange(
-                    e.target.value ? new Date(e.target.value).toISOString() : null
+                    e.target.value
+                      ? new Date(e.target.value).toISOString()
+                      : null
                   )
                 }
                 className="max-w-xs"
@@ -324,9 +330,11 @@ const ApplicantContactForm: React.FC = () => {
           </ul>
         </div>
       )}
-    </form>
+    </div>
   );
 };
+
+// ---------- Field helpers ----------
 
 const FormField: React.FC<{
   label: string;
@@ -340,7 +348,10 @@ const FormField: React.FC<{
   </div>
 );
 
-const ReadonlyField: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+const ReadonlyField: React.FC<{ label: string; value: string }> = ({
+  label,
+  value,
+}) => (
   <div className="space-y-1">
     <Label>{label}</Label>
     <Input value={value} readOnly disabled className={clsxm('bg-gray-50')} />

@@ -25,4 +25,14 @@ export const OnboardingService = {
     const { data } = await axios.put(`${BASE}/applicants/${id}`, payload);
     return (data?.data ?? data) as ApplicantRecord;
   },
+  async uploadResume(applicantId: string, formData: FormData): Promise<unknown> {
+    const { data } = await axios.post(`${BASE}/applicants/${applicantId}/resume`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+  async addAttachment(applicantId: string, attachment: Record<string, unknown>): Promise<unknown> {
+    const { data } = await axios.put(`${BASE}/applicants/${applicantId}/attachment`, { attachment });
+    return data;
+  },
 };

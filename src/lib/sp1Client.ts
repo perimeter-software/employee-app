@@ -18,14 +18,12 @@ function createBackendToken(userSub: string, email: string): string {
  * It is wrapped in a short-lived signed JWT so sp1-api can trust the caller
  * and resolve the full user context from Redis without a real browser cookie.
  */
-export function getSp1Client(userSub: string, email: string) {
+export function getSp1Client(userSub: string, email: string, contentType: string | false = 'application/json') {
   const token = createBackendToken(userSub, email);
-  return axios.create({
-    baseURL: BASE_URL,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      origin: ORIGIN,
-      'Content-Type': 'application/json',
-    },
-  });
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    origin: ORIGIN,
+  };
+  if (contentType !== false) headers['Content-Type'] = contentType;
+  return axios.create({ baseURL: BASE_URL, headers });
 }

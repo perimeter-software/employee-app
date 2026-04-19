@@ -5,13 +5,18 @@
 // state based on form validity / dirty. Full per-step field UIs should still be built
 // out; this keeps the scaffold compiling and navigable.
 import { useEffect, useMemo } from 'react';
-import { useForm, type DefaultValues, type FieldValues, type Resolver } from 'react-hook-form';
+import {
+  useForm,
+  type DefaultValues,
+  type FieldValues,
+  type Resolver,
+} from 'react-hook-form';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import type { ApplicantRecord } from '../../types';
 
 interface StepScaffoldProps<T extends FieldValues> {
-  title: string;
+  title?: string;
   description?: string;
   defaultValues: DefaultValues<T>;
   resolver?: Resolver<T>;
@@ -34,8 +39,13 @@ export function StepScaffold<T extends FieldValues>({
   isLastStep,
   children,
 }: StepScaffoldProps<T>) {
-  const { applicant, updateApplicantAction, updateButtons, updateCurrentFormState, submitRef } =
-    useNewApplicantContext();
+  const {
+    applicant,
+    updateApplicantAction,
+    updateButtons,
+    updateCurrentFormState,
+    submitRef,
+  } = useNewApplicantContext();
 
   const form = useForm<T>({
     defaultValues,
@@ -64,7 +74,14 @@ export function StepScaffold<T extends FieldValues>({
       next: { show: !isLastStep, disabled: !isValid },
       submit: { show: true, disabled: !isDirty && !isSubmitSuccessful },
     });
-  }, [isDirty, isValid, isSubmitSuccessful, isFirstStep, isLastStep, updateButtons]);
+  }, [
+    isDirty,
+    isValid,
+    isSubmitSuccessful,
+    isFirstStep,
+    isLastStep,
+    updateButtons,
+  ]);
 
   const onSubmit = useMemo(
     () => async (values: T) => {
@@ -85,10 +102,14 @@ export function StepScaffold<T extends FieldValues>({
 
   return (
     <Card className="border-none shadow-none">
-      <CardHeader className="pt-0">
-        <CardTitle className="text-base">{title}</CardTitle>
-        {description && <p className="text-sm text-gray-600">{description}</p>}
-      </CardHeader>
+      {(title || description) && (
+        <CardHeader className="pt-0">
+          <CardTitle className="text-base">{title}</CardTitle>
+          {description && (
+            <p className="text-sm text-gray-600">{description}</p>
+          )}
+        </CardHeader>
+      )}
       <CardContent className="space-y-4 pt-0">
         <form id="current-form" onSubmit={handleSubmit(onSubmit)}>
           {children(form)}
