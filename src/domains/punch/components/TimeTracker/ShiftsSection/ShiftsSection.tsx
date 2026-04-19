@@ -43,6 +43,7 @@ interface ShiftsSectionProps {
   onDateNavigation?: (direction: number) => void;
   currentViewType?: 'table' | 'calendar';
   hasRosterEvents?: boolean;
+  hasShiftJobs?: boolean;
   isBlockedByJobPunch?: boolean;
   hasActiveEventClockIn?: boolean;
 }
@@ -194,6 +195,7 @@ export function ShiftsSection({
   onDateNavigation,
   currentViewType: parentViewType,
   hasRosterEvents,
+  hasShiftJobs = true,
   isBlockedByJobPunch = false,
   hasActiveEventClockIn = false,
 }: ShiftsSectionProps) {
@@ -570,63 +572,71 @@ export function ShiftsSection({
                     Awaiting approval
                   </span>
                 </div>
-                {/* Job shifts section — collapsible when events are also present */}
-                <div>
-                  {hasRosterEvents && (
-                    <button
-                      type="button"
-                      onClick={() => setShiftsExpanded((v) => !v)}
-                      className="flex w-full items-center justify-between px-3 py-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-left"
-                    >
-                      <span className="text-base font-semibold text-gray-800">
-                        Job Shifts
-                      </span>
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm border border-gray-200">
-                        {shiftsExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-gray-600" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-gray-600" />
-                        )}
-                      </span>
-                    </button>
-                  )}
-                  {shiftsExpanded && (
-                    <ShiftsTable
-                      userData={userData}
-                      openPunches={openPunches}
-                      allPunches={allPunches}
-                      punchesLoading={punchesLoading}
-                      dateRange={{
-                        startDate: dateRange.startDate.toISOString(),
-                        endDate: dateRange.endDate.toISOString(),
-                        displayRange: dateRange.displayRange,
-                      }}
-                      isBlockedByJobPunch={isBlockedByJobPunch}
-                      hasActiveEventClockIn={hasActiveEventClockIn}
-                    />
-                  )}
-                </div>
+                {/* Job shifts section — only when user has shift jobs */}
+                {hasShiftJobs && (
+                  <div>
+                    {/* Collapsible header only when both sections are present */}
+                    {hasRosterEvents && (
+                      <button
+                        type="button"
+                        onClick={() => setShiftsExpanded((v) => !v)}
+                        className="flex w-full items-center justify-between px-3 py-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                      >
+                        <span className="text-base font-semibold text-gray-800">
+                          Job Shifts
+                        </span>
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm border border-gray-200">
+                          {shiftsExpanded ? (
+                            <ChevronUp className="h-4 w-4 text-gray-600" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-gray-600" />
+                          )}
+                        </span>
+                      </button>
+                    )}
+                    {/* When both sections exist respect collapsed state; otherwise always show */}
+                    {(hasRosterEvents ? shiftsExpanded : true) && (
+                      <ShiftsTable
+                        userData={userData}
+                        openPunches={openPunches}
+                        allPunches={allPunches}
+                        punchesLoading={punchesLoading}
+                        dateRange={{
+                          startDate: dateRange.startDate.toISOString(),
+                          endDate: dateRange.endDate.toISOString(),
+                          displayRange: dateRange.displayRange,
+                        }}
+                        isBlockedByJobPunch={isBlockedByJobPunch}
+                        hasActiveEventClockIn={hasActiveEventClockIn}
+                      />
+                    )}
+                  </div>
+                )}
 
-                {/* Events section — collapsible when present */}
+                {/* Events section — only when user has rostered events */}
                 {hasRosterEvents && (
                   <div className="mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setEventsExpanded((v) => !v)}
-                      className="flex w-full items-center justify-between px-3 py-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-left"
-                    >
-                      <span className="text-base font-semibold text-gray-800">
-                        Events
-                      </span>
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm border border-gray-200">
-                        {eventsExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-gray-600" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-gray-600" />
-                        )}
-                      </span>
-                    </button>
-                    {eventsExpanded && (
+                    {/* Collapsible header only when both sections are present */}
+                    {hasShiftJobs && (
+                      <button
+                        type="button"
+                        onClick={() => setEventsExpanded((v) => !v)}
+                        className="flex w-full items-center justify-between px-3 py-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                      >
+                        <span className="text-base font-semibold text-gray-800">
+                          Events
+                        </span>
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm border border-gray-200">
+                          {eventsExpanded ? (
+                            <ChevronUp className="h-4 w-4 text-gray-600" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-gray-600" />
+                          )}
+                        </span>
+                      </button>
+                    )}
+                    {/* When both sections exist respect collapsed state; otherwise always show */}
+                    {(hasShiftJobs ? eventsExpanded : true) && (
                       <EventsTable
                         applicantId={userData.applicantId}
                         userId={userData._id}

@@ -233,14 +233,12 @@ export function EventsTable({
 }: EventsTableProps) {
   const queryClient = useQueryClient();
   const [incomingListModalOpen, setIncomingListModalOpen] = useState(false);
-  const {
-    data: incomingCoverList = [],
-    isLoading: incomingCoverListLoading,
-  } = useQuery({
-    queryKey: INCOMING_COVER_REQUESTS_QUERY_KEY,
-    queryFn: () => EventApiService.listIncomingCoverRequests(),
-    staleTime: 30 * 1000,
-  });
+  const { data: incomingCoverList = [], isLoading: incomingCoverListLoading } =
+    useQuery({
+      queryKey: INCOMING_COVER_REQUESTS_QUERY_KEY,
+      queryFn: () => EventApiService.listIncomingCoverRequests(),
+      staleTime: 30 * 1000,
+    });
   const incomingCoverCount = incomingCoverList.length;
 
   const {
@@ -447,8 +445,7 @@ export function EventsTable({
             !row.isPast && isEventCoverWindowOpen(row.rawEvent.eventDate);
 
           const clockButtons =
-            !(clockInTime && clockOutTime) &&
-            (showClockIn || showClockOut) ? (
+            !(clockInTime && clockOutTime) && (showClockIn || showClockOut) ? (
               <div className="flex flex-col gap-1.5">
                 <div className="flex gap-2">
                   <Button

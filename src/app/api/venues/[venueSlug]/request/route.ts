@@ -37,8 +37,8 @@ async function requestVenueHandler(
       'Employee';
     const userId = (user._id as string) ?? applicantId;
 
-    const { sub: userSub, email } = user;
-    const sp1 = getSp1Client(userSub, email || '');
+    const { sub: userSub, email, tenant } = user;
+    const sp1 = getSp1Client(userSub, email || '', tenant?.clientDomain || tenant?.url);
 
     const { data } = await sp1.put(`/applicants/${applicantId}/venue`, {
       venue: {
@@ -102,8 +102,8 @@ async function cancelVenueRequestHandler(
       'Employee';
     const userId = (user._id as string) ?? applicantId;
 
-    const { sub: userSub, email } = user;
-    const sp1 = getSp1Client(userSub, email || '');
+    const { sub: userSub, email, tenant } = user;
+    const sp1 = getSp1Client(userSub, email || '', tenant?.clientDomain || tenant?.url);
 
     const { data } = await sp1.put(`/applicants/${applicantId}/venue`, {
       venue: {

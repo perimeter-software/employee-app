@@ -2,7 +2,11 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarRange, Search } from 'lucide-react';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import Layout from '@/components/layout/Layout';
 import { Button } from '@/components/ui/Button';
@@ -57,7 +61,9 @@ export default function EventsPage() {
   const [tab, setTab] = useState<TabValue>('all');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 400);
-  const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(
+    null
+  );
   const [venueSlug, setVenueSlug] = useState('');
   const [incomingCoverModalOpen, setIncomingCoverModalOpen] = useState(false);
 
@@ -93,12 +99,24 @@ export default function EventsPage() {
     fetchNextPage: fetchNextAll,
     isFetchingNextPage: isFetchingNextAll,
     hasNextPage: hasNextAll,
-  } = useInfiniteQuery<EventListPage, Error, { pages: EventListPage[] }, readonly unknown[], number>({
+  } = useInfiniteQuery<
+    EventListPage,
+    Error,
+    { pages: EventListPage[] },
+    readonly unknown[],
+    number
+  >({
     queryKey: ['events-all', applicantId, debouncedSearch, venueSlug],
     queryFn: ({ pageParam }) =>
-      EventApiService.fetchAllEvents({ applicantId, search: debouncedSearch, page: pageParam, venueSlug }),
+      EventApiService.fetchAllEvents({
+        applicantId,
+        search: debouncedSearch,
+        page: pageParam,
+        venueSlug,
+      }),
     initialPageParam: 1,
-    getNextPageParam: (lastPage) => lastPage.pagination?.next?.page ?? undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.next?.page ?? undefined,
     enabled: tab === 'all' && !!currentUser,
     staleTime: 0,
     gcTime: 0,
@@ -111,12 +129,24 @@ export default function EventsPage() {
     fetchNextPage: fetchNextMy,
     isFetchingNextPage: isFetchingNextMy,
     hasNextPage: hasNextMy,
-  } = useInfiniteQuery<EventListPage, Error, { pages: EventListPage[] }, readonly unknown[], number>({
+  } = useInfiniteQuery<
+    EventListPage,
+    Error,
+    { pages: EventListPage[] },
+    readonly unknown[],
+    number
+  >({
     queryKey: ['events-my', applicantId, debouncedSearch, venueSlug],
     queryFn: ({ pageParam }) =>
-      EventApiService.fetchMyEvents({ applicantId, search: debouncedSearch, page: pageParam, venueSlug }),
+      EventApiService.fetchMyEvents({
+        applicantId,
+        search: debouncedSearch,
+        page: pageParam,
+        venueSlug,
+      }),
     initialPageParam: 1,
-    getNextPageParam: (lastPage) => lastPage.pagination?.next?.page ?? undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.next?.page ?? undefined,
     enabled: tab === 'my' && !!applicantId,
     staleTime: 0,
     gcTime: 0,
@@ -129,12 +159,24 @@ export default function EventsPage() {
     fetchNextPage: fetchNextPast,
     isFetchingNextPage: isFetchingNextPast,
     hasNextPage: hasNextPast,
-  } = useInfiniteQuery<EventListPage, Error, { pages: EventListPage[] }, readonly unknown[], number>({
+  } = useInfiniteQuery<
+    EventListPage,
+    Error,
+    { pages: EventListPage[] },
+    readonly unknown[],
+    number
+  >({
     queryKey: ['events-past', applicantId, debouncedSearch, venueSlug],
     queryFn: ({ pageParam }) =>
-      EventApiService.fetchPastEvents({ applicantId, search: debouncedSearch, page: pageParam, venueSlug }),
+      EventApiService.fetchPastEvents({
+        applicantId,
+        search: debouncedSearch,
+        page: pageParam,
+        venueSlug,
+      }),
     initialPageParam: 1,
-    getNextPageParam: (lastPage) => lastPage.pagination?.next?.page ?? undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.next?.page ?? undefined,
     enabled: tab === 'past' && !!applicantId,
     staleTime: 0,
     gcTime: 0,
@@ -144,7 +186,9 @@ export default function EventsPage() {
   // rosterStatus is set by the backend when applicantId is provided;
   // applicants array is stripped from the response so we don't re-derive from it.
   const resolveStatus = (e: GignologyEvent) =>
-    e.rosterStatus && e.rosterStatus !== 'Not Roster' ? e.rosterStatus : (e.status ?? '');
+    e.rosterStatus && e.rosterStatus !== 'Not Roster'
+      ? e.rosterStatus
+      : (e.status ?? '');
 
   const allEvents = useMemo<GignologyEvent[]>(() => {
     if (!allEventsData?.pages) return [];
@@ -178,12 +222,20 @@ export default function EventsPage() {
   }, [pastEventsData?.pages]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Active list + loading state ─────────────────────────────────────────────
-  const activeEvents = tab === 'all' ? allEvents : tab === 'my' ? myEvents : pastEvents;
-  const isLoading = tab === 'all' ? isLoadingAll : tab === 'my' ? isLoadingMy : isLoadingPast;
+  const activeEvents =
+    tab === 'all' ? allEvents : tab === 'my' ? myEvents : pastEvents;
+  const isLoading =
+    tab === 'all' ? isLoadingAll : tab === 'my' ? isLoadingMy : isLoadingPast;
   const isFetchingNext =
-    tab === 'all' ? isFetchingNextAll : tab === 'my' ? isFetchingNextMy : isFetchingNextPast;
-  const hasNext = tab === 'all' ? hasNextAll : tab === 'my' ? hasNextMy : hasNextPast;
-  const fetchNext = tab === 'all' ? fetchNextAll : tab === 'my' ? fetchNextMy : fetchNextPast;
+    tab === 'all'
+      ? isFetchingNextAll
+      : tab === 'my'
+        ? isFetchingNextMy
+        : isFetchingNextPast;
+  const hasNext =
+    tab === 'all' ? hasNextAll : tab === 'my' ? hasNextMy : hasNextPast;
+  const fetchNext =
+    tab === 'all' ? fetchNextAll : tab === 'my' ? fetchNextMy : fetchNextPast;
 
   const isSearching = search !== debouncedSearch;
 
@@ -209,8 +261,8 @@ export default function EventsPage() {
     tab === 'all'
       ? 'There are no upcoming events.'
       : tab === 'my'
-      ? 'You are not on any rosters.'
-      : "You haven't participated in any past event.";
+        ? 'You are not on any rosters.'
+        : "You haven't participated in any past event.";
 
   return (
     <Layout>
@@ -256,11 +308,16 @@ export default function EventsPage() {
                   <CalendarRange className="h-5 w-5 shrink-0 text-appPrimary" />
                   <div className="min-w-0">
                     <CardTitle className="text-base">
-                      {tab === 'all' ? 'All Events' : tab === 'my' ? 'My Events' : 'Past Events'}
+                      {tab === 'all'
+                        ? 'All Events'
+                        : tab === 'my'
+                          ? 'My Events'
+                          : 'Past Events'}
                     </CardTitle>
                     {!isLoading && !isSearching && (
                       <p className="text-xs text-slate-600">
-                        {activeEvents.length} event{activeEvents.length !== 1 ? 's' : ''}
+                        {activeEvents.length} event
+                        {activeEvents.length !== 1 ? 's' : ''}
                       </p>
                     )}
                   </div>
@@ -289,7 +346,8 @@ export default function EventsPage() {
                         placeholder="All Venues"
                         displayText={
                           venueSlug
-                            ? (staffingVenues.find((v) => v.slug === venueSlug)?.name ?? 'All Venues')
+                            ? (staffingVenues.find((v) => v.slug === venueSlug)
+                                ?.name ?? 'All Venues')
                             : 'All Venues'
                         }
                       />
@@ -327,14 +385,19 @@ export default function EventsPage() {
             {isLoading || isSearching ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="h-24 rounded-xl bg-zinc-100 animate-pulse" />
+                  <div
+                    key={i}
+                    className="h-24 rounded-xl bg-zinc-100 animate-pulse"
+                  />
                 ))}
               </div>
             ) : activeEvents.length === 0 ? (
               <div className="text-center py-16 text-zinc-400">
                 <CalendarRange className="w-10 h-10 mx-auto mb-3 opacity-40" />
                 <p className="text-sm font-medium">
-                  {debouncedSearch ? 'No events match your search.' : emptyMessage}
+                  {debouncedSearch
+                    ? 'No events match your search.'
+                    : emptyMessage}
                 </p>
               </div>
             ) : (
@@ -368,7 +431,9 @@ export default function EventsPage() {
           onClose={() => setSelectedEvent(null)}
           onEnrollmentChange={(eventId, newType) => {
             setSelectedEvent((prev) =>
-              prev?._id === eventId ? { ...prev, rosterStatus: newType, status: newType } : prev
+              prev?._id === eventId
+                ? { ...prev, rosterStatus: newType, status: newType }
+                : prev
             );
             queryClient.invalidateQueries({ queryKey: ['events-all'] });
             queryClient.invalidateQueries({ queryKey: ['events-my'] });

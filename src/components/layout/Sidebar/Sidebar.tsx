@@ -53,7 +53,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     // ── Applicant-only sessions ───────────────────────────────────────────────
     if (isApplicantOnly) {
       // "Employee"-status applicants: paycheck stubs only (existing behaviour)
-      if (applicantRecordStatus === 'Employee' || applicantRecordStatus !== 'Applicant') {
+      if (
+        applicantRecordStatus === 'Employee' ||
+        applicantRecordStatus !== 'Applicant'
+      ) {
         return [
           {
             name: 'Payroll',
@@ -73,13 +76,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
           name: 'Applicant',
           href: '/onboarding',
           icon: GraduationCap,
-          current: pathname === '/onboarding' || pathname.startsWith('/onboarding/'),
+          current:
+            pathname === '/onboarding' || pathname.startsWith('/onboarding/'),
         },
       ];
     }
 
     // ── Terminated/Inactive employees (non-applicant limited access) ──────────
+    const isPrism = primaryCompany?.peoIntegration === 'Prism';
+
+    // For limited access users (applicants or terminated/inactive employees), only show Payroll
     if (isLimitedAccess) {
+      if (!isPrism) return [];
       return [
         {
           name: 'Payroll',
@@ -156,8 +164,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       }
     }
 
-    // Add Payroll link for non-Client users (shows pay history; Paycheck Stubs tab only for Prism)
-    if (!isClient) {
+    // Add Payroll link only for non-Client users on Prism tenants
+    if (!isClient && isPrism) {
       baseNavigation.push({
         name: 'Payroll',
         href: '/payroll',
@@ -176,15 +184,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
           name: 'Invoices',
           href: '/invoices',
           icon: FileSpreadsheet,
-          current:
-            pathname === '/invoices' || pathname.startsWith('/invoices'),
+          current: pathname === '/invoices' || pathname.startsWith('/invoices'),
         },
         {
           name: 'Forms',
           href: '/forms',
           icon: ClipboardList,
-          current:
-            pathname === '/forms' || pathname.startsWith('/forms'),
+          current: pathname === '/forms' || pathname.startsWith('/forms'),
         }
       );
     }
@@ -197,19 +203,28 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
           href: '/conversation',
           icon: MessageCircleQuestion,
           current:
-            pathname === '/conversation' || pathname.startsWith('/conversation'),
+            pathname === '/conversation' ||
+            pathname.startsWith('/conversation'),
         },
         {
           name: 'Documents',
           href: '/documents',
           icon: FileText,
-          current: pathname === '/documents' || pathname.startsWith('/documents'),
+          current:
+            pathname === '/documents' || pathname.startsWith('/documents'),
         }
       );
     }
 
     return baseNavigation;
-  }, [pathname, primaryCompany, isLimitedAccess, isApplicantOnly, applicantRecordStatus, currentUser?.userType]);
+  }, [
+    pathname,
+    primaryCompany,
+    isLimitedAccess,
+    isApplicantOnly,
+    applicantRecordStatus,
+    currentUser?.userType,
+  ]);
 
   const handleLinkClick = () => {
     // Close mobile menu when a link is clicked

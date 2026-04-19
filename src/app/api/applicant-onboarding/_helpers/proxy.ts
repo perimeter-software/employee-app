@@ -30,7 +30,12 @@ export async function proxyToBackend({
     );
   }
   try {
-    const sp1 = getSp1Client(user.sub, user.email);
+    const { tenant } = user;
+    const sp1 = getSp1Client(
+      user.sub,
+      user.email,
+      tenant?.clientDomain || tenant?.url
+    );
     const config: AxiosRequestConfig = { params };
     let res: AxiosResponse;
     switch (method) {
