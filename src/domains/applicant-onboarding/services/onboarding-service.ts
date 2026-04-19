@@ -98,4 +98,18 @@ export const OnboardingService = {
     });
     return data;
   },
+
+  async getForms(): Promise<unknown[]> {
+    const { data } = await axios.get(`${BASE}/forms`);
+    return (Array.isArray(data) ? data : data?.data ?? []) as unknown[];
+  },
+
+  async generateFilledPdf(payload: {
+    formId: string;
+    applicantId: string;
+    formValues: Record<string, unknown>;
+  }): Promise<unknown> {
+    const { data } = await axios.post(`${BASE}/forms/generate-pdf`, payload);
+    return data;
+  },
 };
