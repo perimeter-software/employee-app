@@ -92,8 +92,6 @@ const JobCard: React.FC<{
       ? `${safeDescription.substring(0, 250)}…`
       : safeDescription;
 
-  console.log('clientDomain', clientDomain);
-
   return (
     <div
       className={`flex items-start justify-between gap-4 p-4 ${isEven ? 'bg-gray-50' : 'bg-white'}`}

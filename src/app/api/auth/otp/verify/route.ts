@@ -150,7 +150,10 @@ export async function POST(request: NextRequest) {
       // For "Applicant" status, also validate applicantStatus is a known pipeline stage
       if (status === 'Applicant') {
         const ALL_APPLICANT_STAGES = ['New', 'ATC', 'Screened', 'Pre-Hire'];
-        if (!applicantStatus || !ALL_APPLICANT_STAGES.includes(applicantStatus)) {
+        if (
+          !applicantStatus ||
+          !ALL_APPLICANT_STAGES.includes(applicantStatus)
+        ) {
           await redisService.del(otpKey);
           return NextResponse.json(
             {
@@ -164,6 +167,20 @@ export async function POST(request: NextRequest) {
 
       isApplicantOnly = true;
 
+      // Cache tenant data immediately so withEnhancedAuthAPI can resolve tenant on
+      // the very first authenticated request, without waiting for /api/current-user.
+      if (applicantData.tenants.length > 0) {
+        await redisService.setTenantData(
+          normalizedEmail,
+          {
+            tenant: applicantData.tenants[0],
+            availableTenants: applicantData.tenants.slice(1),
+            isApplicantOnly: true,
+          },
+          24 * 60 * 60
+        );
+      }
+
       // Determine the redirect URL.
       // For "Employee" status applicants: existing payroll flow.
       // For "Applicant" status: determine sub-type using the default minStageToOnboarding
@@ -173,7 +190,8 @@ export async function POST(request: NextRequest) {
         const ALL_STAGES = ['New', 'ATC', 'Screened', 'Pre-Hire'];
         const minStageIndex = ALL_STAGES.indexOf(DEFAULT_MIN_STAGE);
         const stageIndex = ALL_STAGES.indexOf(applicantStatus ?? '');
-        const isAllowedForOnboarding = stageIndex >= minStageIndex && stageIndex !== -1;
+        const isAllowedForOnboarding =
+          stageIndex >= minStageIndex && stageIndex !== -1;
 
         if (isAllowedForOnboarding && !acknowledgedDate) {
           // Ready for onboarding, hasn't completed it yet
@@ -208,6 +226,10 @@ export async function POST(request: NextRequest) {
         employmentStatus: applicantData.applicantInfo.employmentStatus,
         applicantStatus: applicantData.applicantInfo.applicantStatus,
         acknowledgedDate: applicantData.applicantInfo.acknowledgedDate,
+        // Persist the resolved tenant so every authenticated request can read it
+        // directly from the session without a second Redis lookup or DB scan.
+        tenant: applicantData.tenants[0] ?? null,
+        availableTenants: applicantData.tenants.slice(1),
         createdAt: new Date().toISOString(),
       };
     }

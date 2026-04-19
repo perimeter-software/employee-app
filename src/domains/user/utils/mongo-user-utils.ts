@@ -611,6 +611,90 @@ export async function updateTenantLastLoginDate(
 }
 
 /**
+ * Find applicant in a specific tenant database identified by dbName.
+ *
+ * Used when the tenant is known upfront (e.g. passed via URL param) so we can skip
+ * the expensive cross-tenant scan in findApplicantAndTenantsByEmail.
+ */
+export async function findApplicantInTenantByDbName(
+  dbName: string,
+  email: string
+): Promise<{
+  applicantId: string;
+  tenants: TenantInfo[];
+  applicantInfo: {
+    firstName?: string;
+    lastName?: string;
+    email: string;
+    status?: string;
+    employmentStatus?: string;
+    applicantStatus?: string;
+    acknowledgedDate?: string | null;
+  };
+} | null> {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    const { mongoConn } = await import('@/lib/db/mongodb');
+    const { dbTenant } = await mongoConn();
+
+    const tenantDoc = await dbTenant
+      .collection<TenantDocument>('tenants')
+      .findOne({ dbName });
+    if (!tenantDoc) return null;
+
+    const { db } = await mongoConn(dbName);
+    const applicant = await db.collection('applicants').findOne(
+      { email: normalizedEmail },
+      {
+        projection: {
+          _id: 1,
+          email: 1,
+          firstName: 1,
+          lastName: 1,
+          status: 1,
+          employmentStatus: 1,
+          applicantStatus: 1,
+          acknowledged: 1,
+        },
+      }
+    );
+
+    if (!applicant) return null;
+
+    const tenantInfo: TenantInfo = {
+      _id: tenantDoc._id?.toString() || '',
+      url: tenantDoc.clientDomain || '',
+      status: 'active',
+      clientName: tenantDoc.clientName,
+      type: tenantDoc.type || '',
+      dbName: tenantDoc.dbName,
+      peoIntegration: tenantDoc.peoIntegration,
+      tenantLogo: await resolveS3LogoUrl(tenantDoc.tenantLogo),
+      clientDomain: tenantDoc.clientDomain,
+    };
+
+    return {
+      applicantId: applicant._id.toString(),
+      tenants: [tenantInfo],
+      applicantInfo: {
+        firstName: applicant.firstName,
+        lastName: applicant.lastName,
+        email: applicant.email,
+        status: applicant.status,
+        employmentStatus: applicant.employmentStatus,
+        applicantStatus: applicant.applicantStatus,
+        acknowledgedDate: applicant.acknowledged?.date
+          ? new Date(applicant.acknowledged.date).toISOString()
+          : null,
+      },
+    };
+  } catch (error) {
+    console.error(`Error finding applicant in tenant ${dbName}:`, error);
+    return null;
+  }
+}
+
+/**
  * Find applicant and tenant(s) by searching applicants collection across all tenants
  *
  * Note: Applicant _id IS the applicantId

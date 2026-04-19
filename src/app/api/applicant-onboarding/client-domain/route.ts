@@ -4,7 +4,6 @@ import type { AuthenticatedRequest } from '@/domains/user/types';
 
 async function getHandler(request: AuthenticatedRequest) {
   const { tenant } = request.user;
-  console.log('tenant', tenant);
   const raw = tenant?.clientDomain || tenant?.url;
   if (!raw) {
     return NextResponse.json({ clientDomain: null });
