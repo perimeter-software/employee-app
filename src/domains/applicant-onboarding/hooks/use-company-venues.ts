@@ -13,6 +13,7 @@ interface PrimaryCompany {
   companyType?: string;
   settings?: { companyType?: string };
   uploadPath?: string;
+  imageUrl?: string;
 }
 
 interface VenueRecord {

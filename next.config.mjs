@@ -34,6 +34,18 @@ const nextConfig = {
         hostname: 'images.stage.stadiumpeople.com',
       },
       {
+        protocol: 'https',
+        hostname: 'images.stage.gignology.biz',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.dev.gignology.biz',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.gignology.biz',
+      },
+      {
         protocol: 'http',
         hostname: 'localhost',
       },
