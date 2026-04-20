@@ -1,5 +1,6 @@
 // lib/server/mongoUtils.ts
 import { convertToJSON } from '@/lib/utils/mongo-utils';
+import { resolveS3LogoUrl } from '@/lib/utils/s3-presigned-url';
 import { GignologyJob } from '@/domains/job';
 import {
   TenantInfo,
@@ -360,7 +361,6 @@ export async function checkUserMasterEmail(
     const Tenants = dbTenant.collection<TenantDocument>('tenants');
 
     const result = await Users.findOne({ emailAddress: email.toLowerCase() });
-    console.log('result', result);
 
     if (!result) {
       return {
@@ -413,9 +413,10 @@ export async function checkUserMasterEmail(
           clientName: tenantObject?.clientName || '',
           type: tenantObject?.type || 'Venue',
           lastLoginDate: result.tenants[0].lastLoginDate,
-          tenantLogo: tenantObject?.tenantLogo,
+          tenantLogo: await resolveS3LogoUrl(tenantObject?.tenantLogo),
           dbName: tenantObject?.dbName,
           peoIntegration: tenantObject?.peoIntegration || 'Helm',
+          clientDomain: tenantObject?.clientDomain,
         },
         message: 'Email exists!',
       };
@@ -449,7 +450,7 @@ export async function checkUserMasterEmail(
       );
 
       const tenantObjectsIndexed: TenantObjectsIndexed = {};
-      await Tenants.find({
+      const tenantDocs = await Tenants.find({
         $or: [
           {
             clientDomain: {
@@ -462,12 +463,19 @@ export async function checkUserMasterEmail(
             },
           },
         ],
-      }).forEach((tn) => {
+      }).toArray();
+
+      const resolvedLogos = await Promise.all(
+        tenantDocs.map((tn) => resolveS3LogoUrl(tn.tenantLogo))
+      );
+
+      tenantDocs.forEach((tn, idx) => {
+        const tenantLogo = resolvedLogos[idx];
         if (tn.clientDomain) {
           tenantObjectsIndexed[tn.clientDomain] = {
             clientName: tn.clientName,
             type: tn.type,
-            tenantLogo: tn.tenantLogo,
+            tenantLogo,
             clientDomain: tn.clientDomain,
             additionalDomains: tn.additionalDomains,
             dbName: tn.dbName,
@@ -480,7 +488,7 @@ export async function checkUserMasterEmail(
               tenantObjectsIndexed[dom] = {
                 clientName: tn.clientName,
                 type: tn.type,
-                tenantLogo: tn.tenantLogo,
+                tenantLogo,
                 clientDomain: tn.clientDomain,
                 additionalDomains: tn.additionalDomains,
                 dbName: tn.dbName,
@@ -517,7 +525,9 @@ export async function checkUserMasterEmail(
           lastLoginDate: item.lastLoginDate,
           tenantLogo: tenantObjectsIndexed[item.url]?.tenantLogo,
           dbName: tenantObjectsIndexed[item.url]?.dbName || '',
-          peoIntegration: tenantObjectsIndexed[item.url]?.peoIntegration || 'Helm',
+          peoIntegration:
+            tenantObjectsIndexed[item.url]?.peoIntegration || 'Helm',
+          clientDomain: tenantObjectsIndexed[item.url]?.clientDomain,
         }));
 
       const availableTenants = result.tenants
@@ -550,7 +560,10 @@ export async function checkUserMasterEmail(
             tenantLogo:
               tenantObjectsIndexed[mostRecentActiveTenant.url]?.tenantLogo,
             peoIntegration:
-              tenantObjectsIndexed[mostRecentActiveTenant.url]?.peoIntegration || 'Helm',
+              tenantObjectsIndexed[mostRecentActiveTenant.url]
+                ?.peoIntegration || 'Helm',
+            clientDomain:
+              tenantObjectsIndexed[mostRecentActiveTenant.url]?.clientDomain,
           },
           availableTenants,
           availableTenantObjects,
@@ -599,7 +612,7 @@ export async function updateTenantLastLoginDate(
 
 /**
  * Find applicant and tenant(s) by searching applicants collection across all tenants
- * 
+ *
  * Note: Applicant _id IS the applicantId
  * Applicant structure:
  * - _id: ObjectId (this is the applicantId)
@@ -607,14 +620,12 @@ export async function updateTenantLastLoginDate(
  * - firstName, lastName: string
  * - status: string (e.g., "Employee")
  * - employmentStatus: string (e.g., "Active")
- * 
+ *
  * IMPORTANT: An applicant can exist in multiple tenants!
  * This function returns ALL tenants where the applicant exists.
  * This is a generic function that can be used for any applicant-based functionality.
  */
-export async function findApplicantAndTenantsByEmail(
-  email: string
-): Promise<{
+export async function findApplicantAndTenantsByEmail(email: string): Promise<{
   applicantId: string; // This is the _id from applicants collection
   tenants: TenantInfo[];
   applicantInfo: {
@@ -627,15 +638,14 @@ export async function findApplicantAndTenantsByEmail(
 } | null> {
   try {
     const normalizedEmail = email.toLowerCase().trim();
-    
     // Get all tenants
     const { mongoConn } = await import('@/lib/db/mongodb');
     const { dbTenant } = await mongoConn();
     const Tenants = dbTenant.collection<TenantDocument>('tenants');
     const tenants = await Tenants.find({}).toArray();
-    
+
     const foundTenants: TenantInfo[] = [];
-    
+
     let applicantInfo: {
       firstName?: string;
       lastName?: string;
@@ -644,14 +654,14 @@ export async function findApplicantAndTenantsByEmail(
       employmentStatus?: string;
     } | null = null;
     let applicantId: string | null = null;
-    
+
     // Search each tenant's applicants collection
     for (const tenant of tenants) {
       if (!tenant.dbName) continue;
-      
+
       try {
         const { db } = await mongoConn(tenant.dbName);
-        
+
         // Find applicant by email
         const Applicants = db.collection('applicants');
         const applicant = await Applicants.findOne(
@@ -667,7 +677,6 @@ export async function findApplicantAndTenantsByEmail(
             },
           }
         );
-        
         if (applicant) {
           // Store applicant info (should be same across tenants, but use first found)
           if (!applicantInfo) {
@@ -680,7 +689,6 @@ export async function findApplicantAndTenantsByEmail(
             };
             applicantId = applicant._id.toString();
           }
-          
           // Add tenant where applicant exists (convert TenantDocument to TenantInfo)
           if (tenant.dbName) {
             foundTenants.push({
@@ -691,7 +699,7 @@ export async function findApplicantAndTenantsByEmail(
               type: tenant.type || '',
               dbName: tenant.dbName,
               peoIntegration: tenant.peoIntegration,
-              tenantLogo: tenant.tenantLogo,
+              tenantLogo: await resolveS3LogoUrl(tenant.tenantLogo),
             });
           }
         }
@@ -700,12 +708,10 @@ export async function findApplicantAndTenantsByEmail(
         continue;
       }
     }
-    
     // If no tenants found, return null
     if (foundTenants.length === 0 || !applicantId || !applicantInfo) {
       return null;
     }
-    
     // Return tenants in the order they were found (consistent with user tenant handling)
     // Users don't sort tenants, so applicants shouldn't either
     return {
@@ -718,4 +724,3 @@ export async function findApplicantAndTenantsByEmail(
     return null;
   }
 }
-

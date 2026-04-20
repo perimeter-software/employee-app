@@ -140,18 +140,30 @@ export type CanCallOffResult = { allowed: boolean; reason?: string };
  * - Time-only (e.g. "22:00" or "22:00:00"): interprets as local time on dateStr.
  * Returns null if parsing fails.
  */
-export function getShiftStartOnDate(startStr: string, dateStr: string): Date | null {
+export function getShiftStartOnDate(
+  startStr: string,
+  dateStr: string
+): Date | null {
   if (!startStr?.trim() || !dateStr) return null;
   const trimmed = startStr.trim();
   const isIso =
     /^\d{4}-\d{2}-\d{2}T\d/.test(trimmed) ||
-    (trimmed.includes('T') && (trimmed.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(trimmed)));
+    (trimmed.includes('T') &&
+      (trimmed.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(trimmed)));
   if (isIso) {
     const ref = new Date(trimmed);
     if (Number.isNaN(ref.getTime())) return null;
     const [y, m, d] = dateStr.split('-').map(Number);
     if (!y || !m || !d) return null;
-    return new Date(y, m - 1, d, ref.getHours(), ref.getMinutes(), ref.getSeconds(), ref.getMilliseconds());
+    return new Date(
+      y,
+      m - 1,
+      d,
+      ref.getHours(),
+      ref.getMinutes(),
+      ref.getSeconds(),
+      ref.getMilliseconds()
+    );
   }
   const combined = `${dateStr}T${trimmed}`;
   const d = new Date(combined);
@@ -178,7 +190,8 @@ export function canCallOffShift(
   const requiredMinutesBefore = callOffBeforeToMinutes(job);
   if (requiredMinutesBefore <= 0) return { allowed: true };
 
-  const schedule = shift?.defaultSchedule?.[dayKey as keyof typeof shift.defaultSchedule];
+  const schedule =
+    shift?.defaultSchedule?.[dayKey as keyof typeof shift.defaultSchedule];
   const startStr = schedule?.start;
   if (!startStr) return { allowed: true };
 
@@ -210,6 +223,12 @@ export const giveJobAllowedGeoDistance = (job: GignologyJob): number => {
     (job?.location?.graceDistanceFeet ?? 0) +
     (job?.location?.geocoordinates?.geoFenceRadius ?? 0) // ✅ Fixed null safety and operator precedence
   );
+};
+
+export const giveJobPolygon = (job: GignologyJob): number[][] | null => {
+  const polygon = job?.location?.geocoordinates?.polygon;
+  if (Array.isArray(polygon) && polygon.length >= 3) return polygon;
+  return null;
 };
 
 export const getUserShiftsForToday = (
@@ -401,8 +420,7 @@ export const getUserShiftForToday = (
       const endHour = endTime.getHours();
       const endMin = endTime.getMinutes();
       const isOvernightShift =
-        endHour < startHour ||
-        (endHour === startHour && endMin < startMin);
+        endHour < startHour || (endHour === startHour && endMin < startMin);
 
       if (isOvernightShift) {
         // This shift started yesterday and continues into today.
@@ -744,10 +762,16 @@ export const getCalculatedTimeIn = (
   currentTime: string,
   shift?: Shift
 ): string => {
-  const { start, end, isOvernightFromPreviousDay } = getUserShiftForToday(job, applicantId, currentTime, shift);
-  const { shiftStartTime: newStartDate } = start && end
-    ? resolveShiftDates(start, end, currentTime, isOvernightFromPreviousDay)
-    : { shiftStartTime: null };
+  const { start, end, isOvernightFromPreviousDay } = getUserShiftForToday(
+    job,
+    applicantId,
+    currentTime,
+    shift
+  );
+  const { shiftStartTime: newStartDate } =
+    start && end
+      ? resolveShiftDates(start, end, currentTime, isOvernightFromPreviousDay)
+      : { shiftStartTime: null };
   const earlyClockInMinutes = job.additionalConfig?.earlyClockInMinutes ?? 0;
   const autoAdjustEarlyClockIn =
     job.additionalConfig?.autoAdjustEarlyClockIn ?? false;
@@ -863,8 +887,7 @@ export function combineCurrentDateWithTimeFromDateObject(
     const endHour = timeObj.getHours();
     const endMin = timeObj.getMinutes();
     const isOvernightShift =
-      endHour < startHour ||
-      (endHour === startHour && endMin < startMin);
+      endHour < startHour || (endHour === startHour && endMin < startMin);
 
     if (isOvernightShift) {
       result.setDate(result.getDate() + 1);
@@ -890,11 +913,24 @@ export function resolveShiftDates(
   if (isOvernightFromPreviousDay) {
     const yesterday = new Date(currentTime);
     yesterday.setDate(yesterday.getDate() - 1);
-    const shiftStartTime = combineCurrentDateWithTimeFromDateObject(start, yesterday.toISOString());
-    const shiftEndTime = combineCurrentDateWithTimeFromDateObject(end, currentTime);
+    const shiftStartTime = combineCurrentDateWithTimeFromDateObject(
+      start,
+      yesterday.toISOString()
+    );
+    const shiftEndTime = combineCurrentDateWithTimeFromDateObject(
+      end,
+      currentTime
+    );
     return { shiftStartTime, shiftEndTime };
   }
-  const shiftStartTime = combineCurrentDateWithTimeFromDateObject(start, currentTime);
-  const shiftEndTime = combineCurrentDateWithTimeFromDateObject(end, currentTime, start);
+  const shiftStartTime = combineCurrentDateWithTimeFromDateObject(
+    start,
+    currentTime
+  );
+  const shiftEndTime = combineCurrentDateWithTimeFromDateObject(
+    end,
+    currentTime,
+    start
+  );
   return { shiftStartTime, shiftEndTime };
 }

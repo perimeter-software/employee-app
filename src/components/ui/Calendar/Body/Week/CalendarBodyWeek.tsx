@@ -18,11 +18,20 @@ export default function CalendarBodyWeek({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Memoize week calculations - only recalculate when date or weekStartsOn changes
-  const weekStart = useMemo(() => startOfWeek(date, { weekStartsOn }), [date, weekStartsOn]);
-  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
-  
+  const weekStart = useMemo(
+    () => startOfWeek(date, { weekStartsOn }),
+    [date, weekStartsOn]
+  );
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+    [weekStart]
+  );
+
   // Memoize day names - only recalculate when weekStartsOn changes
-  const adjustedDayNames = useMemo(() => getDayNamesFromWeekStartsOn(weekStartsOn), [weekStartsOn]);
+  const adjustedDayNames = useMemo(
+    () => getDayNamesFromWeekStartsOn(weekStartsOn),
+    [weekStartsOn]
+  );
 
   // Use the auto-scroll hook for week view
   useCalendarAutoScroll({
@@ -49,7 +58,6 @@ export default function CalendarBodyWeek({
           {weekDays.map((day, index) => {
             const dateKey = format(day, 'yyyy-MM-dd');
             const badges = dayBadges?.[dateKey];
-            
             return (
               <div
                 key={day.toISOString()}
@@ -68,10 +76,7 @@ export default function CalendarBodyWeek({
                 {badges && badges.length > 0 && (
                   <div className="flex items-center justify-center gap-0.5 mt-1 text-[9px] lg:text-[10px] font-medium">
                     {badges.map((badge, index) => (
-                      <span
-                        key={index}
-                        className="relative inline-flex group"
-                      >
+                      <span key={index} className="relative inline-flex group">
                         <span
                           className={clsxm(
                             'flex items-center rounded px-1 py-0.5 cursor-default',
@@ -106,7 +111,7 @@ export default function CalendarBodyWeek({
           ref={scrollContainerRef}
           className="flex flex-1 overflow-y-auto overflow-x-auto"
         >
-          <div className="flex min-w-max">
+          <div className="flex min-w-full">
             {/* Time column */}
             <div className="w-12 sm:w-16 xl:w-20 bg-background border-r border-gray-200 flex-shrink-0">
               {/* Time labels */}

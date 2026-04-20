@@ -2,10 +2,10 @@
 import type { NextRequest } from 'next/server';
 import { authMiddleware } from './auth';
 import { loggingMiddleware } from './logging';
-import { rateLimitMiddleware } from './rate-limiting';
 import { securityMiddleware } from './security';
 import { sessionCleanerMiddleware } from './session-cleaner';
 import { isAuthRoute, isStaticAsset } from './utils';
+import { env } from '@/lib/config';
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -13,7 +13,7 @@ export async function middleware(request: NextRequest) {
   // Always let Auth0 handle auth routes
   if (isAuthRoute(pathname)) {
     // Only log in development
-    if (process.env.NODE_ENV === 'development') {
+    if (env.isDevelopment) {
       console.log(`🔐 Auth route detected: ${pathname}`);
     }
     return null; // Let the API route handle it
@@ -34,7 +34,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Only log in development
-  if (process.env.NODE_ENV === 'development') {
+  if (env.isDevelopment) {
     console.log(`📝 Request to: ${pathname}`);
   }
 
@@ -47,9 +47,8 @@ export async function middleware(request: NextRequest) {
     const sessionCleanerResult = sessionCleanerMiddleware(request);
     if (sessionCleanerResult) return sessionCleanerResult;
 
-    // Then run rate limiting
-    const rateLimitResult = await rateLimitMiddleware(request);
-    if (rateLimitResult) return rateLimitResult;
+    // Rate limiting moved to API route handlers (withEnhancedAuthAPI / withAuthAPI)
+    // so it can use Redis for cross-worker consistency in cluster mode.
 
     // Then run auth middleware for protected routes
     const authResult = await authMiddleware(request);

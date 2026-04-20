@@ -184,9 +184,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
   // Helper function to strip HTML tags for preview
   const stripHtml = (html: string) => {
     if (!html) return '';
-    const tmp = document.createElement('DIV');
-    tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || '';
+    return html.replace(/<[^>]*>/g, '');
   };
 
   const bodyText = currentNotification.body || '';

@@ -1,31 +1,32 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from 'react';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../Card";
-import { Button } from "../Button";
+} from '../Card';
+import { Button } from '../Button';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../Select";
-import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { TableProps } from "./types";
+} from '../Select';
+import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { TableProps } from './types';
 
 export function Table<T extends Record<string, unknown>>({
   title,
   description,
+  headerAction,
   columns,
   data,
   showPagination = true,
   selectable = false,
-  className = "",
-  emptyMessage = "No data available",
+  className = '',
+  emptyMessage = 'No data available',
   getRowClassName,
   onRowClick,
   loading = false,
@@ -37,7 +38,7 @@ export function Table<T extends Record<string, unknown>>({
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(initialPageSize);
   const [sortColumn, setSortColumn] = useState<keyof T | null>(null);
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   // Reset to page 1 when page size changes
   useEffect(() => {
@@ -60,8 +61,8 @@ export function Table<T extends Record<string, unknown>>({
     return [...data].sort((a, b) => {
       // Use custom sort function if provided
       if (column.sortFn) {
-        return sortDirection === "asc" 
-          ? column.sortFn(a, b) 
+        return sortDirection === 'asc'
+          ? column.sortFn(a, b)
           : column.sortFn(b, a);
       }
 
@@ -75,20 +76,20 @@ export function Table<T extends Record<string, unknown>>({
       if (bValue == null) return -1;
 
       // Handle different data types
-      if (typeof aValue === "string" && typeof bValue === "string") {
-        const comparison = aValue.localeCompare(bValue, undefined, { 
-          numeric: true, 
-          sensitivity: "base" 
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        const comparison = aValue.localeCompare(bValue, undefined, {
+          numeric: true,
+          sensitivity: 'base',
         });
-        return sortDirection === "asc" ? comparison : -comparison;
+        return sortDirection === 'asc' ? comparison : -comparison;
       }
 
-      if (typeof aValue === "number" && typeof bValue === "number") {
-        return sortDirection === "asc" ? aValue - bValue : bValue - aValue;
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
       }
 
       if (aValue instanceof Date && bValue instanceof Date) {
-        return sortDirection === "asc" 
+        return sortDirection === 'asc'
           ? aValue.getTime() - bValue.getTime()
           : bValue.getTime() - aValue.getTime();
       }
@@ -96,11 +97,11 @@ export function Table<T extends Record<string, unknown>>({
       // Fallback: convert to string and compare
       const aStr = String(aValue);
       const bStr = String(bValue);
-      const comparison = aStr.localeCompare(bStr, undefined, { 
-        numeric: true, 
-        sensitivity: "base" 
+      const comparison = aStr.localeCompare(bStr, undefined, {
+        numeric: true,
+        sensitivity: 'base',
       });
-      return sortDirection === "asc" ? comparison : -comparison;
+      return sortDirection === 'asc' ? comparison : -comparison;
     });
   }, [data, sortColumn, sortDirection, columns]);
 
@@ -112,19 +113,19 @@ export function Table<T extends Record<string, unknown>>({
 
     if (sortColumn === columnKey) {
       // Toggle direction if clicking the same column
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       // Set new column and default to ascending
       setSortColumn(columnKey);
-      setSortDirection("asc");
+      setSortDirection('asc');
     }
   };
 
   // Toggle all selection (uses sorted data)
   const toggleAllSelection = () => {
     setSelectedRows((prev) =>
-      prev.length === sortedData.length 
-        ? [] 
+      prev.length === sortedData.length
+        ? []
         : sortedData.map((_, index) => index)
     );
   };
@@ -133,8 +134,8 @@ export function Table<T extends Record<string, unknown>>({
   const totalPages = Math.ceil(sortedData.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const currentData = showPagination 
-    ? sortedData.slice(startIndex, endIndex) 
+  const currentData = showPagination
+    ? sortedData.slice(startIndex, endIndex)
     : sortedData;
 
   const goToNextPage = () => {
@@ -160,7 +161,7 @@ export function Table<T extends Record<string, unknown>>({
       {columns.map((column) => (
         <td
           key={String(column.key)}
-          className={`px-4 py-3 ${column.className || ""}`}
+          className={`px-4 py-3 ${column.className || ''}`}
         >
           <div
             className="h-4 bg-gray-200 rounded animate-pulse"
@@ -172,11 +173,24 @@ export function Table<T extends Record<string, unknown>>({
   );
 
   return (
-    <Card className={`flex flex-col min-h-0 ${className || ""}`.trim()}>
-      {(title || description) && (
-        <CardHeader>
-          {title && <CardTitle className="text-lg">{title}</CardTitle>}
-          {description && <CardDescription>{description}</CardDescription>}
+    <Card className={`flex flex-col min-h-0 ${className || ''}`.trim()}>
+      {(title || description || headerAction) && (
+        <CardHeader className="space-y-0">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 w-full">
+            {(title || description) && (
+              <div className="min-w-0 flex-1 space-y-1 text-left">
+                {title && <CardTitle className="text-lg">{title}</CardTitle>}
+                {description && (
+                  <CardDescription>{description}</CardDescription>
+                )}
+              </div>
+            )}
+            {headerAction ? (
+              <div className="flex-shrink-0 self-start sm:mt-0.5 sm:ml-auto">
+                {headerAction}
+              </div>
+            ) : null}
+          </div>
         </CardHeader>
       )}
       <CardContent className="flex flex-col min-h-0 flex-1">
@@ -189,7 +203,8 @@ export function Table<T extends Record<string, unknown>>({
                     <input
                       type="checkbox"
                       checked={
-                        selectedRows.length === sortedData.length && sortedData.length > 0
+                        selectedRows.length === sortedData.length &&
+                        sortedData.length > 0
                       }
                       onChange={toggleAllSelection}
                       className="rounded border-gray-300"
@@ -202,54 +217,65 @@ export function Table<T extends Record<string, unknown>>({
                 {columns.map((column, index) => {
                   const isSortable = column.sortable !== false;
                   const isSorted = sortColumn === column.key;
-                  const isAscending = sortDirection === "asc";
+                  const isAscending = sortDirection === 'asc';
 
                   // Calculate aria-sort value - must be a literal string, not an expression
-                  let ariaSortValue: "ascending" | "descending" | "none";
+                  let ariaSortValue: 'ascending' | 'descending' | 'none';
                   if (isSorted) {
                     if (isAscending) {
-                      ariaSortValue = "ascending";
+                      ariaSortValue = 'ascending';
                     } else {
-                      ariaSortValue = "descending";
+                      ariaSortValue = 'descending';
                     }
                   } else {
-                    ariaSortValue = "none";
+                    ariaSortValue = 'none';
                   }
 
                   // Calculate aria-label value
                   let ariaLabelValue: string | undefined;
                   if (isSortable) {
                     if (isSorted) {
-                      const direction = isAscending ? "descending" : "ascending";
+                      const direction = isAscending
+                        ? 'descending'
+                        : 'ascending';
                       ariaLabelValue = `Sort by ${column.header} ${direction}`;
                     } else {
                       ariaLabelValue = `Sort by ${column.header}`;
                     }
                   }
 
-                  const thProps: React.ThHTMLAttributes<HTMLTableCellElement> = {
-                    className: `px-4 py-3 font-medium text-gray-600 ${
-                      column.headerClassName || column.className || ""
-                    } ${
-                      isSortable ? "cursor-pointer hover:bg-gray-100 select-none" : ""
-                    }`,
-                    onClick: () => isSortable && handleSort(column.key),
-                    "aria-sort": ariaSortValue,
-                    tabIndex: isSortable ? 0 : undefined,
-                    onKeyDown: (e) => {
-                      if (isSortable && (e.key === "Enter" || e.key === " ")) {
-                        e.preventDefault();
-                        handleSort(column.key);
-                      }
-                    },
-                  };
+                  const thProps: React.ThHTMLAttributes<HTMLTableCellElement> =
+                    {
+                      className: `px-4 py-3 font-medium text-gray-600 ${
+                        column.headerClassName || column.className || ''
+                      } ${
+                        isSortable
+                          ? 'cursor-pointer hover:bg-gray-100 select-none'
+                          : ''
+                      }`,
+                      onClick: () => isSortable && handleSort(column.key),
+                      'aria-sort': ariaSortValue,
+                      tabIndex: isSortable ? 0 : undefined,
+                      onKeyDown: (e) => {
+                        if (
+                          isSortable &&
+                          (e.key === 'Enter' || e.key === ' ')
+                        ) {
+                          e.preventDefault();
+                          handleSort(column.key);
+                        }
+                      },
+                    };
 
                   if (ariaLabelValue) {
-                    thProps["aria-label"] = ariaLabelValue;
+                    thProps['aria-label'] = ariaLabelValue;
                   }
 
                   return (
-                    <th key={String(column.key)+index.toString()} {...thProps}>
+                    <th
+                      key={String(column.key) + index.toString()}
+                      {...thProps}
+                    >
                       <div className="flex items-center gap-2">
                         <span>{column.header}</span>
                         {isSortable && (
@@ -295,9 +321,9 @@ export function Table<T extends Record<string, unknown>>({
                     : rowIndex;
                   const rowClassName = getRowClassName
                     ? getRowClassName(row, actualIndex)
-                    : "";
-                  const baseRowClassName = "hover:bg-gray-50 transition-colors";
-                  const clickableClassName = onRowClick ? "cursor-pointer" : "";
+                    : '';
+                  const baseRowClassName = 'hover:bg-gray-50 transition-colors';
+                  const clickableClassName = onRowClick ? 'cursor-pointer' : '';
 
                   return (
                     <tr
@@ -320,11 +346,11 @@ export function Table<T extends Record<string, unknown>>({
                       {columns.map((column) => (
                         <td
                           key={String(column.key)}
-                          className={`px-4 py-3 ${column.className || ""}`}
+                          className={`px-4 py-3 ${column.className || ''}`}
                         >
                           {column.render
                             ? column.render(row[column.key], row, actualIndex)
-                            : String(row[column.key] ?? "")}
+                            : String(row[column.key] ?? '')}
                         </td>
                       ))}
                     </tr>

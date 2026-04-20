@@ -1,5 +1,6 @@
 import type { Db } from 'mongodb';
 import { ObjectId as ObjectIdFunction } from 'mongodb';
+import { DEFAULT_JOBS_PROJECTION } from '@/lib/db';
 import {
   formatISO,
   startOfDay,
@@ -16,7 +17,9 @@ import type { ClockInCoordinates } from '@/domains/job/types/location.types';
 import {
   giveJobGeoCoords,
   giveJobAllowedGeoDistance,
+  giveJobPolygon,
 } from '@/domains/punch/utils/shift-job-utils';
+import { isPointInPolygon } from '@/lib/utils/location-utils';
 import { UpdateFilter, Document } from 'mongodb';
 
 export async function createPunchIn(db: Db, punch: PunchNoId): Promise<Punch> {
@@ -174,21 +177,23 @@ export async function updatePunchWithHistory(
     timeOut: punch.timeOut ? punch.timeOut : null,
     modifiedDate: punch.modifiedDate || new Date().toISOString(),
   };
-  const { _id, updateHistory: _unused, ...punchData } = updatedPunch as Punch & { updateHistory?: PunchUpdateHistoryEntry[] };
+  const {
+    _id,
+    updateHistory: _unused,
+    ...punchData
+  } = updatedPunch as Punch & { updateHistory?: PunchUpdateHistoryEntry[] };
   void _unused; // exclude from $set so we only $push
   const punchID = new ObjectIdFunction(_id);
 
   try {
-    const result = await db
-      .collection('timecard')
-      .findOneAndUpdate(
-        { _id: punchID },
-        {
-          $set: punchData as Document,
-          $push: { updateHistory: { ...historyEntry } },
-        } as unknown as UpdateFilter<Document>,
-        { returnDocument: 'after' }
-      );
+    const result = await db.collection('timecard').findOneAndUpdate(
+      { _id: punchID },
+      {
+        $set: punchData as Document,
+        $push: { updateHistory: { ...historyEntry } },
+      } as unknown as UpdateFilter<Document>,
+      { returnDocument: 'after' }
+    );
 
     if (!result) {
       return null;
@@ -222,9 +227,12 @@ export async function updatePunchUserCoordinates(
     }
 
     // Step 2: Retrieve the job details using the jobId from the punch
-    const job = await db.collection('jobs').findOne({
-      _id: new ObjectIdFunction(punch.jobId),
-    });
+    const job = await db
+      .collection('jobs')
+      .findOne(
+        { _id: new ObjectIdFunction(punch.jobId) },
+        { projection: DEFAULT_JOBS_PROJECTION }
+      );
 
     // If no job is found, return null (no update needed)
     if (!job) {
@@ -247,36 +255,45 @@ export async function updatePunchUserCoordinates(
     }
 
     const parsedJob = convertToJSON(job) as GignologyJob;
-
-    const jobsCoordinates = giveJobGeoCoords(parsedJob);
-
-    if (jobsCoordinates?.lat === 0 || jobsCoordinates?.long === 0) {
-      console.log('Missing required job coordinates');
-      return null;
-    }
-
-    const currentDistance = calculateDistance(
-      location.latitude,
-      location.longitude,
-      jobsCoordinates.lat,
-      jobsCoordinates.long
-    );
-
-    if (
-      !job.location?.graceDistanceFeet ||
-      !job.location.geocoordinates?.geoFenceRadius
-    ) {
-      console.log('Missing required job coordinates');
-      return null;
-    }
     let isWithinGeofence = true;
 
-    const allowedDistance = giveJobAllowedGeoDistance(parsedJob);
-    if (currentDistance > allowedDistance) {
-      console.log(
-        'Unauthorized: Not within allowable distance of job location'
+    const jobPolygon = giveJobPolygon(parsedJob);
+
+    if (jobPolygon) {
+      // Polygon-based geofence check
+      isWithinGeofence = isPointInPolygon(
+        location.latitude,
+        location.longitude,
+        jobPolygon
       );
-      isWithinGeofence = false;
+    } else {
+      // Circle-based geofence check (fallback)
+      const jobsCoordinates = giveJobGeoCoords(parsedJob);
+
+      if (jobsCoordinates?.lat === 0 || jobsCoordinates?.long === 0) {
+        console.log('Missing required job coordinates');
+        return null;
+      }
+
+      if (
+        !job.location?.graceDistanceFeet ||
+        !job.location.geocoordinates?.geoFenceRadius
+      ) {
+        console.log('Missing required job coordinates');
+        return null;
+      }
+
+      const currentDistance = calculateDistance(
+        location.latitude,
+        location.longitude,
+        jobsCoordinates.lat,
+        jobsCoordinates.long
+      );
+
+      const allowedDistance = giveJobAllowedGeoDistance(parsedJob);
+      if (currentDistance > allowedDistance) {
+        isWithinGeofence = false;
+      }
     }
 
     // Step 5: Push new coordinates to the punch's userCoordinates array

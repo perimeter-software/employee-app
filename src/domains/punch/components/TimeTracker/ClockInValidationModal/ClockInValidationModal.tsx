@@ -1,4 +1,5 @@
 'use client';
+import DOMPurify from 'dompurify';
 
 import React from 'react';
 import {
@@ -107,7 +108,7 @@ export function ClockInValidationModal({
             >
               <div
                 className="flex-1 text-sm"
-                dangerouslySetInnerHTML={{ __html: message.message }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(message.message) }}
               />
             </div>
           ))}

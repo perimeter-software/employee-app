@@ -3,6 +3,7 @@ import type { NextRequest, NextResponse } from 'next/server';
 import { NextResponse as Response } from 'next/server';
 import { isProtectedRoute, createReturnUrl, createRedirectUrl } from './utils';
 import { hasSessionCookie } from '../auth/session-handler';
+import { env } from '@/lib/config';
 
 export async function authMiddleware(
   request: NextRequest
@@ -17,24 +18,20 @@ export async function authMiddleware(
     // Full session validation will happen in API route handlers
     if (!hasSessionCookie(request)) {
       // Only log in development
-      if (process.env.NODE_ENV === 'development') {
+      if (env.isDevelopment) {
         console.log(`Unauthenticated access to: ${request.nextUrl.pathname}`);
       }
 
       const returnUrl = createReturnUrl(request);
       // Redirect to app's login page (/) instead of /api/auth/login
       // This allows users to choose between Auth0 and OTP login methods
-      const redirectUrl = createRedirectUrl(
-        request,
-        '/',
-        returnUrl
-      );
+      const redirectUrl = createRedirectUrl(request, '/', returnUrl);
 
       return Response.redirect(redirectUrl);
     }
 
     // Only log in development
-    if (process.env.NODE_ENV === 'development') {
+    if (env.isDevelopment) {
       console.log(`✅ Session cookie found for: ${request.nextUrl.pathname}`);
     }
 

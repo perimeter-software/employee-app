@@ -1,17 +1,20 @@
 // next.config.mjs
 /** @type {import('next').NextConfig} */
 
-const isDev = process.env.NODE_ENV === 'development';
+const isDev =
+  process.env.NODE_ENV === 'development' ||
+  process.env.NEXT_PUBLIC_APP_ENV === 'development';
 
 const nextConfig = {
   // Enable Turbopack for much faster dev builds (Next.js 14+)
-  ...(isDev && {
-    // Turbopack is experimental but much faster
-    // Uncomment if you want to try it (may have some compatibility issues)
-    // experimental: {
-    //   turbo: {},
-    // },
-  }),
+  ...(isDev &&
+    {
+      // Turbopack is experimental but much faster
+      // Uncomment if you want to try it (may have some compatibility issues)
+      // experimental: {
+      //   turbo: {},
+      // },
+    }),
 
   images: {
     // Disable image optimization in production to avoid permission issues
@@ -42,8 +45,20 @@ const nextConfig = {
         protocol: 'https',
         hostname: 's.gravatar.com',
       },
+      // S3 bucket used for tenant assets (avoids next/image render error in dev)
+      {
+        protocol: 'https',
+        hostname: 'pureblue-gignology',
+      },
+      {
+        // Covers all S3 virtual-hosted URLs: bucket.s3.region.amazonaws.com
+        protocol: 'https',
+        hostname: '**.amazonaws.com',
+      },
     ],
   },
+
+  productionBrowserSourceMaps: false,
 
   // Webpack optimizations for faster dev builds (only when not using Turbopack)
   // Turbopack has its own optimizations, so webpack config is ignored when using --turbo
@@ -58,7 +73,6 @@ const nextConfig = {
         // Disable minification in dev
         minimize: false,
       };
-      
       // Reduce file watching overhead - more aggressive
       config.watchOptions = {
         poll: 2000,
@@ -72,7 +86,6 @@ const nextConfig = {
           '**/.DS_Store',
         ],
       };
-      
       // Cache everything possible
       config.cache = {
         type: 'filesystem',
@@ -84,18 +97,19 @@ const nextConfig = {
   async headers() {
     const connectSrc = [
       "'self'",
-      'https://maps.googleapis.com',
+      'https://*.googleapis.com', // Google Maps + Firebase (installations, FCM token, etc.)
       'https://maps.gstatic.com',
       'https://*.auth0.com',
       'https://polyfill.io',
       'https://*.pureblue.ai', // PureBlue API and services
+      'https://*.firebaseio.com', // Firebase Realtime Database / FCM
     ];
 
     const frameSrc = [
       'https://*.auth0.com',
-      'https://*.pureblue.info', // PureBlue chatbot iframes
       // AWS S3 URLs - allow all S3 endpoints for PDF viewing
       'https://*.amazonaws.com', // Matches all AWS S3 URLs (s3.region.amazonaws.com, bucket.s3.region.amazonaws.com, etc.)
+      'https://player.vimeo.com',
     ];
 
     return [
@@ -106,7 +120,7 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com https://polyfill.io",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://*.gstatic.com https://polyfill.io",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "img-src 'self' data: https: blob:",
               "font-src 'self' https://fonts.gstatic.com",
@@ -125,15 +139,27 @@ const nextConfig = {
   },
 
   // Compiler options - only in production (Turbopack doesn't support removeConsole)
-  ...(process.env.NODE_ENV === 'production' && {
-    compiler: {
-      // Remove console logs in production builds
-      removeConsole: true,
-    },
-  }),
+  ...(process.env.NODE_ENV === 'production' &&
+    process.env.NEXT_PUBLIC_APP_ENV !== 'development' && {
+      compiler: {
+        // Remove console logs in production builds
+        removeConsole: true,
+      },
+    }),
 
-  // Transpile @react-pdf/renderer so Next bundles it (it's ESM and can't be server-externalized)
-  transpilePackages: ['@react-pdf/renderer'],
+  // Transpile packages that ship ESM and can't be server-externalized
+  transpilePackages: ['@react-pdf/renderer', 'firebase'],
+
+  async rewrites() {
+    return [
+      {
+        // Serve the Firebase service worker at the expected path without
+        // putting ".js" in the app directory folder name (which confuses webpack)
+        source: '/firebase-messaging-sw.js',
+        destination: '/api/firebase-sw',
+      },
+    ];
+  },
 
   // Add experimental features for better compatibility
   experimental: {
@@ -158,18 +184,16 @@ const nextConfig = {
     optimizeCss: true,
   },
 
-  // TypeScript optimizations
+  // TypeScript: skip type-check during next build to avoid memory spike on EB (t3/t4g.medium).
+  // Run `yarn type-check` in CI or locally before deploy.
   typescript: {
-    // Don't type-check during build in dev (faster, but less safe)
-    // You can still run `tsc --noEmit` separately
-    ignoreBuildErrors: isDev,
+    ignoreBuildErrors: true,
   },
 
-  // ESLint optimizations
+  // ESLint: skip lint during next build to avoid memory spike on EB (t3/t4g.medium).
+  // Run `yarn lint` in CI or locally before deploy.
   eslint: {
-    // Don't run ESLint during builds in dev (faster)
-    // You can still run `npm run lint` separately
-    ignoreDuringBuilds: isDev,
+    ignoreDuringBuilds: true,
   },
 };
 

@@ -11,6 +11,168 @@ export async function GET(request: NextRequest) {
     // Get OTP session ID before clearing cookies
     const otpSessionId = request.cookies.get('otp_session_id')?.value;
 
+    // Get user info for logging before clearing session
+    let userInfoForLogging: {
+      userId?: string;
+      applicantId?: string;
+      agent?: string;
+      email?: string;
+    } | null = null;
+
+    if (otpSessionId) {
+      try {
+        const otpSessionData = await redisService.get<{
+          userId: string;
+          email: string;
+          name: string;
+          firstName?: string;
+          lastName?: string;
+        }>(`otp_session:${otpSessionId}`);
+
+        if (otpSessionData) {
+          const activityEmail = otpSessionData.email?.toLowerCase().trim();
+          let resolvedUserId: string | undefined;
+          let resolvedApplicantId: string | undefined;
+          const tenantData = activityEmail
+            ? await redisService.getTenantData(activityEmail)
+            : null;
+          const tenantDbName = tenantData?.tenant?.dbName;
+          if (tenantDbName && activityEmail) {
+            try {
+              const { mongoConn } = await import('@/lib/db/mongodb');
+              const { resolveActivityIdentityByEmail } = await import(
+                '@/lib/services/activity-identity'
+              );
+              const { db } = await mongoConn(tenantDbName);
+              const resolved = await resolveActivityIdentityByEmail(
+                db,
+                activityEmail
+              );
+              resolvedUserId = resolved.userId;
+              resolvedApplicantId = resolved.applicantId;
+            } catch {
+              // Ignore lookup errors and fall back to OTP session values
+            }
+          }
+
+          userInfoForLogging = {
+            userId: resolvedUserId || otpSessionData.userId,
+            applicantId: resolvedApplicantId || otpSessionData.userId,
+            agent:
+              otpSessionData.name ||
+              otpSessionData.firstName ||
+              otpSessionData.email,
+            email: otpSessionData.email,
+          };
+        }
+      } catch {
+        // Ignore errors getting OTP session for logging
+      }
+    }
+
+    // Try to get Auth0 session for logging
+    let userEmail: string | undefined;
+    try {
+      const { getSession } = await import('@auth0/nextjs-auth0');
+      const auth0Session = await getSession();
+      if (auth0Session?.user) {
+        userEmail = auth0Session.user.email;
+        if (!userInfoForLogging) {
+          const activityEmail = auth0Session.user.email?.toLowerCase().trim();
+          const tenantData = activityEmail
+            ? await redisService.getTenantData(activityEmail)
+            : null;
+          const tenantDbName = tenantData?.tenant?.dbName;
+          let resolvedAuthUserId: string | undefined;
+          let resolvedAuthApplicantId: string | undefined;
+
+          if (tenantDbName && activityEmail) {
+            try {
+              const { mongoConn } = await import('@/lib/db/mongodb');
+              const { resolveActivityIdentityByEmail } = await import(
+                '@/lib/services/activity-identity'
+              );
+              const { db } = await mongoConn(tenantDbName);
+              const resolved = await resolveActivityIdentityByEmail(
+                db,
+                activityEmail
+              );
+              resolvedAuthUserId = resolved.userId;
+              resolvedAuthApplicantId = resolved.applicantId;
+            } catch {
+              // Ignore lookup errors and fall back to available session values
+            }
+          }
+
+          // Safety: never write Auth0 subject IDs into activity user/applicant fields.
+          if (resolvedAuthUserId && resolvedAuthApplicantId) {
+            userInfoForLogging = {
+              userId: resolvedAuthUserId,
+              applicantId: resolvedAuthApplicantId,
+              agent: auth0Session.user.name || auth0Session.user.email,
+              email: auth0Session.user.email,
+            };
+          } else {
+            console.warn(
+              `Skipping logout activity log: could not resolve DB user/applicant IDs for ${activityEmail || 'unknown email'}`
+            );
+          }
+        }
+      }
+    } catch {
+      // Ignore errors getting Auth0 session
+    }
+
+    // Log logout activity before clearing session
+    if (userInfoForLogging) {
+      try {
+        const { logActivity, createActivityLogData } = await import(
+          '@/lib/services/activity-logger'
+        );
+        const { mongoConn } = await import('@/lib/db/mongodb');
+        const activityEmail = (userEmail || userInfoForLogging.email || '')
+          .toLowerCase()
+          .trim();
+        const tenantData = activityEmail
+          ? await redisService.getTenantData(activityEmail)
+          : null;
+        const tenantDbName = tenantData?.tenant?.dbName;
+        if (!tenantDbName) {
+          console.warn(
+            `Skipping logout activity log: tenant dbName unavailable for ${activityEmail || 'unknown email'}`
+          );
+        } else if (
+          !userInfoForLogging.userId ||
+          !userInfoForLogging.applicantId
+        ) {
+          console.warn(
+            `Skipping logout activity log: missing resolved IDs for ${activityEmail || 'unknown email'}`
+          );
+        } else {
+          const { db } = await mongoConn(tenantDbName);
+          await logActivity(
+            db,
+            createActivityLogData(
+              'User Logout',
+              `${userInfoForLogging.agent || 'User'} logged out`,
+              {
+                applicantId: userInfoForLogging.applicantId,
+                userId: userInfoForLogging.userId,
+                agent: userInfoForLogging.agent,
+                email: userEmail || '',
+                details: {
+                  logoutMethod: otpSessionId ? 'OTP' : 'Auth0',
+                },
+              }
+            )
+          );
+        }
+      } catch (error) {
+        // Don't fail logout if logging fails
+        console.error('Error logging logout activity:', error);
+      }
+    }
+
     // Clear OTP session from Redis if it exists
     if (otpSessionId) {
       try {
@@ -35,7 +197,7 @@ export async function GET(request: NextRequest) {
     // Auth0 might redirect to its own logout endpoint first, then back to returnTo
     const locationHeader = auth0Response.headers.get('location');
     let redirectUrl: URL;
-    
+
     if (locationHeader) {
       redirectUrl = new URL(locationHeader, request.url);
       // If it's pointing to our domain (not Auth0's), ensure clean URL without parameters
@@ -60,28 +222,36 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Also clear OTP session cookies
-    response.cookies.delete('otp_session_id');
-    response.cookies.set('otp_session_id', '', {
-      expires: new Date(0),
-      path: '/',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-    });
+    // Clear all auth-related cookies to ensure complete logout
+    const cookiesToClear = [
+      'otp_session_id',
+      'auth0.is.authenticated',
+      'appSession',
+      'appSession.0',
+      'appSession.1',
+      'appSession.2',
+    ];
 
-    // Clear auth0.is.authenticated cookie (used for compatibility)
-    response.cookies.delete('auth0.is.authenticated');
-    response.cookies.set('auth0.is.authenticated', '', {
-      expires: new Date(0),
-      path: '/',
-      httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+    cookiesToClear.forEach((cookieName) => {
+      // Delete cookie
+      response.cookies.delete(cookieName);
+      // Set expired cookie for all possible paths
+      response.cookies.set(cookieName, '', {
+        expires: new Date(0),
+        path: '/',
+        httpOnly: cookieName !== 'auth0.is.authenticated',
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+      });
     });
 
     // Clear appSession cookies (Auth0 session cookies)
-    const appSessionCookies = ['appSession', 'appSession.0', 'appSession.1', 'appSession.2'];
+    const appSessionCookies = [
+      'appSession',
+      'appSession.0',
+      'appSession.1',
+      'appSession.2',
+    ];
     appSessionCookies.forEach((cookieName) => {
       response.cookies.delete(cookieName);
       response.cookies.set(cookieName, '', {
@@ -98,12 +268,12 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error('Error during logout:', error);
-    
+
     // Even if there's an error, try to clear cookies and redirect
     // Redirect to clean home page
     const redirectUrl = new URL('/', request.url);
     const response = NextResponse.redirect(redirectUrl);
-    
+
     // Clear all auth cookies
     const cookiesToClear = [
       'appSession',
@@ -128,4 +298,3 @@ export async function GET(request: NextRequest) {
     return response;
   }
 }
-

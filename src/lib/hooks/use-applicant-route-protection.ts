@@ -16,7 +16,6 @@ export function useApplicantRouteProtection() {
   const pathname = usePathname();
   const { data: currentUser, isLoading: isLoadingUser } = useCurrentUser();
   const { isLoading: isLoadingCompany } = usePrimaryCompany();
-  
   const isLoading = isLoadingUser || isLoadingCompany;
 
   useEffect(() => {
@@ -32,14 +31,13 @@ export function useApplicantRouteProtection() {
     }
 
     // Allow access to paycheck stubs routes
-    const isPaycheckStubsRoute = 
-      pathname === '/paycheck-stubs' || 
+    const isPaycheckStubsRoute =
+      pathname === '/payroll' ||
+      pathname.startsWith('/payroll/') ||
       pathname.startsWith('/paycheck-stubs/');
 
     // Allow access to login/logout routes
-    const isAuthRoute = 
-      pathname === '/' || 
-      pathname.startsWith('/api/auth/');
+    const isAuthRoute = pathname === '/' || pathname.startsWith('/api/auth/');
 
     // Allow access to public routes (if any)
     const isPublicRoute = false; // Add public routes if needed
@@ -50,9 +48,11 @@ export function useApplicantRouteProtection() {
     }
 
     // Redirect applicant to paycheck stubs
-    console.log(`🚫 Applicant-only session: Redirecting from ${pathname} to /paycheck-stubs`);
-    router.replace('/paycheck-stubs');
+    console.log(
+      `🚫 Applicant-only session: Redirecting from ${pathname} to /payroll`
+    );
+    router.replace('/payroll');
   }, [currentUser, isLoadingUser, isLoadingCompany, pathname, router]);
-  
+
   return { isLoading };
 }

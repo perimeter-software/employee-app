@@ -26,6 +26,7 @@ import {
 interface UseTimerCardProps {
   userData: GignologyUser;
   openPunches: PunchWithJobInfo[] | undefined;
+  hasActiveEventClockIn?: boolean;
 }
 
 interface ValidationMessage {
@@ -33,7 +34,11 @@ interface ValidationMessage {
   message: string;
 }
 
-export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
+export function useTimerCard({
+  userData,
+  openPunches,
+  hasActiveEventClockIn = false,
+}: UseTimerCardProps) {
   // Local state for UI
   const [currentTime, setCurrentTime] = useState('00:00:00');
   const [isClocked, setIsClocked] = useState(false);
@@ -150,7 +155,12 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         shift
       );
       if (start && end) {
-        const { shiftEndTime } = resolveShiftDates(start, end, currentTime, isOvernightFromPreviousDay);
+        const { shiftEndTime } = resolveShiftDates(
+          start,
+          end,
+          currentTime,
+          isOvernightFromPreviousDay
+        );
         if (shiftEndTime > now) return true;
       }
 
@@ -164,13 +174,30 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         const shiftEndDay = startOfDay(parseISO(endStr));
         if (shiftEndDay < todayStart) return false; // shift already ended
         if (isAfter(shiftStartDay, todayStart)) return true;
-        const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+        const days = [
+          'monday',
+          'tuesday',
+          'wednesday',
+          'thursday',
+          'friday',
+          'saturday',
+          'sunday',
+        ] as const;
         for (const day of days) {
           const roster = shift.defaultSchedule?.[day]?.roster;
           if (!Array.isArray(roster)) continue;
           for (const entry of roster) {
-            if (entry && typeof entry === 'object' && 'employeeId' in entry && 'date' in entry) {
-              const e = entry as { employeeId: string; date: string; status?: string };
+            if (
+              entry &&
+              typeof entry === 'object' &&
+              'employeeId' in entry &&
+              'date' in entry
+            ) {
+              const e = entry as {
+                employeeId: string;
+                date: string;
+                status?: string;
+              };
               // Exclude pending, rejected, cancelled, called_off — only count approved or legacy
               if (!isApprovedOrLegacyRosterEntry(e)) continue;
               if (e.employeeId === applicantId && e.date) {
@@ -494,8 +521,16 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         // Use resolveShiftDates so overnight-from-previous-day shifts get yesterday's date for start
         const { shiftStartTime: newStartDate, shiftEndTime: newEndDate } =
           start && end
-            ? resolveShiftDates(start, end, currentTime, isOvernightFromPreviousDay)
-            : { shiftStartTime: new Date(currentTime), shiftEndTime: new Date(currentTime) };
+            ? resolveShiftDates(
+                start,
+                end,
+                currentTime,
+                isOvernightFromPreviousDay
+              )
+            : {
+                shiftStartTime: new Date(currentTime),
+                shiftEndTime: new Date(currentTime),
+              };
 
         const timeIn = getCalculatedTimeIn(
           targetJob,
@@ -602,6 +637,15 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
         } finally {
           setLoading(false);
         }
+        return;
+      }
+
+      // Block clock-in when user is currently clocked into an active event
+      if (hasActiveEventClockIn) {
+        showNotification(
+          'You are currently clocked into an event. Please clock out of the event first.',
+          'warning'
+        );
         return;
       }
 
@@ -865,6 +909,7 @@ export function useTimerCard({ userData, openPunches }: UseTimerCardProps) {
     showValidationModal,
     cancelClockIn,
     performClockIn,
+    hasActiveEventClockIn,
 
     // Existing handlers
     handleJobSelection,

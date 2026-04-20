@@ -118,6 +118,25 @@ class RedisService {
     }
   }
 
+  /**
+   * Atomic increment with auto-expire. Returns the new count,
+   * or null if Redis is unreachable (caller should fail-open).
+   */
+  async incr(key: string, expireSeconds: number): Promise<number | null> {
+    try {
+      const client = await this.getClient();
+      if (!client) return null;
+      const count = await client.incr(key);
+      if (count === 1) {
+        await client.expire(key, expireSeconds);
+      }
+      return count;
+    } catch (error) {
+      console.error("Error incrementing key in Redis:", error);
+      return null;
+    }
+  }
+
   async disconnect() {
     try {
       await this.client?.disconnect();
