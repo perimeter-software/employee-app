@@ -32,7 +32,9 @@ export function useApplicantRouteProtection() {
 
     // Allow access to paycheck stubs routes
     const isPaycheckStubsRoute =
-      pathname === '/payroll' || pathname.startsWith('/payroll/');
+      pathname === '/payroll' ||
+      pathname.startsWith('/payroll/') ||
+      pathname.startsWith('/paycheck-stubs/');
 
     // Allow access to login/logout routes
     const isAuthRoute = pathname === '/' || pathname.startsWith('/api/auth/');
