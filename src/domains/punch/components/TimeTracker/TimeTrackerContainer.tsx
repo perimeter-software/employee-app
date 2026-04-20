@@ -231,7 +231,7 @@ export const TimeTrackerContainer = () => {
     }
     const hideEmployeesDetails = !!currentUser?.hideEmployeesDetails;
     return (
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="w-full space-y-6">
         <EmployeeTimeAttendanceTable
           hideEmployeesDetails={hideEmployeesDetails}
         />
@@ -254,7 +254,7 @@ export const TimeTrackerContainer = () => {
 
   // For regular users, show the normal time tracker with TimerCard and ShiftsSection
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="w-full space-y-6">
       <TimerCard
         userData={userData}
         openPunches={openPunches}
