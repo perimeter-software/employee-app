@@ -390,11 +390,11 @@ export const NewApplicantContextProvider: React.FC<ProviderProps> = ({
         ),
       });
 
-      // Default start: onboarding → first step (Job Application); pre-onboarding → Contact Info.
+      // Default start: onboarding → first step (Job Application); pre-onboarding → Overview.
       // A URL step param overrides the default.
       const defaultStart = showOnboarding
         ? ONBOARDING_OBJECTS_ENUM.JOB_APPLICATION
-        : APPLICANT_OBJECTS_ENUM.APPLICANT_INFO;
+        : APPLICANT_OBJECTS_ENUM.OVERVIEW;
       setStepToGo(
         (initialStep && URL_STEP_TO_APPLICANT_OBJECT[initialStep]) || defaultStart
       );

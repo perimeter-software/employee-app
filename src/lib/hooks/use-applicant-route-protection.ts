@@ -15,8 +15,8 @@ const AUTH_ROUTES = ['/', '/api/auth'];
 // (payroll/paystub access only – existing behaviour)
 const EMPLOYEE_APPLICANT_ROUTES = ['/payroll', '/paycheck-stubs'];
 
-// The onboarding route (step-based multi-form wizard)
-const ONBOARDING_ROUTE = '/onboarding';
+// The applicant route (step-based multi-form wizard)
+const ONBOARDING_ROUTE = '/applicant';
 
 function isAllowedRoute(pathname: string, allowedPrefixes: string[]): boolean {
   return allowedPrefixes.some(
@@ -66,8 +66,8 @@ export function useApplicantSubType(): ApplicantSubType | null {
  * - Regular (non-applicant) users: no restrictions applied here.
  * - Applicant sessions with status="Employee": only /payroll and /paycheck-stubs.
  * - Applicant sessions with status="Applicant":
- *     pre-onboarding  → all applicant screens except /onboarding
- *     onboarding      → only /onboarding
+ *     pre-onboarding  → all applicant screens except /applicant
+ *     onboarding      → only /applicant
  *     post-onboarding → all applicant screens (onboarding limited to certain steps
  *                       inside the component itself)
  */
@@ -101,12 +101,12 @@ export function useApplicantRouteProtection() {
       return;
     }
 
-    // ── "Applicant"-status applicants: all sub-types land on /onboarding ────────
+    // ── "Applicant"-status applicants: all sub-types land on /applicant ────────
     if (applicantRecordStatus === 'Applicant') {
       if (applicantSubType === null) return; // sub-type not yet resolved – wait
       if (isAllowedRoute(pathname, [ONBOARDING_ROUTE])) return;
       console.log(
-        `[ApplicantRouteProtection] ${applicantSubType} applicant: redirecting ${pathname} → /onboarding`
+        `[ApplicantRouteProtection] ${applicantSubType} applicant: redirecting ${pathname} → /applicant`
       );
       router.replace(ONBOARDING_ROUTE);
       return;

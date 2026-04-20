@@ -5,14 +5,19 @@
 interface NewApplicantHeaderProps {
   isAvailable: boolean;
   setIsAvailable: (v: boolean) => void;
+  isPreOnboarding: boolean;
 }
 
-const NewApplicantHeader: React.FC<NewApplicantHeaderProps> = ({ isAvailable }) => (
+const NewApplicantHeader: React.FC<NewApplicantHeaderProps> = ({ isAvailable, isPreOnboarding }) => (
   <header className="mb-4 flex items-center justify-between rounded-md border border-gray-200 bg-white p-4">
     <div>
-      <h1 className="text-lg font-semibold text-gray-900">Onboarding</h1>
+      <h1 className="text-lg font-semibold text-gray-900">
+        {isPreOnboarding ? 'My Profile' : 'Onboarding'}
+      </h1>
       <p className="text-xs text-gray-600">
-        Complete each step to submit your application.
+        {isPreOnboarding
+          ? 'Update your information and view your existing applications.'
+          : 'Complete each step to submit your application.'}
       </p>
     </div>
     <span

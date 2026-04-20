@@ -10,12 +10,16 @@ import {
 } from '@/components/shared/PageProtection';
 import NewOnboarding from '@/domains/applicant-onboarding/components/NewOnboarding';
 
-const OnboardingStepPage: NextPage = () => {
-  const { shouldShowContent, isLoading, error } = usePageAuth({ requireAuth: true });
+const ApplicantPage: NextPage = () => {
+  const {
+    shouldShowContent,
+    isLoading,
+    error,
+  } = usePageAuth({ requireAuth: true });
 
   if (isLoading) {
     return (
-      <Layout title="Onboarding">
+      <Layout title="Applicant">
         <div className="p-6">
           <Skeleton className="h-96 w-full" />
         </div>
@@ -24,22 +28,22 @@ const OnboardingStepPage: NextPage = () => {
   }
   if (error)
     return (
-      <Layout title="Onboarding">
+      <Layout title="Applicant">
         <AuthErrorState error={error.message || 'Authentication error'} />
       </Layout>
     );
   if (!shouldShowContent)
     return (
-      <Layout title="Onboarding">
+      <Layout title="Applicant">
         <UnauthenticatedState />
       </Layout>
     );
 
   return (
-    <Layout title="Onboarding" description="Applicant onboarding" noindex>
+    <Layout title="Applicant" description="Applicant portal" noindex>
       <NewOnboarding />
     </Layout>
   );
 };
 
-export default OnboardingStepPage;
+export default ApplicantPage;

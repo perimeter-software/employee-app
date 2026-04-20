@@ -74,10 +74,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       return [
         {
           name: 'Applicant',
-          href: '/onboarding',
+          href: '/applicant',
           icon: GraduationCap,
           current:
-            pathname === '/onboarding' || pathname.startsWith('/onboarding/'),
+            pathname === '/applicant' || pathname.startsWith('/applicant/'),
         },
       ];
     }

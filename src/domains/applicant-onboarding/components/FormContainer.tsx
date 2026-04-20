@@ -22,9 +22,10 @@ import OverviewSection from './sections/OverviewSection';
 interface FormContainerProps {
   currentApplicant: CurrentApplicantResponse | null | undefined;
   companyType?: string;
+  isPreOnboarding: boolean;
 }
 
-const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, companyType }) => {
+const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, companyType, isPreOnboarding }) => {
   const {
     applicant,
     onNextStep,
@@ -130,7 +131,7 @@ const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, company
                 <Save className="ml-2 h-4 w-4" />
               </Button>
             )}
-            {buttonState.previous.show && (isOnboardingAvailable || isSubStep) && (
+            {buttonState.previous.show && !isPreOnboarding && (isOnboardingAvailable || isSubStep) && (
               <Button
                 type="button"
                 variant="outline"
@@ -141,7 +142,7 @@ const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, company
                 Previous
               </Button>
             )}
-            {buttonState.next.show && (isOnboardingAvailable || isSubStep) && (
+            {buttonState.next.show && !isPreOnboarding && (isOnboardingAvailable || isSubStep) && (
               <Button
                 type="button"
                 onClick={handleNext}

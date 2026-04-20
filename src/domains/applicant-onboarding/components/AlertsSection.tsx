@@ -14,6 +14,8 @@ interface Props {
 const AlertsSection: React.FC<Props> = ({ isAvailable, currentApplicant }) => {
   const { applicant, setActiveStep, activeStep } = useNewApplicantContext();
 
+  if (currentApplicant === undefined) return null;
+
   const {
     currentMissingFields,
     hasResume,
