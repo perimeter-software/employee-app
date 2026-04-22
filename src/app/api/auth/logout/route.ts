@@ -1,12 +1,43 @@
 // app/api/auth/logout/route.ts
-// Custom logout endpoint that handles both Auth0 and OTP sessions
+// Custom logout endpoint that handles Auth0, OTP, and (V4) Clerk sessions.
 import { NextRequest, NextResponse } from 'next/server';
 import { handleLogout } from '@auth0/nextjs-auth0';
 import redisService from '@/lib/cache/redis-client';
+import { IS_V4 } from '@/lib/config/auth-mode';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  // V4: Clerk owns the session. Revoke all sessions for the signed-in user
+  // server-side (so the cookie stops being valid even if the client never
+  // calls signOut), then redirect home. Clerk itself clears the __session
+  // cookie on the next authed request; explicitly clear any stragglers too.
+  if (IS_V4) {
+    try {
+      const { auth, clerkClient } = await import('@clerk/nextjs/server');
+      const { userId } = await auth();
+      if (userId) {
+        const client = await clerkClient();
+        const sessions = await client.sessions.getSessionList({ userId });
+        await Promise.all(
+          sessions.data.map((s) => client.sessions.revokeSession(s.id))
+        );
+      }
+    } catch (error) {
+      console.error('V4 logout: Clerk session revoke failed', error);
+    }
+    const response = NextResponse.redirect(new URL('/', request.url));
+    // Clerk session cookie name varies (__session in prod, __clerk_db_jwt in dev);
+    // clear the commonly-set ones so the browser doesn't hold stale auth.
+    ['__session', '__clerk_db_jwt', '__client_uat'].forEach((name) => {
+      response.cookies.set(name, '', {
+        expires: new Date(0),
+        path: '/',
+      });
+    });
+    return response;
+  }
+
   try {
     // Get OTP session ID before clearing cookies
     const otpSessionId = request.cookies.get('otp_session_id')?.value;

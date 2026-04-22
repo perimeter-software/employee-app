@@ -2,7 +2,7 @@
 
 // components/layout/Header.tsx
 
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useAppUser } from '@/domains/user/hooks/useAppUser';
 import Image from 'next/image';
 import { Button } from '@/components/ui/Button/Button';
 import {
@@ -22,7 +22,7 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
-  const { user } = useUser();
+  const { user } = useAppUser();
   const { data: enhancedUser, isLoading: userLoading } = useCurrentUser();
   const { mutate: switchTenant, isPending: tenantSwitchLoading } =
     useSwitchTenant();

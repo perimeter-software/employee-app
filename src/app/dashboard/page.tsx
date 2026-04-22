@@ -1,6 +1,6 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useAppUser } from '@/domains/user/hooks/useAppUser';
 import Layout from '@/components/layout/Layout';
 import React, { useState, useMemo, useEffect } from 'react';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
@@ -783,7 +783,7 @@ const InsightsRecommendations = ({
 
 // Main Dashboard Component
 const DashboardPage: NextPage = () => {
-  const { user, error: authError, isLoading: authLoading } = useUser();
+  const { user, error: authError, isLoading: authLoading } = useAppUser();
   const { data: currentUser, isLoading: currentUserLoading } = useCurrentUser();
   const { data: userData, isLoading: userLoading } = useUserApplicantJob(
     user?.email || ''
