@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { toast } from 'sonner';
@@ -77,7 +77,7 @@ const W4TaxForm: React.FC = () => {
     handleSubmit,
     watch,
     reset,
-    formState: { isDirty, isValid, isSubmitSuccessful },
+    formState: { isDirty, isSubmitSuccessful },
   } = useForm<W4FormValues>({
     resolver: yupResolver(w4Schema),
     mode: 'onBlur',
@@ -93,6 +93,9 @@ const W4TaxForm: React.FC = () => {
       exemptFromWithholding: existing?.exemptFromWithholding === 'Yes' ? 'Yes' : 'No',
     },
   });
+
+  const [canContinue, setCanContinue] = useState(false);
+  const renderKey = useRef(0);
 
   const formYear = watch('formYear');
   const childrenMultiplier = formYear === '2026' ? 2200 : 2000;
@@ -127,12 +130,26 @@ const W4TaxForm: React.FC = () => {
   }, [isDirty, updateCurrentFormState]);
 
   useEffect(() => {
+    const currentKey = Math.round(Math.random() * 10000);
+    renderKey.current = currentKey;
+    if (applicant?.w4Tax) {
+      w4Schema
+        .validate(applicant.w4Tax)
+        .then(() => { if (renderKey.current === currentKey) setCanContinue(true); })
+        .catch(() => { if (renderKey.current === currentKey) setCanContinue(false); });
+    } else if (renderKey.current === currentKey) {
+      setCanContinue(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applicant]);
+
+  useEffect(() => {
     updateButtons({
       previous: { show: true, disabled: false },
-      next: { show: true, disabled: !isValid },
+      next: { show: true, disabled: !canContinue },
       submit: { show: true, disabled: !isDirty && !isSubmitSuccessful },
     });
-  }, [isDirty, isValid, isSubmitSuccessful, updateButtons]);
+  }, [isDirty, canContinue, isSubmitSuccessful, updateButtons]);
 
   const onSubmit = useCallback(async (data: W4FormValues) => {
     if (!applicant?._id) return;
