@@ -41,8 +41,10 @@ jobs:
             MONGODB_CONNECTION_STRING=${{ secrets.MONGODB_CONNECTION_STRING }}
             REDIS_HOST=${{ vars.REDIS_HOST }}
             REDIS_PORT=${{ vars.REDIS_PORT }}
+            REDIS_TLS=${{ vars.REDIS_TLS }}
             API_REDIS_HOST=${{ vars.API_REDIS_HOST }}
             API_REDIS_PORT=${{ vars.API_REDIS_PORT }}
+            API_REDIS_TLS=${{ vars.REDIS_TLS }}
             BACKEND_JWT_SECRET_KEY=${{ secrets.BACKEND_JWT_SECRET_KEY }}
             AWS_REGION=${{ vars.AWS_REGION }}
             AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
