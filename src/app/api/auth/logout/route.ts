@@ -26,7 +26,17 @@ export async function GET(request: NextRequest) {
     } catch (error) {
       console.error('V4 logout: Clerk session revoke failed', error);
     }
-    const response = NextResponse.redirect(new URL('/', request.url));
+    // Build redirect URL from the forwarded host so we don't redirect to
+     // the internal localhost:3000 (which is what request.url returns when
+     // nginx proxies to the Next.js server).
+     const forwardedHost =
+       request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+     const forwardedProto =
+       request.headers.get('x-forwarded-proto') ?? 'https';
+     const redirectBase = forwardedHost
+       ? `${forwardedProto}://${forwardedHost}`
+       : request.nextUrl.origin;
+     const response = NextResponse.redirect(new URL('/', redirectBase));
     // Clerk session cookie name varies (__session in prod, __clerk_db_jwt in dev);
     // clear the commonly-set ones so the browser doesn't hold stale auth.
     ['__session', '__clerk_db_jwt', '__client_uat'].forEach((name) => {
