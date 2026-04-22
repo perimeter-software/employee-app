@@ -12,7 +12,9 @@ export async function GET(request: NextRequest) {
   try {
     // V4: Clerk is the only session source. Auth0 / OTP paths are not used.
     if (IS_V4) {
+      console.log('[auth/me] V4 path — resolving Clerk user');
       const clerkUser = await resolveClerkAppUser();
+      console.log('[auth/me] clerkUser resolved:', clerkUser ? { email: clerkUser.email, sub: clerkUser.sub, hasId: !!clerkUser._id } : null);
       if (!clerkUser) {
         return new NextResponse(null, { status: 204 });
       }
