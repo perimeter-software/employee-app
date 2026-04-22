@@ -2,6 +2,8 @@
 
 // Dispatcher that selects the correct step body based on the active step.
 import { useNewApplicantContext } from '../state/new-applicant-context';
+import { useDynamicStateTaxForms } from '../hooks/use-dynamic-state-tax-forms';
+import { getApplicantRequiredTaxStates } from '../utils/applicant-helpers';
 import {
   APPLICANT_OBJECTS_ENUM,
   ONBOARDING_OBJECTS_ENUM,
@@ -23,14 +25,31 @@ import Acknowledgement from './sections/Acknowledgement';
 import Congratulations from './sections/Congratulations';
 
 const NewApplicantForms: React.FC = () => {
-  const { getActiveRegistrationStep, getActiveRegistrationSubStep } = useNewApplicantContext();
+  const { applicant, getActiveRegistrationStep, getActiveRegistrationSubStep } = useNewApplicantContext();
   const active = getActiveRegistrationStep();
   const sub = getActiveRegistrationSubStep();
   const key = active?.applicantObject ?? '';
 
+  const requiredStates = getApplicantRequiredTaxStates(applicant, null);
+  const { getFormConfig, isLoading: isFormLoading } = useDynamicStateTaxForms(
+    applicant?._id as string | undefined,
+    requiredStates
+  );
+
   // Dynamic state tax steps have applicantObject like "caStateTaxForm".
   const stateTaxMatch = /^([a-z]{2})StateTaxForm$/.exec(key);
-  if (stateTaxMatch) return <DynamicStateTaxForm stateCode={stateTaxMatch[1].toUpperCase()} />;
+  if (stateTaxMatch) {
+    const stateCode = stateTaxMatch[1].toUpperCase();
+    const formConfig = getFormConfig(stateCode);
+    return (
+      <DynamicStateTaxForm
+        stateCode={stateCode}
+        stateName={formConfig?.stateName ?? `${stateCode} State`}
+        formConfig={formConfig}
+        isFormLoading={isFormLoading}
+      />
+    );
+  }
 
   switch (key) {
     // ── Onboarding mode (registrationSteps = ONBOARDING_STEPS) ──────────────

@@ -155,7 +155,8 @@ const W4TaxForm: React.FC = () => {
     if (!applicant?._id) return;
     // formYear is not registered as a Controller field, so inject it explicitly
     await updateApplicantAction(applicant._id, { w4Tax: { ...data, formYear: '2026' } });
-  }, [applicant?._id, updateApplicantAction]);
+    reset(data, { keepValues: true });
+  }, [applicant?._id, updateApplicantAction, reset]);
 
   useEffect(() => {
     submitRef.current = handleSubmit(onSubmit, () => {
