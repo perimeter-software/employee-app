@@ -21,14 +21,17 @@ class RedisService {
     this.isConnecting = true;
 
     try {
+      const useTls = process.env.REDIS_TLS === 'true';
+      const protocol = useTls ? 'rediss' : 'redis';
       const redisUrl =
         process.env.REDIS_URL ||
-        `redis://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`;
+        `${protocol}://${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`;
 
       this.client = createClient({
         url: redisUrl,
         socket: {
           reconnectStrategy: (retries) => Math.min(retries * 50, 500),
+          ...(useTls ? { tls: true } : {}),
         },
       });
 
