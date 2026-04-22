@@ -33,6 +33,27 @@ const NewApplicantForms: React.FC = () => {
   if (stateTaxMatch) return <DynamicStateTaxForm stateCode={stateTaxMatch[1].toUpperCase()} />;
 
   switch (key) {
+    // ── Onboarding mode (registrationSteps = ONBOARDING_STEPS) ──────────────
+    // When the applicant is ready for onboarding, ONBOARDING_STEPS become the
+    // registrationSteps directly, so active.applicantObject is an ONBOARDING
+    // enum value, not 'onboarding'. Each case maps to its own screen.
+    case ONBOARDING_OBJECTS_ENUM.JOB_APPLICATION:
+      return <JobApplicationForm />;
+    case ONBOARDING_OBJECTS_ENUM.I9_FORM:
+      return <I9Form />;
+    case ONBOARDING_OBJECTS_ENUM.UPLOAD:
+      return <UploadID />;
+    case ONBOARDING_OBJECTS_ENUM.W4_TAX:
+      return <W4TaxForm />;
+    case ONBOARDING_OBJECTS_ENUM.DIRECT_DEPOSIT:
+      return <DirectDeposit />;
+    case ONBOARDING_OBJECTS_ENUM.ACKNOWLEDGEMENT:
+      return <Acknowledgement />;
+    // 'complete' (onboarding) and 'completeBasic' (applicant) both map to the same screen.
+    case ONBOARDING_OBJECTS_ENUM.COMPLETE:
+      return <Congratulations />;
+
+    // ── Pre-onboarding / post-onboarding APPLICANT_STEPS ────────────────────
     case APPLICANT_OBJECTS_ENUM.VERIFICATION:
       return <Verification />;
     case APPLICANT_OBJECTS_ENUM.APPLICANT_INFO:
@@ -44,11 +65,14 @@ const NewApplicantForms: React.FC = () => {
     case APPLICANT_OBJECTS_ENUM.JOB_APPLICANTS_AND_INTERVIEWS:
       return <JobApplicationsAndInterviews />;
     case APPLICANT_OBJECTS_ENUM.ADDITIONAL_FORMS:
+      // Note: ONBOARDING_OBJECTS_ENUM.ADDITIONAL_FORMS = 'additionalForms' (same value)
       return <AdditionalForms />;
     case APPLICANT_OBJECTS_ENUM.SUBSCRIPTIONS:
       return <Subscriptions />;
     case APPLICANT_OBJECTS_ENUM.COMPLETE:
       return <Congratulations />;
+
+    // ── Legacy: 'onboarding' tab inside APPLICANT_STEPS (post-acknowledged) ─
     case APPLICANT_OBJECTS_ENUM.ONBOARDING:
       switch (sub?.applicantObject) {
         case ONBOARDING_OBJECTS_ENUM.JOB_APPLICATION:
