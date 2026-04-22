@@ -149,8 +149,8 @@ const nextConfig = {
   ...(process.env.NODE_ENV === 'production' &&
     process.env.NEXT_PUBLIC_APP_ENV !== 'development' && {
       compiler: {
-        // Remove console logs in production builds
-        removeConsole: true,
+        // Remove console logs in production builds, but keep error/warn
+        removeConsole: { exclude: ['error', 'warn'] },
       },
     }),
 

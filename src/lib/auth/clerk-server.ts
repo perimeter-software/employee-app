@@ -59,11 +59,11 @@ async function hasMongoRecord(email: string): Promise<boolean> {
 
 export async function resolveClerkAppUser(): Promise<Auth0SessionUser | null> {
   const { userId } = await auth();
-  console.log('[resolveClerkAppUser] auth() userId:', userId);
+  console.error('[resolveClerkAppUser] auth() userId:', userId);
   if (!userId) return null;
 
   const clerkUser = await currentUser();
-  console.log('[resolveClerkAppUser] currentUser:', clerkUser ? { id: clerkUser.id, primaryEmail: clerkUser.primaryEmailAddressId } : null);
+  console.error('[resolveClerkAppUser] currentUser:', clerkUser ? { id: clerkUser.id, primaryEmail: clerkUser.primaryEmailAddressId } : null);
   if (!clerkUser) return null;
 
   const primaryEmail =
@@ -74,9 +74,9 @@ export async function resolveClerkAppUser(): Promise<Auth0SessionUser | null> {
   // Deny if Clerk user has no matching MongoDB record in any tenant.
   // Matches gig-v4-backend's "Access is not allowed for {email}" behavior.
   if (!primaryEmail) return null;
-  console.log('[resolveClerkAppUser] checking mongo for:', primaryEmail.toLowerCase());
+  console.error('[resolveClerkAppUser] checking mongo for:', primaryEmail.toLowerCase());
   const existsInMongo = await hasMongoRecord(primaryEmail.toLowerCase());
-  console.log('[resolveClerkAppUser] existsInMongo:', existsInMongo);
+  console.error('[resolveClerkAppUser] existsInMongo:', existsInMongo);
   if (!existsInMongo) return null;
 
   const firstName = clerkUser.firstName ?? undefined;
