@@ -20,8 +20,11 @@ async function enrichAppUserIdentity(email: string): Promise<{
   applicantId?: string;
 }> {
   try {
+    console.error('[enrichAppUserIdentity] start', email);
     const { default: redisService } = await import('@/lib/cache/redis-client');
+    console.error('[enrichAppUserIdentity] imported redisService, calling getTenantData');
     const tenantData = await redisService.getTenantData(email);
+    console.error('[enrichAppUserIdentity] tenantData:', tenantData ? { dbName: tenantData.tenant?.dbName } : null);
     const tenantDbName = tenantData?.tenant?.dbName;
     if (!tenantDbName) return {};
 
@@ -31,6 +34,7 @@ async function enrichAppUserIdentity(email: string): Promise<{
       db,
       email
     );
+    console.error('[enrichAppUserIdentity] resolved:', { userId, applicantId });
     return { _id: userId, applicantId };
   } catch (error) {
     console.error('resolveClerkAppUser: identity enrichment failed', error);
