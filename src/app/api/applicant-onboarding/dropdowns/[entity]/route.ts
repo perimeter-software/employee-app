@@ -9,7 +9,7 @@ async function getHandler(request: AuthenticatedRequest, ctx?: Ctx) {
   return proxyToBackend({
     request,
     method: 'get',
-    path: `/dropdowns/${entity}`,
+    path: `/control/dropdowns/name/${entity}`,
   });
 }
 

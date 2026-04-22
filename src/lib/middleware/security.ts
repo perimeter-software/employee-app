@@ -1,7 +1,6 @@
 import type { NextResponse } from 'next/server';
 import { NextResponse as Response } from 'next/server';
 
-
 export async function securityMiddleware(): Promise<NextResponse | null> {
   // Add security headers
   const response = Response.next();
@@ -25,6 +24,8 @@ export async function securityMiddleware(): Promise<NextResponse | null> {
     // AWS S3 URLs - allow all S3 endpoints for PDF viewing
     'https://*.amazonaws.com', // Matches all AWS S3 URLs (s3.region.amazonaws.com, bucket.s3.region.amazonaws.com, etc.)
     'https://player.vimeo.com',
+    'https://*.gignology.biz',
+    'https://*.stadiumpeople.com',
   ];
 
   // CSP header with Google Maps and PureBlue support
@@ -38,7 +39,7 @@ export async function securityMiddleware(): Promise<NextResponse | null> {
       "font-src 'self' https://fonts.gstatic.com",
       `connect-src ${connectSrc.join(' ')}`,
       `frame-src ${frameSrc.join(' ')}`,
-      "object-src 'none'",
+      "object-src 'self' https://*.gignology.biz https://*.stadiumpeople.com https://*.amazonaws.com",
       "base-uri 'self'",
       "form-action 'self'",
       "frame-ancestors 'none'",
