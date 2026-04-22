@@ -2,7 +2,7 @@ name: Deploy V4 (Clerk)
 
 on:
   push:
-    branches: [v4-develop]
+    branches: [develop]
   workflow_dispatch:
 
 concurrency:
@@ -26,8 +26,8 @@ jobs:
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
             cd /var/node/v4-employee-app
             git fetch origin
-            git checkout v4-develop
-            git reset --hard origin/v4-develop
+            git checkout develop
+            git reset --hard origin/develop
 
             cat > .env << ENVEOF
             NODE_ENV=production
