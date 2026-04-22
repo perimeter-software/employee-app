@@ -1,5 +1,6 @@
 // src/domains/shared/hooks/use-page-auth.ts - Fixed version (no server-side imports)
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useAppUser } from '@/domains/user/hooks/useAppUser';
+import { IS_V4 } from '@/lib/config/auth-mode';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 
@@ -58,7 +59,7 @@ export function usePageAuth(
 ) {
   const { requireAuth, redirectTo = '/', onAuthError } = options;
 
-  const { user, isLoading, error } = useUser();
+  const { user, isLoading, error } = useAppUser();
   const pathname = usePathname();
 
   // Determine if auth is required based on route or explicit option

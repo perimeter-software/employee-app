@@ -1,0 +1,88 @@
+name: Deploy V4 (Clerk)
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-v4
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: v4-develop
+    steps:
+      - name: Deploy to V4 EC2 via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 3.15.173.79
+          username: ${{ secrets.V4_DEPLOY_USER }}
+          key: ${{ secrets.V4_DEPLOY_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            cd /var/node/v4-employee-app
+            git fetch origin
+            git checkout develop
+            git reset --hard origin/develop
+
+            cat > .env << ENVEOF
+            NODE_ENV=production
+            PORT=${{ vars.PORT }}
+            IS_V4=true
+            NEXT_PUBLIC_IS_V4=true
+            NEXT_PUBLIC_APP_ENV=${{ vars.NEXT_PUBLIC_APP_ENV }}
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+            MONGODB_CONNECTION_STRING=${{ secrets.MONGODB_CONNECTION_STRING }}
+            REDIS_HOST=${{ vars.REDIS_HOST }}
+            REDIS_PORT=${{ vars.REDIS_PORT }}
+            REDIS_TLS=${{ vars.REDIS_TLS }}
+            API_REDIS_HOST=${{ vars.API_REDIS_HOST }}
+            API_REDIS_PORT=${{ vars.API_REDIS_PORT }}
+            API_REDIS_TLS=${{ vars.REDIS_TLS }}
+            BACKEND_JWT_SECRET_KEY=${{ secrets.BACKEND_JWT_SECRET_KEY }}
+            AWS_REGION=${{ vars.AWS_REGION }}
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
+            GOOGLE_MAPS_API_KEY_TWO=${{ secrets.GOOGLE_MAPS_API_KEY_TWO }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+            SES_FROM_EMAIL=${{ vars.SES_FROM_EMAIL }}
+            SES_SEND_IN_DEV=${{ vars.SES_SEND_IN_DEV }}
+            EMAIL_DIRECT_SEND=${{ vars.EMAIL_DIRECT_SEND }}
+            NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
+            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+            NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+            NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+            NEXT_PUBLIC_FIREBASE_APP_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
+            NEXT_PUBLIC_FIREBASE_VAPID_KEY=${{ secrets.NEXT_PUBLIC_FIREBASE_VAPID_KEY }}
+            SP1_API_BASE_URL=${{ vars.SP1_API_BASE_URL }}
+            SP1_API_ORIGIN=${{ vars.SP1_API_ORIGIN }}
+            CLUSTER_ENABLED=${{ vars.CLUSTER_ENABLED }}
+            CLUSTER_WORKERS=${{ vars.CLUSTER_WORKERS }}
+            AUTH0_SECRET=${{ secrets.AUTH0_SECRET }}
+            AUTH0_BASE_URL=${{ vars.AUTH0_BASE_URL }}
+            AUTH0_ISSUER_BASE_URL=${{ vars.AUTH0_ISSUER_BASE_URL }}
+            AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }}
+            AUTH0_CLIENT_SECRET=${{ secrets.AUTH0_CLIENT_SECRET }}
+            AUTH0_AUDIENCE=${{ vars.AUTH0_AUDIENCE }}
+            SECRET_AUTH0_CLIENT_ID=${{ vars.SECRET_AUTH0_CLIENT_ID }}
+            SECRET_AUTH0_CLIENT_SECRET=${{ secrets.SECRET_AUTH0_CLIENT_SECRET }}
+            SECRET_AUTH0_DOMAIN=${{ vars.SECRET_AUTH0_DOMAIN }}
+            SECRET_AUTH0_AUDIENCE=${{ vars.SECRET_AUTH0_AUDIENCE }}
+            SECRET_AUTH0_SERVER_SECRET=${{ secrets.SECRET_AUTH0_SERVER_SECRET }}
+            ENVEOF
+
+            yarn install --frozen-lockfile
+            yarn build
+
+            pm2 delete v4-employee-app || true
+            pm2 start yarn --name v4-employee-app -- start
+            pm2 save
