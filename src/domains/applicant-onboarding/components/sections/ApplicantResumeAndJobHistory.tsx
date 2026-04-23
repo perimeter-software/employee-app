@@ -487,8 +487,7 @@ const ResumeUploadSection: React.FC = () => {
       const currentAttachments =
         (applicant.attachments as Array<Record<string, unknown>>) ?? [];
       loadApplicantAction(
-        { ...applicant, attachments: [...currentAttachments, newAttachment] },
-        true
+        { ...applicant, attachments: [...currentAttachments, newAttachment] }
       );
       toast.success('Resume uploaded successfully!');
       setFile(null);

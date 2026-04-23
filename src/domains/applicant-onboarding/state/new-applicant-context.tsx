@@ -156,7 +156,7 @@ export interface NewApplicantContextValue extends NewApplicantState {
     RegistrationStep | undefined,
   ];
   // Applicant load + save
-  loadApplicantAction: (data: Partial<ApplicantRecord>, silent?: boolean) => void;
+  loadApplicantAction: (data: Partial<ApplicantRecord>) => void;
   updateApplicantAction: (
     applicantId: string,
     data: Partial<ApplicantRecord>,
@@ -359,17 +359,18 @@ export const NewApplicantContextProvider: React.FC<ProviderProps> = ({
 
   const setApplicantSteps = useCallback(
     (
-      _status?: string,
+      status?: string,
       applicantStatus?: string,
       acknowledged?: boolean | { date?: string } | undefined,
       forceRefreshSteps?: boolean,
       initialStep?: string
     ) => {
       const ackBool = typeof acknowledged === 'object' ? !!acknowledged?.date : !!acknowledged;
-      // stadium-people: if allowedStages.includes(applicantStatus) && !acknowledged (or admin),
-      // show ONBOARDING_STEPS; otherwise show APPLICANT_STEPS.
+      // Only show the onboarding wizard when the applicant record is still in "Applicant" status
+      // (i.e. actively going through onboarding). Employees (status === 'Employee') always get
+      // APPLICANT_STEPS regardless of applicantStatus or acknowledged.
       const showOnboarding =
-        allowedStages.includes(applicantStatus ?? '') && !ackBool;
+        status === 'Applicant' && allowedStages.includes(applicantStatus ?? '') && !ackBool;
 
       let base = showOnboarding ? ONBOARDING_STEPS : APPLICANT_STEPS;
       if (!showOnboarding) {
@@ -405,8 +406,7 @@ export const NewApplicantContextProvider: React.FC<ProviderProps> = ({
 
   // ---------- Load + save ----------
   const loadApplicantAction = useCallback(
-    (data: Partial<ApplicantRecord>, silent?: boolean) => {
-      if (!silent) toast.success('Applicant info loaded.');
+    (data: Partial<ApplicantRecord>) => {
       dispatch({ type: 'UPDATE_APPLICANT', data });
     },
     []

@@ -81,15 +81,23 @@ const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, company
     else onPreviousStep();
   };
 
+  // Load applicant data into context — only when currentApplicant changes.
+  // Kept separate from the steps effect so that company data loading (which
+  // refreshes setApplicantSteps) does not re-dispatch the applicant update.
+  useEffect(() => {
+    if (!currentApplicant?.applicant) return;
+    loadApplicantAction(currentApplicant.applicant);
+  }, [currentApplicant, loadApplicantAction]);
+
+  // Set up registration steps — re-runs when setApplicantSteps changes (i.e. when
+  // allowedStages refreshes after company data loads) so steps always reflect the
+  // correct minStageToOnboarding value.
   useEffect(() => {
     if (!currentApplicant?.applicant) return;
     const a = currentApplicant.applicant;
-    // Mirrors stadium-people: unless the applicant is in the intake stage, jump straight
-    // to whatever step is in the URL.
     setApplicantSteps(a.status, a.applicantStatus, a.acknowledged);
-    loadApplicantAction(a);
     if (urlStep && URL_STEP_TO_ID[urlStep]) setRedirectKey((k) => k + 1);
-  }, [currentApplicant, urlStep, setApplicantSteps, loadApplicantAction]);
+  }, [currentApplicant, urlStep, setApplicantSteps]);
 
   useEffect(() => {
     if (redirectKey && urlStep && URL_STEP_TO_ID[urlStep]) {

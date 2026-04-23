@@ -12,8 +12,7 @@ import type { ApplicantSubType } from '@/domains/user/types';
 const AUTH_ROUTES = ['/', '/api/auth'];
 
 // Routes accessible to applicant-only sessions with status="Employee"
-// (payroll/paystub access only – existing behaviour)
-const EMPLOYEE_APPLICANT_ROUTES = ['/payroll', '/paycheck-stubs'];
+const EMPLOYEE_APPLICANT_ROUTES = ['/payroll', '/paycheck-stubs', '/applicant'];
 
 // The applicant route (step-based multi-form wizard)
 const ONBOARDING_ROUTE = '/applicant';

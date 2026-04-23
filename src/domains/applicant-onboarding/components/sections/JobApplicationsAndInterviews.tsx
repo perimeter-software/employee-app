@@ -146,7 +146,7 @@ const JobApplicationsAndInterviews: React.FC = () => {
             (
               newApplicant as Record<string, unknown>
             ).availableAutoSchedulingJobs = [...existing, ...notDuped];
-            loadApplicantAction(newApplicant as Partial<ApplicantRecord>, true);
+            loadApplicantAction(newApplicant as Partial<ApplicantRecord>);
           }
           setInitialAvailableInterviewList(jobsWithScheduling);
         }
@@ -265,7 +265,7 @@ const JobApplicationsAndInterviews: React.FC = () => {
         };
       }
       newApplicant.aiInterviews = aiInterviews;
-      loadApplicantAction(newApplicant as Partial<ApplicantRecord>, true);
+      loadApplicantAction(newApplicant as Partial<ApplicantRecord>);
     },
     [applicant, loadApplicantAction]
   );
@@ -297,7 +297,7 @@ const JobApplicationsAndInterviews: React.FC = () => {
       }
 
       newApplicant.availableAutoSchedulingJobs = updated;
-      loadApplicantAction(newApplicant as Partial<ApplicantRecord>, true);
+      loadApplicantAction(newApplicant as Partial<ApplicantRecord>);
     },
     [applicant, loadApplicantAction]
   );
@@ -316,7 +316,7 @@ const JobApplicationsAndInterviews: React.FC = () => {
       );
       interviews.push(interviewData as InterviewRow);
       newApplicant.interviews = interviews;
-      loadApplicantAction(newApplicant as Partial<ApplicantRecord>, true);
+      loadApplicantAction(newApplicant as Partial<ApplicantRecord>);
     },
     [applicant, loadApplicantAction]
   );
@@ -350,7 +350,7 @@ const JobApplicationsAndInterviews: React.FC = () => {
             }
           }
           newApplicant.interviews = interviews;
-          loadApplicantAction(newApplicant as Partial<ApplicantRecord>, true);
+          loadApplicantAction(newApplicant as Partial<ApplicantRecord>);
         } catch {
           toast.error('Failed to cancel interview.');
         }
@@ -374,7 +374,7 @@ const JobApplicationsAndInterviews: React.FC = () => {
               ? { ...jb, suggestedInterviewSlots: null }
               : jb
           );
-          loadApplicantAction(newApplicant as Partial<ApplicantRecord>, true);
+          loadApplicantAction(newApplicant as Partial<ApplicantRecord>);
         } catch {
           toast.error('Failed to cancel interview suggestion.');
         }

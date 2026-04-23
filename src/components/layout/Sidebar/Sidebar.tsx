@@ -52,7 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
 
     // ── Applicant-only sessions ───────────────────────────────────────────────
     if (isApplicantOnly) {
-      // "Employee"-status applicants: paycheck stubs only (existing behaviour)
+      // "Employee"-status applicants: paycheck stubs + applicant screen
       if (
         applicantRecordStatus === 'Employee' ||
         applicantRecordStatus !== 'Applicant'
@@ -66,6 +66,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
               pathname === '/payroll' ||
               pathname.startsWith('/payroll') ||
               pathname.startsWith('/paycheck-stubs'),
+          },
+          {
+            name: 'Applicant',
+            href: '/applicant',
+            icon: GraduationCap,
+            current:
+              pathname === '/applicant' || pathname.startsWith('/applicant/'),
           },
         ];
       }
@@ -212,6 +219,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
           icon: FileText,
           current:
             pathname === '/documents' || pathname.startsWith('/documents'),
+        },
+        {
+          name: 'Applicant',
+          href: '/applicant',
+          icon: GraduationCap,
+          current:
+            pathname === '/applicant' || pathname.startsWith('/applicant/'),
         }
       );
     }
