@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { ApplicantRecord, CurrentApplicantResponse, OutsideMode } from '../types';
+import type { Company } from '@/domains/company/types';
 
 const BASE = '/api/applicant-onboarding';
 
@@ -111,5 +112,10 @@ export const OnboardingService = {
   }): Promise<unknown> {
     const { data } = await axios.post(`${BASE}/forms/generate-pdf`, payload);
     return data;
+  },
+
+  async getPrimaryCompany(): Promise<Company> {
+    const { data } = await axios.get(`${BASE}/primary-company`, { params: { mode: 'public' } });
+    return (data?.data ?? data) as Company;
   },
 };

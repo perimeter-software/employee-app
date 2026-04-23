@@ -1,29 +1,83 @@
 'use client';
 
-// Port of stadium-people Congratulations (87).
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { CircleCheck } from 'lucide-react';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
+import { OnboardingService } from '../../services/onboarding-service';
+import type { Company } from '@/domains/company/types';
 
 const Congratulations: React.FC = () => {
   const { updateButtons, updateCurrentFormState, submitRef } = useNewApplicantContext();
+  const [company, setCompany] = useState<Company | null>(null);
+
   useEffect(() => {
     updateCurrentFormState({ isDirty: false });
     updateButtons({
-      previous: { show: true, disabled: false },
-      next: { show: false, disabled: true },
-      submit: { show: false, disabled: true },
+      previous: { show: false, disabled: false },
+      next: { show: false, disabled: false },
+      submit: { show: false, disabled: false },
     });
     submitRef.current = null;
   }, [updateButtons, updateCurrentFormState, submitRef]);
 
+  useEffect(() => {
+    OnboardingService.getPrimaryCompany().then(setCompany).catch(() => {});
+  }, []);
+
+  const completionHtml =
+    typeof window !== 'undefined' && company?.onboardingCompletionText
+      ? DOMPurify.sanitize(company.onboardingCompletionText)
+      : '';
+
   return (
-    <div className="flex flex-col items-center gap-4 py-8 text-center">
-      <CircleCheck className="h-16 w-16 text-green-600" />
-      <h2 className="text-xl font-semibold">You're all set!</h2>
-      <p className="text-sm text-gray-600">
-        Your onboarding is complete. We'll be in touch with next steps.
-      </p>
+    <div className="space-y-4 p-3">
+      <h2 className="flex items-center gap-2 text-2xl font-bold">
+        <CircleCheck className="h-7 w-7 text-green-600" />
+        Congratulations!
+      </h2>
+
+      {completionHtml ? (
+        <div className="space-y-3 text-sm">
+          <div dangerouslySetInnerHTML={{ __html: completionHtml }} />
+          <p>
+            If you have not received your email after 48 hours from completion you may contact your
+            recruiter or send us a message at:{' '}
+            {company?.companyEmail && (
+              <a
+                href={`mailto:${company.companyEmail}`}
+                className="font-bold text-blue-600 hover:underline"
+              >
+                {company.companyEmail}
+              </a>
+            )}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4 text-sm">
+          <p>
+            You have completed the onboarding forms and will receive an email from{' '}
+            {company?.name ?? 'our organization'} as soon as your background screening is complete,
+            and you can begin.
+          </p>
+          <p>
+            In the meantime, we thank you for applying with our organization and look forward to
+            working together.
+          </p>
+          <p>
+            If you have not received your email after 48 hours from completion you may contact your
+            recruiter or send us a message at:{' '}
+            {company?.companyEmail && (
+              <a
+                href={`mailto:${company.companyEmail}`}
+                className="font-bold text-blue-600 hover:underline"
+              >
+                {company.companyEmail}
+              </a>
+            )}
+          </p>
+        </div>
+      )}
     </div>
   );
 };
