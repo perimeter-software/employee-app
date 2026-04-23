@@ -6,7 +6,14 @@
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
 
-interface PrimaryCompany {
+export interface DepositOptions {
+  directDeposit?: 'Yes' | 'No' | string;
+  moneyNetworkService?: 'Yes' | 'No' | string;
+  branchVirtualWallet?: 'Yes' | 'No' | string;
+  employerIssuedPaperCheck?: 'Yes' | 'No' | string;
+}
+
+export interface PrimaryCompany {
   _id?: string;
   slug?: string;
   name?: string;
@@ -14,6 +21,7 @@ interface PrimaryCompany {
   settings?: { companyType?: string };
   uploadPath?: string;
   imageUrl?: string;
+  depositOptions?: DepositOptions;
 }
 
 interface VenueRecord {
