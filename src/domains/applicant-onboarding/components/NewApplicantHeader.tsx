@@ -1,23 +1,25 @@
 'use client';
 
+import type { ApplicantSubType } from '@/domains/user/types';
+
 // Placeholder port of stadium-people NewApplicantHeader (266 lines).
 // Shows applicant availability banner + masthead. Full form to follow.
 interface NewApplicantHeaderProps {
   isAvailable: boolean;
   setIsAvailable: (v: boolean) => void;
-  isPreOnboarding: boolean;
+  applicantSubType: ApplicantSubType | null;
 }
 
-const NewApplicantHeader: React.FC<NewApplicantHeaderProps> = ({ isAvailable, isPreOnboarding }) => (
+const NewApplicantHeader: React.FC<NewApplicantHeaderProps> = ({ isAvailable, applicantSubType }) => (
   <header className="mb-4 flex items-center justify-between rounded-md border border-gray-200 bg-white p-4">
     <div>
       <h1 className="text-lg font-semibold text-gray-900">
-        {isPreOnboarding ? 'My Profile' : 'Onboarding'}
+        {applicantSubType === 'onboarding' ? 'Onboarding' : 'My Profile'}
       </h1>
       <p className="text-xs text-gray-600">
-        {isPreOnboarding
-          ? 'Update your information and view your existing applications.'
-          : 'Complete each step to submit your application.'}
+        {applicantSubType === 'onboarding'
+          ? 'Complete each step to submit your application.'
+          : 'Update your information and view your existing applications.'}
       </p>
     </div>
     <span

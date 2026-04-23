@@ -470,6 +470,28 @@ export const NewApplicantContextProvider: React.FC<ProviderProps> = ({
   }, [state.applicant, state.registrationSteps, adjustedStepsFor]);
 
   useEffect(() => {
+    // Mirror stadium-people adjustRegistrationSteps for sub-steps: push state-tax steps
+    // AFTER W4 WITHOUT re-indexing so that DEFAULT_APPLICANT_SUB_STEP_ID (=3, Upload)
+    // always identifies the first sub-step regardless of how many tax steps are added.
+    const base = state.registrationSubSteps;
+    if (!base.length || !state.applicant || !Object.keys(state.applicant).length) return;
+    const requiredStates = getApplicantRequiredTaxStates(state.applicant as ApplicantRecord, venues ?? null);
+    if (!requiredStates.length) return;
+    const taxSteps = createStateTaxFormSteps(requiredStates);
+    const alreadyPresent = taxSteps.every((ts) =>
+      base.some((s) => s.applicantObject === ts.applicantObject)
+    );
+    if (alreadyPresent) return;
+    const next = [...base];
+    taxSteps.forEach((ts) => {
+      if (!next.some((s) => s.applicantObject === ts.applicantObject)) {
+        next.push(ts);
+      }
+    });
+    dispatch({ type: 'SET_REGISTRATION_SUB_STEPS', data: next });
+  }, [state.applicant, state.registrationSubSteps, venues]);
+
+  useEffect(() => {
     // Mirror stadium-people setApplicantProgress: highest step id the applicant has data for.
     let id = 0;
     state.registrationSteps.forEach((s, i) => {

@@ -5,11 +5,11 @@
 import { clsxm } from '@/lib/utils';
 import { useNewApplicantContext } from '../state/new-applicant-context';
 
-interface Props { isAvailable: boolean }
+interface Props { isAvailable: boolean; isOnboarding?: boolean }
 
-const PageSelectorSection: React.FC<Props> = ({ isAvailable }) => {
+const PageSelectorSection: React.FC<Props> = ({ isAvailable, isOnboarding }) => {
   const { registrationSteps, activeStepId, setActiveStep } = useNewApplicantContext();
-  if (!isAvailable) return null;
+  if (!isAvailable || isOnboarding) return null;
   return (
     <nav className="mb-4 flex flex-wrap gap-2">
       {registrationSteps.map((s) => (

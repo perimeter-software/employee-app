@@ -92,8 +92,22 @@ const NewApplicantForms: React.FC = () => {
       return <Congratulations />;
 
     // ── Legacy: 'onboarding' tab inside APPLICANT_STEPS (post-acknowledged) ─
-    case APPLICANT_OBJECTS_ENUM.ONBOARDING:
-      switch (sub?.applicantObject) {
+    case APPLICANT_OBJECTS_ENUM.ONBOARDING: {
+      const subKey = sub?.applicantObject ?? '';
+      const subStateTaxMatch = /^([a-z]{2})StateTaxForm$/.exec(subKey);
+      if (subStateTaxMatch) {
+        const stateCode = subStateTaxMatch[1].toUpperCase();
+        const formConfig = getFormConfig(stateCode);
+        return (
+          <DynamicStateTaxForm
+            stateCode={stateCode}
+            stateName={formConfig?.stateName ?? `${stateCode} State`}
+            formConfig={formConfig}
+            isFormLoading={isFormLoading}
+          />
+        );
+      }
+      switch (subKey) {
         case ONBOARDING_OBJECTS_ENUM.JOB_APPLICATION:
           return <JobApplicationForm />;
         case ONBOARDING_OBJECTS_ENUM.I9_FORM:
@@ -113,10 +127,11 @@ const NewApplicantForms: React.FC = () => {
         default:
           return (
             <div className="rounded border border-dashed border-gray-300 p-4 text-sm text-gray-600">
-              Unknown sub-step: {sub?.applicantObject ?? 'none'}
+              Unknown sub-step: {subKey || 'none'}
             </div>
           );
       }
+    }
     default:
       return (
         <div className="rounded border border-dashed border-gray-300 p-4 text-sm text-gray-600">

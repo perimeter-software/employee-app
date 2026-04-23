@@ -30,6 +30,7 @@ const NewOnboarding: React.FC = () => {
   const applicantSubType = useApplicantSubType();
 
   const isPreOnboarding = applicantSubType === 'pre-onboarding';
+  const isOnboarding = applicantSubType === 'onboarding';
 
   const [isAvailable, setIsAvailable] = useState(true);
 
@@ -39,8 +40,8 @@ const NewOnboarding: React.FC = () => {
       venues={venues ?? null}
     >
       <div className="relative mx-auto max-w-6xl px-4 py-4 sm:px-6">
-        <NewApplicantHeader isAvailable={isAvailable} setIsAvailable={setIsAvailable} isPreOnboarding={isPreOnboarding} />
-        <PageSelectorSection isAvailable={isAvailable} />
+        <NewApplicantHeader isAvailable={isAvailable} setIsAvailable={setIsAvailable} applicantSubType={applicantSubType} />
+        <PageSelectorSection isAvailable={isAvailable} isOnboarding={isOnboarding} />
         <AlertsSection isAvailable={isAvailable} currentApplicant={currentApplicant} />
         <MessageSection isAvailable={isAvailable} />
         {isAvailable && !isLoading && (
