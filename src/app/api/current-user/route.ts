@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { ObjectId } from 'mongodb';
 import { AuthenticatedRequest, withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
 import {
@@ -157,6 +158,18 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
       isApplicantOnly: false,
       hideEmployeesDetails: !!userExists?.hideEmployeesDetails,
     };
+
+    if (userExists?.userType === 'Client' && userExists._id) {
+      try {
+        const clientDoc = await db.collection('users').findOne(
+          { _id: new ObjectId(userExists._id) },
+          { projection: { clientOrgs: 1 } }
+        );
+        enhancedUser.clientOrgs = clientDoc?.clientOrgs ?? [];
+      } catch {
+        enhancedUser.clientOrgs = [];
+      }
+    }
 
     return NextResponse.json({
       success: true,

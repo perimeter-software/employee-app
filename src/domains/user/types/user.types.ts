@@ -56,6 +56,12 @@ export type ApplicantSubType =
   | 'onboarding'
   | 'post-onboarding';
 
+export type ClientOrg = {
+  slug?: string;
+  userType?: string;
+  status?: string;
+};
+
 export type EnhancedUser = {
   _id?: string;
   applicantId?: string;
@@ -72,6 +78,7 @@ export type EnhancedUser = {
   isApplicantOnly?: boolean; // True if this is an applicant-only session
   isLimitedAccess?: boolean; // True if user/applicant has limited access
   hideEmployeesDetails?: boolean; // When true (Client only), employee email/phone are hidden
+  clientOrgs?: ClientOrg[]; // Venue orgs assigned to Client users
   // Applicant-specific fields (populated when isApplicantOnly=true and status="Applicant")
   applicantStatus?: string; // Hiring pipeline stage: New | ATC | Screened | Pre-Hire | Declined
   acknowledgedDate?: string | null; // ISO date string from acknowledged.date, null if not set
