@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Pencil, Mail } from 'lucide-react';
+import { Search, Pencil, Mail, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -340,13 +340,43 @@ const TH = ({
 }) => (
   <th
     className={clsxm(
-      'text-xs font-semibold text-slate-500 uppercase tracking-wide px-4 py-2.5',
+      'text-xs font-semibold text-slate-500 px-4 py-2.5',
       right ? 'text-right' : 'text-left'
     )}
   >
     {children}
   </th>
 );
+
+type SortDir = 'asc' | 'desc';
+
+function SortableTH({
+  children,
+  sortKey,
+  active,
+  dir,
+  onSort,
+}: {
+  children: React.ReactNode;
+  sortKey: string;
+  active: boolean;
+  dir: SortDir;
+  onSort: (key: string) => void;
+}) {
+  const Icon = active ? (dir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
+  return (
+    <th className="text-xs font-semibold text-slate-500 px-4 py-2.5 text-left">
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex items-center gap-1 hover:text-slate-800 transition-colors"
+      >
+        {children}
+        <Icon className={clsxm('w-3 h-3', active ? 'text-appPrimary' : 'text-slate-400')} />
+      </button>
+    </th>
+  );
+}
 
 function EmployeeAvatar({
   firstName,
@@ -388,21 +418,49 @@ function EmployeeTable({
   onEdit: (e: StaffingEmployee) => void;
   onMessage: (e: StaffingEmployee) => void;
 }) {
+  const [sortKey, setSortKey] = useState<string>('lastName');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const handleSort = (key: string) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  const sorted = useMemo(() => {
+    return [...rows].sort((a, b) => {
+      const av = ((a as Record<string, unknown>)[sortKey] as string) ?? '';
+      const bv = ((b as Record<string, unknown>)[sortKey] as string) ?? '';
+      const cmp = av.localeCompare(bv, undefined, { sensitivity: 'base' });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [rows, sortKey, sortDir]);
+
+  const sh = (key: string) => ({
+    sortKey: key,
+    active: sortKey === key,
+    dir: sortDir,
+    onSort: handleSort,
+  });
+
   return (
     <table className="w-full text-sm">
       <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 z-10">
         <tr>
           <th className="w-10" aria-label="Avatar" />
-          <TH>Last Name</TH>
-          <TH>First Name</TH>
-          <TH>Employment Status</TH>
-          <TH>Phone</TH>
-          <TH>Email</TH>
+          <SortableTH {...sh('lastName')}>Last Name</SortableTH>
+          <SortableTH {...sh('firstName')}>First Name</SortableTH>
+          <SortableTH {...sh('employmentStatus')}>Employment Status</SortableTH>
+          <SortableTH {...sh('phone')}>Phone</SortableTH>
+          <SortableTH {...sh('email')}>Email</SortableTH>
           <TH right>Actions</TH>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100">
-        {rows.map((emp) => (
+        {sorted.map((emp) => (
           <tr key={emp._id} className="hover:bg-slate-50 transition-colors">
             <td className="pl-3 pr-1 py-2">
               <EmployeeAvatar
