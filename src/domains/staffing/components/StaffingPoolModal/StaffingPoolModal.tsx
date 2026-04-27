@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Pencil, Mail, ChevronUp, ChevronDown, ChevronsUpDown, Download, MessageSquare } from 'lucide-react';
+import {
+  Search,
+  Pencil,
+  Mail,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
+  Download,
+  MessageSquare,
+} from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -120,9 +129,13 @@ export const StaffingPoolModal = ({
 
   const [filter, setFilter] = useState<StaffingFilter>('all');
   const [search, setSearch] = useState('');
-  const [editEmployee, setEditEmployee] = useState<StaffingEmployee | null>(null);
-  const [messageEmployee, setMessageEmployee] = useState<StaffingEmployee | null>(null);
+  const [editEmployee, setEditEmployee] = useState<StaffingEmployee | null>(
+    null
+  );
+  const [messageEmployee, setMessageEmployee] =
+    useState<StaffingEmployee | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [bulkMessageOpen, setBulkMessageOpen] = useState(false);
 
   const isPartnerTab = filter === 'partner';
 
@@ -255,7 +268,9 @@ export const StaffingPoolModal = ({
               <button
                 type="button"
                 title="Bulk Message"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
+                onClick={() => setBulkMessageOpen(true)}
+                disabled={isPartnerTab}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:pointer-events-none"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
                 Bulk Message
@@ -345,6 +360,15 @@ export const StaffingPoolModal = ({
         />
       )}
 
+      <SendMessageModal
+        mode="bulk"
+        employees={employees}
+        venueSlug={venueSlug}
+        venueAttachments={venueAttachments}
+        open={bulkMessageOpen}
+        onClose={() => setBulkMessageOpen(false)}
+      />
+
       <StaffingPoolExportModal
         open={exportOpen}
         venueSlug={venueSlug}
@@ -390,7 +414,11 @@ function SortableTH({
   dir: SortDir;
   onSort: (key: string) => void;
 }) {
-  const Icon = active ? (dir === 'asc' ? ChevronUp : ChevronDown) : ChevronsUpDown;
+  const Icon = active
+    ? dir === 'asc'
+      ? ChevronUp
+      : ChevronDown
+    : ChevronsUpDown;
   return (
     <th className="text-xs font-semibold text-slate-500 px-4 py-2.5 text-left">
       <button
@@ -399,7 +427,12 @@ function SortableTH({
         className="inline-flex items-center gap-1 hover:text-slate-800 transition-colors"
       >
         {children}
-        <Icon className={clsxm('w-3 h-3', active ? 'text-appPrimary' : 'text-slate-400')} />
+        <Icon
+          className={clsxm(
+            'w-3 h-3',
+            active ? 'text-appPrimary' : 'text-slate-400'
+          )}
+        />
       </button>
     </th>
   );
