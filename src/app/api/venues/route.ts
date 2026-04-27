@@ -24,6 +24,7 @@ type VenueDoc = {
   state?: string;
   zip?: string;
   distanceInMiles?: number;
+  otherUrls?: string[];
 };
 
 // Mirrors appendHiddenVenuesFilter — excludes venues with ShowVenueOnWebsite=No
@@ -217,6 +218,7 @@ async function getVenuesHandler(request: AuthenticatedRequest) {
             zip: 1,
             logoUrl: 1,
             description: 1,
+            otherUrls: 1,
             distanceInMiles: {
               $round: [{ $divide: ['$distanceInMeters', 1609.34] }, 1],
             },
@@ -240,6 +242,7 @@ async function getVenuesHandler(request: AuthenticatedRequest) {
             zip: 1,
             logoUrl: 1,
             description: 1,
+            otherUrls: 1,
           },
         })
         .toArray();

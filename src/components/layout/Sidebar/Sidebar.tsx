@@ -141,6 +141,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
 
     // Employee shift requests (non-client users)
     const isVenueCompany = primaryCompany?.companyType === 'Venue';
+    const clientOrgs = currentUser?.clientOrgs as
+      | { slug?: string }[]
+      | undefined;
+    const hasClientOrgs =
+      isClient && Array.isArray(clientOrgs) && clientOrgs.length > 0;
 
     if (!isClient) {
       baseNavigation.push({
@@ -155,11 +160,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       if (isVenueCompany) {
         baseNavigation.push({
           name: 'Venues',
-          href: '/venue-requests',
+          href: '/venues',
           icon: MapPin,
-          current:
-            pathname === '/venue-requests' ||
-            pathname.startsWith('/venue-requests'),
+          current: pathname === '/venues' || pathname.startsWith('/venues'),
         });
 
         baseNavigation.push({
@@ -169,6 +172,22 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
           current: pathname === '/events' || pathname.startsWith('/events'),
         });
       }
+    }
+
+    if (hasClientOrgs && isVenueCompany) {
+      baseNavigation.push({
+        name: 'Venues',
+        href: '/venues',
+        icon: MapPin,
+        current: pathname === '/venues' || pathname.startsWith('/venues'),
+      });
+
+      baseNavigation.push({
+        name: 'Events',
+        href: '/events',
+        icon: CalendarRange,
+        current: pathname === '/events' || pathname.startsWith('/events'),
+      });
     }
 
     // Add Payroll link only for non-Client users on Prism tenants
@@ -238,6 +257,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     isApplicantOnly,
     applicantRecordStatus,
     currentUser?.userType,
+    currentUser?.clientOrgs,
   ]);
 
   const handleLinkClick = () => {

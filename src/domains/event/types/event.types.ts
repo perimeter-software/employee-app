@@ -1,3 +1,34 @@
+export interface EventNote {
+  type?: string;
+  date?: string;
+  text?: string;
+  firstName?: string;
+  lastName?: string;
+  userId?: string;
+}
+
+export interface EventSecondaryLocation {
+  locationName?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  latitude?: number;
+  longitude?: number;
+  radius?: number;
+  graceDistanceFeet?: number;
+}
+
+export interface EventActivity {
+  _id?: string;
+  activityDate?: string;
+  activityType?: string;
+  activityDetails?: string;
+  activityText?: string;
+  createdByName?: string;
+  [key: string]: unknown;
+}
+
 export interface EventPosition {
   positionName: string;
   reportTime?: string;
@@ -8,6 +39,10 @@ export interface EventPosition {
 
 export interface EventAttachment {
   filename: string;
+  title?: string;
+  type?: string;
+  docType?: string;
+  uploadDate?: string;
 }
 
 export interface EventApplicant {
@@ -57,12 +92,29 @@ export interface GignologyEvent {
   allowPartners?: boolean;
   positionsRequested?: number;
   numberOnRoster?: number;
+  numberOnWaitlist?: number;
+  numberOnRequest?: number;
   numberOnPremise?: number;
   // Detail-only fields (returned by GET /api/events/[eventId])
   description?: string;
+  tags?: string[];
   positions?: EventPosition[];
   attachments?: EventAttachment[];
+  notes?: EventNote[];
   waitListPercentage?: string;
+  billRate?: number;
+  payRate?: number;
+  eventManager?: string;
+  payrollPurchaseOrder?: string;
+  sendConfirmationToSignUps?: string;
+  notifyCallOff?: string;
+  reminder24Hour?: string;
+  reminder48Hour?: string;
+  enableClockInReminders?: string;
+  googleMap?: string;
+  interviewLink?: string;
+  eventImage?: string;
+  secondaryLocation?: EventSecondaryLocation;
   // Enriched by frontend
   favorite?: boolean;
   isEventAdmin?: boolean;
