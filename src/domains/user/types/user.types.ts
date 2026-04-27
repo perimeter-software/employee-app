@@ -1,10 +1,10 @@
-import type { GignologyJob } from "@/domains/job";
-import { LeaveRequest } from "@/domains/punch";
-import { TenantInfo } from "@/domains/tenant";
-import { ApiResponse } from "@/lib/api";
-import { NextRequest, NextResponse } from "next/server";
+import type { GignologyJob } from '@/domains/job';
+import { LeaveRequest } from '@/domains/punch';
+import { TenantInfo } from '@/domains/tenant';
+import { ApiResponse } from '@/lib/api';
+import { NextRequest, NextResponse } from 'next/server';
 
-export type UserType = "Master" | "User" | "Admin" | "Client";
+export type UserType = 'Master' | 'User' | 'Admin' | 'Client';
 
 export type GignologyUser = {
   _id: string;
@@ -134,19 +134,20 @@ export interface AuthenticatedRequest extends NextRequest {
 }
 
 export type RouteHandler<T = unknown> = {
-  (request: AuthenticatedRequest, context?: Record<string, unknown>): Promise<
-    NextResponse<T>
-  >;
+  (
+    request: AuthenticatedRequest,
+    context?: Record<string, unknown>
+  ): Promise<NextResponse<T>>;
 };
 
 // Type guard to ensure user has required fields
 export function isValidAuth0User(user: unknown): user is Auth0SessionUser {
-  if (!user || typeof user !== "object") {
+  if (!user || typeof user !== 'object') {
     return false;
   }
 
   const userObj = user as Record<string, unknown>;
-  return typeof userObj.sub === "string";
+  return typeof userObj.sub === 'string';
 }
 
 export type CurrentUserResponse = ApiResponse<{ user: EnhancedUser }>;

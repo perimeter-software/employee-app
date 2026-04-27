@@ -141,8 +141,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
 
     // Employee shift requests (non-client users)
     const isVenueCompany = primaryCompany?.companyType === 'Venue';
-    const clientOrgs = currentUser?.clientOrgs as { slug?: string }[] | undefined;
-    const hasClientOrgs = isClient && Array.isArray(clientOrgs) && clientOrgs.length > 0;
+    const clientOrgs = currentUser?.clientOrgs as
+      | { slug?: string }[]
+      | undefined;
+    const hasClientOrgs =
+      isClient && Array.isArray(clientOrgs) && clientOrgs.length > 0;
 
     if (!isClient) {
       baseNavigation.push({
@@ -159,9 +162,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
           name: 'Venues',
           href: '/venues',
           icon: MapPin,
-          current:
-            pathname === '/venues' ||
-            pathname.startsWith('/venues'),
+          current: pathname === '/venues' || pathname.startsWith('/venues'),
         });
 
         baseNavigation.push({
@@ -178,9 +179,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
         name: 'Venues',
         href: '/venues',
         icon: MapPin,
-        current:
-          pathname === '/venues' ||
-          pathname.startsWith('/venues'),
+        current: pathname === '/venues' || pathname.startsWith('/venues'),
       });
 
       baseNavigation.push({
