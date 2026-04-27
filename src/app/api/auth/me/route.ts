@@ -10,26 +10,22 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    // V4: Clerk is the only session source. Auth0 / OTP paths are not used.
+    // V4: try Clerk first, then fall through to the shared OTP path.
     if (IS_V4) {
-      console.error('[auth/me] V4 path — resolving Clerk user');
       const clerkUser = await resolveClerkAppUser();
-      console.error('[auth/me] clerkUser resolved:', clerkUser ? { email: clerkUser.email, sub: clerkUser.sub, hasId: !!clerkUser._id } : null);
-      if (!clerkUser) {
-        return new NextResponse(null, { status: 204 });
+      if (clerkUser) {
+        return NextResponse.json(clerkUser);
       }
-      return NextResponse.json(clerkUser);
+      // Fall through to OTP session check below.
+    } else {
+      // Auth0 (legacy)
+      const auth0Session = await getSession();
+      if (auth0Session?.user) {
+        return NextResponse.json(auth0Session.user);
+      }
     }
 
-    // First, try to get Auth0 session
-    const auth0Session = await getSession();
-    
-    if (auth0Session?.user) {
-      // Return Auth0 user data (Auth0's default behavior)
-      return NextResponse.json(auth0Session.user);
-    }
-
-    // If no Auth0 session, check for OTP session
+    // OTP session (shared across both auth modes — Redis-backed, provider-agnostic)
     const otpSessionId = request.cookies.get('otp_session_id')?.value;
 
     if (!otpSessionId) {
