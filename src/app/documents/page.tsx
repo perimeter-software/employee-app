@@ -1,6 +1,6 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useAppUser } from '@/domains/user/hooks/useAppUser';
 import Layout from '@/components/layout/Layout';
 import {
   Card,
@@ -204,7 +204,7 @@ const DocumentUploadModal: React.FC<{
 };
 
 const DocumentsPage: NextPage = () => {
-  const { user, error: authError, isLoading: authLoading } = useUser();
+  const { user, error: authError, isLoading: authLoading } = useAppUser();
   const { isLoading: userLoading, data: currentUserData } = useCurrentUser();
 
   // Fetch primary company data for uploadPath

@@ -1,4 +1,5 @@
 import { ApiClient } from './client';
+import { IS_V4 } from '@/lib/config/auth-mode';
 
 // Create singleton instance with configuration
 // Timeout 60s: employee punches API can take ~30s (auth + tenant + aggregation); client must wait longer than server duration to avoid Request timeout
@@ -16,7 +17,7 @@ baseInstance.responseInterceptor.use(
 
       if (typeof window !== 'undefined') {
         setTimeout(() => {
-          window.location.href = '/api/auth/login';
+          window.location.href = IS_V4 ? '/sign-in' : '/api/auth/login';
         }, 0);
       }
     }

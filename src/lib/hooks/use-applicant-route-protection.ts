@@ -111,6 +111,23 @@ export function useApplicantRouteProtection() {
       return;
     }
 
+    // Allow access to paycheck stubs routes
+    const isPaycheckStubsRoute =
+      pathname === '/payroll' ||
+      pathname.startsWith('/payroll/') ||
+      pathname.startsWith('/paycheck-stubs/');
+
+    // Allow access to login/logout routes
+    const isAuthRoute = pathname === '/' || pathname.startsWith('/api/auth/');
+
+    // Allow access to public routes (if any)
+    const isPublicRoute = false; // Add public routes if needed
+
+    if (isPaycheckStubsRoute || isAuthRoute || isPublicRoute) {
+      // Allow access
+      return;
+    }
+
     // Unknown status – fall back to root
     console.log(
       `[ApplicantRouteProtection] Unknown applicant status: redirecting ${pathname} → /`

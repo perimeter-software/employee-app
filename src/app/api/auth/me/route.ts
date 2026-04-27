@@ -1,13 +1,26 @@
 // app/api/auth/me/route.ts
-// Custom /api/auth/me endpoint that supports both Auth0 and OTP sessions
+// Custom /api/auth/me endpoint that supports Auth0, OTP, and (V4) Clerk sessions.
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@auth0/nextjs-auth0';
 import redisService from '@/lib/cache/redis-client';
+import { IS_V4 } from '@/lib/config/auth-mode';
+import { resolveClerkAppUser } from '@/lib/auth/clerk-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    // V4: Clerk is the only session source. Auth0 / OTP paths are not used.
+    if (IS_V4) {
+      console.error('[auth/me] V4 path — resolving Clerk user');
+      const clerkUser = await resolveClerkAppUser();
+      console.error('[auth/me] clerkUser resolved:', clerkUser ? { email: clerkUser.email, sub: clerkUser.sub, hasId: !!clerkUser._id } : null);
+      if (!clerkUser) {
+        return new NextResponse(null, { status: 204 });
+      }
+      return NextResponse.json(clerkUser);
+    }
+
     // First, try to get Auth0 session
     const auth0Session = await getSession();
     

@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import { getToken, onMessage } from 'firebase/messaging';
 import { toast } from 'sonner';
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useAppUser } from '@/domains/user/hooks/useAppUser';
 import { getFirebaseMessaging } from '@/lib/firebase/client';
 
 export function useFirebaseNotifications() {
-  const { user, isLoading } = useUser();
+  const { user, isLoading } = useAppUser();
 
   useEffect(() => {
     // Wait until auth state is resolved and user is logged in

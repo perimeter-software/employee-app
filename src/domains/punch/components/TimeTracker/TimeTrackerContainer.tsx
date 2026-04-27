@@ -1,6 +1,6 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useAppUser } from '@/domains/user/hooks/useAppUser';
 import { useUserApplicantJob } from '@/domains/job/hooks';
 import { useAllOpenPunches, useFindPunches } from '@/domains/punch/hooks';
 import { useCurrentUser } from '@/domains/user';
@@ -19,7 +19,7 @@ import {
 } from '@/domains/punch/utils/shift-job-utils';
 
 export const TimeTrackerContainer = () => {
-  const { user: auth0User, isLoading: auth0Loading } = useUser();
+  const { user: auth0User, isLoading: auth0Loading } = useAppUser();
 
   // Get company work week settings
   const { weekStartsOn, isLoading: companyLoading } = useCompanyWorkWeek();
@@ -231,7 +231,7 @@ export const TimeTrackerContainer = () => {
     }
     const hideEmployeesDetails = !!currentUser?.hideEmployeesDetails;
     return (
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="w-full space-y-6">
         <EmployeeTimeAttendanceTable
           hideEmployeesDetails={hideEmployeesDetails}
         />
@@ -254,7 +254,7 @@ export const TimeTrackerContainer = () => {
 
   // For regular users, show the normal time tracker with TimerCard and ShiftsSection
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="w-full space-y-6">
       <TimerCard
         userData={userData}
         openPunches={openPunches}

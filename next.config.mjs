@@ -57,6 +57,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: 's.gravatar.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'img.clerk.com',
+      },
       // S3 bucket used for tenant assets (avoids next/image render error in dev)
       {
         protocol: 'https',
@@ -117,6 +121,9 @@ const nextConfig = {
       'https://polyfill.io',
       'https://*.pureblue.ai', // PureBlue API and services
       'https://*.firebaseio.com', // Firebase Realtime Database / FCM
+      'https://*.clerk.accounts.dev', // Clerk (dev)
+      'https://*.clerk.com', // Clerk (prod)
+      'https://clerk-telemetry.com',
     ];
 
     const frameSrc = [
@@ -126,6 +133,8 @@ const nextConfig = {
       'https://player.vimeo.com',
       'https://*.gignology.biz',
       'https://*.stadiumpeople.com',
+      'https://*.clerk.accounts.dev',
+      'https://*.clerk.com',
     ];
 
     return [
@@ -136,7 +145,8 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://*.gstatic.com https://polyfill.io",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://*.gstatic.com https://polyfill.io https://*.clerk.accounts.dev https://*.clerk.com",
+              "worker-src 'self' blob:",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "img-src 'self' data: https: blob:",
               "font-src 'self' https://fonts.gstatic.com",
@@ -158,8 +168,8 @@ const nextConfig = {
   ...(process.env.NODE_ENV === 'production' &&
     process.env.NEXT_PUBLIC_APP_ENV !== 'development' && {
       compiler: {
-        // Remove console logs in production builds
-        removeConsole: true,
+        // Remove console logs in production builds, but keep error/warn
+        removeConsole: { exclude: ['error', 'warn'] },
       },
     }),
 
