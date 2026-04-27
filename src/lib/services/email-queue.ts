@@ -13,6 +13,7 @@ import {
 import type { Db } from 'mongodb';
 import { ObjectId } from 'mongodb';
 import { env, getEnvironmentConfig } from '@/lib/config';
+import { IS_V4 } from '@/lib/config/auth-mode';
 import { logActivity } from '@/lib/services/activity-logger';
 
 // ─── Staging email helpers ────────────────────────────────────────────────────
@@ -243,13 +244,19 @@ let emailQueue: Bull.Queue | null = null;
 function getEmailQueue(): Bull.Queue {
   if (!emailQueue) {
     emailQueue = new Bull('emailQueue', {
+      // V4-only:
+      //  - Use the {v4} hash-tag prefix so Bull's multi-key Lua scripts
+      //    hash to the same slot on cluster-mode ElastiCache (CROSSSLOT
+      //    error otherwise). Matches gig-v4-backend's QUEUE_PREFIX so the
+      //    same email-queue worker consumes our jobs.
+      //  - Pass tls: {} to ioredis so the connection completes the TLS
+      //    handshake; the V4 ElastiCache rejects plaintext.
+      // EB stacks keep the original behavior — no prefix, no TLS.
+      ...(IS_V4 ? { prefix: '{v4}' } : {}),
       redis: {
         host: env.redis.api_host,
         port: env.redis.api_port,
-        // V4 ElastiCache requires TLS; EB instances don't. Honor the
-        // API_REDIS_TLS env var so this works for both stacks without
-        // hanging on the connection handshake.
-        ...(env.redis.api_tls ? { tls: {} } : {}),
+        ...(IS_V4 ? { tls: {} } : {}),
       },
       defaultJobOptions: {
         removeOnComplete: true,

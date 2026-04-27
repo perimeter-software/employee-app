@@ -1,4 +1,5 @@
 import Bull from 'bull';
+import { IS_V4 } from '@/lib/config/auth-mode';
 
 export interface FirebaseTopicJob {
   jobType: 'subscribe' | 'unsubscribe';
@@ -13,22 +14,24 @@ let queue: Bull.Queue<FirebaseTopicJob> | null = null;
 
 function getQueue(): Bull.Queue<FirebaseTopicJob> {
   if (!queue) {
-    const useTls = process.env.API_REDIS_TLS === 'true';
-    const protocol = useTls ? 'rediss' : 'redis';
-    const redisUrl =
-      process.env.API_REDIS_URL ||
-      `${protocol}://${process.env.API_REDIS_HOST}:${process.env.API_REDIS_PORT}`;
-    // When TLS is required, pass an explicit options object so ioredis
-    // performs the TLS handshake — otherwise the connection hangs.
-    queue = useTls
-      ? new Bull<FirebaseTopicJob>(QUEUE_NAME, {
-          redis: {
-            host: process.env.API_REDIS_HOST,
-            port: parseInt(process.env.API_REDIS_PORT || '6379'),
-            tls: {},
-          },
-        })
-      : new Bull<FirebaseTopicJob>(QUEUE_NAME, redisUrl);
+    if (IS_V4) {
+      // V4 ElastiCache is cluster mode + TLS. Hash-tag prefix matches
+      // gig-v4-backend's QUEUE_PREFIX so the same firebase-push worker
+      // consumes our jobs.
+      queue = new Bull<FirebaseTopicJob>(QUEUE_NAME, {
+        prefix: '{v4}',
+        redis: {
+          host: process.env.API_REDIS_HOST,
+          port: parseInt(process.env.API_REDIS_PORT || '6379'),
+          tls: {},
+        },
+      });
+    } else {
+      const redisUrl =
+        process.env.API_REDIS_URL ||
+        `redis://${process.env.API_REDIS_HOST}:${process.env.API_REDIS_PORT}`;
+      queue = new Bull<FirebaseTopicJob>(QUEUE_NAME, redisUrl);
+    }
   }
   return queue;
 }
