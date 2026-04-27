@@ -157,11 +157,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
       if (isVenueCompany) {
         baseNavigation.push({
           name: 'Venues',
-          href: '/venue-requests',
+          href: '/venues',
           icon: MapPin,
           current:
-            pathname === '/venue-requests' ||
-            pathname.startsWith('/venue-requests'),
+            pathname === '/venues' ||
+            pathname.startsWith('/venues'),
         });
 
         baseNavigation.push({
@@ -176,11 +176,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     if (hasClientOrgs && isVenueCompany) {
       baseNavigation.push({
         name: 'Venues',
-        href: '/venue-requests',
+        href: '/venues',
         icon: MapPin,
         current:
-          pathname === '/venue-requests' ||
-          pathname.startsWith('/venue-requests'),
+          pathname === '/venues' ||
+          pathname.startsWith('/venues'),
       });
 
       baseNavigation.push({
