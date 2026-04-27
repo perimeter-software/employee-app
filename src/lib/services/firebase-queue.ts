@@ -13,10 +13,22 @@ let queue: Bull.Queue<FirebaseTopicJob> | null = null;
 
 function getQueue(): Bull.Queue<FirebaseTopicJob> {
   if (!queue) {
+    const useTls = process.env.API_REDIS_TLS === 'true';
+    const protocol = useTls ? 'rediss' : 'redis';
     const redisUrl =
       process.env.API_REDIS_URL ||
-      `redis://${process.env.API_REDIS_HOST}:${process.env.API_REDIS_PORT}`;
-    queue = new Bull<FirebaseTopicJob>(QUEUE_NAME, redisUrl);
+      `${protocol}://${process.env.API_REDIS_HOST}:${process.env.API_REDIS_PORT}`;
+    // When TLS is required, pass an explicit options object so ioredis
+    // performs the TLS handshake — otherwise the connection hangs.
+    queue = useTls
+      ? new Bull<FirebaseTopicJob>(QUEUE_NAME, {
+          redis: {
+            host: process.env.API_REDIS_HOST,
+            port: parseInt(process.env.API_REDIS_PORT || '6379'),
+            tls: {},
+          },
+        })
+      : new Bull<FirebaseTopicJob>(QUEUE_NAME, redisUrl);
   }
   return queue;
 }

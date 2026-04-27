@@ -243,7 +243,14 @@ let emailQueue: Bull.Queue | null = null;
 function getEmailQueue(): Bull.Queue {
   if (!emailQueue) {
     emailQueue = new Bull('emailQueue', {
-      redis: { host: env.redis.api_host, port: env.redis.api_port },
+      redis: {
+        host: env.redis.api_host,
+        port: env.redis.api_port,
+        // V4 ElastiCache requires TLS; EB instances don't. Honor the
+        // API_REDIS_TLS env var so this works for both stacks without
+        // hanging on the connection handshake.
+        ...(env.redis.api_tls ? { tls: {} } : {}),
+      },
       defaultJobOptions: {
         removeOnComplete: true,
         removeOnFail: true,

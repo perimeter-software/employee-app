@@ -43,6 +43,8 @@ export const env = {
       }`,
     api_host: process.env.API_REDIS_HOST || '127.0.0.1',
     api_port: parseInt(process.env.API_REDIS_PORT || '6379'),
+    api_tls: process.env.API_REDIS_TLS === 'true',
+    tls: process.env.REDIS_TLS === 'true',
     api_url:
       process.env.API_REDIS_URL ||
       `redis://${process.env.API_REDIS_HOST || '127.0.0.1'}:${
