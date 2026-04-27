@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Pencil, Mail, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Search, Pencil, Mail, ChevronUp, ChevronDown, ChevronsUpDown, Download, MessageSquare } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -17,12 +17,13 @@ import {
   type StaffingEmployee,
 } from '../EmployeeViewModal/EmployeeViewModal';
 import { SendMessageModal } from '../SendMessageModal/SendMessageModal';
+import { StaffingPoolExportModal } from '../StaffingPoolExportModal/StaffingPoolExportModal';
 
 const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type StaffingFilter =
+export type StaffingFilter =
   | 'all'
   | 'active'
   | 'partner'
@@ -119,11 +120,9 @@ export const StaffingPoolModal = ({
 
   const [filter, setFilter] = useState<StaffingFilter>('all');
   const [search, setSearch] = useState('');
-  const [editEmployee, setEditEmployee] = useState<StaffingEmployee | null>(
-    null
-  );
-  const [messageEmployee, setMessageEmployee] =
-    useState<StaffingEmployee | null>(null);
+  const [editEmployee, setEditEmployee] = useState<StaffingEmployee | null>(null);
+  const [messageEmployee, setMessageEmployee] = useState<StaffingEmployee | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const isPartnerTab = filter === 'partner';
 
@@ -252,7 +251,27 @@ export const StaffingPoolModal = ({
               })}
             </div>
 
-            <div className="ml-auto relative">
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                title="Bulk Message"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                Bulk Message
+              </button>
+              <button
+                type="button"
+                title={`Export ${venueName} Staffing Pool`}
+                onClick={() => setExportOpen(true)}
+                disabled={isPartnerTab}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Export
+              </button>
+            </div>
+            <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
               <input
                 type="text"
@@ -325,6 +344,14 @@ export const StaffingPoolModal = ({
           onClose={() => setMessageEmployee(null)}
         />
       )}
+
+      <StaffingPoolExportModal
+        open={exportOpen}
+        venueSlug={venueSlug}
+        venueName={venueName}
+        filterMode={filter}
+        onClose={() => setExportOpen(false)}
+      />
     </>
   );
 };
