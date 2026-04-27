@@ -6,6 +6,8 @@ import { Auth0SessionUser, EnhancedUser } from '@/domains/user';
 import { TenantInfo } from '@/domains/tenant';
 import redisService from '@/lib/cache/redis-client';
 import { env } from '@/lib/config';
+import { IS_V4 } from '@/lib/config/auth-mode';
+import { resolveClerkAppUser } from '@/lib/auth/clerk-server';
 
 /**
  * Get user session from either Auth0 or OTP
@@ -15,10 +17,17 @@ async function getUserSession(
   request: NextRequest
 ): Promise<Auth0SessionUser | null> {
   try {
-    // First, try Auth0 session
-    const auth0Session = await getSession();
-    if (auth0Session?.user?.email) {
-      return auth0Session.user as Auth0SessionUser;
+    // V4: Clerk owns the session
+    if (IS_V4) {
+      const clerkUser = await resolveClerkAppUser();
+      if (clerkUser?.email) return clerkUser;
+      // Fall through to OTP session check
+    } else {
+      // Auth0 (legacy)
+      const auth0Session = await getSession();
+      if (auth0Session?.user?.email) {
+        return auth0Session.user as Auth0SessionUser;
+      }
     }
 
     // If no Auth0 session, try OTP session
