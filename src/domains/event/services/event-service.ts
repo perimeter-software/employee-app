@@ -1,11 +1,11 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { baseInstance } from '@/lib/api/instance';
-import type { GignologyEvent } from '../types';
+import type { GignologyEvent, EventActivity } from '../types';
 import type { ClockInCoordinates } from '@/domains/job/types/location.types';
 
 export interface EventListPage {
   data: GignologyEvent[];
-  pagination?: { next?: { page: number } };
+  pagination?: { next?: { page: number }; total?: number };
 }
 
 export interface FetchEventsParams {
@@ -320,6 +320,79 @@ export class EventApiService {
       throw new Error(res.message || 'Unable to load cover requests.');
     }
     return Array.isArray(res.data) ? res.data : [];
+  }
+
+  static async fetchClientEvents({
+    venueSlugFilter,
+    timeFrame = 'Current',
+    search = '',
+    page = 1,
+    limit = 5,
+    sort,
+  }: {
+    venueSlugFilter: string;
+    timeFrame?: 'Current' | 'Past' | 'All';
+    search?: string;
+    page?: number;
+    limit?: number;
+    /** Sort string e.g. "eventDate:asc" or "venueSlug:desc". Defaults to eventDate direction based on timeFrame. */
+    sort?: string;
+  }): Promise<EventListPage> {
+    const filterParts = ['eventType:Event'];
+    if (venueSlugFilter) filterParts.push(`venueSlug:${venueSlugFilter}`);
+    if (timeFrame !== 'All') filterParts.push(`timeFrame:${timeFrame}`);
+    const resolvedSort = sort ?? (timeFrame === 'Past' ? 'eventDate:desc' : 'eventDate:asc');
+    const qs = new URLSearchParams({
+      filter: filterParts.join(','),
+      limit: String(limit),
+      sort: resolvedSort,
+      page: String(page),
+      ...(search && { search }),
+    });
+    const res = await baseInstance.get<EventListPage>(`/events?${qs}`);
+    if (!res.success || !res.data) throw new Error('Failed to fetch client events');
+    return res.data;
+  }
+
+  static async updateEvent(
+    eventId: string,
+    updates: Partial<GignologyEvent>
+  ): Promise<GignologyEvent> {
+    const res = await baseInstance.put<GignologyEvent>(
+      EventApiService.ENDPOINTS.DETAIL(eventId),
+      updates
+    );
+    if (!res.success || !res.data) throw new Error('Failed to update event');
+    return res.data;
+  }
+
+  static async fetchEventActivities(
+    eventId: string,
+    page = 1,
+    limit = 25
+  ): Promise<{ data: EventActivity[]; pagination?: { next?: { page: number } } }> {
+    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+    const res = await baseInstance.get<{
+      data: EventActivity[];
+      pagination?: { next?: { page: number } };
+    }>(`/events/${eventId}/activities?${qs}`);
+    if (!res.success || !res.data) throw new Error('Failed to fetch activities');
+    return res.data;
+  }
+
+  static async uploadEventImage(
+    eventId: string,
+    file: File
+  ): Promise<{ filename: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`/api/events/${eventId}/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    const json = (await response.json()) as { success: boolean; filename?: string; message?: string };
+    if (!json.success) throw new Error(json.message ?? 'Upload failed');
+    return { filename: json.filename ?? '' };
   }
 
   static async clockOut(

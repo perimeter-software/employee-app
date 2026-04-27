@@ -9,6 +9,27 @@ import {
   EVENT_COVER_DOC_FILTER,
 } from '@/domains/event/services/event-cover-constants';
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Mirrors the external API's enrichEventsWithEventNumbers: computes roster counts
+// from the applicants sub-array so clients see accurate numbers even when the
+// stored top-level counter fields are stale or absent.
+function enrichEventNumbers(
+  events: Record<string, unknown>[]
+): Record<string, unknown>[] {
+  type Applicant = { status?: string; timeIn?: string; timeOut?: string | null };
+  return events.map((event) => {
+    const applicants = (event.applicants as Applicant[]) ?? [];
+    return {
+      ...event,
+      numberOnRoster: applicants.filter((a) => a.status === 'Roster').length,
+      numberOnWaitlist: applicants.filter((a) => a.status === 'Waitlist').length,
+      numberOnRequest: applicants.filter((a) => a.status === 'Request').length,
+      numberOnPremise: applicants.filter((a) => a.timeIn && !a.timeOut).length,
+    };
+  });
+}
+
 // ─── Filter parser ────────────────────────────────────────────────────────────
 // Parses "timeFrame:Current,eventType:Event,venueSlug:a;b,applicants.id:xxx"
 // into a MongoDB filter object.
@@ -105,10 +126,9 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       options['applicants.id'] = applicantIdFilter;
     }
 
-    // ── Employee venue scoping ────────────────────────────────────────────────
-    // Mirrors mobile: employees only see events from their StaffingPool venues.
-    // The client no longer pre-fetches venues; we resolve them here server-side.
+    // ── Employee / Client scoping ─────────────────────────────────────────────
     const isEmployee = !user.userType || user.userType === 'User';
+    const isClient = user.userType === 'Client';
     const requestApplicantId =
       applicantId || (user.applicantId ? String(user.applicantId) : '');
 
@@ -137,6 +157,53 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       }
 
       options.venueSlug = { $in: staffingPoolSlugs };
+    }
+
+    // ── Client venue scoping ──────────────────────────────────────────────────
+    // Mirrors external API's overrideFiltersForClients: clients can only see
+    // events for venues where seeEvents === 'Yes', regardless of what the
+    // caller sends in the venueSlug filter.
+    if (isClient) {
+      type ClientOrg = { slug?: string; seeEvents?: string };
+      const userId = user.userId ?? user._id;
+      let allowedSlugs: string[] = [];
+      if (userId && ObjectId.isValid(String(userId))) {
+        const clientDoc = await db
+          .collection('users')
+          .findOne(
+            { _id: new ObjectId(String(userId)) },
+            { projection: { clientOrgs: 1 } }
+          );
+        const clientOrgs =
+          ((clientDoc as { clientOrgs?: ClientOrg[] } | null)?.clientOrgs ?? []);
+        allowedSlugs = clientOrgs
+          .filter((org) => org.seeEvents === 'Yes')
+          .map((org) => org.slug ?? '')
+          .filter(Boolean);
+      }
+
+      if (allowedSlugs.length === 0) {
+        return NextResponse.json(
+          { success: true, data: { data: [], pagination: { total: 0 } } },
+          { status: 200 }
+        );
+      }
+
+      const existing = options.venueSlug;
+      if (existing) {
+        if (typeof existing === 'string') {
+          options.venueSlug = allowedSlugs.includes(existing)
+            ? existing
+            : { $in: [] };
+        } else if ((existing as Record<string, unknown>).$in) {
+          const requested = ((existing as Record<string, unknown>).$in as string[]);
+          options.venueSlug = { $in: requested.filter((s) => allowedSlugs.includes(s)) };
+        } else {
+          options.venueSlug = { $in: allowedSlugs };
+        }
+      } else {
+        options.venueSlug = { $in: allowedSlugs };
+      }
     }
 
     if (isEmployee && requestApplicantId) {
@@ -187,6 +254,8 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       reportTimeTBD: 1,
       positionsRequested: 1,
       numberOnRoster: 1,
+      numberOnWaitlist: 1,
+      numberOnRequest: 1,
       numberOnPremise: 1,
       makePublicAndSendNotification: 1,
       allowEarlyClockin: 1,
@@ -195,8 +264,6 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       jobSlug: 1,
       eventUrl: 1,
     };
-
-    console.log('options', JSON.stringify(options));
 
     const rawEvents = await db
       .collection('events')
@@ -308,6 +375,10 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       }
     }
 
+    // Compute roster numbers from applicants before stripping the array.
+    // Mirrors enrichEventsWithEventNumbers in the external API.
+    events = enrichEventNumbers(events);
+
     // Strip applicants array from response (not needed on the listing page)
     events = events.map((ev) => {
       const rest = { ...ev };
@@ -326,7 +397,10 @@ async function getEventsHandler(request: AuthenticatedRequest) {
         success: true,
         data: {
           data: events,
-          pagination: hasNextPage ? { next: { page: page + 1 } } : {},
+          pagination: {
+            total,
+            ...(hasNextPage ? { next: { page: page + 1 } } : {}),
+          },
         },
       },
       { status: 200 }

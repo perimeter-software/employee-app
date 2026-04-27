@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-query';
 
 import Layout from '@/components/layout/Layout';
+import ClientEventsView from '@/app/events/components/ClientEventsView';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
@@ -52,26 +53,26 @@ function useDebounce(value: string, delay: number) {
   return debounced;
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Employee view (all hooks live here, never conditionally skipped) ─────────
 
-export default function EventsPage() {
+function EmployeeEventsView({
+  imageBaseUrl,
+}: {
+  imageBaseUrl?: string;
+}) {
   const { data: currentUser } = useCurrentUser();
-  const { data: primaryCompany } = usePrimaryCompany();
+  const queryClient = useQueryClient();
 
   const [tab, setTab] = useState<TabValue>('all');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 400);
-  const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(
-    null
-  );
+  const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(null);
   const [venueSlug, setVenueSlug] = useState('');
   const [incomingCoverModalOpen, setIncomingCoverModalOpen] = useState(false);
 
-  const queryClient = useQueryClient();
   const applicantId = currentUser?.applicantId;
   const isEmployee = currentUser?.userType === 'User';
 
-  // ── StaffingPool venues for the filter dropdown ──────────────────────────────
   const { data: incomingCoverList = [], isLoading: incomingCoverListLoading } =
     useQuery({
       queryKey: INCOMING_COVER_REQUESTS_QUERY_KEY,
@@ -92,7 +93,6 @@ export default function EventsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── All events ──────────────────────────────────────────────────────────────
   const {
     data: allEventsData,
     isLoading: isLoadingAll,
@@ -115,14 +115,12 @@ export default function EventsPage() {
         venueSlug,
       }),
     initialPageParam: 1,
-    getNextPageParam: (lastPage) =>
-      lastPage.pagination?.next?.page ?? undefined,
+    getNextPageParam: (lastPage) => lastPage.pagination?.next?.page ?? undefined,
     enabled: tab === 'all' && !!currentUser,
     staleTime: 0,
     gcTime: 0,
   });
 
-  // ── My events ───────────────────────────────────────────────────────────────
   const {
     data: myEventsData,
     isLoading: isLoadingMy,
@@ -145,14 +143,12 @@ export default function EventsPage() {
         venueSlug,
       }),
     initialPageParam: 1,
-    getNextPageParam: (lastPage) =>
-      lastPage.pagination?.next?.page ?? undefined,
+    getNextPageParam: (lastPage) => lastPage.pagination?.next?.page ?? undefined,
     enabled: tab === 'my' && !!applicantId,
     staleTime: 0,
     gcTime: 0,
   });
 
-  // ── Past events ─────────────────────────────────────────────────────────────
   const {
     data: pastEventsData,
     isLoading: isLoadingPast,
@@ -175,16 +171,12 @@ export default function EventsPage() {
         venueSlug,
       }),
     initialPageParam: 1,
-    getNextPageParam: (lastPage) =>
-      lastPage.pagination?.next?.page ?? undefined,
+    getNextPageParam: (lastPage) => lastPage.pagination?.next?.page ?? undefined,
     enabled: tab === 'past' && !!applicantId,
     staleTime: 0,
     gcTime: 0,
   });
 
-  // ── Flatten + enrich pages ──────────────────────────────────────────────────
-  // rosterStatus is set by the backend when applicantId is provided;
-  // applicants array is stripped from the response so we don't re-derive from it.
   const resolveStatus = (e: GignologyEvent) =>
     e.rosterStatus && e.rosterStatus !== 'Not Roster'
       ? e.rosterStatus
@@ -221,7 +213,6 @@ export default function EventsPage() {
       .map((e) => ({ ...e, status: resolveStatus(e) }));
   }, [pastEventsData?.pages]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Active list + loading state ─────────────────────────────────────────────
   const activeEvents =
     tab === 'all' ? allEvents : tab === 'my' ? myEvents : pastEvents;
   const isLoading =
@@ -239,7 +230,6 @@ export default function EventsPage() {
 
   const isSearching = search !== debouncedSearch;
 
-  // ── Infinite scroll sentinel ─────────────────────────────────────────────────
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -265,168 +255,165 @@ export default function EventsPage() {
         : "You haven't participated in any past event.";
 
   return (
-    <Layout>
-      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 space-y-6 h-[calc(100vh-11rem)] max-h-[calc(100vh-11rem)] overflow-hidden">
-        {/* Header + tabs */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Events</h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Browse upcoming events and track your roster status.
-            </p>
-          </div>
-
-          <ToggleGroup
-            type="single"
-            value={tab}
-            onValueChange={(v) => v && setTab(v as TabValue)}
-            className="inline-flex rounded-lg border border-gray-200 p-1 shadow-sm self-start sm:self-auto"
-          >
-            {TABS.map(({ value, label }) => (
-              <ToggleGroupItem
-                key={value}
-                value={value}
-                className={clsxm(
-                  'rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium transition-all',
-                  tab === value
-                    ? 'bg-appPrimary text-white shadow-md'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
-                )}
-              >
-                {label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
+    <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 space-y-6 h-[calc(100vh-11rem)] max-h-[calc(100vh-11rem)] overflow-hidden">
+      {/* Header + tabs */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Events</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Browse upcoming events and track your roster status.
+          </p>
         </div>
 
-        {/* Content card */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 min-w-0 w-full sm:w-auto sm:justify-start sm:gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <CalendarRange className="h-5 w-5 shrink-0 text-appPrimary" />
-                  <div className="min-w-0">
-                    <CardTitle className="text-base">
-                      {tab === 'all'
-                        ? 'All Events'
-                        : tab === 'my'
-                          ? 'My Events'
-                          : 'Past Events'}
-                    </CardTitle>
-                    {!isLoading && !isSearching && (
-                      <p className="text-xs text-slate-600">
-                        {activeEvents.length} event
-                        {activeEvents.length !== 1 ? 's' : ''}
-                      </p>
-                    )}
-                  </div>
+        <ToggleGroup
+          type="single"
+          value={tab}
+          onValueChange={(v) => v && setTab(v as TabValue)}
+          className="inline-flex rounded-lg border border-gray-200 p-1 shadow-sm self-start sm:self-auto"
+        >
+          {TABS.map(({ value, label }) => (
+            <ToggleGroupItem
+              key={value}
+              value={value}
+              className={clsxm(
+                'rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium transition-all',
+                tab === value
+                  ? 'bg-appPrimary text-white shadow-md'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+              )}
+            >
+              {label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </div>
+
+      {/* Content card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 min-w-0 w-full sm:w-auto sm:justify-start sm:gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <CalendarRange className="h-5 w-5 shrink-0 text-appPrimary" />
+                <div className="min-w-0">
+                  <CardTitle className="text-base">
+                    {tab === 'all'
+                      ? 'All Events'
+                      : tab === 'my'
+                        ? 'My Events'
+                        : 'Past Events'}
+                  </CardTitle>
+                  {!isLoading && !isSearching && (
+                    <p className="text-xs text-slate-600">
+                      {activeEvents.length} event
+                      {activeEvents.length !== 1 ? 's' : ''}
+                    </p>
+                  )}
                 </div>
-                {incomingCoverCount > 0 && (
-                  <Button
-                    type="button"
-                    variant="outline-primary"
-                    size="sm"
-                    className="shrink-0 whitespace-nowrap"
-                    onClick={() => setIncomingCoverModalOpen(true)}
-                  >
-                    Cover requests for you
-                    <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-appPrimary/15 px-1.5 text-xs font-semibold tabular-nums">
-                      {incomingCoverCount}
-                    </span>
-                  </Button>
-                )}
               </div>
+              {incomingCoverCount > 0 && (
+                <Button
+                  type="button"
+                  variant="outline-primary"
+                  size="sm"
+                  className="shrink-0 whitespace-nowrap"
+                  onClick={() => setIncomingCoverModalOpen(true)}
+                >
+                  Cover requests for you
+                  <span className="ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full bg-appPrimary/15 px-1.5 text-xs font-semibold tabular-nums">
+                    {incomingCoverCount}
+                  </span>
+                </Button>
+              )}
+            </div>
 
-              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                {staffingVenues.length > 1 && (
-                  <Select value={venueSlug} onValueChange={setVenueSlug}>
-                    <SelectTrigger className="h-[34px] w-full sm:w-56 text-sm border-zinc-200 focus:ring-appPrimary/30 focus:border-appPrimary">
-                      <SelectValue
-                        placeholder="All Venues"
-                        displayText={
-                          venueSlug
-                            ? (staffingVenues.find((v) => v.slug === venueSlug)
-                                ?.name ?? 'All Venues')
-                            : 'All Venues'
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">All Venues</SelectItem>
-                      {staffingVenues.map((v) => (
-                        <SelectItem key={v.slug} value={v.slug}>
-                          {v.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              {staffingVenues.length > 1 && (
+                <Select value={venueSlug} onValueChange={setVenueSlug}>
+                  <SelectTrigger className="h-[34px] w-full sm:w-56 text-sm border-zinc-200 focus:ring-appPrimary/30 focus:border-appPrimary">
+                    <SelectValue
+                      placeholder="All Venues"
+                      displayText={
+                        venueSlug
+                          ? (staffingVenues.find((v) => v.slug === venueSlug)
+                              ?.name ?? 'All Venues')
+                          : 'All Venues'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Venues</SelectItem>
+                    {staffingVenues.map((v) => (
+                      <SelectItem key={v.slug} value={v.slug}>
+                        {v.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
 
-                <div className="relative w-full sm:w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-                  <input
-                    type="text"
-                    placeholder="Search events…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className={clsxm(
-                      'w-full pl-9 pr-4 py-1.5 text-sm rounded-md border border-zinc-200',
-                      'bg-white placeholder:text-zinc-400 text-zinc-900',
-                      'focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary'
-                    )}
-                  />
-                </div>
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search events…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className={clsxm(
+                    'w-full pl-9 pr-4 py-1.5 text-sm rounded-md border border-zinc-200',
+                    'bg-white placeholder:text-zinc-400 text-zinc-900',
+                    'focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary'
+                  )}
+                />
               </div>
             </div>
-          </CardHeader>
+          </div>
+        </CardHeader>
 
-          <CardContent>
-            {isLoading || isSearching ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-24 rounded-xl bg-zinc-100 animate-pulse"
-                  />
-                ))}
-              </div>
-            ) : activeEvents.length === 0 ? (
-              <div className="text-center py-16 text-zinc-400">
-                <CalendarRange className="w-10 h-10 mx-auto mb-3 opacity-40" />
-                <p className="text-sm font-medium">
-                  {debouncedSearch
-                    ? 'No events match your search.'
-                    : emptyMessage}
-                </p>
-              </div>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 content-start [&>*:only-child]:col-span-full overflow-y-auto h-[calc(100vh-23rem)] max-h-[calc(100vh-23rem)] min-h-0 pr-1 -mr-1 py-2 -my-2">
-                {activeEvents.map((event) => (
-                  <EventCard
-                    key={event._id}
-                    event={event}
-                    imageBaseUrl={primaryCompany?.imageUrl}
-                    onClick={() => setSelectedEvent(event)}
-                  />
-                ))}
-                {/* Scroll sentinel — triggers next page load when it enters the viewport */}
-                <div ref={sentinelRef} className="col-span-full h-4" />
-                {isFetchingNext && (
-                  <div className="col-span-full flex justify-center py-3">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-appPrimary border-t-transparent" />
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+        <CardContent>
+          {isLoading || isSearching ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-24 rounded-xl bg-zinc-100 animate-pulse"
+                />
+              ))}
+            </div>
+          ) : activeEvents.length === 0 ? (
+            <div className="text-center py-16 text-zinc-400">
+              <CalendarRange className="w-10 h-10 mx-auto mb-3 opacity-40" />
+              <p className="text-sm font-medium">
+                {debouncedSearch
+                  ? 'No events match your search.'
+                  : emptyMessage}
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 content-start [&>*:only-child]:col-span-full overflow-y-auto h-[calc(100vh-23rem)] max-h-[calc(100vh-23rem)] min-h-0 pr-1 -mr-1 py-2 -my-2">
+              {activeEvents.map((event) => (
+                <EventCard
+                  key={event._id}
+                  event={event}
+                  imageBaseUrl={imageBaseUrl}
+                  onClick={() => setSelectedEvent(event)}
+                />
+              ))}
+              <div ref={sentinelRef} className="col-span-full h-4" />
+              {isFetchingNext && (
+                <div className="col-span-full flex justify-center py-3">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-appPrimary border-t-transparent" />
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {selectedEvent && (
         <EventDetailModal
           event={selectedEvent}
-          imageBaseUrl={primaryCompany?.imageUrl}
+          imageBaseUrl={imageBaseUrl}
           open={!!selectedEvent}
           onClose={() => setSelectedEvent(null)}
           onEnrollmentChange={(eventId, newType) => {
@@ -448,6 +435,33 @@ export default function EventsPage() {
         items={incomingCoverList}
         isLoading={incomingCoverListLoading}
       />
+    </div>
+  );
+}
+
+// ─── Page shell — only decides which view to mount ───────────────────────────
+
+export default function EventsPage() {
+  const { data: currentUser } = useCurrentUser();
+  const { data: primaryCompany } = usePrimaryCompany();
+
+  const isClient = currentUser?.userType === 'Client';
+
+  return (
+    <Layout>
+      {isClient ? (
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Events</h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Browse events for your venues.
+            </p>
+          </div>
+          <ClientEventsView />
+        </div>
+      ) : (
+        <EmployeeEventsView imageBaseUrl={primaryCompany?.imageUrl} />
+      )}
     </Layout>
   );
 }

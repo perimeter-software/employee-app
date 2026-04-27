@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
+import { getSp1Client } from '@/lib/sp1Client';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
 import {
@@ -32,11 +33,13 @@ async function getEventDetailHandler(
       {
         projection: {
           _id: 1,
+          eventId: 1,
           eventName: 1,
           eventDate: 1,
           eventEndTime: 1,
           reportTimeTBD: 1,
           eventType: 1,
+          status: 1,
           eventUrl: 1,
           venueSlug: 1,
           venueName: 1,
@@ -45,16 +48,33 @@ async function getEventDetailHandler(
           address: 1,
           zip: 1,
           logoUrl: 1,
+          eventImage: 1,
           timeZone: 1,
           description: 1,
+          tags: 1,
           positions: 1,
           attachments: 1,
+          notes: 1,
           positionsRequested: 1,
+          billRate: 1,
+          payRate: 1,
+          eventManager: 1,
+          payrollPurchaseOrder: 1,
+          makePublicAndSendNotification: 1,
+          sendConfirmationToSignUps: 1,
+          allowEarlyClockin: 1,
+          allowPartners: 1,
+          waitListPercentage: 1,
+          notifyCallOff: 1,
+          reminder24Hour: 1,
+          reminder48Hour: 1,
+          enableClockInReminders: 1,
+          geoFence: 1,
+          googleMap: 1,
+          interviewLink: 1,
+          secondaryLocation: 1,
           numberOnRoster: 1,
           numberOnPremise: 1,
-          makePublicAndSendNotification: 1,
-          allowEarlyClockin: 1,
-          waitListPercentage: 1,
           applicants: 1,
           jobSlug: 1,
         },
@@ -155,4 +175,87 @@ export const GET = withEnhancedAuthAPI(getEventDetailHandler, {
   requireDatabaseUser: true,
   requireTenant: true,
   allowApplicants: true,
+});
+
+// ─── PUT (update event) ───────────────────────────────────────────────────────
+
+async function updateEventHandler(
+  request: AuthenticatedRequest,
+  context?: Record<string, unknown>
+) {
+  try {
+    const params = (await context?.params) as { eventId: string } | undefined;
+    const eventId = params?.eventId;
+
+    if (!eventId || !ObjectId.isValid(eventId)) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid event ID' },
+        { status: 400 }
+      );
+    }
+
+    const user = request.user;
+    const { db } = await getTenantAwareConnection(request);
+
+    // For Client users: verify they have access to this event's venue
+    if (user.userType === 'Client') {
+      const eventDoc = await db
+        .collection('events')
+        .findOne({ _id: new ObjectId(eventId) }, { projection: { venueSlug: 1 } });
+
+      if (!eventDoc) {
+        return NextResponse.json(
+          { success: false, message: 'Event not found' },
+          { status: 404 }
+        );
+      }
+
+      const userId = user.userId ?? user._id;
+      let clientOrgSlugs: string[] = [];
+      if (userId && ObjectId.isValid(String(userId))) {
+        const clientDoc = await db
+          .collection('users')
+          .findOne(
+            { _id: new ObjectId(String(userId)) },
+            { projection: { clientOrgs: 1 } }
+          );
+        const clientOrgs =
+          (clientDoc as { clientOrgs?: { slug?: string }[] } | null)?.clientOrgs ?? [];
+        clientOrgSlugs = clientOrgs.map((org) => org.slug ?? '').filter(Boolean);
+      }
+
+      if (!clientOrgSlugs.includes(String(eventDoc.venueSlug ?? ''))) {
+        return NextResponse.json(
+          { success: false, message: 'Access denied to this event.' },
+          { status: 403 }
+        );
+      }
+    }
+
+    if (!user?.sub || !user?.email) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid session' },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+    const { tenant } = user;
+    const sp1 = getSp1Client(user.sub, user.email, tenant?.clientDomain || tenant?.url);
+
+    const res = await sp1.put(`/events/${eventId}`, body);
+    return NextResponse.json({ success: true, data: res.data }, { status: 200 });
+  } catch (error: unknown) {
+    const e = error as { response?: { status?: number; data?: unknown }; message?: string };
+    console.error('[Event Update API] Error:', e.message);
+    return NextResponse.json(
+      e.response?.data ?? { success: false, message: 'Internal server error' },
+      { status: e.response?.status ?? 500 }
+    );
+  }
+}
+
+export const PUT = withEnhancedAuthAPI(updateEventHandler, {
+  requireDatabaseUser: true,
+  requireTenant: true,
 });
