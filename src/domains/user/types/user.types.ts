@@ -41,6 +41,21 @@ export type Auth0WithIds = Auth0UserNoPassword & {
   applicantId: string;
 };
 
+/**
+ * Applicant sub-type for users with status="Applicant" in the applicants collection.
+ *
+ * - pre-onboarding:   applicantStatus is below the company minStageToOnboarding threshold
+ *                     (e.g. "New" or "ATC"). Can see all applicant screens EXCEPT Onboarding.
+ * - onboarding:       applicantStatus has reached the threshold (e.g. "Screened"/"Pre-Hire")
+ *                     but acknowledged.date is not yet set. Can ONLY see the Onboarding screen.
+ * - post-onboarding:  applicantStatus has reached the threshold AND acknowledged.date is set.
+ *                     Can see all applicant screens (Onboarding has limited steps available).
+ */
+export type ApplicantSubType =
+  | 'pre-onboarding'
+  | 'onboarding'
+  | 'post-onboarding';
+
 export type EnhancedUser = {
   _id?: string;
   applicantId?: string;
@@ -57,6 +72,9 @@ export type EnhancedUser = {
   isApplicantOnly?: boolean; // True if this is an applicant-only session
   isLimitedAccess?: boolean; // True if user/applicant has limited access
   hideEmployeesDetails?: boolean; // When true (Client only), employee email/phone are hidden
+  // Applicant-specific fields (populated when isApplicantOnly=true and status="Applicant")
+  applicantStatus?: string; // Hiring pipeline stage: New | ATC | Screened | Pre-Hire | Declined
+  acknowledgedDate?: string | null; // ISO date string from acknowledged.date, null if not set
   [key: string]: unknown;
 };
 

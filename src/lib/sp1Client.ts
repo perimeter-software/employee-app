@@ -24,18 +24,24 @@ function createBackendToken(userSub: string, email: string): string {
 function buildOrigin(clientDomain?: string): string {
   const domain = clientDomain || FALLBACK_ORIGIN;
   if (!domain) return '';
-  if (domain.startsWith('http://') || domain.startsWith('https://')) return domain;
-  return domain.startsWith('localhost') ? `http://${domain}` : `https://${domain}`;
+  if (domain.startsWith('http://') || domain.startsWith('https://'))
+    return domain;
+  return domain.startsWith('localhost')
+    ? `http://${domain}`
+    : `https://${domain}`;
 }
 
-export function getSp1Client(userSub: string, email: string, clientDomain?: string) {
+export function getSp1Client(
+  userSub: string,
+  email: string,
+  clientDomain?: string,
+  contentType: string | false = 'application/json'
+) {
   const token = createBackendToken(userSub, email);
-  return axios.create({
-    baseURL: BASE_URL,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      origin: buildOrigin(clientDomain),
-      'Content-Type': 'application/json',
-    },
-  });
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    origin: buildOrigin(clientDomain),
+  };
+  if (contentType !== false) headers['Content-Type'] = contentType;
+  return axios.create({ baseURL: BASE_URL, headers });
 }

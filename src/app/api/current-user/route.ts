@@ -25,6 +25,8 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
         lastName?: string;
         status?: string;
         employmentStatus?: string;
+        applicantStatus?: string;
+        acknowledgedDate?: string | null;
       } | null = null;
 
       // Fast path: when tenant is already known (from cache), single-DB lookup via same pattern as other API routes
@@ -39,6 +41,8 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
                 lastName: 1,
                 status: 1,
                 employmentStatus: 1,
+                applicantStatus: 1,
+                acknowledged: 1,
               },
             }
           );
@@ -48,6 +52,10 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
               lastName: applicant.lastName,
               status: applicant.status,
               employmentStatus: applicant.employmentStatus,
+              applicantStatus: applicant.applicantStatus,
+              acknowledgedDate: applicant.acknowledged?.date
+                ? new Date(applicant.acknowledged.date).toISOString()
+                : null,
             };
           }
         } catch {
@@ -87,6 +95,10 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
         name: user.name,
         status: applicantInfo?.status ?? user.status,
         employmentStatus: applicantInfo?.employmentStatus ?? user.employmentStatus,
+        applicantStatus: applicantInfo?.applicantStatus ?? (user.applicantStatus as string | undefined),
+        acknowledgedDate: applicantInfo?.acknowledgedDate !== undefined
+          ? applicantInfo.acknowledgedDate
+          : (user.acknowledgedDate as string | null | undefined),
         isApplicantOnly: true,
         isLimitedAccess: true,
       };

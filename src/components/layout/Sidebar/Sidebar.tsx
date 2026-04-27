@@ -19,6 +19,7 @@ import {
   CalendarDays,
   CalendarRange,
   MapPin,
+  GraduationCap,
 } from 'lucide-react';
 import { clsxm } from '@/lib/utils';
 import { Button } from '@/components/ui/Button/Button';
@@ -41,13 +42,54 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
   const pathname = usePathname();
   const { data: primaryCompany } = usePrimaryCompany();
   const { data: currentUser } = useCurrentUser();
-  // Check if user has limited access (applicants or terminated/inactive employees)
+
   const isLimitedAccess = currentUser?.isLimitedAccess || false;
+  const isApplicantOnly = currentUser?.isApplicantOnly || false;
+  const applicantRecordStatus = currentUser?.status as string | undefined;
 
   const navigation: NavigationItem[] = useMemo(() => {
-    // Check if user is a Client
     const isClient = currentUser?.userType === 'Client';
 
+    // ── Applicant-only sessions ───────────────────────────────────────────────
+    if (isApplicantOnly) {
+      // "Employee"-status applicants: paycheck stubs + applicant screen
+      if (
+        applicantRecordStatus === 'Employee' ||
+        applicantRecordStatus !== 'Applicant'
+      ) {
+        return [
+          {
+            name: 'Payroll',
+            href: '/payroll',
+            icon: Receipt,
+            current:
+              pathname === '/payroll' ||
+              pathname.startsWith('/payroll') ||
+              pathname.startsWith('/paycheck-stubs'),
+          },
+          {
+            name: 'Applicant',
+            href: '/applicant',
+            icon: GraduationCap,
+            current:
+              pathname === '/applicant' || pathname.startsWith('/applicant/'),
+          },
+        ];
+      }
+
+      // "Applicant"-status: single entry point regardless of sub-type
+      return [
+        {
+          name: 'Applicant',
+          href: '/applicant',
+          icon: GraduationCap,
+          current:
+            pathname === '/applicant' || pathname.startsWith('/applicant/'),
+        },
+      ];
+    }
+
+    // ── Terminated/Inactive employees (non-applicant limited access) ──────────
     const isPrism = primaryCompany?.peoIntegration === 'Prism';
 
     // For limited access users (applicants or terminated/inactive employees), only show Payroll
@@ -149,15 +191,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
           name: 'Invoices',
           href: '/invoices',
           icon: FileSpreadsheet,
-          current:
-            pathname === '/invoices' || pathname.startsWith('/invoices'),
+          current: pathname === '/invoices' || pathname.startsWith('/invoices'),
         },
         {
           name: 'Forms',
           href: '/forms',
           icon: ClipboardList,
-          current:
-            pathname === '/forms' || pathname.startsWith('/forms'),
+          current: pathname === '/forms' || pathname.startsWith('/forms'),
         }
       );
     }
@@ -170,19 +210,35 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
           href: '/conversation',
           icon: MessageCircleQuestion,
           current:
-            pathname === '/conversation' || pathname.startsWith('/conversation'),
+            pathname === '/conversation' ||
+            pathname.startsWith('/conversation'),
         },
         {
           name: 'Documents',
           href: '/documents',
           icon: FileText,
-          current: pathname === '/documents' || pathname.startsWith('/documents'),
+          current:
+            pathname === '/documents' || pathname.startsWith('/documents'),
+        },
+        {
+          name: 'Applicant',
+          href: '/applicant',
+          icon: GraduationCap,
+          current:
+            pathname === '/applicant' || pathname.startsWith('/applicant/'),
         }
       );
     }
 
     return baseNavigation;
-  }, [pathname, primaryCompany, isLimitedAccess, currentUser?.userType]);
+  }, [
+    pathname,
+    primaryCompany,
+    isLimitedAccess,
+    isApplicantOnly,
+    applicantRecordStatus,
+    currentUser?.userType,
+  ]);
 
   const handleLinkClick = () => {
     // Close mobile menu when a link is clicked

@@ -34,6 +34,18 @@ const nextConfig = {
         hostname: 'images.stage.stadiumpeople.com',
       },
       {
+        protocol: 'https',
+        hostname: 'images.stage.gignology.biz',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.dev.gignology.biz',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.gignology.biz',
+      },
+      {
         protocol: 'http',
         hostname: 'localhost',
       },
@@ -119,6 +131,8 @@ const nextConfig = {
       // AWS S3 URLs - allow all S3 endpoints for PDF viewing
       'https://*.amazonaws.com', // Matches all AWS S3 URLs (s3.region.amazonaws.com, bucket.s3.region.amazonaws.com, etc.)
       'https://player.vimeo.com',
+      'https://*.gignology.biz',
+      'https://*.stadiumpeople.com',
       'https://*.clerk.accounts.dev',
       'https://*.clerk.com',
     ];
@@ -138,7 +152,7 @@ const nextConfig = {
               "font-src 'self' https://fonts.gstatic.com",
               `connect-src ${connectSrc.join(' ')}`,
               `frame-src ${frameSrc.join(' ')}`,
-              "object-src 'none'",
+              "object-src 'self' https://*.gignology.biz https://*.stadiumpeople.com https://*.amazonaws.com",
               "base-uri 'self'",
               "form-action 'self'",
               "frame-ancestors 'none'",
