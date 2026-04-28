@@ -35,6 +35,8 @@ export interface EventPosition {
   endTime?: string;
   makePublic?: boolean;
   numberPositions?: number;
+  billRate?: number;
+  payRate?: number;
 }
 
 export interface EventAttachment {

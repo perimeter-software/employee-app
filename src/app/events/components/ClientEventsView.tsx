@@ -16,7 +16,7 @@ import {
   ArrowDown,
   ArrowUpDown,
 } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import { useCurrentUser } from '@/domains/user';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
@@ -192,8 +192,6 @@ function SortIcon({ col, sort }: { col: string; sort: SortState }) {
 export default function ClientEventsView() {
   const { data: currentUser } = useCurrentUser();
   const { data: primaryCompany } = usePrimaryCompany();
-  const queryClient = useQueryClient();
-
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('Current');
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT['Current']);
@@ -495,10 +493,6 @@ export default function ClientEventsView() {
           event={selectedEvent}
           open={!!selectedEvent}
           onClose={() => setSelectedEvent(null)}
-          onEventUpdated={() => {
-            queryClient.invalidateQueries({ queryKey: ['client-events-main'] });
-            queryClient.invalidateQueries({ queryKey: ['client-events-count'] });
-          }}
         />
       )}
     </div>
