@@ -529,19 +529,19 @@ export default function ClientEventsView() {
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => setRosterEvent(row)}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
-                            title="Event Roster"
-                          >
-                            <Users className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
                             onClick={() => setSelectedEvent(row)}
                             className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-colors"
                             title="Event Info"
                           >
                             <Info className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRosterEvent(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+                            title="Event Roster"
+                          >
+                            <Users className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
