@@ -23,6 +23,7 @@ import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { clsxm } from '@/lib/utils';
 import { EventApiService } from '@/domains/event/services/event-service';
 import { ClientEventDetailModal } from './ClientEventDetailModal';
+import { EventRosterModal } from '@/domains/event/components/EventRosterModal/EventRosterModal';
 import type { GignologyEvent } from '@/domains/event/types/event.types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -223,6 +224,7 @@ export default function ClientEventsView() {
   const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(
     null
   );
+  const [rosterEvent, setRosterEvent] = useState<GignologyEvent | null>(null);
 
   const clientOrgSlugs = useMemo(() => {
     const orgs = currentUser?.clientOrgs as { slug?: string }[] | undefined;
@@ -524,14 +526,24 @@ export default function ClientEventsView() {
                         className="px-4 py-3"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <button
-                          type="button"
-                          onClick={() => setSelectedEvent(row)}
-                          className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-                          title="Event Info"
-                        >
-                          <Info className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setRosterEvent(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+                            title="Event Roster"
+                          >
+                            <Users className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedEvent(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                            title="Event Info"
+                          >
+                            <Info className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -579,6 +591,18 @@ export default function ClientEventsView() {
           event={selectedEvent}
           open={!!selectedEvent}
           onClose={() => setSelectedEvent(null)}
+        />
+      )}
+
+      {/* ── Event Roster Modal ── */}
+      {rosterEvent && (
+        <EventRosterModal
+          eventId={rosterEvent._id}
+          eventName={rosterEvent.eventName}
+          eventDate={rosterEvent.eventDate}
+          venueSlug={rosterEvent.venueSlug}
+          open={!!rosterEvent}
+          onClose={() => setRosterEvent(null)}
         />
       )}
     </div>
