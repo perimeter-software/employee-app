@@ -123,6 +123,7 @@ jobs:
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_FIREBASE_APP_ID,Value=${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_FIREBASE_VAPID_KEY,Value=${{ secrets.NEXT_PUBLIC_FIREBASE_VAPID_KEY }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SP1_API_BASE_URL,Value=${{ vars.SP1_API_BASE_URL }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_IMAGE_SERVER,Value=${{ vars.NEXT_PUBLIC_IMAGE_SERVER }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SP1_API_ORIGIN,Value=${{ vars.SP1_API_ORIGIN }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=CLUSTER_ENABLED,Value=${{ vars.CLUSTER_ENABLED }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=CLUSTER_WORKERS,Value=${{ vars.CLUSTER_WORKERS }}" \
