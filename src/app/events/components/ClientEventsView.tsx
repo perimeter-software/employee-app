@@ -16,13 +16,14 @@ import {
   ArrowDown,
   ArrowUpDown,
 } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import { useCurrentUser } from '@/domains/user';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { clsxm } from '@/lib/utils';
 import { EventApiService } from '@/domains/event/services/event-service';
 import { ClientEventDetailModal } from './ClientEventDetailModal';
+import { EventRosterModal } from '@/domains/event/components/EventRosterModal/EventRosterModal';
 import type { GignologyEvent } from '@/domains/event/types/event.types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -170,10 +171,30 @@ function NumberBadge({
 function EventNumbers({ row }: { row: GignologyEvent }) {
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      <NumberBadge icon={<Hash className="w-3 h-3" />} value={row.positionsRequested} color="blue" title="Positions Requested" />
-      <NumberBadge icon={<Check className="w-3 h-3" />} value={row.numberOnRoster} color="green" title="On Roster" />
-      <NumberBadge icon={<Users className="w-3 h-3" />} value={row.numberOnWaitlist} color="gray" title="On Waitlist" />
-      <NumberBadge icon={<HelpCircle className="w-3 h-3" />} value={row.numberOnRequest} color="amber" title="On Request" />
+      <NumberBadge
+        icon={<Hash className="w-3 h-3" />}
+        value={row.positionsRequested}
+        color="blue"
+        title="Positions Requested"
+      />
+      <NumberBadge
+        icon={<Check className="w-3 h-3" />}
+        value={row.numberOnRoster}
+        color="green"
+        title="On Roster"
+      />
+      <NumberBadge
+        icon={<Users className="w-3 h-3" />}
+        value={row.numberOnWaitlist}
+        color="gray"
+        title="On Waitlist"
+      />
+      <NumberBadge
+        icon={<HelpCircle className="w-3 h-3" />}
+        value={row.numberOnRequest}
+        color="amber"
+        title="On Request"
+      />
     </div>
   );
 }
@@ -181,10 +202,13 @@ function EventNumbers({ row }: { row: GignologyEvent }) {
 function SortIcon({ col, sort }: { col: string; sort: SortState }) {
   const field = SORTABLE_COLUMNS[col];
   if (!field) return null;
-  if (sort.field !== field) return <ArrowUpDown className="w-3.5 h-3.5 text-gray-400 ml-1 inline" />;
-  return sort.dir === 'asc'
-    ? <ArrowUp className="w-3.5 h-3.5 text-gray-700 ml-1 inline" />
-    : <ArrowDown className="w-3.5 h-3.5 text-gray-700 ml-1 inline" />;
+  if (sort.field !== field)
+    return <ArrowUpDown className="w-3.5 h-3.5 text-gray-400 ml-1 inline" />;
+  return sort.dir === 'asc' ? (
+    <ArrowUp className="w-3.5 h-3.5 text-gray-700 ml-1 inline" />
+  ) : (
+    <ArrowDown className="w-3.5 h-3.5 text-gray-700 ml-1 inline" />
+  );
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -192,25 +216,31 @@ function SortIcon({ col, sort }: { col: string; sort: SortState }) {
 export default function ClientEventsView() {
   const { data: currentUser } = useCurrentUser();
   const { data: primaryCompany } = usePrimaryCompany();
-  const queryClient = useQueryClient();
-
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('Current');
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT['Current']);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 400);
-  const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(
+    null
+  );
+  const [rosterEvent, setRosterEvent] = useState<GignologyEvent | null>(null);
 
   const clientOrgSlugs = useMemo(() => {
     const orgs = currentUser?.clientOrgs as { slug?: string }[] | undefined;
     if (!Array.isArray(orgs) || orgs.length === 0) return '';
-    return orgs.map((o) => o.slug).filter(Boolean).join(';');
+    return orgs
+      .map((o) => o.slug)
+      .filter(Boolean)
+      .join(';');
   }, [currentUser?.clientOrgs]);
 
   const imageBaseUrl = primaryCompany?.imageUrl ?? '';
 
   // Reset page when search/sort/timeFrame changes
-  useEffect(() => { setPage(1); }, [debouncedSearch, sort, timeFrame]);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, sort, timeFrame]);
 
   const handleTimeFrameChange = useCallback((tf: TimeFrame) => {
     setTimeFrame(tf);
@@ -235,7 +265,11 @@ export default function ClientEventsView() {
   const countQueryOpts = (tf: TimeFrame) => ({
     queryKey: ['client-events-count', tf, clientOrgSlugs] as const,
     queryFn: () =>
-      EventApiService.fetchClientEvents({ venueSlugFilter: clientOrgSlugs, timeFrame: tf, limit: 1 }),
+      EventApiService.fetchClientEvents({
+        venueSlugFilter: clientOrgSlugs,
+        timeFrame: tf,
+        limit: 1,
+      }),
     enabled: !!clientOrgSlugs,
     staleTime: 60_000,
   });
@@ -250,8 +284,19 @@ export default function ClientEventsView() {
   };
 
   // ── Main data query (server-side page + sort) ───────────────────────────────
-  const { data: eventsPage, isLoading, isFetching } = useQuery({
-    queryKey: ['client-events-main', timeFrame, clientOrgSlugs, debouncedSearch, page, sortString],
+  const {
+    data: eventsPage,
+    isLoading,
+    isFetching,
+  } = useQuery({
+    queryKey: [
+      'client-events-main',
+      timeFrame,
+      clientOrgSlugs,
+      debouncedSearch,
+      page,
+      sortString,
+    ],
     queryFn: () =>
       EventApiService.fetchClientEvents({
         venueSlugFilter: clientOrgSlugs,
@@ -277,7 +322,18 @@ export default function ClientEventsView() {
     return `${imageBaseUrl}/${event.venueSlug}/venues/logo/${event.logoUrl}`;
   }
 
-  const COLUMNS = ['Logo', 'Venue', 'Event', 'Event Date', 'Report Time', 'Est End Time', 'City', 'State', 'Numbers', 'Event Actions'];
+  const COLUMNS = [
+    'Logo',
+    'Venue',
+    'Event',
+    'Event Date',
+    'Report Time',
+    'Est End Time',
+    'City',
+    'State',
+    'Numbers',
+    'Event Actions',
+  ];
 
   const emptyMessages: Record<TimeFrame, string> = {
     Current: 'No current events found for your venues.',
@@ -306,13 +362,20 @@ export default function ClientEventsView() {
                   : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
               )}
             >
-              <tab.Icon className={clsxm('w-4 h-4', isActive ? 'text-white' : tab.iconColorClass)} />
+              <tab.Icon
+                className={clsxm(
+                  'w-4 h-4',
+                  isActive ? 'text-white' : tab.iconColorClass
+                )}
+              />
               <span>{tab.label}</span>
               {count != null && (
                 <span
                   className={clsxm(
                     'ml-0.5 min-w-[1.5rem] rounded-full px-1.5 py-0.5 text-center text-xs font-semibold',
-                    isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                    isActive
+                      ? 'bg-white/20 text-white'
+                      : 'bg-gray-100 text-gray-600'
                   )}
                 >
                   {formatCount(count)}
@@ -328,7 +391,9 @@ export default function ClientEventsView() {
         {/* Card header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-gray-100">
           <div>
-            <p className="font-semibold text-gray-900 text-base">Events &mdash; List View</p>
+            <p className="font-semibold text-gray-900 text-base">
+              Events &mdash; List View
+            </p>
             {!isLoading && !isSearching && (
               <p className="text-xs text-gray-500 mt-0.5">
                 {total} event{total !== 1 ? 's' : ''}
@@ -383,9 +448,14 @@ export default function ClientEventsView() {
                 ))
               ) : events.length === 0 ? (
                 <tr>
-                  <td colSpan={COLUMNS.length} className="px-4 py-14 text-center text-gray-400">
+                  <td
+                    colSpan={COLUMNS.length}
+                    className="px-4 py-14 text-center text-gray-400"
+                  >
                     <Globe className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p className="text-sm font-medium">{emptyMessages[timeFrame]}</p>
+                    <p className="text-sm font-medium">
+                      {emptyMessages[timeFrame]}
+                    </p>
                   </td>
                 </tr>
               ) : (
@@ -406,7 +476,11 @@ export default function ClientEventsView() {
                               src={logoUrl}
                               alt={row.venueName ?? ''}
                               className="w-full h-full object-contain"
-                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                              onError={(e) => {
+                                (
+                                  e.currentTarget as HTMLImageElement
+                                ).style.display = 'none';
+                              }}
                             />
                           ) : (
                             <Building2 className="w-5 h-5 text-gray-400" />
@@ -427,30 +501,49 @@ export default function ClientEventsView() {
                       </td>
                       {/* Report Time */}
                       <td className="px-4 py-3 whitespace-nowrap text-gray-700">
-                        {row.reportTimeTBD ?? formatTime(row.eventDate, row.timeZone)}
+                        {row.reportTimeTBD ??
+                          formatTime(row.eventDate, row.timeZone)}
                       </td>
                       {/* Est End Time */}
                       <td className="px-4 py-3 whitespace-nowrap text-gray-700">
-                        {row.reportTimeTBD ?? formatTime(row.eventEndTime, row.timeZone)}
+                        {row.reportTimeTBD ??
+                          formatTime(row.eventEndTime, row.timeZone)}
                       </td>
                       {/* City */}
-                      <td className="px-4 py-3 text-gray-700">{row.venueCity ?? '—'}</td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {row.venueCity ?? '—'}
+                      </td>
                       {/* State */}
-                      <td className="px-4 py-3 text-gray-700">{row.venueState ?? '—'}</td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {row.venueState ?? '—'}
+                      </td>
                       {/* Numbers */}
                       <td className="px-4 py-3">
                         <EventNumbers row={row} />
                       </td>
                       {/* Actions */}
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedEvent(row)}
-                          className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-                          title="Event Info"
-                        >
-                          <Info className="w-4 h-4" />
-                        </button>
+                      <td
+                        className="px-4 py-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedEvent(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                            title="Event Info"
+                          >
+                            <Info className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRosterEvent(row)}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+                            title="Event Roster"
+                          >
+                            <Users className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -464,7 +557,8 @@ export default function ClientEventsView() {
         {!isLoading && total > 0 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-3 border-t border-gray-100 text-sm text-gray-600">
             <span>
-              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
+              Showing {(page - 1) * PAGE_SIZE + 1}–
+              {Math.min(page * PAGE_SIZE, total)} of {total}
             </span>
             <div className="flex items-center gap-2">
               <button
@@ -475,7 +569,9 @@ export default function ClientEventsView() {
               >
                 Previous
               </button>
-              <span className="px-2 font-medium">{page} / {totalPages}</span>
+              <span className="px-2 font-medium">
+                {page} / {totalPages}
+              </span>
               <button
                 type="button"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
@@ -495,10 +591,18 @@ export default function ClientEventsView() {
           event={selectedEvent}
           open={!!selectedEvent}
           onClose={() => setSelectedEvent(null)}
-          onEventUpdated={() => {
-            queryClient.invalidateQueries({ queryKey: ['client-events-main'] });
-            queryClient.invalidateQueries({ queryKey: ['client-events-count'] });
-          }}
+        />
+      )}
+
+      {/* ── Event Roster Modal ── */}
+      {rosterEvent && (
+        <EventRosterModal
+          eventId={rosterEvent._id}
+          eventName={rosterEvent.eventName}
+          eventDate={rosterEvent.eventDate}
+          venueSlug={rosterEvent.venueSlug}
+          open={!!rosterEvent}
+          onClose={() => setRosterEvent(null)}
         />
       )}
     </div>
