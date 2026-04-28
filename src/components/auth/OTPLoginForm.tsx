@@ -1,12 +1,16 @@
-// Public entry point for the OTP login form. Picks the Auth0-backed or
-// Clerk-backed implementation at module load based on IS_V4, so the rest of
-// the codebase can keep importing { OTPLoginForm } without caring which
-// provider is active. When Auth0 is removed, delete OTPLoginForm.auth0.tsx
-// and this shim can be collapsed.
+// Public entry point for the OTP login form.
+//
+// We use the same Redis-backed OTP form for BOTH IS_V4 modes:
+//   - IS_V4=false: complements Auth0 "Account Login"
+//   - IS_V4=true:  complements Clerk "Account Login"
+//
+// The OTP backend (/api/auth/otp/send, /api/auth/otp/verify, otp_session_id
+// cookie + Redis) is provider-agnostic, so it doesn't depend on whether
+// the user has been provisioned in Clerk yet — they only need a record
+// in MongoDB.
+//
+// OTPLoginForm.clerk.tsx is kept in-tree for reference (Clerk's own
+// email_code first-factor flow) but is no longer wired into the app.
 'use client';
 
-import { IS_V4 } from '@/lib/config/auth-mode';
-import { OTPLoginFormAuth0 } from './OTPLoginForm.auth0';
-import { OTPLoginFormClerk } from './OTPLoginForm.clerk';
-
-export const OTPLoginForm = IS_V4 ? OTPLoginFormClerk : OTPLoginFormAuth0;
+export { OTPLoginFormAuth0 as OTPLoginForm } from './OTPLoginForm.auth0';

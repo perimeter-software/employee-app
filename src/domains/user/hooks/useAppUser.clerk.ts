@@ -6,11 +6,14 @@ import { useEffect } from 'react';
 import type { Auth0SessionUser } from '@/domains/user/types/user.types';
 import type { AppUserState } from './useAppUser';
 
-// In V4 we resolve the app user the same way Auth0's useUser() does: by
-// fetching /api/auth/me. The V4 branch of that route uses Clerk's auth() to
-// identify the Clerk user and returns the Auth0SessionUser-shaped payload
-// (same fields the rest of the app already consumes — applicantId, userType,
-// employmentStatus, etc.).
+// In V4 we resolve the app user by fetching /api/auth/me. That route
+// transparently handles either auth source:
+//   - Clerk session (set by Clerk SDK after Account Login)
+//   - OTP session  (set by /api/auth/otp/verify after Email 1-Time Code)
+// Whichever returns a user wins; if neither, /api/auth/me returns 204.
+//
+// Because OTP doesn't go through Clerk, we can't gate the query on
+// Clerk's isSignedIn — we always run it once Clerk has finished loading.
 async function fetchMe(): Promise<Auth0SessionUser | null> {
   const res = await fetch('/api/auth/me', { credentials: 'include' });
   if (res.status === 204) return null;
@@ -23,15 +26,17 @@ export function useAppUserClerk(): AppUserState {
   const { signOut } = useClerk();
 
   const query = useQuery({
-    queryKey: ['app-user', 'clerk'],
+    queryKey: ['app-user', 'clerk-or-otp'],
     queryFn: fetchMe,
-    enabled: isClerkLoaded && isSignedIn === true,
+    // Run as soon as Clerk is loaded — the route serves both Clerk and OTP.
+    enabled: isClerkLoaded,
     staleTime: 60_000,
   });
 
   // If the user is signed into Clerk but has no matching MongoDB record,
   // /api/auth/me returns null. Sign them out and redirect to login with
-  // an error, matching the gig-v4-backend "Access is not allowed" flow.
+  // an error. (Doesn't run for OTP-only sessions — those just resolve as
+  // 'no user' and get redirected by usePageAuth.)
   useEffect(() => {
     if (
       isClerkLoaded &&
@@ -44,8 +49,8 @@ export function useAppUserClerk(): AppUserState {
   }, [isClerkLoaded, isSignedIn, query.isLoading, query.data, signOut]);
 
   return {
-    user: isSignedIn ? query.data ?? undefined : null,
-    isLoading: !isClerkLoaded || (isSignedIn === true && query.isLoading),
+    user: query.data ?? undefined,
+    isLoading: !isClerkLoaded || query.isLoading,
     error: query.error instanceof Error ? query.error : undefined,
   };
 }
