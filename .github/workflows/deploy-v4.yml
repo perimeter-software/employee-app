@@ -22,6 +22,11 @@ jobs:
           key: ${{ secrets.V4_DEPLOY_SSH_KEY }}
           command_timeout: 30m
           script: |
+            # Fail fast on any error so a broken yarn install / yarn build
+            # does NOT proceed to PM2 (which would otherwise restart against
+            # a stale or missing .next/ and serve 502s).
+            set -euo pipefail
+
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
             cd /var/node/v4-employee-app
@@ -82,7 +87,20 @@ jobs:
             ENVEOF
 
             yarn install --frozen-lockfile
+
+            # Build with set -e in effect: a non-zero exit from `yarn build`
+            # aborts the script before PM2 is touched. The running PM2 process
+            # already has its .next/ loaded into memory and keeps serving the
+            # last good build (Next.js doesn't reload it mid-run), so a build
+            # failure is non-disruptive.
             yarn build
+
+            # Sanity-check the new build emitted the manifest PM2 needs to
+            # start. If it didn't, fail before swapping/restarting.
+            if [ ! -f .next/prerender-manifest.json ]; then
+              echo "ERROR: build completed but .next/prerender-manifest.json missing"
+              exit 1
+            fi
 
             # Reload (restart) if the process exists, otherwise start it.
             # Using `reload --update-env` instead of delete+start avoids the
