@@ -24,6 +24,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onStatusChange: (slug: string, newStatus: string) => void;
+  readOnly?: boolean;
 };
 
 export const VenueDetailModal = ({
@@ -32,6 +33,7 @@ export const VenueDetailModal = ({
   open,
   onClose,
   onStatusChange,
+  readOnly = false,
 }: Props) => {
   const [descExpanded, setDescExpanded] = useState(false);
   const [bannerError, setBannerError] = useState(false);
@@ -165,14 +167,14 @@ export const VenueDetailModal = ({
             )}
           </DialogHeader>
 
-          {/* Action buttons */}
-          {venue.userVenueStatus === '' && (
+          {/* Action buttons — hidden for read-only (Client) view */}
+          {!readOnly && venue.userVenueStatus === '' && (
             <Button className="w-full bg-appPrimary text-white hover:bg-appPrimary/90" onClick={handleRequest} disabled={submitting}>
               {submitting ? 'Submitting…' : 'Request Venue'}
             </Button>
           )}
 
-          {venue.userVenueStatus === 'Pending' && (
+          {!readOnly && venue.userVenueStatus === 'Pending' && (
             <div className="space-y-2">
               <div className="flex items-center justify-center py-2 px-4 rounded-md bg-amber-50 border border-amber-200">
                 <span className="text-sm font-medium text-amber-700">Pending Request</span>
@@ -183,7 +185,7 @@ export const VenueDetailModal = ({
             </div>
           )}
 
-          {venue.userVenueStatus === 'StaffingPool' && (
+          {!readOnly && venue.userVenueStatus === 'StaffingPool' && (
             <div className="space-y-2">
               <div className="flex items-center justify-center py-2 px-4 rounded-md bg-emerald-50 border border-emerald-200">
                 <span className="text-sm font-medium text-emerald-700">You are in the Staffing Pool</span>

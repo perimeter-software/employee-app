@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
   // calls signOut), then redirect home. Clerk itself clears the __session
   // cookie on the next authed request; explicitly clear any stragglers too.
   if (IS_V4) {
+    // Revoke any active Clerk sessions for the user.
     try {
       const { auth, clerkClient } = await import('@clerk/nextjs/server');
       const { userId } = await auth();
@@ -26,25 +27,40 @@ export async function GET(request: NextRequest) {
     } catch (error) {
       console.error('V4 logout: Clerk session revoke failed', error);
     }
+
+    // Also clear the shared Redis-backed OTP session, if any. Both auth
+    // modes share this OTP path, so V4 users who logged in via the
+    // 1-Time Code tab need their OTP cookie + Redis key cleaned up too.
+    try {
+      const otpSessionId = request.cookies.get('otp_session_id')?.value;
+      if (otpSessionId) {
+        await redisService.delete(`otp_session:${otpSessionId}`);
+      }
+    } catch (error) {
+      console.error('V4 logout: OTP session cleanup failed', error);
+    }
+
     // Build redirect URL from the forwarded host so we don't redirect to
-     // the internal localhost:3000 (which is what request.url returns when
-     // nginx proxies to the Next.js server).
-     const forwardedHost =
-       request.headers.get('x-forwarded-host') ?? request.headers.get('host');
-     const forwardedProto =
-       request.headers.get('x-forwarded-proto') ?? 'https';
-     const redirectBase = forwardedHost
-       ? `${forwardedProto}://${forwardedHost}`
-       : request.nextUrl.origin;
-     const response = NextResponse.redirect(new URL('/', redirectBase));
-    // Clerk session cookie name varies (__session in prod, __clerk_db_jwt in dev);
-    // clear the commonly-set ones so the browser doesn't hold stale auth.
-    ['__session', '__clerk_db_jwt', '__client_uat'].forEach((name) => {
-      response.cookies.set(name, '', {
-        expires: new Date(0),
-        path: '/',
-      });
-    });
+    // the internal localhost:3000 (which is what request.url returns when
+    // nginx proxies to the Next.js server).
+    const forwardedHost =
+      request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+    const forwardedProto =
+      request.headers.get('x-forwarded-proto') ?? 'https';
+    const redirectBase = forwardedHost
+      ? `${forwardedProto}://${forwardedHost}`
+      : request.nextUrl.origin;
+    const response = NextResponse.redirect(new URL('/', redirectBase));
+
+    // Clear Clerk + OTP cookies so the browser doesn't hold stale auth.
+    ['__session', '__clerk_db_jwt', '__client_uat', 'otp_session_id'].forEach(
+      (name) => {
+        response.cookies.set(name, '', {
+          expires: new Date(0),
+          path: '/',
+        });
+      }
+    );
     return response;
   }
 

@@ -4,6 +4,12 @@ export interface TimeClockSettings {
   // Add other time clock settings here as needed
 }
 
+export type CompanyAttachment = {
+  filename: string;
+  docType?: string;
+  uploadDate?: string;
+};
+
 export type Company = {
   _id: string;
   imageUrl: string;
@@ -15,4 +21,5 @@ export type Company = {
   onboardingCompletionText?: string; // HTML content shown on the Congratulations step
   name?: string;
   companyEmail?: string;
+  attachments?: CompanyAttachment[];
 };

@@ -1,7 +1,7 @@
 // components/auth/OTPLoginForm.clerk.tsx — V4 path. Same UI as the Auth0/OTP
-// version but driven by Clerk's email_code first factor via the v7 Future API
-// (signIn.emailCode.sendCode / .verifyCode / .finalize), so the user
-// experience is identical across auth modes.
+// version but driven by Clerk's email_code first factor (Clerk v5 API:
+// signIn.create + prepareFirstFactor + attemptFirstFactor + setActive),
+// so the user experience is identical across auth modes.
 'use client';
 
 import { useState } from 'react';
@@ -12,7 +12,7 @@ import { Mail, Lock, Loader2 } from 'lucide-react';
 import type { OTPLoginFormProps } from './OTPLoginForm.types';
 
 export function OTPLoginFormClerk({ returnUrl, onError }: OTPLoginFormProps) {
-  const { signIn } = useSignIn();
+  const { signIn, setActive, isLoaded } = useSignIn();
   const router = useRouter();
 
   const [email, setEmail] = useState('');
@@ -28,17 +28,35 @@ export function OTPLoginFormClerk({ returnUrl, onError }: OTPLoginFormProps) {
 
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!signIn) return;
+    if (!isLoaded || !signIn) return;
     setError('');
     setIsLoading(true);
     try {
-      const created = await signIn.create({ identifier: email });
-      if (created.error) throw new Error(created.error.message);
-      const sent = await signIn.emailCode.sendCode();
-      if (sent.error) throw new Error(sent.error.message);
+      // Create the sign-in attempt with the email identifier.
+      await signIn.create({ identifier: email });
+
+      // Find the email_code first-factor strategy for this email.
+      const emailFactor = signIn.supportedFirstFactors?.find(
+        (f) => f.strategy === 'email_code'
+      ) as { strategy: 'email_code'; emailAddressId: string } | undefined;
+
+      if (!emailFactor) {
+        throw new Error('Email one-time code is not enabled for this account');
+      }
+
+      await signIn.prepareFirstFactor({
+        strategy: 'email_code',
+        emailAddressId: emailFactor.emailAddressId,
+      });
       setStep('code');
     } catch (err) {
-      fail(err instanceof Error ? err.message : 'Failed to send code');
+      const message =
+        (err as { errors?: Array<{ longMessage?: string; message?: string }> })
+          ?.errors?.[0]?.longMessage ??
+        (err as { errors?: Array<{ longMessage?: string; message?: string }> })
+          ?.errors?.[0]?.message ??
+        (err instanceof Error ? err.message : 'Failed to send code');
+      fail(message);
     } finally {
       setIsLoading(false);
     }
@@ -46,17 +64,27 @@ export function OTPLoginFormClerk({ returnUrl, onError }: OTPLoginFormProps) {
 
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!signIn) return;
+    if (!isLoaded || !signIn) return;
     setError('');
     setIsLoading(true);
     try {
-      const verified = await signIn.emailCode.verifyCode({ code });
-      if (verified.error) throw new Error(verified.error.message);
-      const finalized = await signIn.finalize();
-      if (finalized.error) throw new Error(finalized.error.message);
+      const result = await signIn.attemptFirstFactor({
+        strategy: 'email_code',
+        code,
+      });
+      if (result.status !== 'complete') {
+        throw new Error('Verification incomplete — please try again');
+      }
+      await setActive({ session: result.createdSessionId });
       router.push(returnUrl || '/time-attendance');
     } catch (err) {
-      fail(err instanceof Error ? err.message : 'Invalid code');
+      const message =
+        (err as { errors?: Array<{ longMessage?: string; message?: string }> })
+          ?.errors?.[0]?.longMessage ??
+        (err as { errors?: Array<{ longMessage?: string; message?: string }> })
+          ?.errors?.[0]?.message ??
+        (err instanceof Error ? err.message : 'Invalid code');
+      fail(message);
     } finally {
       setIsLoading(false);
     }

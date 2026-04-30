@@ -22,6 +22,11 @@ jobs:
           key: ${{ secrets.V4_DEPLOY_SSH_KEY }}
           command_timeout: 30m
           script: |
+            # Fail fast on any error so a broken yarn install / yarn build
+            # does NOT proceed to PM2 (which would otherwise restart against
+            # a stale or missing .next/ and serve 502s).
+            set -euo pipefail
+
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
             cd /var/node/v4-employee-app
@@ -65,6 +70,7 @@ jobs:
             NEXT_PUBLIC_FIREBASE_VAPID_KEY=${{ secrets.NEXT_PUBLIC_FIREBASE_VAPID_KEY }}
             SP1_API_BASE_URL=${{ vars.SP1_API_BASE_URL }}
             SP1_API_ORIGIN=${{ vars.SP1_API_ORIGIN }}
+            NEXT_PUBLIC_IMAGE_SERVER=${{ vars.NEXT_PUBLIC_IMAGE_SERVER }}
             CLUSTER_ENABLED=${{ vars.CLUSTER_ENABLED }}
             CLUSTER_WORKERS=${{ vars.CLUSTER_WORKERS }}
             AUTH0_SECRET=${{ secrets.AUTH0_SECRET }}
@@ -81,8 +87,36 @@ jobs:
             ENVEOF
 
             yarn install --frozen-lockfile
+
+            # Build with set -e in effect: a non-zero exit from `yarn build`
+            # aborts the script before PM2 is touched. The running PM2 process
+            # already has its .next/ loaded into memory and keeps serving the
+            # last good build (Next.js doesn't reload it mid-run), so a build
+            # failure is non-disruptive.
             yarn build
 
-            pm2 delete v4-employee-app || true
-            pm2 start yarn --name v4-employee-app -- start
+            # Sanity-check the new build emitted the manifest PM2 needs to
+            # start. If it didn't, fail before swapping/restarting.
+            if [ ! -f .next/prerender-manifest.json ]; then
+              echo "ERROR: build completed but .next/prerender-manifest.json missing"
+              exit 1
+            fi
+
+            # Reload (restart) if the process exists, otherwise start it.
+            # Using `reload --update-env` instead of delete+start avoids the
+            # silent-failure window where `pm2 delete` succeeds but the new
+            # `pm2 start` fails (e.g. yarn path issue), leaving nothing running.
+            if pm2 describe v4-employee-app > /dev/null 2>&1; then
+              pm2 reload v4-employee-app --update-env
+            else
+              pm2 start "$(which yarn)" --name v4-employee-app --interpreter none -- start
+            fi
             pm2 save
+
+            # Verify the process is actually online; fail the deploy if not.
+            sleep 5
+            if ! pm2 describe v4-employee-app | grep -q 'status.*online'; then
+              echo "ERROR: v4-employee-app is not online after deploy"
+              pm2 logs v4-employee-app --lines 50 --nostream
+              exit 1
+            fi
