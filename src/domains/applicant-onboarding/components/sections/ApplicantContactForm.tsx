@@ -182,7 +182,7 @@ const ContactFormBody: React.FC<{
           render={({ field }) => (
             <FormField label="Mobile Number" error={errors.phone?.message}>
               <Input
-                placeholder="(555) 555 5555"
+                placeholder="(###) ### ####"
                 value={field.value ?? ''}
                 onChange={(e) => field.onChange(formatPhone(e.target.value))}
                 inputMode="tel"
@@ -254,7 +254,7 @@ const ContactFormBody: React.FC<{
               error={errors.altPhone?.message}
             >
               <Input
-                placeholder="(555) 555 5555"
+                placeholder="(###) ### ####"
                 value={field.value ?? ''}
                 onChange={(e) => field.onChange(formatPhone(e.target.value))}
                 inputMode="tel"

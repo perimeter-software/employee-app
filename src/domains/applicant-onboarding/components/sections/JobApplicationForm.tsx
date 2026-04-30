@@ -36,7 +36,13 @@ import { StepScaffold } from './_StepScaffold';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const SALARY_UNITS = ['Hourly', 'Daily', 'Weekly', 'Monthly', 'Yearly'] as const;
+const SALARY_UNITS = [
+  'Hourly',
+  'Daily',
+  'Weekly',
+  'Monthly',
+  'Yearly',
+] as const;
 const FULL_PART_TIME = ['Full-Time', 'Part-Time'] as const;
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -176,18 +182,30 @@ const JobHistoryModal: React.FC<JobHistoryModalProps> = ({
         </DialogHeader>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormField label="Company Name">
-            <Input value={entry.companyName} onChange={(e) => set('companyName', e.target.value)} />
+            <Input
+              value={entry.companyName}
+              onChange={(e) => set('companyName', e.target.value)}
+            />
           </FormField>
           <FormField label="Supervisor">
-            <Input value={entry.supervisor} onChange={(e) => set('supervisor', e.target.value)} />
+            <Input
+              value={entry.supervisor}
+              onChange={(e) => set('supervisor', e.target.value)}
+            />
           </FormField>
           <div className="sm:col-span-2">
             <FormField label="Address">
-              <Input value={entry.address} onChange={(e) => set('address', e.target.value)} />
+              <Input
+                value={entry.address}
+                onChange={(e) => set('address', e.target.value)}
+              />
             </FormField>
           </div>
           <FormField label="City">
-            <Input value={entry.city} onChange={(e) => set('city', e.target.value)} />
+            <Input
+              value={entry.city}
+              onChange={(e) => set('city', e.target.value)}
+            />
           </FormField>
           <FormField label="State">
             <Select value={entry.state} onValueChange={(v) => set('state', v)}>
@@ -196,33 +214,53 @@ const JobHistoryModal: React.FC<JobHistoryModalProps> = ({
               </SelectTrigger>
               <SelectContent>
                 {STATE_CODES.map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </FormField>
           <FormField label="Zip Code">
-            <Input value={entry.zip} onChange={(e) => set('zip', e.target.value)} inputMode="numeric" />
+            <Input
+              value={entry.zip}
+              onChange={(e) => set('zip', e.target.value)}
+              inputMode="numeric"
+            />
           </FormField>
           <FormField label="Phone">
             <Input
-              placeholder="(555) 555 5555"
+              placeholder="(###) ### ####"
               value={entry.phone}
               onChange={(e) => set('phone', formatPhone(e.target.value))}
               inputMode="tel"
             />
           </FormField>
           <FormField label="Start Date">
-            <Input type="date" value={entry.fromDate} onChange={(e) => set('fromDate', e.target.value)} />
+            <Input
+              type="date"
+              value={entry.fromDate}
+              onChange={(e) => set('fromDate', e.target.value)}
+            />
           </FormField>
           <FormField label="End Date">
-            <Input type="date" value={entry.toDate} onChange={(e) => set('toDate', e.target.value)} />
+            <Input
+              type="date"
+              value={entry.toDate}
+              onChange={(e) => set('toDate', e.target.value)}
+            />
           </FormField>
           <FormField label="Hired As">
-            <Input value={entry.startingTitle} onChange={(e) => set('startingTitle', e.target.value)} />
+            <Input
+              value={entry.startingTitle}
+              onChange={(e) => set('startingTitle', e.target.value)}
+            />
           </FormField>
           <FormField label="Last Position">
-            <Input value={entry.lastTitle} onChange={(e) => set('lastTitle', e.target.value)} />
+            <Input
+              value={entry.lastTitle}
+              onChange={(e) => set('lastTitle', e.target.value)}
+            />
           </FormField>
           <FormField label="Starting Salary">
             <Input
@@ -241,42 +279,64 @@ const JobHistoryModal: React.FC<JobHistoryModalProps> = ({
             />
           </FormField>
           <FormField label="Salary Unit">
-            <Select value={entry.salaryUnit} onValueChange={(v) => set('salaryUnit', v)}>
+            <Select
+              value={entry.salaryUnit}
+              onValueChange={(v) => set('salaryUnit', v)}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent>
                 {SALARY_UNITS.map((u) => (
-                  <SelectItem key={u} value={u}>{u}</SelectItem>
+                  <SelectItem key={u} value={u}>
+                    {u}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </FormField>
           <FormField label="Employment Status">
-            <Select value={entry.fullPartTime} onValueChange={(v) => set('fullPartTime', v)}>
+            <Select
+              value={entry.fullPartTime}
+              onValueChange={(v) => set('fullPartTime', v)}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select" />
               </SelectTrigger>
               <SelectContent>
                 {FULL_PART_TIME.map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </FormField>
           <div className="sm:col-span-2">
             <FormField label="Duties & Responsibilities">
-              <Textarea rows={4} value={entry.duties} onChange={(e) => set('duties', e.target.value)} />
+              <Textarea
+                rows={4}
+                value={entry.duties}
+                onChange={(e) => set('duties', e.target.value)}
+              />
             </FormField>
           </div>
           <div className="sm:col-span-2">
             <FormField label="Reason For Leaving">
-              <Textarea rows={4} value={entry.reasonForLeaving} onChange={(e) => set('reasonForLeaving', e.target.value)} />
+              <Textarea
+                rows={4}
+                value={entry.reasonForLeaving}
+                onChange={(e) => set('reasonForLeaving', e.target.value)}
+              />
             </FormField>
           </div>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
           <Button type="button" onClick={handleSave}>
@@ -296,13 +356,19 @@ const JobApplicationFormBody: React.FC<{
   applicantId: string | undefined;
   isCompany: boolean;
 }> = ({ form, email, applicantId, isCompany }) => {
-  const { control, watch, setValue, formState: { errors } } = form;
+  const {
+    control,
+    watch,
+    setValue,
+    formState: { errors },
+  } = form;
 
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingEntry, setEditingEntry] = useState<JobHistoryEntry>(EMPTY_JOB_ENTRY);
+  const [editingEntry, setEditingEntry] =
+    useState<JobHistoryEntry>(EMPTY_JOB_ENTRY);
 
   const jobHistory = (watch('jobHistory') ?? []) as JobHistoryEntry[];
 
@@ -313,14 +379,20 @@ const JobApplicationFormBody: React.FC<{
       setIsUploading(true);
       const formData = new FormData();
       formData.append('file', file);
-      await axios.post(`/api/applicant-onboarding/applicants/${applicantId}/resume`, formData);
-      await axios.put(`/api/applicant-onboarding/applicants/${applicantId}/attachment`, {
-        title: 'Resume',
-        type: 'Resume',
-        docType: file.name.split('.').pop(),
-        filename: file.name,
-        uploadDate: new Date(),
-      });
+      await axios.post(
+        `/api/applicant-onboarding/applicants/${applicantId}/resume`,
+        formData
+      );
+      await axios.put(
+        `/api/applicant-onboarding/applicants/${applicantId}/attachment`,
+        {
+          title: 'Resume',
+          type: 'Resume',
+          docType: file.name.split('.').pop(),
+          filename: file.name,
+          uploadDate: new Date(),
+        }
+      );
       toast.success('Resume uploaded successfully!');
     } catch {
       toast.error('Resume upload failed. Please try again.');
@@ -351,13 +423,18 @@ const JobApplicationFormBody: React.FC<{
   };
 
   const handleRemoveJob = (idx: number) => {
-    setValue('jobHistory', jobHistory.filter((_, i) => i !== idx), { shouldDirty: true });
+    setValue(
+      'jobHistory',
+      jobHistory.filter((_, i) => i !== idx),
+      { shouldDirty: true }
+    );
   };
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-gray-700">
-        Please review your email address, first and last name for accuracy before proceeding.
+        Please review your email address, first and last name for accuracy
+        before proceeding.
       </p>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -367,7 +444,10 @@ const JobApplicationFormBody: React.FC<{
             name="applicationDate"
             control={control}
             render={({ field }) => (
-              <ReadonlyField label="Application Date" value={field.value ?? ''} />
+              <ReadonlyField
+                label="Application Date"
+                value={field.value ?? ''}
+              />
             )}
           />
           <ReadonlyField label="Email Address" value={email} />
@@ -426,7 +506,11 @@ const JobApplicationFormBody: React.FC<{
             control={control}
             render={({ field }) => (
               <FormField label="Date of Birth">
-                <Input type="date" value={field.value ?? ''} onChange={field.onChange} />
+                <Input
+                  type="date"
+                  value={field.value ?? ''}
+                  onChange={field.onChange}
+                />
               </FormField>
             )}
           />
@@ -436,7 +520,7 @@ const JobApplicationFormBody: React.FC<{
             render={({ field }) => (
               <FormField label="Mobile Number" error={errors.phone?.message}>
                 <Input
-                  placeholder="(555) 555 5555"
+                  placeholder="(###) ### ####"
                   value={field.value ?? ''}
                   onChange={(e) => field.onChange(formatPhone(e.target.value))}
                   inputMode="tel"
@@ -450,7 +534,7 @@ const JobApplicationFormBody: React.FC<{
             render={({ field }) => (
               <FormField label="Alternate Number">
                 <Input
-                  placeholder="(555) 555 5555"
+                  placeholder="(###) ### ####"
                   value={field.value ?? ''}
                   onChange={(e) => field.onChange(formatPhone(e.target.value))}
                   inputMode="tel"
@@ -495,7 +579,9 @@ const JobApplicationFormBody: React.FC<{
                     </SelectTrigger>
                     <SelectContent>
                       {STATE_CODES.map((s) => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -507,7 +593,11 @@ const JobApplicationFormBody: React.FC<{
               control={control}
               render={({ field }) => (
                 <FormField label="Zip Code">
-                  <Input {...field} value={field.value ?? ''} inputMode="numeric" />
+                  <Input
+                    {...field}
+                    value={field.value ?? ''}
+                    inputMode="numeric"
+                  />
                 </FormField>
               )}
             />
@@ -528,9 +618,11 @@ const JobApplicationFormBody: React.FC<{
               render={({ field }) => (
                 <FormField label="Emergency Contact Number">
                   <Input
-                    placeholder="(555) 555 5555"
+                    placeholder="(###) ### ####"
                     value={field.value ?? ''}
-                    onChange={(e) => field.onChange(formatPhone(e.target.value))}
+                    onChange={(e) =>
+                      field.onChange(formatPhone(e.target.value))
+                    }
                     inputMode="tel"
                   />
                 </FormField>
@@ -564,7 +656,9 @@ const JobApplicationFormBody: React.FC<{
       {isCompany && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div>
-            <p className="mb-2 text-sm font-medium text-gray-700">Resume upload (optional)</p>
+            <p className="mb-2 text-sm font-medium text-gray-700">
+              Resume upload (optional)
+            </p>
             <FileDropzone
               value={resumeFile}
               onChange={handleResumeChange}
@@ -581,13 +675,20 @@ const JobApplicationFormBody: React.FC<{
                   Please complete this section if you did not attach a resume
                 </p>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={openAddModal}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={openAddModal}
+              >
                 <Plus className="mr-1 h-3 w-3" />
                 Add Job
               </Button>
             </div>
             {jobHistory.length === 0 ? (
-              <p className="text-sm italic text-gray-400">No job history added yet.</p>
+              <p className="text-sm italic text-gray-400">
+                No job history added yet.
+              </p>
             ) : (
               <ul className="space-y-2">
                 {jobHistory.map((j, idx) => (
@@ -602,7 +703,9 @@ const JobApplicationFormBody: React.FC<{
                     >
                       <span className="font-medium">{j.companyName}</span>
                       {j.startingTitle && (
-                        <span className="ml-2 text-gray-500">— {j.startingTitle}</span>
+                        <span className="ml-2 text-gray-500">
+                          — {j.startingTitle}
+                        </span>
                       )}
                     </button>
                     <button
@@ -658,7 +761,10 @@ const FormField: React.FC<{
   </div>
 );
 
-const ReadonlyField: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+const ReadonlyField: React.FC<{ label: string; value: string }> = ({
+  label,
+  value,
+}) => (
   <div className="space-y-1">
     <Label>{label}</Label>
     <Input value={value} readOnly disabled className={clsxm('bg-gray-50')} />
@@ -673,12 +779,17 @@ const JobApplicationForm: React.FC = () => {
 
   const companyType =
     (company as { companyType?: string } | undefined)?.companyType ??
-    (company as { settings?: { companyType?: string } } | undefined)?.settings?.companyType;
+    (company as { settings?: { companyType?: string } } | undefined)?.settings
+      ?.companyType;
   const isCompany = companyType === 'Company';
 
   const defaultValues = useMemo<Values>(
     () => ({
-      applicationDate: safeDateFormat(applicant?.applicationDate ?? new Date(), 'MM/dd/yyyy') || format(new Date(), 'MM/dd/yyyy'),
+      applicationDate:
+        safeDateFormat(
+          applicant?.applicationDate ?? new Date(),
+          'MM/dd/yyyy'
+        ) || format(new Date(), 'MM/dd/yyyy'),
       firstName: (applicant?.firstName as string) ?? '',
       middleInitial: (applicant?.middleInitial as string) ?? '',
       lastName: (applicant?.lastName as string) ?? '',
@@ -693,13 +804,18 @@ const JobApplicationForm: React.FC = () => {
       state: (applicant?.state as string) ?? '',
       zip: (applicant?.zip as string) ?? '',
       // formatPhone handles both raw digits (post-save) and pre-formatted (from DB)
-      phone: applicant?.phone ? formatPhone(parseApplicantPhone(applicant.phone as string)) : '',
-      altPhone: applicant?.altPhone ? formatPhone(applicant.altPhone as string) : '',
+      phone: applicant?.phone
+        ? formatPhone(parseApplicantPhone(applicant.phone as string))
+        : '',
+      altPhone: applicant?.altPhone
+        ? formatPhone(applicant.altPhone as string)
+        : '',
       emergencyContactNumber: applicant?.emergencyContactNumber
         ? formatPhone(applicant.emergencyContactNumber as string)
         : '',
       emergencyContactName: (applicant?.emergencyContactName as string) ?? '',
-      criminalHistoryDisclosure: (applicant?.criminalHistoryDisclosure as string) ?? '',
+      criminalHistoryDisclosure:
+        (applicant?.criminalHistoryDisclosure as string) ?? '',
       jobHistory: (applicant?.jobHistory as JobHistoryEntry[]) ?? [],
     }),
     // Depend on full applicant so defaultValues stays fresh after each save.
@@ -728,7 +844,10 @@ const JobApplicationForm: React.FC = () => {
         zip: (values.zip ?? '').replace(/\D/g, ''),
         phone: (values.phone ?? '').replace(/\D/g, ''),
         altPhone: (values.altPhone ?? '').replace(/\D/g, ''),
-        emergencyContactNumber: (values.emergencyContactNumber ?? '').replace(/\D/g, ''),
+        emergencyContactNumber: (values.emergencyContactNumber ?? '').replace(
+          /\D/g,
+          ''
+        ),
         emergencyContactName: values.emergencyContactName ?? '',
         criminalHistoryDisclosure: values.criminalHistoryDisclosure ?? '',
         ...(isCompany && { jobHistory: values.jobHistory }),
