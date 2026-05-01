@@ -86,6 +86,7 @@ const AIInterviewModal: React.FC<AIInterviewModalProps> = ({
   const [selectedAvailabilitySlot, setSelectedAvailabilitySlot] = useState<TimeSlot | null>(null);
   const [availabilitySlots, setAvailabilitySlots] = useState<Record<string, TimeSlot[]> | undefined>(undefined);
   const isWaitingForAIResponseRef = useRef(false);
+  const hasInitializedRef = useRef(false);
   const [isLoadingConversation, setIsLoadingConversation] = useState(false);
   const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -342,7 +343,7 @@ const AIInterviewModal: React.FC<AIInterviewModalProps> = ({
     setIsLoadingSchedule(true);
     OnboardingService.getJobAvailability(jobSlug)
       .then((res) => {
-        const slots = ((res as Record<string, unknown>)?.data as Record<string, unknown>)
+        const slots = (res as Record<string, unknown>)
           ?.timeSlots as Record<string, TimeSlot[]> ?? {};
         setAvailabilitySlots(slots);
         handleStartDateSelection(slots);
@@ -425,6 +426,8 @@ const AIInterviewModal: React.FC<AIInterviewModalProps> = ({
   ]);
 
   useEffect(() => {
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
     const hist = history ?? [];
     if (!hist.length) {
       if (isScheduleOnly) {
@@ -598,9 +601,7 @@ const AIInterviewModal: React.FC<AIInterviewModalProps> = ({
           })
             .then((res) => {
               isWaitingForAIResponseRef.current = false;
-              const data = (res as Record<string, unknown>)?.data as
-                | Record<string, unknown>
-                | undefined;
+              const data = res as Record<string, unknown> | undefined;
               if (data?.success) {
                 setSuggestedDatetimes(data.suggestions);
                 pushNewMessage({ message: data.message as string, isAnswer: false });
