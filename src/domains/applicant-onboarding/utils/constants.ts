@@ -63,18 +63,12 @@ export const APPLICANT_STEPS: RegistrationStep[] = [
   },
   {
     id: 7,
-    label: 'Subscriptions & Settings',
-    applicantObject: APPLICANT_OBJECTS_ENUM.SUBSCRIPTIONS,
-    iconKey: 'bell',
-  },
-  {
-    id: 8,
     label: 'Complete!',
     applicantObject: APPLICANT_OBJECTS_ENUM.COMPLETE,
     iconKey: 'check',
   },
   {
-    id: 9,
+    id: 8,
     label: 'Onboarding',
     applicantObject: APPLICANT_OBJECTS_ENUM.ONBOARDING,
     iconKey: 'personAdd',

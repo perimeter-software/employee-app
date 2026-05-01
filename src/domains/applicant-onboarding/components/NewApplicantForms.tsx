@@ -19,7 +19,6 @@ import UploadID from './sections/UploadID';
 import W4TaxForm from './sections/W4TaxForm';
 import DynamicStateTaxForm from './sections/DynamicStateTaxForm';
 import DirectDeposit from './sections/DirectDeposit';
-import Subscriptions from './sections/Subscriptions';
 import AdditionalForms from './sections/AdditionalForms';
 import Acknowledgement from './sections/Acknowledgement';
 import Congratulations from './sections/Congratulations';
@@ -86,8 +85,6 @@ const NewApplicantForms: React.FC = () => {
     case APPLICANT_OBJECTS_ENUM.ADDITIONAL_FORMS:
       // Note: ONBOARDING_OBJECTS_ENUM.ADDITIONAL_FORMS = 'additionalForms' (same value)
       return <AdditionalForms />;
-    case APPLICANT_OBJECTS_ENUM.SUBSCRIPTIONS:
-      return <Subscriptions />;
     case APPLICANT_OBJECTS_ENUM.COMPLETE:
       return <Congratulations />;
 

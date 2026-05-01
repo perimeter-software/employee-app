@@ -49,6 +49,17 @@ const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, company
   const [unsavedOpen, setUnsavedOpen] = useState(false);
   const [clickDirection, setClickDirection] = useState<'next' | 'previous' | null>(null);
   const [redirectKey, setRedirectKey] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!submitRef.current) return;
+    setIsSubmitting(true);
+    try {
+      await submitRef.current();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const activeStep = useMemo(() => getActiveRegistrationStep(), [getActiveRegistrationStep]);
   const activeSubStep = useMemo(
@@ -132,11 +143,12 @@ const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, company
                 type="button"
                 form="current-form"
                 disabled={buttonState.submit.disabled}
-                onClick={() => submitRef.current?.()}
+                loading={isSubmitting}
+                onClick={handleSubmit}
+                rightIcon={<Save className="h-4 w-4" />}
                 className="hidden lg:inline-flex"
               >
-                <span>{submitLabel}</span>
-                <Save className="ml-2 h-4 w-4" />
+                {submitLabel}
               </Button>
             )}
             {buttonState.previous.show && !isPreOnboarding && (isOnboardingAvailable || isSubStep) && (
@@ -169,11 +181,12 @@ const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, company
               type="button"
               form="current-form"
               disabled={buttonState.submit.disabled}
-              onClick={() => submitRef.current?.()}
-              className="mt-5 flex w-full lg:hidden"
+              loading={isSubmitting}
+              onClick={handleSubmit}
+              rightIcon={<Save className="h-4 w-4" />}
+              className="mt-5 w-full lg:hidden"
             >
-              <span>{submitLabel}</span>
-              <Save className="ml-2 h-4 w-4" />
+              {submitLabel}
             </Button>
           )}
         </CardContent>

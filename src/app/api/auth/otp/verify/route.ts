@@ -197,8 +197,7 @@ export async function POST(request: NextRequest) {
           // Ready for onboarding, hasn't completed it yet
           redirectUrl = '/applicant';
         } else {
-          // Pre-onboarding stages OR post-onboarding (acknowledged) → applicant overview
-          redirectUrl = '/applicant/overview';
+          redirectUrl = '/applicant';
         }
       } else {
         // status === 'Employee': payroll/paystub access only
