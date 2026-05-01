@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import 'react-quill/dist/quill.snow.css';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
@@ -34,6 +34,7 @@ import { toast } from 'sonner';
 
 import { VenueMap } from '@/domains/venue/components/VenueMap';
 import { DialogPortal, DialogOverlay } from '@/components/ui/Dialog';
+import { useCurrentUser } from '@/domains/user';
 import { EventApiService } from '@/domains/event/services/event-service';
 import type {
   GignologyEvent,
@@ -243,9 +244,52 @@ function stripHtml(html?: string): string {
     .trim();
 }
 
-// ─── Panel: Event Details ─────────────────────────────────────────────────────
+function buildEventSlug(venueSlug: string, eventName: string, eventDate: string): string {
+  const dateSuffix = eventDate
+    ? new Date(eventDate).toString().split(' ').slice(0, 4).join('-').toLowerCase()
+    : '';
+  const useVenueSlug = !(
+    eventName &&
+    eventName.trimStart().toLowerCase().substring(0, venueSlug.length) ===
+      venueSlug.toLowerCase()
+  );
+  const raw = `${useVenueSlug && venueSlug ? `${venueSlug.toLowerCase()}-` : ''}${eventName
+    .trimStart()
+    .toLowerCase()
+    .replaceAll('  ', ' ')
+    .replaceAll(' ', '-')}${
+    dateSuffix && !eventName.toLowerCase().includes(dateSuffix)
+      ? `-${dateSuffix}`
+      : ''
+  }`;
+  return raw
+    .replace(/&/g, '-and-')
+    .replace(/\./g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/[^a-zA-Z0-9 ]/g, '')
+    .replace(/--/g, '-')
+    .replace(/ {2}/g, ' ')
+    .replace(/ /g, '-')
+    .replace(/--/g, '-')
+    .replace(/-$/, '');
+}
+
+async function resolveUniqueEventUrl(slug: string): Promise<string> {
+  try {
+    const res = await fetch(`/api/events?filter=eventUrl:${slug}&limit=1&page=1`);
+    const json = (await res.json()) as { data?: { data?: unknown[] } };
+    const existing = json?.data?.data ?? [];
+    if (!Array.isArray(existing) || existing.length === 0) return slug;
+    return `${slug}-2`;
+  } catch {
+    return slug;
+  }
+}
+
+// ─── Panel: Event Details (create + edit) ────────────────────────────────────
 
 interface VenueLocationData {
+  name?: string;
   address?: string;
   city?: string;
   state?: string;
@@ -266,47 +310,81 @@ interface VenueLocationData {
 function EventDetailsPanel({
   event,
   onSaved,
+  onCreated,
 }: {
-  event: GignologyEvent;
-  onSaved: (updated: Partial<GignologyEvent>) => void;
+  event: GignologyEvent | null;
+  onSaved?: (updated: Partial<GignologyEvent>) => void;
+  onCreated?: (newEvent: GignologyEvent) => void;
 }) {
-  const [eventName, setEventName] = useState(event.eventName ?? '');
-  const [status, setStatus] = useState(event.status ?? 'Active');
-  const [eventType, setEventType] = useState(event.eventType ?? 'Event');
-  const [eventDate, setEventDate] = useState(toDatetimeLocal(event.eventDate));
-  const [eventEndTime, setEventEndTime] = useState(
-    toDatetimeLocal(event.eventEndTime)
-  );
-  const [reportTimeTBD, setReportTimeTBD] = useState(event.reportTimeTBD ?? '');
-  const [interviewLink, setInterviewLink] = useState(event.interviewLink ?? '');
-  const [address, setAddress] = useState(event.address ?? '');
-  const [venueCity, setVenueCity] = useState(event.venueCity ?? '');
-  const [venueState, setVenueState] = useState(event.venueState ?? '');
-  const [zip, setZip] = useState(event.zip ?? '');
+  const isCreateMode = !event?._id;
+  const { data: currentUser } = useCurrentUser();
+  const queryClient = useQueryClient();
+
+  const clientOrgSlugs = (currentUser?.clientOrgs ?? [])
+    .map((o) => o.slug)
+    .filter(Boolean) as string[];
+
+  // In create mode the user picks the venue; in edit mode it comes from the event.
+  const [selectedVenueSlug, setSelectedVenueSlug] = useState(event?.venueSlug ?? '');
+  const activeVenueSlug = isCreateMode ? selectedVenueSlug : (event?.venueSlug ?? '');
+
+  const [eventName, setEventName] = useState(event?.eventName ?? '');
+  const [status, setStatus] = useState(event?.status ?? 'Active');
+  const [eventType, setEventType] = useState(event?.eventType ?? 'Event');
+  const [eventDate, setEventDate] = useState(toDatetimeLocal(event?.eventDate));
+  const [eventEndTime, setEventEndTime] = useState(toDatetimeLocal(event?.eventEndTime));
+  const [reportTimeTBD, setReportTimeTBD] = useState(event?.reportTimeTBD ?? '');
+  const [interviewLink, setInterviewLink] = useState(event?.interviewLink ?? '');
+  const [address, setAddress] = useState(event?.address ?? '');
+  const [venueCity, setVenueCity] = useState(event?.venueCity ?? '');
+  const [venueState, setVenueState] = useState(event?.venueState ?? '');
+  const [zip, setZip] = useState(event?.zip ?? '');
   const [secondaryLocName, setSecondaryLocName] = useState(
-    event.secondaryLocation?.locationName ?? ''
+    event?.secondaryLocation?.locationName ?? ''
   );
+  const [generatedEventUrl, setGeneratedEventUrl] = useState('');
 
   const { data: venueData } = useQuery<VenueLocationData>({
-    queryKey: ['venue-locations', event.venueSlug],
+    queryKey: ['venue-locations', activeVenueSlug],
     queryFn: async () => {
-      const res = await fetch(`/api/venues/${event.venueSlug}`);
+      const res = await fetch(`/api/venues/${activeVenueSlug}`);
       const json = (await res.json()) as { data?: VenueLocationData };
       return json.data ?? {};
     },
-    enabled: !!event.venueSlug,
+    enabled: !!activeVenueSlug,
     staleTime: 5 * 60 * 1000,
   });
+
+  // In create mode: auto-fill location when venue changes.
+  useEffect(() => {
+    if (!isCreateMode || !venueData) return;
+    setSecondaryLocName('');
+    setAddress(venueData.address ?? '');
+    setVenueCity(venueData.city ?? '');
+    setVenueState(venueData.state ?? '');
+    setZip(venueData.zip ?? '');
+  }, [venueData, isCreateMode]);
+
+  // In create mode: auto-generate eventUrl from name + venue + date.
+  useEffect(() => {
+    if (!isCreateMode) return;
+    if (!eventName.trim() || !selectedVenueSlug || !eventDate) {
+      setGeneratedEventUrl('');
+      return;
+    }
+    const slug = buildEventSlug(selectedVenueSlug, eventName, eventDate);
+    resolveUniqueEventUrl(slug).then(setGeneratedEventUrl);
+  }, [isCreateMode, eventName, selectedVenueSlug, eventDate]);
 
   const venueLocations = venueData?.locations ?? [];
 
   const handleSecLocChange = (locName: string) => {
     setSecondaryLocName(locName);
     if (!locName) {
-      setAddress(venueData?.address ?? event.address ?? '');
-      setVenueCity(venueData?.city ?? event.venueCity ?? '');
-      setVenueState(venueData?.state ?? event.venueState ?? '');
-      setZip(venueData?.zip ?? event.zip ?? '');
+      setAddress(venueData?.address ?? event?.address ?? '');
+      setVenueCity(venueData?.city ?? event?.venueCity ?? '');
+      setVenueState(venueData?.state ?? event?.venueState ?? '');
+      setZip(venueData?.zip ?? event?.zip ?? '');
     } else {
       const loc = venueLocations.find((l) => l.locationName === locName);
       if (loc) {
@@ -318,34 +396,48 @@ function EventDetailsPanel({
     }
   };
 
+  const handleReportTimeChange = (newDate: string) => {
+    setEventDate(newDate);
+    if (newDate) {
+      setEventEndTime(
+        toDatetimeLocal(
+          new Date(new Date(newDate).getTime() + 5 * 60 * 60 * 1000).toISOString()
+        )
+      );
+    }
+  };
+
+  // Edit-mode only: dirty detection and reset
   const initial = {
-    eventName: event.eventName ?? '',
-    status: event.status ?? 'Active',
-    eventType: event.eventType ?? 'Event',
-    eventDate: toDatetimeLocal(event.eventDate),
-    eventEndTime: toDatetimeLocal(event.eventEndTime),
-    reportTimeTBD: event.reportTimeTBD ?? '',
-    interviewLink: event.interviewLink ?? '',
-    address: event.address ?? '',
-    venueCity: event.venueCity ?? '',
-    venueState: event.venueState ?? '',
-    zip: event.zip ?? '',
-    secondaryLocName: event.secondaryLocation?.locationName ?? '',
+    eventName: event?.eventName ?? '',
+    status: event?.status ?? 'Active',
+    eventType: event?.eventType ?? 'Event',
+    eventDate: toDatetimeLocal(event?.eventDate),
+    eventEndTime: toDatetimeLocal(event?.eventEndTime),
+    reportTimeTBD: event?.reportTimeTBD ?? '',
+    interviewLink: event?.interviewLink ?? '',
+    address: event?.address ?? '',
+    venueCity: event?.venueCity ?? '',
+    venueState: event?.venueState ?? '',
+    zip: event?.zip ?? '',
+    secondaryLocName: event?.secondaryLocation?.locationName ?? '',
   };
 
   const dirty =
-    eventName !== initial.eventName ||
-    status !== initial.status ||
-    eventType !== initial.eventType ||
-    eventDate !== initial.eventDate ||
-    eventEndTime !== initial.eventEndTime ||
-    reportTimeTBD !== initial.reportTimeTBD ||
-    interviewLink !== initial.interviewLink ||
-    address !== initial.address ||
-    venueCity !== initial.venueCity ||
-    venueState !== initial.venueState ||
-    zip !== initial.zip ||
-    secondaryLocName !== initial.secondaryLocName;
+    !isCreateMode && (
+      eventName !== initial.eventName ||
+      status !== initial.status ||
+      eventType !== initial.eventType ||
+      eventDate !== initial.eventDate ||
+      eventEndTime !== initial.eventEndTime ||
+      reportTimeTBD !== initial.reportTimeTBD ||
+      interviewLink !== initial.interviewLink ||
+      address !== initial.address ||
+      venueCity !== initial.venueCity ||
+      venueState !== initial.venueState ||
+      zip !== initial.zip ||
+      secondaryLocName !== initial.secondaryLocName
+    );
 
   const reset = () => {
     setEventName(initial.eventName);
@@ -362,47 +454,93 @@ function EventDetailsPanel({
     setSecondaryLocName(initial.secondaryLocName);
   };
 
-  const mutation = useMutation({
+  const updateMutation = useMutation({
     mutationFn: (updates: Partial<GignologyEvent>) =>
-      EventApiService.updateEvent(event._id, updates),
+      EventApiService.updateEvent(event!._id, updates),
     onSuccess: (updated) => {
       toast.success('Event details updated.');
-      onSaved(updated);
+      onSaved?.(updated);
     },
     onError: (err: Error) =>
       toast.error(err.message || 'Failed to update event.'),
   });
 
+  const createMutation = useMutation({
+    mutationFn: (data: Partial<GignologyEvent>) => EventApiService.createEvent(data),
+    onSuccess: async (result) => {
+      const insertedId = result?.result?.insertedId;
+      if (!insertedId) { toast.error('Event created but no ID returned.'); return; }
+      toast.success('Event created successfully!');
+      queryClient.invalidateQueries({ queryKey: ['client-events-main'] });
+      queryClient.invalidateQueries({ queryKey: ['client-events-count'] });
+      const newEvent = await EventApiService.fetchEventDetail(insertedId);
+      onCreated?.(newEvent);
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || 'Failed to create event.'),
+  });
+
+  const endTimeInvalid =
+    !!eventEndTime && !!eventDate && new Date(eventEndTime) < new Date(eventDate);
+
   const handleSave = () => {
-    const updates: Partial<GignologyEvent> = {};
-    if (eventName !== initial.eventName) updates.eventName = eventName;
-    if (status !== initial.status) updates.status = status;
-    if (eventType !== initial.eventType) updates.eventType = eventType;
-    if (eventDate !== initial.eventDate && eventDate)
-      updates.eventDate = new Date(eventDate).toISOString();
-    if (eventEndTime !== initial.eventEndTime && eventEndTime)
-      updates.eventEndTime = new Date(eventEndTime).toISOString();
-    if (reportTimeTBD !== initial.reportTimeTBD)
-      updates.reportTimeTBD = reportTimeTBD;
-    if (interviewLink !== initial.interviewLink)
-      updates.interviewLink = interviewLink;
-    if (address !== initial.address) updates.address = address;
-    if (venueCity !== initial.venueCity) updates.venueCity = venueCity;
-    if (venueState !== initial.venueState) updates.venueState = venueState;
-    if (zip !== initial.zip) updates.zip = zip;
-    if (secondaryLocName !== initial.secondaryLocName) {
-      if (!secondaryLocName) {
-        updates.secondaryLocation = undefined;
-      } else {
-        const loc = venueLocations.find(
-          (l) => l.locationName === secondaryLocName
-        );
-        if (loc) updates.secondaryLocation = loc;
+    if (endTimeInvalid) return;
+    if (isCreateMode) {
+      const selectedLoc = secondaryLocName
+        ? (venueLocations.find((l) => l.locationName === secondaryLocName) ?? undefined)
+        : undefined;
+      createMutation.mutate({
+        eventName,
+        eventType,
+        status,
+        venueSlug: selectedVenueSlug,
+        venueName: venueData?.name ?? selectedVenueSlug,
+        eventDate: eventDate ? new Date(eventDate).toISOString() : undefined,
+        eventEndTime: eventEndTime ? new Date(eventEndTime).toISOString() : undefined,
+        reportTimeTBD: reportTimeTBD || undefined,
+        interviewLink: interviewLink || undefined,
+        address,
+        venueCity,
+        venueState,
+        zip,
+        secondaryLocation: selectedLoc,
+        eventUrl: generatedEventUrl || undefined,
+        makePublicAndSendNotification: 'Yes',
+        waitListPercentage: '25',
+        geoFence: 'Yes',
+      });
+    } else {
+      const updates: Partial<GignologyEvent> = {};
+      if (eventName !== initial.eventName) updates.eventName = eventName;
+      if (status !== initial.status) updates.status = status;
+      if (eventType !== initial.eventType) updates.eventType = eventType;
+      if (eventDate !== initial.eventDate && eventDate)
+        updates.eventDate = new Date(eventDate).toISOString();
+      if (eventEndTime !== initial.eventEndTime && eventEndTime)
+        updates.eventEndTime = new Date(eventEndTime).toISOString();
+      if (reportTimeTBD !== initial.reportTimeTBD)
+        updates.reportTimeTBD = reportTimeTBD;
+      if (interviewLink !== initial.interviewLink)
+        updates.interviewLink = interviewLink;
+      if (address !== initial.address) updates.address = address;
+      if (venueCity !== initial.venueCity) updates.venueCity = venueCity;
+      if (venueState !== initial.venueState) updates.venueState = venueState;
+      if (zip !== initial.zip) updates.zip = zip;
+      if (secondaryLocName !== initial.secondaryLocName) {
+        if (!secondaryLocName) {
+          updates.secondaryLocation = undefined;
+        } else {
+          const loc = venueLocations.find((l) => l.locationName === secondaryLocName);
+          if (loc) updates.secondaryLocation = loc;
+        }
       }
+      updateMutation.mutate(updates);
     }
-    mutation.mutate(updates);
   };
 
+  const isPending = isCreateMode ? createMutation.isPending : updateMutation.isPending;
+  const canCreate =
+    !!eventName.trim() && !!selectedVenueSlug && !!eventDate && !endTimeInvalid;
   const isInterview = eventType === 'Interview';
 
   return (
@@ -410,11 +548,12 @@ function EventDetailsPanel({
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
         <SectionHeader title="Event Identity" />
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Field label="Event Name" className="sm:col-span-1">
+          <Field label={isCreateMode ? 'Event Name *' : 'Event Name'} className="sm:col-span-1">
             <TextInput
               value={eventName}
               onChange={setEventName}
               placeholder="Event name"
+              disabled={isCreateMode && !selectedVenueSlug}
             />
           </Field>
           <Field label="Status">
@@ -441,29 +580,39 @@ function EventDetailsPanel({
           </Field>
         </div>
 
-        <SectionHeader title="Schedule" />
+        <SectionHeader title={isCreateMode ? 'Schedule *' : 'Schedule'} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Report Time">
+          <Field label={isCreateMode ? 'Report Time *' : 'Report Time'}>
             <input
               type="datetime-local"
               value={eventDate}
-              onChange={(e) => setEventDate(e.target.value)}
+              disabled={isCreateMode && !selectedVenueSlug}
+              onChange={(e) => handleReportTimeChange(e.target.value)}
               aria-label="Report time"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full disabled:bg-gray-50 disabled:text-gray-400"
             />
           </Field>
           <Field label="Est. End Time">
             <input
               type="datetime-local"
               value={eventEndTime}
+              disabled={isCreateMode && !selectedVenueSlug}
               onChange={(e) => setEventEndTime(e.target.value)}
               aria-label="Estimated end time"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full"
+              className={clsxm(
+                'rounded-md border px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 w-full disabled:bg-gray-50 disabled:text-gray-400',
+                endTimeInvalid ? 'border-red-400 bg-red-50' : 'border-gray-300'
+              )}
             />
+            {endTimeInvalid && (
+              <p className="text-xs text-red-500 mt-1">End time must be after report time.</p>
+            )}
           </Field>
-          <Field label="Time Zone">
-            <ReadOnlyValue value={event.timeZone} />
-          </Field>
+          {!isCreateMode && (
+            <Field label="Time Zone">
+              <ReadOnlyValue value={event?.timeZone} />
+            </Field>
+          )}
           <Field label="TBD / Time Text">
             <TextInput
               value={reportTimeTBD}
@@ -488,16 +637,30 @@ function EventDetailsPanel({
 
         <SectionHeader title="Location" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Venue Name" className="sm:col-span-2">
-            <ReadOnlyValue value={event.venueName} />
-          </Field>
+          {isCreateMode ? (
+            <Field label="Venue *" className="sm:col-span-2">
+              <SelectInput
+                value={selectedVenueSlug}
+                onChange={(slug) => setSelectedVenueSlug(slug)}
+                options={[
+                  { value: '', label: '— Select a venue —' },
+                  ...clientOrgSlugs.map((s) => ({ value: s, label: s.toUpperCase() })),
+                ]}
+              />
+            </Field>
+          ) : (
+            <Field label="Venue Name" className="sm:col-span-2">
+              <ReadOnlyValue value={event?.venueName} />
+            </Field>
+          )}
           {venueLocations.length > 0 && (
             <Field label="Secondary Location" className="sm:col-span-2">
               <SelectInput
                 value={secondaryLocName}
                 onChange={handleSecLocChange}
+                disabled={isCreateMode && !selectedVenueSlug}
                 options={[
-                  { value: '', label: 'Original Venue Location' },
+                  { value: '', label: '— Original Venue Location —' },
                   ...venueLocations.map((l) => ({
                     value: l.locationName ?? '',
                     label: l.locationName ?? '',
@@ -506,49 +669,81 @@ function EventDetailsPanel({
               />
             </Field>
           )}
-          <Field label="Address" className="sm:col-span-2">
-            <TextInput
-              value={address}
-              onChange={setAddress}
-              placeholder="Address"
-            />
-          </Field>
-          <Field label="City">
-            <TextInput
-              value={venueCity}
-              onChange={setVenueCity}
-              placeholder="City"
-            />
-          </Field>
-          <Field label="State">
-            <TextInput
-              value={venueState}
-              onChange={setVenueState}
-              placeholder="State"
-            />
-          </Field>
-          <Field label="Zip">
-            <TextInput value={zip} onChange={setZip} placeholder="Zip" />
-          </Field>
+          {isCreateMode ? (
+            <>
+              <Field label="Address" className="sm:col-span-2">
+                <ReadOnlyValue value={address} />
+              </Field>
+              <Field label="City">
+                <ReadOnlyValue value={venueCity} />
+              </Field>
+              <Field label="State">
+                <ReadOnlyValue value={venueState} />
+              </Field>
+              <Field label="Zip">
+                <ReadOnlyValue value={zip} />
+              </Field>
+            </>
+          ) : (
+            <>
+              <Field label="Address" className="sm:col-span-2">
+                <TextInput value={address} onChange={setAddress} placeholder="Address" />
+              </Field>
+              <Field label="City">
+                <TextInput value={venueCity} onChange={setVenueCity} placeholder="City" />
+              </Field>
+              <Field label="State">
+                <TextInput value={venueState} onChange={setVenueState} placeholder="State" />
+              </Field>
+              <Field label="Zip">
+                <TextInput value={zip} onChange={setZip} placeholder="Zip" />
+              </Field>
+            </>
+          )}
         </div>
 
         <SectionHeader title="Digital & Integrations" />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Event ID">
-            <ReadOnlyValue value={event.eventId} />
+            <ReadOnlyValue value={event?.eventId} />
           </Field>
           <Field label="Event URL">
-            <ReadOnlyValue value={event.eventUrl} />
+            <ReadOnlyValue value={isCreateMode ? generatedEventUrl : event?.eventUrl} />
           </Field>
         </div>
       </div>
 
-      <SaveBar
-        onSave={handleSave}
-        onCancel={reset}
-        isSaving={mutation.isPending}
-        dirty={dirty}
-      />
+      {isCreateMode ? (
+        <div className="flex-shrink-0 border-t border-gray-100 px-6 py-3 flex items-center justify-end gap-3">
+          {(!canCreate || endTimeInvalid) && !isPending && (
+            <p className="text-xs text-gray-400">
+              {endTimeInvalid
+                ? 'End time must be after report time.'
+                : 'Event name, venue, and report time are required.'}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!canCreate || isPending}
+            className="flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Plus className="w-3.5 h-3.5" />
+            )}
+            Create Event
+          </button>
+        </div>
+      ) : (
+        <SaveBar
+          onSave={handleSave}
+          onCancel={reset}
+          isSaving={isPending || endTimeInvalid}
+          dirty={dirty}
+        />
+      )}
     </div>
   );
 }
@@ -2180,21 +2375,61 @@ function NotesPanel({
 // ─── Panel: Geofencing ────────────────────────────────────────────────────────
 
 function GeofencingPanel({ event }: { event: GignologyEvent }) {
-  const loc = event.secondaryLocation;
+  const [venueLocation, setVenueLocation] = useState<{
+    latitude: number;
+    longitude: number;
+    name: string;
+    address: string;
+    geoFenceRadius: number;
+    graceDistance?: number;
+  } | null>(null);
+  const [isLoadingVenue, setIsLoadingVenue] = useState(false);
+
+  const secLoc = event.secondaryLocation;
+  const secLocHasCoords =
+    secLoc?.longitude != null &&
+    secLoc?.latitude != null &&
+    !isNaN(secLoc.longitude) &&
+    !isNaN(secLoc.latitude);
+
+  useEffect(() => {
+    if (secLocHasCoords || !event.venueSlug || event.geoFence !== 'Yes') return;
+    setIsLoadingVenue(true);
+    fetch(`/api/venues/${event.venueSlug}/location`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.data) setVenueLocation(data.data);
+      })
+      .catch(() => {})
+      .finally(() => setIsLoadingVenue(false));
+  }, [event.venueSlug, event.geoFence, secLocHasCoords]);
+
+  const loc = secLocHasCoords
+    ? secLoc
+    : venueLocation
+    ? {
+        locationName: venueLocation.name,
+        address: venueLocation.address,
+        latitude: venueLocation.latitude,
+        longitude: venueLocation.longitude,
+        radius: venueLocation.geoFenceRadius,
+        graceDistanceFeet: venueLocation.graceDistance != null
+          ? venueLocation.graceDistance / 0.3048
+          : undefined,
+      }
+    : secLoc;
+
   const locationName = loc?.locationName ?? event.venueName;
   const address = loc?.address ?? event.address;
-  const city = loc?.city ?? event.venueCity;
-  const state = loc?.state ?? event.venueState;
-  const zip = loc?.zip ?? event.zip;
+  const city = secLoc?.city ?? event.venueCity;
+  const state = secLoc?.state ?? event.venueState;
+  const zip = secLoc?.zip ?? event.zip;
 
   const hasCoords =
     loc?.longitude != null &&
     loc?.latitude != null &&
     !isNaN(loc.longitude) &&
     !isNaN(loc.latitude);
-
-  const metersToFeet = (m?: number) =>
-    m != null ? `${Math.round(m * 3.28084)} ft` : '—';
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
@@ -2231,7 +2466,7 @@ function GeofencingPanel({ event }: { event: GignologyEvent }) {
               <ReadOnlyValue value={loc.radius} />
             </Field>
             <Field label="Grace Distance">
-              <ReadOnlyValue value={metersToFeet(loc.graceDistanceFeet)} />
+              <ReadOnlyValue value={loc.graceDistanceFeet != null ? `${Math.round(loc.graceDistanceFeet)} ft` : '—'} />
             </Field>
           </div>
         </>
@@ -2241,9 +2476,17 @@ function GeofencingPanel({ event }: { event: GignologyEvent }) {
         <>
           <SectionHeader title="Map Preview" />
           <div className="rounded-xl overflow-hidden border border-gray-200 h-64">
-            <VenueMap coordinates={[loc.longitude!, loc.latitude!]} />
+            <VenueMap
+              coordinates={[loc.longitude!, loc.latitude!]}
+              radius={loc.radius}
+              graceDistance={loc.graceDistanceFeet != null ? loc.graceDistanceFeet * 0.3048 : undefined}
+            />
           </div>
         </>
+      ) : isLoadingVenue ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+        </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-12 text-gray-400">
           <MapPin className="w-8 h-8 mb-2 opacity-40" />
@@ -2260,10 +2503,11 @@ function GeofencingPanel({ event }: { event: GignologyEvent }) {
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 export interface ClientEventDetailModalProps {
-  event: GignologyEvent;
+  event?: GignologyEvent | null;
   open: boolean;
   onClose: () => void;
   onEventUpdated?: (updated: Partial<GignologyEvent>) => void;
+  onCreated?: (newEvent: GignologyEvent) => void;
 }
 
 export function ClientEventDetailModal({
@@ -2271,64 +2515,79 @@ export function ClientEventDetailModal({
   open,
   onClose,
   onEventUpdated,
+  onCreated,
 }: ClientEventDetailModalProps) {
+  const isCreateMode = !initialEvent?._id;
   const [activePanel, setActivePanel] = useState<PanelId>('details');
   const { data: primaryCompany } = usePrimaryCompany();
   const queryClient = useQueryClient();
 
   const { data: freshEvent, isLoading } = useQuery({
-    queryKey: ['event-detail-modal', initialEvent._id],
-    queryFn: () => EventApiService.fetchEventDetail(initialEvent._id),
-    enabled: open,
+    queryKey: ['event-detail-modal', initialEvent?._id ?? ''],
+    queryFn: () => EventApiService.fetchEventDetail(initialEvent!._id),
+    enabled: open && !isCreateMode,
     staleTime: 0,
   });
 
-  const event = freshEvent ?? initialEvent;
+  const event = freshEvent ?? initialEvent ?? null;
   const imageBaseUrl = primaryCompany?.imageUrl ?? '';
 
   const handleSaved = useCallback(
     (updated: Partial<GignologyEvent>) => {
-      queryClient.invalidateQueries({
-        queryKey: ['event-detail-modal', initialEvent._id],
-      });
+      if (initialEvent?._id) {
+        queryClient.invalidateQueries({
+          queryKey: ['event-detail-modal', initialEvent._id],
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['client-events-main'] });
       queryClient.invalidateQueries({ queryKey: ['client-events-count'] });
       onEventUpdated?.(updated);
     },
-    [queryClient, initialEvent._id, onEventUpdated]
+    [queryClient, initialEvent?._id, onEventUpdated]
   );
 
+  const visiblePanels = isCreateMode
+    ? PANELS.filter((p) => p.id === 'details')
+    : PANELS;
+
   const renderPanel = () => {
-    if (isLoading) {
+    if (!isCreateMode && isLoading) {
       return (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
         </div>
       );
     }
+    if (!isCreateMode && !event) return null;
     switch (activePanel) {
       case 'details':
-        return <EventDetailsPanel event={event} onSaved={handleSaved} />;
+        return (
+          <EventDetailsPanel
+            event={event ?? null}
+            onSaved={handleSaved}
+            onCreated={onCreated}
+          />
+        );
       case 'activities':
-        return <ActivitiesPanel event={event} />;
+        return <ActivitiesPanel event={event!} />;
       case 'content':
-        return <ContentPanel event={event} onSaved={handleSaved} />;
+        return <ContentPanel event={event!} onSaved={handleSaved} />;
       case 'attachments':
         return (
           <AttachmentsPanel
-            event={event}
+            event={event!}
             imageBaseUrl={imageBaseUrl}
             onSaved={handleSaved}
           />
         );
       case 'positions':
-        return <PositionsPanel event={event} onSaved={handleSaved} />;
+        return <PositionsPanel event={event!} onSaved={handleSaved} />;
       case 'settings':
-        return <SettingsPanel event={event} onSaved={handleSaved} />;
+        return <SettingsPanel event={event!} onSaved={handleSaved} />;
       case 'notes':
-        return <NotesPanel event={event} onSaved={handleSaved} />;
+        return <NotesPanel event={event!} onSaved={handleSaved} />;
       case 'geofencing':
-        return <GeofencingPanel event={event} />;
+        return <GeofencingPanel event={event!} />;
     }
   };
 
@@ -2343,11 +2602,12 @@ export function ClientEventDetailModal({
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
             <div>
               <h2 className="text-lg font-semibold text-gray-900 leading-none">
-                {event.eventName}
+                {isCreateMode ? 'Create New Event' : event?.eventName}
               </h2>
               <p className="text-sm text-gray-500 mt-0.5">
-                {activePanelDef.label} &mdash;{' '}
-                {formatDateTime(event.eventDate, event.timeZone)}
+                {isCreateMode
+                  ? 'Fill in the event details below'
+                  : `${activePanelDef.label} — ${formatDateTime(event?.eventDate, event?.timeZone)}`}
               </p>
             </div>
             <button
@@ -2364,7 +2624,7 @@ export function ClientEventDetailModal({
           <div className="flex flex-1 min-h-0 overflow-hidden">
             {/* Sidebar */}
             <nav className="w-52 flex-shrink-0 border-r border-gray-100 bg-gray-50 overflow-y-auto py-2">
-              {PANELS.map(({ id, label, Icon }) => {
+              {visiblePanels.map(({ id, label, Icon }) => {
                 const isActive = activePanel === id;
                 return (
                   <button

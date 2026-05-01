@@ -7,16 +7,24 @@ const MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
 
 type Props = {
   coordinates: [number, number]; // [longitude, latitude]
+  radius?: number;        // main geofence radius in meters
+  graceDistance?: number; // grace zone width in meters
 };
 
-export const VenueMap = ({ coordinates }: Props) => {
+export const VenueMap = ({ coordinates, radius, graceDistance }: Props) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
+  const circlesRef = useRef<google.maps.Circle[]>([]);
 
   const [lng, lat] = coordinates;
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
   useEffect(() => {
+    // Reset before re-initialising so circles from a previous event are cleared first
+    circlesRef.current.forEach((c) => c.setMap(null));
+    circlesRef.current = [];
+    mapInstance.current = null;
+
     const initMap = () => {
       if (!mapRef.current || mapInstance.current) return;
       mapInstance.current = new google.maps.Map(mapRef.current, {
@@ -27,6 +35,39 @@ export const VenueMap = ({ coordinates }: Props) => {
         zoomControl: true,
       });
       new google.maps.Marker({ position: { lat, lng }, map: mapInstance.current });
+
+      if (radius != null) {
+        circlesRef.current.push(
+          new google.maps.Circle({
+            map: mapInstance.current,
+            center: { lat, lng },
+            radius,
+            strokeColor: 'green',
+            strokeOpacity: 0.8,
+            strokeWeight: 2,
+            fillColor: 'green',
+            fillOpacity: 0.35,
+            zIndex: 1,
+          })
+        );
+
+        const graceRadius = radius + (graceDistance ?? 0);
+        if (graceRadius > radius) {
+          circlesRef.current.push(
+            new google.maps.Circle({
+              map: mapInstance.current,
+              center: { lat, lng },
+              radius: graceRadius,
+              strokeColor: '#F7C501',
+              strokeOpacity: 0.8,
+              strokeWeight: 2,
+              fillColor: 'yellow',
+              fillOpacity: 0.35,
+              zIndex: -1,
+            })
+          );
+        }
+      }
     };
 
     if (window.google?.maps) {
@@ -47,10 +88,7 @@ export const VenueMap = ({ coordinates }: Props) => {
     script.async = true;
     script.onload = initMap;
     document.head.appendChild(script);
-  }, [lat, lng]);
-
-  // Reset map instance when coordinates change so it re-initialises
-  useEffect(() => { mapInstance.current = null; }, [lat, lng]);
+  }, [lat, lng, radius, graceDistance]);
 
   return (
     <div>

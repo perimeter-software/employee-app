@@ -15,6 +15,7 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  PlusCircle,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 
@@ -225,6 +226,7 @@ export default function ClientEventsView() {
     null
   );
   const [rosterEvent, setRosterEvent] = useState<GignologyEvent | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
 
   const clientOrgSlugs = useMemo(() => {
     const orgs = currentUser?.clientOrgs as { slug?: string }[] | undefined;
@@ -400,15 +402,25 @@ export default function ClientEventsView() {
               </p>
             )}
           </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search Event"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-4 py-1.5 text-sm rounded-md border border-zinc-200 bg-white placeholder:text-zinc-400 text-zinc-900 focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary w-56"
-            />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCreating(true)}
+              className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+            >
+              <PlusCircle className="w-4 h-4" />
+              New Event
+            </button>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search Event"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 pr-4 py-1.5 text-sm rounded-md border border-zinc-200 bg-white placeholder:text-zinc-400 text-zinc-900 focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary w-56"
+              />
+            </div>
           </div>
         </div>
 
@@ -584,6 +596,16 @@ export default function ClientEventsView() {
           </div>
         )}
       </div>
+
+      {/* ── Create Event Modal ── */}
+      <ClientEventDetailModal
+        open={isCreating}
+        onClose={() => setIsCreating(false)}
+        onCreated={(newEvent) => {
+          setIsCreating(false);
+          setSelectedEvent(newEvent);
+        }}
+      />
 
       {/* ── Event Detail Modal ── */}
       {selectedEvent && (

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
+import { getSp1Client } from '@/lib/sp1Client';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
 import {
@@ -418,4 +419,39 @@ export const GET = withEnhancedAuthAPI(getEventsHandler, {
   requireDatabaseUser: true,
   requireTenant: true,
   allowApplicants: true,
+});
+
+// ─── POST (create event) ──────────────────────────────────────────────────────
+
+async function createEventHandler(request: AuthenticatedRequest) {
+  try {
+    const user = request.user;
+    if (!user?.sub || !user?.email) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid session' },
+        { status: 401 }
+      );
+    }
+    const body = await request.json();
+    const { tenant } = user;
+    const sp1 = getSp1Client(
+      user.sub,
+      user.email,
+      tenant?.clientDomain || tenant?.url
+    );
+    const res = await sp1.post('/events', body);
+    return NextResponse.json({ success: true, data: res.data }, { status: 201 });
+  } catch (error: unknown) {
+    const e = error as { response?: { status?: number; data?: unknown }; message?: string };
+    console.error('[Events Create API] Error:', e.message);
+    return NextResponse.json(
+      e.response?.data ?? { success: false, message: 'Internal server error' },
+      { status: e.response?.status ?? 500 }
+    );
+  }
+}
+
+export const POST = withEnhancedAuthAPI(createEventHandler, {
+  requireDatabaseUser: true,
+  requireTenant: true,
 });
