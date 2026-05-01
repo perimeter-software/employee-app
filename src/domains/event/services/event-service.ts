@@ -354,6 +354,17 @@ export class EventApiService {
     return res.data;
   }
 
+  static async createEvent(
+    eventData: Partial<GignologyEvent>
+  ): Promise<{ id?: { name: string; value: string }; result?: { insertedId: string } }> {
+    const res = await baseInstance.post<{
+      id?: { name: string; value: string };
+      result?: { insertedId: string };
+    }>('/events', { eventData });
+    if (!res.success) throw new Error('Failed to create event');
+    return res.data ?? {};
+  }
+
   static async updateEvent(
     eventId: string,
     updates: Partial<GignologyEvent>
