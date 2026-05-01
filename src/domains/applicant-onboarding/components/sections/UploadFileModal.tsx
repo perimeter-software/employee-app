@@ -32,6 +32,7 @@ interface UploadFileModalProps {
   applicantId: string;
   currentAttachments: AttachmentFile[];
   onUploaded: (updatedAttachments: AttachmentFile[]) => Promise<void>;
+  defaultType?: string;
 }
 
 const UploadFileModal: React.FC<UploadFileModalProps> = ({
@@ -40,6 +41,7 @@ const UploadFileModal: React.FC<UploadFileModalProps> = ({
   applicantId,
   currentAttachments,
   onUploaded,
+  defaultType,
 }) => {
   const [attachmentTypes, setAttachmentTypes] = useState<string[]>([]);
   const [attachmentType, setAttachmentType] = useState<string>('');
@@ -53,10 +55,15 @@ const UploadFileModal: React.FC<UploadFileModalProps> = ({
       .get('/api/applicant-onboarding/dropdowns/attachmentTypes')
       .then((res) => {
         const types = res.data?.data?.arrayValue ?? res.data?.data ?? res.data;
-        if (Array.isArray(types)) setAttachmentTypes(types);
+        if (Array.isArray(types)) {
+          setAttachmentTypes(types);
+          if (defaultType && types.includes(defaultType)) {
+            setAttachmentType(defaultType);
+          }
+        }
       })
       .catch(() => {});
-  }, [open]);
+  }, [open, defaultType]);
 
   const handleClose = () => {
     setAttachmentType('');

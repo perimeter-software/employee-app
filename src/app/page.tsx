@@ -165,11 +165,19 @@ export default function LoginPage() {
     }
   }, [notification.show]); // FIXED: Only depend on notification.show
 
-  // Redirect if user is already authenticated
+  // Redirect if user is already authenticated.
+  // Priority mirrors sidebar availability: /time-attendance for full users,
+  // /applicant for applicant-only sessions (sidebar never shows /time-attendance there).
   useEffect(() => {
-    // Only redirect if user is authenticated
     if (user && !isLoading) {
-      router.push('/time-attendance');
+      const isApplicantOnly = user.isApplicantOnly ?? false;
+      const isLimitedAccess = user.isLimitedAccess ?? false;
+
+      let dest = '/time-attendance'; // full user: sidebar always has this
+      if (isApplicantOnly) dest = '/applicant'; // sidebar has /applicant, not /time-attendance
+      else if (isLimitedAccess) dest = '/payroll'; // sidebar has /payroll only
+
+      router.push(dest);
     }
   }, [user, isLoading, router]);
 

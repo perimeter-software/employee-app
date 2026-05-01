@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import { getRequiredEmptyBoxes, type AttachmentFile } from '../../utils/attachment-helpers';
+import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import UploadFileModal from './UploadFileModal';
 
 const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
@@ -25,8 +26,8 @@ function getExt(filename: string): string {
   return filename.split('.').pop()?.toLowerCase() ?? '';
 }
 
-function getDirectUrl(applicantId: string, type: string, filename: string): string {
-  return `${IMAGE_SERVER}/applicants/${applicantId}/${type}/${filename}`;
+function getDirectUrl(uploadPath: string, applicantId: string, type: string, filename: string): string {
+  return `${IMAGE_SERVER}/${uploadPath}/applicants/${applicantId}/${type}/${filename}`;
 }
 
 const OnboardingGuideModal: React.FC<{ open: boolean; onOpenChange: (v: boolean) => void }> = ({
@@ -66,14 +67,15 @@ const OnboardingGuideModal: React.FC<{ open: boolean; onOpenChange: (v: boolean)
 interface AttachmentCardProps {
   file: AttachmentFile;
   applicantId: string;
+  uploadPath: string;
   onDelete: () => void;
 }
 
-const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, onDelete }) => {
+const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, uploadPath, onDelete }) => {
   const filename = file.filename ?? file.name ?? '';
   const type = file.type ?? '';
   const ext = file.docType ?? getExt(filename);
-  const directUrl = getDirectUrl(applicantId, type, filename);
+  const directUrl = getDirectUrl(uploadPath, applicantId, type, filename);
   const isImage = IMAGE_EXTS.includes(ext);
 
   return (
@@ -119,6 +121,8 @@ const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, onDe
 const UploadID: React.FC = () => {
   const { applicant, updateButtons, updateCurrentFormState, submitRef, updateApplicantAction } =
     useNewApplicantContext();
+  const { data: company } = usePrimaryCompany();
+  const uploadPath = company?.uploadPath ?? 'sp';
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -224,6 +228,7 @@ const UploadID: React.FC = () => {
             key={`${file.name ?? ''}_${file.type ?? ''}_${idx}`}
             file={file}
             applicantId={applicantId}
+            uploadPath={uploadPath}
             onDelete={() => handleDelete(idx)}
           />
         ))}
@@ -264,6 +269,7 @@ const UploadID: React.FC = () => {
         applicantId={applicantId}
         currentAttachments={rawAttachments ?? []}
         onUploaded={handleUploaded}
+        defaultType="Onboarding_Documents"
       />
 
       <OnboardingGuideModal open={guideOpen} onOpenChange={setGuideOpen} />
