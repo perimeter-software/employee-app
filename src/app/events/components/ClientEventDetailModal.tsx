@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import 'react-quill/dist/quill.snow.css';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
@@ -2180,21 +2180,61 @@ function NotesPanel({
 // ─── Panel: Geofencing ────────────────────────────────────────────────────────
 
 function GeofencingPanel({ event }: { event: GignologyEvent }) {
-  const loc = event.secondaryLocation;
+  const [venueLocation, setVenueLocation] = useState<{
+    latitude: number;
+    longitude: number;
+    name: string;
+    address: string;
+    geoFenceRadius: number;
+    graceDistance?: number;
+  } | null>(null);
+  const [isLoadingVenue, setIsLoadingVenue] = useState(false);
+
+  const secLoc = event.secondaryLocation;
+  const secLocHasCoords =
+    secLoc?.longitude != null &&
+    secLoc?.latitude != null &&
+    !isNaN(secLoc.longitude) &&
+    !isNaN(secLoc.latitude);
+
+  useEffect(() => {
+    if (secLocHasCoords || !event.venueSlug || event.geoFence !== 'Yes') return;
+    setIsLoadingVenue(true);
+    fetch(`/api/venues/${event.venueSlug}/location`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.data) setVenueLocation(data.data);
+      })
+      .catch(() => {})
+      .finally(() => setIsLoadingVenue(false));
+  }, [event.venueSlug, event.geoFence, secLocHasCoords]);
+
+  const loc = secLocHasCoords
+    ? secLoc
+    : venueLocation
+    ? {
+        locationName: venueLocation.name,
+        address: venueLocation.address,
+        latitude: venueLocation.latitude,
+        longitude: venueLocation.longitude,
+        radius: venueLocation.geoFenceRadius,
+        graceDistanceFeet: venueLocation.graceDistance != null
+          ? venueLocation.graceDistance / 0.3048
+          : undefined,
+      }
+    : secLoc;
+
   const locationName = loc?.locationName ?? event.venueName;
   const address = loc?.address ?? event.address;
-  const city = loc?.city ?? event.venueCity;
-  const state = loc?.state ?? event.venueState;
-  const zip = loc?.zip ?? event.zip;
+  const city = secLoc?.city ?? event.venueCity;
+  const state = secLoc?.state ?? event.venueState;
+  const zip = secLoc?.zip ?? event.zip;
 
   const hasCoords =
     loc?.longitude != null &&
     loc?.latitude != null &&
     !isNaN(loc.longitude) &&
     !isNaN(loc.latitude);
-
-  const metersToFeet = (m?: number) =>
-    m != null ? `${Math.round(m * 3.28084)} ft` : '—';
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
@@ -2231,7 +2271,7 @@ function GeofencingPanel({ event }: { event: GignologyEvent }) {
               <ReadOnlyValue value={loc.radius} />
             </Field>
             <Field label="Grace Distance">
-              <ReadOnlyValue value={metersToFeet(loc.graceDistanceFeet)} />
+              <ReadOnlyValue value={loc.graceDistanceFeet != null ? `${Math.round(loc.graceDistanceFeet)} ft` : '—'} />
             </Field>
           </div>
         </>
@@ -2241,9 +2281,17 @@ function GeofencingPanel({ event }: { event: GignologyEvent }) {
         <>
           <SectionHeader title="Map Preview" />
           <div className="rounded-xl overflow-hidden border border-gray-200 h-64">
-            <VenueMap coordinates={[loc.longitude!, loc.latitude!]} />
+            <VenueMap
+              coordinates={[loc.longitude!, loc.latitude!]}
+              radius={loc.radius}
+              graceDistance={loc.graceDistanceFeet != null ? loc.graceDistanceFeet * 0.3048 : undefined}
+            />
           </div>
         </>
+      ) : isLoadingVenue ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+        </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-12 text-gray-400">
           <MapPin className="w-8 h-8 mb-2 opacity-40" />
