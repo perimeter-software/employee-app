@@ -102,14 +102,30 @@ jobs:
               exit 1
             fi
 
-            # Reload (restart) if the process exists, otherwise start it.
-            # Using `reload --update-env` instead of delete+start avoids the
-            # silent-failure window where `pm2 delete` succeeds but the new
-            # `pm2 start` fails (e.g. yarn path issue), leaving nothing running.
+            # Self-healing PM2 management:
+            #  - If the process is online → reload with new env.
+            #  - If it's tracked but stopped/errored (hit max restarts) →
+            #    delete and recreate so it doesn't stay dead forever.
+            #  - If it's not tracked at all → start fresh.
+            #
+            # --max-restarts 50 + --exp-backoff-restart-delay 5000 means
+            # PM2 will keep retrying with backoff (5s → 10s → 20s …) for a
+            # long time before giving up — so a transient runtime crash
+            # (e.g. Redis hiccup) doesn't permanently take the app down.
+            PM2_FLAGS="--name v4-employee-app --interpreter none --max-restarts 50 --exp-backoff-restart-delay 5000"
+            YARN_BIN="$(which yarn)"
+
             if pm2 describe v4-employee-app > /dev/null 2>&1; then
-              pm2 reload v4-employee-app --update-env
+              # Tracked. Check if it's actually online; if not, recreate.
+              if pm2 jlist | python3 -c "import json,sys; sys.exit(0 if any(p['name']=='v4-employee-app' and p['pm2_env']['status']=='online' for p in json.load(sys.stdin)) else 1)"; then
+                pm2 reload v4-employee-app --update-env
+              else
+                echo "v4-employee-app is tracked but not online; recreating"
+                pm2 delete v4-employee-app || true
+                pm2 start "$YARN_BIN" $PM2_FLAGS -- start
+              fi
             else
-              pm2 start "$(which yarn)" --name v4-employee-app --interpreter none -- start
+              pm2 start "$YARN_BIN" $PM2_FLAGS -- start
             fi
             pm2 save
 

@@ -87,9 +87,16 @@ export function usePageAuth(
     }
   }, [user, isLoading, error, pathname, authRequired, redirectTo, onAuthError]);
 
+  // While a redirect to login is pending, keep reporting isLoading=true so
+  // pages render their loading state (spinner) instead of briefly flashing
+  // their UnauthenticatedState component before window.location.href takes
+  // effect. The useEffect above will fire the redirect on the next tick;
+  // until then the page should look like it's still resolving auth.
+  const willRedirect = authRequired && !isLoading && !user && !error;
+
   return {
     user,
-    isLoading,
+    isLoading: isLoading || willRedirect,
     error,
     isAuthenticated: !!user,
     shouldShowContent: !authRequired || !!user,
