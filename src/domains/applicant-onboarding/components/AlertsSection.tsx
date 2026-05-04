@@ -14,8 +14,6 @@ interface Props {
 const AlertsSection: React.FC<Props> = ({ isAvailable, currentApplicant }) => {
   const { applicant, setActiveStep, activeStep } = useNewApplicantContext();
 
-  if (currentApplicant === undefined) return null;
-
   const {
     currentMissingFields,
     hasResume,
@@ -27,11 +25,17 @@ const AlertsSection: React.FC<Props> = ({ isAvailable, currentApplicant }) => {
   const messages = useMemo(() => {
     const items: Parameters<typeof AlertsSectionCard>[0]['message'][] = [];
 
-    if (applicant?.availableAutoSchedulingJobs && (applicant.availableAutoSchedulingJobs as unknown[]).length > 0) {
+    if (
+      applicant?.availableAutoSchedulingJobs &&
+      (
+        applicant.availableAutoSchedulingJobs as Array<{ suggestedInterviewSlots?: unknown[] }>
+      ).some((jb) => !jb.suggestedInterviewSlots?.length)
+    ) {
       items.push({
         type: 'urgent',
         title: 'Interview Scheduling Required',
-        description: 'You have been selected for an interview. Please schedule your interview time slot.',
+        description:
+          'You have been selected for an interview. Please schedule your interview time slot.',
         action: 'Schedule Now',
         func: () => setActiveStep(5),
       });
@@ -51,7 +55,8 @@ const AlertsSection: React.FC<Props> = ({ isAvailable, currentApplicant }) => {
       items.push({
         type: 'warning',
         title: 'Missing Availability Information',
-        description: 'Please update your availability to help us match you with suitable positions.',
+        description:
+          'Please update your availability to help us match you with suitable positions.',
         action: 'Update Availability',
         func: () => setActiveStep(2),
       });
@@ -61,7 +66,8 @@ const AlertsSection: React.FC<Props> = ({ isAvailable, currentApplicant }) => {
       items.push({
         type: 'warning',
         title: 'Missing Resume',
-        description: 'Please upload a resume to help us match you with suitable positions.',
+        description:
+          'Please upload a resume to help us match you with suitable positions.',
         action: 'Upload Resume',
         func: () => setActiveStep(3),
       });
@@ -71,7 +77,8 @@ const AlertsSection: React.FC<Props> = ({ isAvailable, currentApplicant }) => {
       items.push({
         type: 'infoalt',
         title: 'AI Screening Available',
-        description: 'You can start an AI Screening Interview that will increase your chances of getting hired.',
+        description:
+          'You can start an AI Screening Interview that will increase your chances of getting hired.',
         action: 'Start Now',
         func: () => setActiveStep(5),
       });
@@ -81,7 +88,8 @@ const AlertsSection: React.FC<Props> = ({ isAvailable, currentApplicant }) => {
       items.push({
         type: 'info',
         title: 'Assessment Available',
-        description: 'You can start a quick assessment that will increase your chances of getting hired.',
+        description:
+          'You can start a quick assessment that will increase your chances of getting hired.',
         action: 'Start Now',
         func: () => setActiveStep(5),
       });
@@ -97,9 +105,16 @@ const AlertsSection: React.FC<Props> = ({ isAvailable, currentApplicant }) => {
     setActiveStep,
   ]);
 
-  if (!messages.length || !isAvailable || activeStep === 'verification' || isOnboardingAvailable) {
+  if (
+    !messages.length ||
+    !isAvailable ||
+    activeStep === 'verification' ||
+    isOnboardingAvailable
+  ) {
     return null;
   }
+
+  if (currentApplicant === undefined) return null;
 
   return (
     <div className="mt-4 pb-2">
