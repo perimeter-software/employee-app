@@ -48,9 +48,22 @@ export function useAppUserClerk(): AppUserState {
     }
   }, [isClerkLoaded, isSignedIn, query.isLoading, query.data, signOut]);
 
+  // Treat "Clerk loaded + signed in but query hasn't resolved yet" as still
+  // loading. Without this guard, there's a single render where Clerk says
+  // "signed in", the query is enabled but hasn't kicked off yet (so
+  // query.isLoading is false), and `user` is undefined. usePageAuth would
+  // see (!isLoading && !user) and either redirect to login or briefly show
+  // UnauthenticatedState — visible as a one-frame flash after sign-in.
+  const querySettled =
+    query.isFetched || query.isError || query.data !== undefined;
+  const isLoading =
+    !isClerkLoaded ||
+    query.isLoading ||
+    (isSignedIn === true && !querySettled);
+
   return {
     user: query.data ?? undefined,
-    isLoading: !isClerkLoaded || query.isLoading,
+    isLoading,
     error: query.error instanceof Error ? query.error : undefined,
   };
 }
