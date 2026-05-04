@@ -10,7 +10,9 @@ interface NewApplicantHeaderProps {
   applicantSubType: ApplicantSubType | null;
 }
 
-const NewApplicantHeader: React.FC<NewApplicantHeaderProps> = ({ isAvailable, applicantSubType }) => (
+const NewApplicantHeader: React.FC<NewApplicantHeaderProps> = ({
+  applicantSubType,
+}) => (
   <header className="mb-4 flex items-center justify-between rounded-md border border-gray-200 bg-white p-4">
     <div>
       <h1 className="text-lg font-semibold text-gray-900">
@@ -22,15 +24,6 @@ const NewApplicantHeader: React.FC<NewApplicantHeaderProps> = ({ isAvailable, ap
           : 'Update your information and view your existing applications.'}
       </p>
     </div>
-    <span
-      className={
-        isAvailable
-          ? 'rounded-full bg-green-100 px-2 py-1 text-xs text-green-700'
-          : 'rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-700'
-      }
-    >
-      {isAvailable ? 'Available' : 'Unavailable'}
-    </span>
   </header>
 );
 
