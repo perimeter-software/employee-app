@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/DropdownMenu';
-import { ChevronDown, LogOut, Settings, User, Menu } from 'lucide-react';
+import { ChevronDown, LogOut, Settings, User } from 'lucide-react';
 import { TenantInfo, useSwitchTenant } from '@/domains/tenant';
 import { useCurrentUser } from '@/domains/user';
 import { NotificationBell } from '@/components/shared/NotificationBell';
@@ -52,11 +52,7 @@ function TenantLogo({
   );
 }
 
-interface HeaderProps {
-  onMobileMenuToggle?: () => void;
-}
-
-const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
+const Header: React.FC = () => {
   const { user } = useAppUser();
   const { data: enhancedUser, isLoading: userLoading } = useCurrentUser();
   const { mutate: switchTenant, isPending: tenantSwitchLoading } =
@@ -114,16 +110,6 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
       <div className="flex items-center h-16 px-4 sm:px-6 gap-4">
         {/* Left Side - Mobile Menu + Welcome Text */}
         <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
-          {/* Mobile Menu Button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="lg:hidden flex-shrink-0"
-            onClick={onMobileMenuToggle}
-          >
-            <Menu className="w-5 h-5" />
-            <span className="sr-only">Open menu</span>
-          </Button>
 
           {/* Welcome Text Container */}
           <div className="min-w-0 flex-1 overflow-hidden">

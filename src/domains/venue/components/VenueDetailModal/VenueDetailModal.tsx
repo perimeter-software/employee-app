@@ -1,8 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Building2, Mail, ChevronDown, ChevronUp, X, Paperclip } from 'lucide-react';
+import {
+  MapPin,
+  Building2,
+  Mail,
+  ChevronDown,
+  ChevronUp,
+  X,
+  Paperclip,
+  CalendarRange,
+} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/Button';
@@ -35,6 +45,7 @@ export const VenueDetailModal = ({
   onStatusChange,
   readOnly = false,
 }: Props) => {
+  const router = useRouter();
   const [descExpanded, setDescExpanded] = useState(false);
   const [bannerError, setBannerError] = useState(false);
   const [logoError, setLogoError] = useState(false);
@@ -43,8 +54,11 @@ export const VenueDetailModal = ({
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['venue-detail', initialVenue.slug],
     queryFn: async () => {
-      const res = await baseInstance.get<VenueWithStatus>(`venues/${initialVenue.slug}`);
-      if (!res.success || !res.data) throw new Error('Failed to fetch venue detail');
+      const res = await baseInstance.get<VenueWithStatus>(
+        `venues/${initialVenue.slug}`
+      );
+      if (!res.success || !res.data)
+        throw new Error('Failed to fetch venue detail');
       return res.data;
     },
     enabled: open,
@@ -86,10 +100,17 @@ export const VenueDetailModal = ({
   const handleRequest = async () => {
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/venues/${venue.slug}/request`, { method: 'POST' });
+      const res = await fetch(`/api/venues/${venue.slug}/request`, {
+        method: 'POST',
+      });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) { toast.error(json.message || 'Failed to submit request'); return; }
-      toast.success('Request submitted! An Event Manager will review and contact you once approved.');
+      if (!res.ok) {
+        toast.error(json.message || 'Failed to submit request');
+        return;
+      }
+      toast.success(
+        'Request submitted! An Event Manager will review and contact you once approved.'
+      );
       onStatusChange(venue.slug, 'Pending');
     } catch {
       toast.error('Something went wrong. Please try again.');
@@ -101,9 +122,14 @@ export const VenueDetailModal = ({
   const handleCancel = async () => {
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/venues/${venue.slug}/request`, { method: 'DELETE' });
+      const res = await fetch(`/api/venues/${venue.slug}/request`, {
+        method: 'DELETE',
+      });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) { toast.error(json.message || 'Failed to cancel request'); return; }
+      if (!res.ok) {
+        toast.error(json.message || 'Failed to cancel request');
+        return;
+      }
       toast.success('Request cancelled.');
       onStatusChange(venue.slug, '');
     } catch {
@@ -113,6 +139,22 @@ export const VenueDetailModal = ({
     }
   };
 
+  const viewEventsButton = (
+    <Button
+      variant="outline"
+      className="w-full"
+      onClick={() => {
+        router.push(
+          `/events?venue=${venue.slug}&venueName=${encodeURIComponent(venue.name)}`
+        );
+        onClose();
+      }}
+    >
+      <CalendarRange className="w-4 h-4 mr-2" />
+      View Events
+    </Button>
+  );
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg p-0 overflow-hidden max-h-[90vh] flex flex-col">
@@ -120,7 +162,12 @@ export const VenueDetailModal = ({
         <div className="relative h-40 bg-zinc-200 flex-shrink-0">
           {bannerUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={bannerUrl} alt="" className="w-full h-full object-cover" onError={() => setBannerError(true)} />
+            <img
+              src={bannerUrl}
+              alt=""
+              className="w-full h-full object-cover"
+              onError={() => setBannerError(true)}
+            />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-appPrimary/20 to-appPrimary/5" />
           )}
@@ -138,7 +185,12 @@ export const VenueDetailModal = ({
           <div className="absolute -bottom-7 left-4 w-16 h-16 rounded-xl border-2 border-white bg-white shadow-md overflow-hidden flex items-center justify-center">
             {fullLogoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={fullLogoUrl} alt={venue.name} className="w-full h-full object-contain" onError={() => setLogoError(true)} />
+              <img
+                src={fullLogoUrl}
+                alt={venue.name}
+                className="w-full h-full object-contain"
+                onError={() => setLogoError(true)}
+              />
             ) : (
               <Building2 className="w-8 h-8 text-zinc-300" />
             )}
@@ -162,37 +214,64 @@ export const VenueDetailModal = ({
             {(venue.address || venue.city) && (
               <div className="flex items-start gap-1 text-sm text-slate-500">
                 <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0 text-appPrimary" />
-                <span>{[venue.address, venue.city, venue.state, venue.zip].filter(Boolean).join(', ')}</span>
+                <span>
+                  {[venue.address, venue.city, venue.state, venue.zip]
+                    .filter(Boolean)
+                    .join(', ')}
+                </span>
               </div>
             )}
           </DialogHeader>
 
           {/* Action buttons — hidden for read-only (Client) view */}
           {!readOnly && venue.userVenueStatus === '' && (
-            <Button className="w-full bg-appPrimary text-white hover:bg-appPrimary/90" onClick={handleRequest} disabled={submitting}>
-              {submitting ? 'Submitting…' : 'Request Venue'}
-            </Button>
+            <>
+              <Button
+                className="w-full bg-appPrimary text-white hover:bg-appPrimary/90"
+                onClick={handleRequest}
+                disabled={submitting}
+              >
+                {submitting ? 'Submitting…' : 'Request Venue'}
+              </Button>
+              {viewEventsButton}
+            </>
           )}
 
           {!readOnly && venue.userVenueStatus === 'Pending' && (
             <div className="space-y-2">
               <div className="flex items-center justify-center py-2 px-4 rounded-md bg-amber-50 border border-amber-200">
-                <span className="text-sm font-medium text-amber-700">Pending Request</span>
+                <span className="text-sm font-medium text-amber-700">
+                  Pending Request
+                </span>
               </div>
-              <Button variant="outline" className="w-full" onClick={handleCancel} disabled={submitting}>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleCancel}
+                disabled={submitting}
+              >
                 {submitting ? 'Cancelling…' : 'Cancel Request'}
               </Button>
+              {viewEventsButton}
             </div>
           )}
 
           {!readOnly && venue.userVenueStatus === 'StaffingPool' && (
             <div className="space-y-2">
               <div className="flex items-center justify-center py-2 px-4 rounded-md bg-emerald-50 border border-emerald-200">
-                <span className="text-sm font-medium text-emerald-700">You are in the Staffing Pool</span>
+                <span className="text-sm font-medium text-emerald-700">
+                  You are in the Staffing Pool
+                </span>
               </div>
-              <Button variant="outline" className="w-full text-red-600 border-red-200 hover:bg-red-50" onClick={handleCancel} disabled={submitting}>
+              <Button
+                variant="outline"
+                className="w-full text-red-600 border-red-200 hover:bg-red-50"
+                onClick={handleCancel}
+                disabled={submitting}
+              >
                 {submitting ? 'Leaving…' : 'Leave Venue'}
               </Button>
+              {viewEventsButton}
             </div>
           )}
 
@@ -201,7 +280,10 @@ export const VenueDetailModal = ({
             <div className="space-y-2">
               <div className="h-4 bg-zinc-100 rounded animate-pulse w-24" />
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-3 bg-zinc-100 rounded animate-pulse" />
+                <div
+                  key={i}
+                  className="h-3 bg-zinc-100 rounded animate-pulse"
+                />
               ))}
             </div>
           )}
@@ -209,9 +291,13 @@ export const VenueDetailModal = ({
           {/* Description */}
           {description && (
             <div>
-              <h4 className="text-sm font-semibold text-slate-700 mb-1.5">Description</h4>
+              <h4 className="text-sm font-semibold text-slate-700 mb-1.5">
+                Description
+              </h4>
               <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
-                {descTooLong && !descExpanded ? `${description.slice(0, DESCRIPTION_LIMIT)}…` : description}
+                {descTooLong && !descExpanded
+                  ? `${description.slice(0, DESCRIPTION_LIMIT)}…`
+                  : description}
               </p>
               {descTooLong && (
                 <button
@@ -219,7 +305,15 @@ export const VenueDetailModal = ({
                   onClick={() => setDescExpanded((p) => !p)}
                   className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-appPrimary hover:underline"
                 >
-                  {descExpanded ? <><ChevronUp className="w-3 h-3" /> Show less</> : <><ChevronDown className="w-3 h-3" /> Show more</>}
+                  {descExpanded ? (
+                    <>
+                      <ChevronUp className="w-3 h-3" /> Show less
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3 h-3" /> Show more
+                    </>
+                  )}
                 </button>
               )}
             </div>
@@ -228,15 +322,24 @@ export const VenueDetailModal = ({
           {/* Contact person */}
           {contact?.fullName && (
             <div>
-              <h4 className="text-sm font-semibold text-slate-700 mb-2">Contact Person</h4>
+              <h4 className="text-sm font-semibold text-slate-700 mb-2">
+                Contact Person
+              </h4>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-appPrimary/10 flex items-center justify-center flex-shrink-0">
-                  <span className="text-sm font-semibold text-appPrimary">{contactInitials || '?'}</span>
+                  <span className="text-sm font-semibold text-appPrimary">
+                    {contactInitials || '?'}
+                  </span>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900">{contact.fullName}</p>
+                  <p className="text-sm font-medium text-slate-900">
+                    {contact.fullName}
+                  </p>
                   {contact.email && (
-                    <a href={`mailto:${contact.email}`} className="inline-flex items-center gap-1 text-xs text-appPrimary hover:underline mt-0.5">
+                    <a
+                      href={`mailto:${contact.email}`}
+                      className="inline-flex items-center gap-1 text-xs text-appPrimary hover:underline mt-0.5"
+                    >
                       <Mail className="w-3 h-3" />
                       {contact.email}
                     </a>
@@ -254,7 +357,9 @@ export const VenueDetailModal = ({
           {/* Videos */}
           {venue.videoUrls && venue.videoUrls.length > 0 && (
             <div>
-              <h4 className="text-sm font-semibold text-slate-700 mb-2">Videos</h4>
+              <h4 className="text-sm font-semibold text-slate-700 mb-2">
+                Videos
+              </h4>
               <div className="flex gap-3 overflow-x-auto pb-1">
                 {venue.videoUrls.map((url, i) => (
                   <VenueVideo key={i} url={url} />
@@ -266,7 +371,9 @@ export const VenueDetailModal = ({
           {/* Attachments */}
           {venue.otherUrls && venue.otherUrls.length > 0 && (
             <div>
-              <h4 className="text-sm font-semibold text-slate-700 mb-2">Attachments</h4>
+              <h4 className="text-sm font-semibold text-slate-700 mb-2">
+                Attachments
+              </h4>
               <ul className="space-y-1.5">
                 {venue.otherUrls.map((filename) => (
                   <li key={filename}>

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarRange, Search } from 'lucide-react';
+import { CalendarRange, ChevronLeft, Search } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   useInfiniteQuery,
   useQuery,
@@ -63,11 +64,15 @@ function EmployeeEventsView({
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [tab, setTab] = useState<TabValue>('all');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 400);
   const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(null);
-  const [venueSlug, setVenueSlug] = useState('');
+  const [venueSlug, setVenueSlug] = useState(searchParams.get('venue') ?? '');
+  const [venueName, setVenueName] = useState(searchParams.get('venueName') ?? '');
   const [incomingCoverModalOpen, setIncomingCoverModalOpen] = useState(false);
 
   const applicantId = currentUser?.applicantId;
@@ -255,7 +260,36 @@ function EmployeeEventsView({
         : "You haven't participated in any past event.";
 
   return (
-    <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 space-y-6 h-[calc(100vh-11rem)] max-h-[calc(100vh-11rem)] overflow-hidden">
+    <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 space-y-6">
+      {/* Venue filter banner */}
+      {venueSlug && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-sky-50 border border-sky-100">
+          <div className="w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center flex-shrink-0">
+            <CalendarRange className="w-4 h-4 text-sky-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-sky-600">
+              Filtered by Venue
+            </p>
+            <p className="text-sm font-bold text-slate-900 truncate">
+              {venueName || venueSlug}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setVenueSlug('');
+              setVenueName('');
+              router.replace('/events');
+            }}
+            className="flex items-center gap-1 text-sm font-medium text-sky-600 hover:text-sky-800 flex-shrink-0"
+          >
+            Clear
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header + tabs */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -328,7 +362,7 @@ function EmployeeEventsView({
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              {staffingVenues.length > 1 && (
+              {!isEmployee && staffingVenues.length > 1 && (
                 <Select value={venueSlug} onValueChange={setVenueSlug}>
                   <SelectTrigger className="h-[34px] w-full sm:w-56 text-sm border-zinc-200 focus:ring-appPrimary/30 focus:border-appPrimary">
                     <SelectValue
@@ -390,7 +424,7 @@ function EmployeeEventsView({
               </p>
             </div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 content-start [&>*:only-child]:col-span-full overflow-y-auto h-[calc(100vh-23rem)] max-h-[calc(100vh-23rem)] min-h-0 pr-1 -mr-1 py-2 -my-2">
+            <div className="grid gap-3 sm:grid-cols-2 content-start [&>*:only-child]:col-span-full">
               {activeEvents.map((event) => (
                 <EventCard
                   key={event._id}

@@ -1,349 +1,84 @@
 'use client';
 
-// components/layout/Sidebar.tsx
-
-import React, { useMemo } from 'react';
-import { usePathname } from 'next/navigation';
+import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import {
-  Clock,
-  FileText,
-  FileSpreadsheet,
-  LayoutGrid,
-  CalendarClock,
-  MessageCircleQuestion,
-  Receipt,
-  ClipboardList,
-  X,
-  CalendarDays,
-  CalendarRange,
-  MapPin,
-  GraduationCap,
-} from 'lucide-react';
+import { X } from 'lucide-react';
 import { clsxm } from '@/lib/utils';
 import { Button } from '@/components/ui/Button/Button';
-import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
-import { useCurrentUser } from '@/domains/user/hooks/use-current-user';
-
-interface NavigationItem {
-  name: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  current?: boolean;
-}
+import { useNavigation } from '@/components/layout/hooks/use-navigation';
 
 interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
-  const pathname = usePathname();
-  const { data: primaryCompany } = usePrimaryCompany();
-  const { data: currentUser } = useCurrentUser();
-
-  const isLimitedAccess = currentUser?.isLimitedAccess || false;
-  const isApplicantOnly = currentUser?.isApplicantOnly || false;
-  const applicantRecordStatus = currentUser?.status as string | undefined;
-
-  const navigation: NavigationItem[] = useMemo(() => {
-    const isClient = currentUser?.userType === 'Client';
-
-    // ── Applicant-only sessions ───────────────────────────────────────────────
-    if (isApplicantOnly) {
-      // "Employee"-status applicants: paycheck stubs + applicant screen
-      if (
-        applicantRecordStatus === 'Employee' ||
-        applicantRecordStatus !== 'Applicant'
-      ) {
-        return [
-          {
-            name: 'Payroll',
-            href: '/payroll',
-            icon: Receipt,
-            current:
-              pathname === '/payroll' ||
-              pathname.startsWith('/payroll') ||
-              pathname.startsWith('/paycheck-stubs'),
-          },
-          {
-            name: 'Applicant',
-            href: '/applicant',
-            icon: GraduationCap,
-            current:
-              pathname === '/applicant' || pathname.startsWith('/applicant/'),
-          },
-        ];
-      }
-
-      // "Applicant"-status: single entry point regardless of sub-type
-      return [
-        {
-          name: 'Applicant',
-          href: '/applicant',
-          icon: GraduationCap,
-          current:
-            pathname === '/applicant' || pathname.startsWith('/applicant/'),
-        },
-      ];
-    }
-
-    // ── Terminated/Inactive employees (non-applicant limited access) ──────────
-    const isPrism = primaryCompany?.peoIntegration === 'Prism';
-
-    // For limited access users (applicants or terminated/inactive employees), only show Payroll
-    if (isLimitedAccess) {
-      if (!isPrism) return [];
-      return [
-        {
-          name: 'Payroll',
-          href: '/payroll',
-          icon: Receipt,
-          current:
-            pathname === '/payroll' ||
-            pathname.startsWith('/payroll') ||
-            pathname.startsWith('/paycheck-stubs'),
-        },
-      ];
-    }
-
-    // Full user navigation
-    const baseNavigation = [
-      {
-        name: 'Time & Attendance',
-        href: '/time-attendance',
-        icon: Clock,
-        current:
-          pathname === '/time-attendance' ||
-          pathname.startsWith('/time-attendance'),
-      },
-      {
-        name: 'Dashboard',
-        href: '/dashboard',
-        icon: LayoutGrid,
-        current: pathname === '/dashboard',
-      },
-    ];
-
-    // Conditionally add PTO link based on company settings
-    const showPaidTimeOff =
-      primaryCompany?.timeClockSettings?.showPaidTimeOff ?? true; // Default to true if not set
-
-    if (showPaidTimeOff) {
-      baseNavigation.push({
-        name: 'Paid Time Off',
-        href: '/pto',
-        icon: CalendarClock,
-        current: pathname === '/pto' || pathname.startsWith('/pto'),
-      });
-    }
-
-    // Employee shift requests (non-client users)
-    const isVenueCompany = primaryCompany?.companyType === 'Venue';
-    const clientOrgs = currentUser?.clientOrgs as
-      | { slug?: string }[]
-      | undefined;
-    const hasClientOrgs =
-      isClient && Array.isArray(clientOrgs) && clientOrgs.length > 0;
-
-    if (!isClient) {
-      baseNavigation.push({
-        name: 'Shift Requests',
-        href: '/shift-requests',
-        icon: CalendarDays,
-        current:
-          pathname === '/shift-requests' ||
-          pathname.startsWith('/shift-requests'),
-      });
-
-      if (isVenueCompany) {
-        baseNavigation.push({
-          name: 'Venues',
-          href: '/venues',
-          icon: MapPin,
-          current: pathname === '/venues' || pathname.startsWith('/venues'),
-        });
-
-        baseNavigation.push({
-          name: 'Events',
-          href: '/events',
-          icon: CalendarRange,
-          current: pathname === '/events' || pathname.startsWith('/events'),
-        });
-      }
-    }
-
-    if (hasClientOrgs && isVenueCompany) {
-      baseNavigation.push({
-        name: 'Venues',
-        href: '/venues',
-        icon: MapPin,
-        current: pathname === '/venues' || pathname.startsWith('/venues'),
-      });
-
-      baseNavigation.push({
-        name: 'Events',
-        href: '/events',
-        icon: CalendarRange,
-        current: pathname === '/events' || pathname.startsWith('/events'),
-      });
-    }
-
-    // Add Payroll link only for non-Client users on Prism tenants
-    if (!isClient && isPrism) {
-      baseNavigation.push({
-        name: 'Payroll',
-        href: '/payroll',
-        icon: Receipt,
-        current:
-          pathname === '/payroll' ||
-          pathname.startsWith('/payroll') ||
-          pathname.startsWith('/paycheck-stubs'),
-      });
-    }
-
-    // Add Invoices and Forms links for Client users only
-    if (isClient) {
-      baseNavigation.push(
-        {
-          name: 'Invoices',
-          href: '/invoices',
-          icon: FileSpreadsheet,
-          current: pathname === '/invoices' || pathname.startsWith('/invoices'),
-        },
-        {
-          name: 'Forms',
-          href: '/forms',
-          icon: ClipboardList,
-          current: pathname === '/forms' || pathname.startsWith('/forms'),
-        }
-      );
-    }
-
-    // Add remaining navigation items (exclude for Client users)
-    if (!isClient) {
-      baseNavigation.push(
-        {
-          name: 'Ask a Question',
-          href: '/conversation',
-          icon: MessageCircleQuestion,
-          current:
-            pathname === '/conversation' ||
-            pathname.startsWith('/conversation'),
-        },
-        {
-          name: 'Documents',
-          href: '/documents',
-          icon: FileText,
-          current:
-            pathname === '/documents' || pathname.startsWith('/documents'),
-        },
-        {
-          name: 'Applicant',
-          href: '/applicant',
-          icon: GraduationCap,
-          current:
-            pathname === '/applicant' || pathname.startsWith('/applicant/'),
-        }
-      );
-    }
-
-    return baseNavigation;
-  }, [
-    pathname,
-    primaryCompany,
-    isLimitedAccess,
-    isApplicantOnly,
-    applicantRecordStatus,
-    currentUser?.userType,
-    currentUser?.clientOrgs,
-  ]);
+const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
+  const { navigationGroups } = useNavigation();
 
   const handleLinkClick = () => {
-    // Close mobile menu when a link is clicked
-    if (onClose) {
-      onClose();
-    }
+    if (onClose) onClose();
   };
 
   return (
-    <>
-      {/* Mobile overlay */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-gray-600 bg-opacity-75 transition-opacity lg:hidden z-40"
-          onClick={onClose}
+    // Desktop-only: hidden on mobile, always visible on lg+
+    <div className="hidden lg:flex flex-col fixed inset-y-0 left-0 z-50 w-64 bg-zinc-50 shadow-xl">
+      {/* Logo Section */}
+      <div className="flex items-center justify-between h-24 px-6">
+        <Image
+          src="/images/powered-by-gig-blue.png"
+          alt="gig·nology"
+          width={160}
+          height={48}
+          className="object-contain"
         />
-      )}
-
-      {/* Sidebar */}
-      <div
-        className={clsxm(
-          'fixed inset-y-0 left-0 z-50 w-64 bg-zinc-50 shadow-xl transition-transform duration-300 ease-in-out',
-          // Desktop: always visible
-          'lg:translate-x-0',
-          // Mobile: slide in/out based on isOpen
-          isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        {onClose && (
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <X className="w-5 h-5" />
+            <span className="sr-only">Close menu</span>
+          </Button>
         )}
-      >
-        {/* Logo Section */}
-        <div className="flex items-center justify-between h-16 lg:h-24 px-6">
-          <div className="flex items-center space-x-2">
-            <Image
-              src="/images/powered-by-gig-blue.png"
-              alt="gig·nology"
-              width={160}
-              height={48}
-              className="object-contain"
-            />
-          </div>
-
-          {/* Mobile close button */}
-          {onClose && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="lg:hidden"
-              onClick={onClose}
-            >
-              <X className="w-5 h-5" />
-              <span className="sr-only">Close menu</span>
-            </Button>
-          )}
-        </div>
-
-        {/* Navigation */}
-        <nav className="mt-3 px-4">
-          <ul className="space-y-2">
-            {navigation.map((item) => (
-              <li key={item.name}>
-                <Link
-                  href={item.href}
-                  onClick={handleLinkClick}
-                  className={clsxm(
-                    'group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors',
-                    item.current
-                      ? 'bg-appPrimary text-white'
-                      : 'text-zinc-700 hover:bg-gray-50 hover:text-zinc-900'
-                  )}
-                >
-                  <item.icon
-                    className={clsxm(
-                      'mr-3 h-5 w-5 flex-shrink-0',
-                      item.current
-                        ? 'text-white'
-                        : 'text-zinc-400 group-hover:text-zinc-500'
-                    )}
-                  />
-                  {item.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
       </div>
-    </>
+
+      {/* Navigation */}
+      <nav className="mt-3 px-4 space-y-6 overflow-y-auto flex-1">
+        {navigationGroups.map((group) => (
+          <div key={group.label || 'ungrouped'}>
+            {group.label && (
+              <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                {group.label}
+              </p>
+            )}
+            <ul className="space-y-1">
+              {group.items.map((item) => (
+                <li key={item.name}>
+                  <Link
+                    href={item.href}
+                    onClick={handleLinkClick}
+                    className={clsxm(
+                      'group flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors',
+                      item.current
+                        ? 'bg-appPrimary text-white'
+                        : 'text-zinc-700 hover:bg-gray-50 hover:text-zinc-900'
+                    )}
+                  >
+                    <item.icon
+                      className={clsxm(
+                        'mr-3 h-5 w-5 flex-shrink-0',
+                        item.current
+                          ? 'text-white'
+                          : 'text-zinc-400 group-hover:text-zinc-500'
+                      )}
+                    />
+                    {item.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </nav>
+    </div>
   );
 };
 

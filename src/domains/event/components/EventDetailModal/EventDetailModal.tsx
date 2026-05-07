@@ -349,6 +349,7 @@ export const EventDetailModal = ({
   const queryClient = useQueryClient();
   const [descExpanded, setDescExpanded] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [bannerError, setBannerError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [coverModalOpen, setCoverModalOpen] = useState(false);
   const [callOffConfirmOpen, setCallOffConfirmOpen] = useState(false);
@@ -360,6 +361,7 @@ export const EventDetailModal = ({
   useEffect(() => {
     setDescExpanded(false);
     setLogoError(false);
+    setBannerError(false);
   }, [initialEvent._id]);
 
   useEffect(() => {
@@ -371,6 +373,8 @@ export const EventDetailModal = ({
     queryKey: ['venue-detail', initialEvent.venueSlug],
     queryFn: async () => {
       const res = await baseInstance.get<{
+        bannerUrl?: string;
+        logoUrl?: string;
         venueContact1?: {
           fullName?: string;
           firstName?: string;
@@ -418,12 +422,18 @@ export const EventDetailModal = ({
     ? { ...initialEvent, ...eventDetail }
     : initialEvent;
 
-  // ── Logo URL ──────────────────────────────────────────────────────────────
+  // ── Logo / banner URLs ────────────────────────────────────────────────────
+  const logoFilename = event.logoUrl || venueDetail?.logoUrl;
   const fullLogoUrl =
-    event.logoUrl && !logoError
-      ? event.logoUrl.startsWith('http')
-        ? event.logoUrl
-        : `${imageBaseUrl}/${event.venueSlug}/venues/logo/${event.logoUrl}`
+    logoFilename && !logoError
+      ? logoFilename.startsWith('http')
+        ? logoFilename
+        : `${imageBaseUrl}/${event.venueSlug}/venues/logo/${logoFilename}`
+      : null;
+
+  const bannerUrl =
+    imageBaseUrl && venueDetail?.bannerUrl && !bannerError
+      ? `${imageBaseUrl}/${initialEvent.venueSlug}/venues/banner/${venueDetail.bannerUrl}`
       : null;
 
   // ── Date / time formatting ────────────────────────────────────────────────
@@ -546,8 +556,19 @@ export const EventDetailModal = ({
     <>
       <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
         <DialogContent className="max-w-lg p-0 overflow-hidden max-h-[90vh] flex flex-col">
-          {/* Header band — gradient with logo */}
-          <div className="relative h-36 bg-gradient-to-br from-appPrimary/30 to-appPrimary/10 flex-shrink-0">
+          {/* Header band — banner image with logo */}
+          <div className="relative h-36 bg-gradient-to-b from-slate-700 to-slate-950 flex-shrink-0">
+            {bannerUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={bannerUrl}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+                onError={() => setBannerError(true)}
+              />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-b from-slate-900/30 via-slate-900/40 to-slate-950/85" />
+
             <button
               type="button"
               onClick={onClose}
