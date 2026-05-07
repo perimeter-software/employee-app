@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Building2, Search } from 'lucide-react';
+import { Building2, ChevronDown, Search } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 // useQueryClient is used in EmployeeVenuesView
 
@@ -36,6 +36,7 @@ const TABS: { value: TabValue; label: string }[] = [
 function ClientVenuesView() {
   const { data: primaryCompany } = usePrimaryCompany();
   const [search, setSearch] = useState('');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedVenue, setSelectedVenue] = useState<VenueWithStatus | null>(null);
   const [staffingVenue, setStaffingVenue] = useState<VenueWithStatus | null>(null);
 
@@ -53,10 +54,17 @@ function ClientVenuesView() {
   });
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return venues;
-    const term = search.toLowerCase();
-    return venues.filter((v) => v.name.toLowerCase().includes(term));
-  }, [venues, search]);
+    let list = venues;
+    if (search.trim()) {
+      const term = search.toLowerCase();
+      list = list.filter((v) => v.name.toLowerCase().includes(term));
+    }
+    return [...list].sort((a, b) =>
+      sortOrder === 'asc'
+        ? a.name.localeCompare(b.name)
+        : b.name.localeCompare(a.name)
+    );
+  }, [venues, search, sortOrder]);
 
   return (
     <>
@@ -81,19 +89,37 @@ function ClientVenuesView() {
                 </div>
               </div>
 
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search venues…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className={clsxm(
-                    'w-full pl-9 pr-4 py-1.5 text-sm rounded-md border border-zinc-200',
-                    'bg-white placeholder:text-zinc-400 text-zinc-900',
-                    'focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary'
-                  )}
-                />
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search venues…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className={clsxm(
+                      'w-full pl-9 pr-4 py-1.5 text-sm rounded-md border border-zinc-200',
+                      'bg-white placeholder:text-zinc-400 text-zinc-900',
+                      'focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary'
+                    )}
+                  />
+                </div>
+                <div className="relative">
+                  <select
+                    title="Sort order"
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+                    className={clsxm(
+                      'py-1.5 pl-3 pr-8 text-sm rounded-md border border-zinc-200',
+                      'bg-white text-zinc-900 appearance-none cursor-pointer',
+                      'focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary'
+                    )}
+                  >
+                    <option value="asc">ASC</option>
+                    <option value="desc">DESC</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400 pointer-events-none" />
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -162,6 +188,7 @@ function EmployeeVenuesView() {
 
   const [tab, setTab] = useState<TabValue>('all');
   const [search, setSearch] = useState('');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedVenue, setSelectedVenue] = useState<VenueWithStatus | null>(null);
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [geoResolved, setGeoResolved] = useState(false);
@@ -244,8 +271,12 @@ function EmployeeVenuesView() {
       const term = search.toLowerCase();
       list = list.filter((v) => v.name.toLowerCase().includes(term));
     }
-    return list;
-  }, [nearbyVenues, allVisibleVenues, tab, search]);
+    return [...list].sort((a, b) =>
+      sortOrder === 'asc'
+        ? a.name.localeCompare(b.name)
+        : b.name.localeCompare(a.name)
+    );
+  }, [nearbyVenues, allVisibleVenues, tab, search, sortOrder]);
 
   const myVenueCount = allVisibleVenues.filter((v) => v.userVenueStatus === 'StaffingPool').length;
   const pendingCount = allVisibleVenues.filter((v) => v.userVenueStatus === 'Pending').length;
@@ -318,19 +349,37 @@ function EmployeeVenuesView() {
                 </div>
               </div>
 
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search venues…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className={clsxm(
-                    'w-full pl-9 pr-4 py-1.5 text-sm rounded-md border border-zinc-200',
-                    'bg-white placeholder:text-zinc-400 text-zinc-900',
-                    'focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary'
-                  )}
-                />
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search venues…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className={clsxm(
+                      'w-full pl-9 pr-4 py-1.5 text-sm rounded-md border border-zinc-200',
+                      'bg-white placeholder:text-zinc-400 text-zinc-900',
+                      'focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary'
+                    )}
+                  />
+                </div>
+                <div className="relative">
+                  <select
+                    title="Sort order"
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+                    className={clsxm(
+                      'py-1.5 pl-3 pr-8 text-sm rounded-md border border-zinc-200',
+                      'bg-white text-zinc-900 appearance-none cursor-pointer',
+                      'focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary'
+                    )}
+                  >
+                    <option value="asc">ASC</option>
+                    <option value="desc">DESC</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400 pointer-events-none" />
+                </div>
               </div>
             </div>
           </CardHeader>
