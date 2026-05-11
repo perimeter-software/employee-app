@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     const user = await checkUserExistsByEmail(db, normalizedEmail);
 
     let sessionData;
-    let redirectUrl = '/time-attendance';
+    let redirectUrl = '/time';
     let isApplicantOnly = false;
 
     if (user && user._id) {

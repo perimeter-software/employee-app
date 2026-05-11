@@ -39,7 +39,8 @@ export function OTPLoginFormAuth0({ returnUrl, onError }: OTPLoginFormProps) {
 
       setStep('code');
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to send code';
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to send code';
       setError(errorMessage);
       if (onError) {
         onError(errorMessage);
@@ -63,7 +64,7 @@ export function OTPLoginFormAuth0({ returnUrl, onError }: OTPLoginFormProps) {
         body: JSON.stringify({
           email,
           code,
-          returnTo: returnUrl || '/time-attendance',
+          returnTo: returnUrl || '/time',
         }),
         credentials: 'include', // Important: include cookies in the request
       });
@@ -79,7 +80,7 @@ export function OTPLoginFormAuth0({ returnUrl, onError }: OTPLoginFormProps) {
         window.location.href = data.redirectUrl;
       } else {
         // Fallback redirect
-        window.location.href = returnUrl || '/time-attendance';
+        window.location.href = returnUrl || '/time';
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Invalid code';
@@ -102,7 +103,10 @@ export function OTPLoginFormAuth0({ returnUrl, onError }: OTPLoginFormProps) {
     return (
       <form onSubmit={handleSendOTP} className="space-y-4">
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+          <label
+            htmlFor="email"
+            className="block text-sm font-medium text-gray-700 mb-2"
+          >
             Email Address
           </label>
           <div className="relative">
@@ -150,7 +154,10 @@ export function OTPLoginFormAuth0({ returnUrl, onError }: OTPLoginFormProps) {
         <p className="text-sm text-gray-600 mb-4">
           We sent a 6-digit code to <strong>{email}</strong>
         </p>
-        <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-2">
+        <label
+          htmlFor="code"
+          className="block text-sm font-medium text-gray-700 mb-2"
+        >
           Enter Code
         </label>
         <div className="relative">
@@ -159,7 +166,9 @@ export function OTPLoginFormAuth0({ returnUrl, onError }: OTPLoginFormProps) {
             id="code"
             type="text"
             value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            onChange={(e) =>
+              setCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+            }
             placeholder="000000"
             required
             maxLength={6}
@@ -203,4 +212,3 @@ export function OTPLoginFormAuth0({ returnUrl, onError }: OTPLoginFormProps) {
     </form>
   );
 }
-

@@ -46,6 +46,7 @@ interface ShiftsSectionProps {
   hasShiftJobs?: boolean;
   isBlockedByJobPunch?: boolean;
   hasActiveEventClockIn?: boolean;
+  title?: string;
 }
 
 // Enhanced CalendarEvent interface for shift data
@@ -198,6 +199,7 @@ export function ShiftsSection({
   hasShiftJobs = true,
   isBlockedByJobPunch = false,
   hasActiveEventClockIn = false,
+  title,
 }: ShiftsSectionProps) {
   // Get company work week settings
   const { weekStartsOn, isLoading: companyLoading } = useCompanyWorkWeek();
@@ -449,7 +451,7 @@ export function ShiftsSection({
             <div className="flex flex-col space-y-4 sm:flex-row sm:items-center justify-between sm:space-y-0">
               {/* Title */}
               <h2 className="text-xl lg:text-2xl font-semibold text-gray-900">
-                Employee Shifts
+                {title ?? 'Employee Shifts'}
               </h2>
 
               {/* View Toggle - Compact for mobile with better active state */}

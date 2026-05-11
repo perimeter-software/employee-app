@@ -87,7 +87,8 @@ function LoginFormContent({
 }) {
   const searchParams = useSearchParams();
   const [loginMethod, setLoginMethod] = useState<'auth0' | 'otp'>('otp');
-  const returnUrl = searchParams.get('returnTo') || searchParams.get('returnUrl') || '/time-attendance';
+  const returnUrl =
+    searchParams.get('returnTo') || searchParams.get('returnUrl') || '/time';
 
   return (
     <>
