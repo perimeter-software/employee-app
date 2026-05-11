@@ -29,6 +29,12 @@ jobs:
 
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            # Isolate this app in its own PM2 daemon so deploys from sibling
+            # repos (e.g. gig-v4-backend) running `pm2 delete all` against the
+            # default PM2 daemon can't wipe v4-employee-app off the box.
+            export PM2_HOME="$HOME/.pm2-employee"
+
             cd /var/node/v4-employee-app
             git fetch origin
             git checkout develop
