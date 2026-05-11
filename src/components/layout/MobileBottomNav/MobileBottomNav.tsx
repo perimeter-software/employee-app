@@ -23,7 +23,7 @@ function computeBottomDistribution(flatNavItems: NavigationItem[]): {
   featuredItem: NavigationItem | null;
 } {
   const eventsItem = flatNavItems.find((i) => i.href === '/events') ?? null;
-  const homeItem = flatNavItems.find((i) => i.href === '/dashboard') ?? null;
+  const homeItem = flatNavItems.find((i) => i.href === '/home') ?? null;
 
   if (eventsItem) {
     const eventsIndex = flatNavItems.indexOf(eventsItem);

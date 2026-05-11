@@ -112,9 +112,9 @@ export function useNavigation() {
 
     workspaceItems.push({
       name: 'Home',
-      href: '/dashboard',
+      href: '/home',
       icon: Home,
-      current: pathname === '/dashboard',
+      current: pathname === '/home',
     });
 
     if (!isClient) {
