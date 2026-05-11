@@ -240,11 +240,11 @@ const StatsCards = ({
     const cardCount = isClient ? 5 : 4;
     return (
       <div
-        className={`grid grid-cols-1 sm:grid-cols-2 ${isClient ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6`}
+        className={`grid grid-cols-2 ${isClient ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-3 sm:gap-6`}
       >
         {Array.from({ length: cardCount }).map((_, i) => (
           <Card key={i}>
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="animate-pulse">
                 <div className="h-4 bg-gray-200 rounded w-20 mb-2"></div>
                 <div className="h-8 bg-gray-200 rounded w-16 mb-2"></div>
@@ -259,13 +259,13 @@ const StatsCards = ({
 
   if (view === 'monthly') {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600 mb-1">Total days</p>
-                <p className="text-3xl font-bold text-appPrimary">
+                <p className="text-xs sm:text-sm text-gray-600 mb-1">Total days</p>
+                <p className="text-2xl sm:text-3xl font-bold text-appPrimary">
                   {statsData?.shiftsCompleted || 119}
                 </p>
                 <div className="flex items-center gap-1 mt-2">
@@ -280,10 +280,10 @@ const StatsCards = ({
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div>
-              <p className="text-sm text-gray-600 mb-1">Avg monthly</p>
-              <p className="text-3xl font-bold text-appPrimary">20</p>
+              <p className="text-xs sm:text-sm text-gray-600 mb-1">Avg monthly</p>
+              <p className="text-2xl sm:text-3xl font-bold text-appPrimary">20</p>
               <div className="flex items-center gap-1 mt-2">
                 <TrendingDown className="w-3 h-3 text-red-500" />
                 <span className="text-xs text-red-500">
@@ -295,10 +295,10 @@ const StatsCards = ({
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div>
-              <p className="text-sm text-gray-600 mb-1">Best month</p>
-              <p className="text-3xl font-bold text-appPrimary">23</p>
+              <p className="text-xs sm:text-sm text-gray-600 mb-1">Best month</p>
+              <p className="text-2xl sm:text-3xl font-bold text-appPrimary">23</p>
               <div className="flex items-center gap-1 mt-2">
                 <TrendingUp className="w-3 h-3 text-green-500" />
                 <span className="text-xs text-green-500">
@@ -310,10 +310,10 @@ const StatsCards = ({
         </Card>
 
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div>
-              <p className="text-sm text-gray-600 mb-1">Lowest month</p>
-              <p className="text-3xl font-bold text-red-600">15</p>
+              <p className="text-xs sm:text-sm text-gray-600 mb-1">Lowest month</p>
+              <p className="text-2xl sm:text-3xl font-bold text-red-600">15</p>
               <div className="flex items-center gap-1 mt-2">
                 <TrendingDown className="w-3 h-3 text-red-500" />
                 <span className="text-xs text-red-500">
@@ -330,23 +330,23 @@ const StatsCards = ({
   // Weekly and Calendar view stats
   return (
     <div
-      className={`grid grid-cols-1 sm:grid-cols-2 ${isClient ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6`}
+      className={`grid grid-cols-2 ${isClient ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-3 sm:gap-6`}
     >
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <Clock className="w-4 h-4 text-cyan-500" />
-                <p className="text-sm text-gray-600">Total hours this week</p>
+              <div className="flex items-center gap-1 sm:gap-2 mb-1">
+                <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-cyan-500 shrink-0" />
+                <p className="text-xs sm:text-sm text-gray-600">Total hours this week</p>
               </div>
-              <p className="text-3xl font-bold text-cyan-500">
+              <p className="text-2xl sm:text-3xl font-bold text-cyan-500">
                 {statsData?.totalHours
                   ? `${statsData.totalHours} hrs`
                   : '0 hrs'}
               </p>
               <div className="flex items-center gap-1 mt-2">
-                <TrendingUp className="w-3 h-3 text-green-500" />
+                <TrendingUp className="w-3 h-3 text-green-500 shrink-0" />
                 <span className="text-xs text-green-500">
                   {statsData?.weeklyChange?.hours
                     ? `+${statsData.weeklyChange.hours} hrs from last week`
@@ -359,17 +359,17 @@ const StatsCards = ({
       </Card>
 
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <Users className="w-4 h-4 text-green-500" />
-              <p className="text-sm text-gray-600">Shifts Completed</p>
+            <div className="flex items-center gap-1 sm:gap-2 mb-1">
+              <Users className="w-3 h-3 sm:w-4 sm:h-4 text-green-500 shrink-0" />
+              <p className="text-xs sm:text-sm text-gray-600">Shifts Completed</p>
             </div>
-            <p className="text-3xl font-bold text-green-600">
+            <p className="text-2xl sm:text-3xl font-bold text-green-600">
               {statsData?.shiftsCompleted || 0}
             </p>
             <div className="flex items-center gap-1 mt-2">
-              <TrendingDown className="w-3 h-3 text-red-500" />
+              <TrendingDown className="w-3 h-3 text-red-500 shrink-0" />
               <span className="text-xs text-red-500">
                 {statsData?.weeklyChange?.shifts
                   ? `${statsData.weeklyChange.shifts} shifts from last month`
@@ -381,17 +381,17 @@ const StatsCards = ({
       </Card>
 
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <User className="w-4 h-4 text-yellow-500" />
-              <p className="text-sm text-gray-600">Absences</p>
+            <div className="flex items-center gap-1 sm:gap-2 mb-1">
+              <User className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-500 shrink-0" />
+              <p className="text-xs sm:text-sm text-gray-600">Absences</p>
             </div>
-            <p className="text-3xl font-bold text-yellow-600">
+            <p className="text-2xl sm:text-3xl font-bold text-yellow-600">
               {statsData?.absences || 0}
             </p>
             <div className="flex items-center gap-1 mt-2">
-              <TrendingUp className="w-3 h-3 text-red-500" />
+              <TrendingUp className="w-3 h-3 text-red-500 shrink-0" />
               <span className="text-xs text-red-500">
                 {statsData?.weeklyChange?.absences
                   ? `+${statsData.weeklyChange.absences} from last month`
@@ -403,13 +403,13 @@ const StatsCards = ({
       </Card>
 
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <AlertTriangle className="w-4 h-4 text-red-500" />
-              <p className="text-sm text-gray-600">Shifts Pending</p>
+            <div className="flex items-center gap-1 sm:gap-2 mb-1">
+              <AlertTriangle className="w-3 h-3 sm:w-4 sm:h-4 text-red-500 shrink-0" />
+              <p className="text-xs sm:text-sm text-gray-600">Shifts Pending</p>
             </div>
-            <p className="text-3xl font-bold text-red-600">
+            <p className="text-2xl sm:text-3xl font-bold text-red-600">
               {statsData?.geofenceViolations || 0}
             </p>
             <div className="flex items-center gap-1 mt-2">
@@ -426,13 +426,13 @@ const StatsCards = ({
       {/* Total Spend Card - Only for Client users */}
       {isClient && (
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <DollarSign className="w-4 h-4 text-purple-500" />
-                <p className="text-sm text-gray-600">Total Spend</p>
+              <div className="flex items-center gap-1 sm:gap-2 mb-1">
+                <DollarSign className="w-3 h-3 sm:w-4 sm:h-4 text-purple-500 shrink-0" />
+                <p className="text-xs sm:text-sm text-gray-600">Total Spend</p>
               </div>
-              <p className="text-3xl font-bold text-purple-600">
+              <p className="text-2xl sm:text-3xl font-bold text-purple-600">
                 {statsData?.totalSpend !== undefined
                   ? `$${statsData.totalSpend.toLocaleString('en-US', {
                       minimumFractionDigits: 2,
@@ -1056,18 +1056,18 @@ const DashboardPage: NextPage = () => {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-4 sm:space-y-6 lg:space-y-8">
         {/* Dashboard Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between sm:mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             {/* Employee Filter - Only for Client users */}
             {isClient && (
               <div className="flex items-center gap-2">
                 <label className="text-sm font-medium text-gray-700">
                   Employee:
                 </label>
-                <div className="w-[250px]">
+                <div className="w-[180px] sm:w-[250px]">
                   <ReactSelect
                     value={
                       employeesListLoading
@@ -1171,7 +1171,7 @@ const DashboardPage: NextPage = () => {
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
-              <span className="text-sm font-medium min-w-[180px] text-center">
+              <span className="text-xs sm:text-sm font-medium min-w-[110px] sm:min-w-[180px] text-center">
                 {dashboardView === 'monthly'
                   ? format(currentDate, 'MMMM yyyy')
                   : dashboardView === 'weekly'
@@ -1265,7 +1265,7 @@ const DashboardPage: NextPage = () => {
 
         {/* Monthly View */}
         {dashboardView === 'monthly' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Charts and Today's Attendance */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Bar Chart */}
@@ -1286,7 +1286,7 @@ const DashboardPage: NextPage = () => {
                       return `Year-to-date employee attendance (${startMonth} - ${endMonth})`;
                     })()}
                   </CardDescription>
-                  <div className="flex gap-4 text-xs">
+                  <div className="flex flex-wrap gap-2 sm:gap-4 text-xs">
                     {(() => {
                       const monthlyData =
                         attendanceData?.monthlyAttendance || [];
@@ -1384,7 +1384,7 @@ const DashboardPage: NextPage = () => {
 
         {/* Weekly View */}
         {dashboardView === 'weekly' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Daily Trends and Performance Summary */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Line Chart */}
@@ -1411,21 +1411,21 @@ const DashboardPage: NextPage = () => {
                       </select>
                     </div>
                   </div>
-                  <div className="flex gap-4 text-xs mt-2">
+                  <div className="flex flex-wrap gap-2 sm:gap-4 text-xs mt-2">
                     <div className="flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-cyan-500" />
+                      <Clock className="w-3 h-3 text-cyan-500 shrink-0" />
                       <span className="text-gray-600">
                         Total Break Time: 4.32 hrs
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <BarChart3 className="w-3 h-3 text-blue-500" />
+                      <BarChart3 className="w-3 h-3 text-blue-500 shrink-0" />
                       <span className="text-blue-600">
                         Productivity Score: 92%
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Activity className="w-3 h-3 text-yellow-500" />
+                      <Activity className="w-3 h-3 text-yellow-500 shrink-0" />
                       <span className="text-yellow-600">
                         Efficiency Rating: 88%
                       </span>
@@ -1477,7 +1477,7 @@ const DashboardPage: NextPage = () => {
 
         {/* Calendar View */}
         {dashboardView === 'calendar' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Attendance Trends Bar Chart */}
 
             {/* Today's Attendance & Calendar */}
@@ -1494,7 +1494,7 @@ const DashboardPage: NextPage = () => {
                       return `Year-to-date employee attendance (Jan - ${monthName})`;
                     })()}
                   </CardDescription>
-                  <div className="flex gap-4 text-xs">
+                  <div className="flex flex-wrap gap-2 sm:gap-4 text-xs">
                     {(() => {
                       const monthlyData =
                         attendanceData?.monthlyAttendance || [];
