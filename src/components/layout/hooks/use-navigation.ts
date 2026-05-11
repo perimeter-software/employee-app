@@ -112,9 +112,9 @@ export function useNavigation() {
 
     workspaceItems.push({
       name: 'Home',
-      href: '/dashboard',
+      href: '/home',
       icon: Home,
-      current: pathname === '/dashboard',
+      current: pathname === '/home',
     });
 
     if (!isClient) {
@@ -148,9 +148,11 @@ export function useNavigation() {
     if (!isClient) {
       workspaceItems.push({
         name: 'Time',
-        href: '/time-attendance',
+        href: '/time',
         icon: Clock,
         current:
+          pathname === '/time' ||
+          pathname.startsWith('/time/') ||
           pathname === '/time-attendance' ||
           pathname.startsWith('/time-attendance'),
       });

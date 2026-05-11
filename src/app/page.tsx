@@ -87,7 +87,8 @@ function LoginFormContent({
 }) {
   const searchParams = useSearchParams();
   const [loginMethod, setLoginMethod] = useState<'auth0' | 'otp'>('otp');
-  const returnUrl = searchParams.get('returnTo') || searchParams.get('returnUrl') || '/time-attendance';
+  const returnUrl =
+    searchParams.get('returnTo') || searchParams.get('returnUrl') || '/time';
 
   return (
     <>
@@ -173,9 +174,9 @@ export default function LoginPage() {
       const isApplicantOnly = user.isApplicantOnly ?? false;
       const isLimitedAccess = user.isLimitedAccess ?? false;
 
-      let dest = '/time-attendance'; // full user: sidebar always has this
-      if (isApplicantOnly) dest = '/applicant'; // sidebar has /applicant, not /time-attendance
-      else if (isLimitedAccess) dest = '/payroll'; // sidebar has /payroll only
+      let dest = '/home'; // full user: lands on Home
+      if (isApplicantOnly) dest = '/applicant';
+      else if (isLimitedAccess) dest = '/payroll';
 
       router.push(dest);
     }

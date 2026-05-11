@@ -76,7 +76,7 @@ export function OTPLoginFormClerk({ returnUrl, onError }: OTPLoginFormProps) {
         throw new Error('Verification incomplete — please try again');
       }
       await setActive({ session: result.createdSessionId });
-      router.push(returnUrl || '/time-attendance');
+      router.push(returnUrl || '/time');
     } catch (err) {
       const message =
         (err as { errors?: Array<{ longMessage?: string; message?: string }> })

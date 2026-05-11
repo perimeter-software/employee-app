@@ -56,11 +56,7 @@ function useDebounce(value: string, delay: number) {
 
 // ─── Employee view (all hooks live here, never conditionally skipped) ─────────
 
-function EmployeeEventsView({
-  imageBaseUrl,
-}: {
-  imageBaseUrl?: string;
-}) {
+function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
   const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
 
@@ -70,9 +66,14 @@ function EmployeeEventsView({
   const [tab, setTab] = useState<TabValue>('all');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 400);
-  const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(
+    null
+  );
   const [venueSlug, setVenueSlug] = useState(searchParams.get('venue') ?? '');
-  const [venueName, setVenueName] = useState(searchParams.get('venueName') ?? '');
+  const [venueName, setVenueName] = useState(
+    searchParams.get('venueName') ?? ''
+  );
+  const [venueFromUrl, setVenueFromUrl] = useState(!!searchParams.get('venue'));
   const [incomingCoverModalOpen, setIncomingCoverModalOpen] = useState(false);
 
   const applicantId = currentUser?.applicantId;
@@ -120,7 +121,8 @@ function EmployeeEventsView({
         venueSlug,
       }),
     initialPageParam: 1,
-    getNextPageParam: (lastPage) => lastPage.pagination?.next?.page ?? undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.next?.page ?? undefined,
     enabled: tab === 'all' && !!currentUser,
     staleTime: 0,
     gcTime: 0,
@@ -148,7 +150,8 @@ function EmployeeEventsView({
         venueSlug,
       }),
     initialPageParam: 1,
-    getNextPageParam: (lastPage) => lastPage.pagination?.next?.page ?? undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.next?.page ?? undefined,
     enabled: tab === 'my' && !!applicantId,
     staleTime: 0,
     gcTime: 0,
@@ -176,7 +179,8 @@ function EmployeeEventsView({
         venueSlug,
       }),
     initialPageParam: 1,
-    getNextPageParam: (lastPage) => lastPage.pagination?.next?.page ?? undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.next?.page ?? undefined,
     enabled: tab === 'past' && !!applicantId,
     staleTime: 0,
     gcTime: 0,
@@ -262,7 +266,7 @@ function EmployeeEventsView({
   return (
     <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 space-y-6">
       {/* Venue filter banner */}
-      {venueSlug && (
+      {venueFromUrl && venueSlug && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-sky-50 border border-sky-100">
           <div className="w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center flex-shrink-0">
             <CalendarRange className="w-4 h-4 text-sky-600" />
@@ -280,6 +284,7 @@ function EmployeeEventsView({
             onClick={() => {
               setVenueSlug('');
               setVenueName('');
+              setVenueFromUrl(false);
               router.replace('/events');
             }}
             className="flex items-center gap-1 text-sm font-medium text-sky-600 hover:text-sky-800 flex-shrink-0"
@@ -362,7 +367,7 @@ function EmployeeEventsView({
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              {!isEmployee && staffingVenues.length > 1 && (
+              {!venueFromUrl && (
                 <Select value={venueSlug} onValueChange={setVenueSlug}>
                   <SelectTrigger className="h-[34px] w-full sm:w-56 text-sm border-zinc-200 focus:ring-appPrimary/30 focus:border-appPrimary">
                     <SelectValue
