@@ -73,12 +73,26 @@ export interface EnrollmentCheckResult {
   otherWaitlists?: unknown[];
 }
 
+export interface ShowClockInResult {
+  showClockIn: boolean;
+  showClockOut: boolean;
+  clockInButtonDisabled: boolean;
+  clockOutButtonDisabled: boolean;
+  showEarlyClockInWarning: boolean;
+  /** ISO string — returned by the server when the user has already clocked in */
+  clockInTime?: string;
+  /** ISO string — returned by the server when the user has already clocked out */
+  clockOutTime?: string;
+}
+
 export const eventQueryKeys = {
   all: ['event'] as const,
   roster: (params: RosterEventsParams) =>
     [...eventQueryKeys.all, 'roster', params] as const,
   detail: (eventId: string) => [...eventQueryKeys.all, 'detail', eventId] as const,
   enrollment: (eventId: string) => [...eventQueryKeys.all, 'enrollment', eventId] as const,
+  showClockIn: (eventId: string, applicantId: string) =>
+    [...eventQueryKeys.all, 'show-clock-in', eventId, applicantId] as const,
 } as const;
 
 /** React Query key for pending cover invites (incoming). */
@@ -107,6 +121,7 @@ export class EventApiService {
     ROSTER: () => `/events/roster`,
     CLOCK_IN: (eventId: string) => `/events/${eventId}/clock-in`,
     CLOCK_OUT: (eventId: string) => `/events/${eventId}/clock-out`,
+    SHOW_CLOCK_IN: (eventId: string) => `/events/${eventId}/show-clock-in`,
     DETAIL: (eventId: string) => `/events/${eventId}`,
     ENROLLMENT: (eventId: string) => `/events/${eventId}/enrollment`,
     EVENT_CALL_OFF: (eventId: string) => `/events/${eventId}/call-off`,
@@ -404,6 +419,26 @@ export class EventApiService {
     const json = (await response.json()) as { success: boolean; filename?: string; message?: string };
     if (!json.success) throw new Error(json.message ?? 'Upload failed');
     return { filename: json.filename ?? '' };
+  }
+
+  static async getShowClockIn(
+    eventId: string,
+    agent: string,
+    createAgent: string,
+    coordinates?: { latitude: number; longitude: number } | null
+  ): Promise<ShowClockInResult> {
+    // The sp1 /showclockin endpoint returns the result object at the top level
+    // (not wrapped in { success, data }), so we return the raw response directly.
+    const res = await baseInstance.post<never>(
+      EventApiService.ENDPOINTS.SHOW_CLOCK_IN(eventId),
+      {
+        agent,
+        createAgent,
+        platform: 'web',
+        ...(coordinates && { coordinates }),
+      }
+    );
+    return res as unknown as ShowClockInResult;
   }
 
   static async clockOut(

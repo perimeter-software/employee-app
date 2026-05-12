@@ -27,7 +27,7 @@ import { clsxm } from '@/lib/utils';
 import {
   EventApiService,
   EventCard,
-  EventDetailModal,
+  EventDetailView,
   INCOMING_COVER_REQUESTS_QUERY_KEY,
   IncomingCoverRequestsModal,
 } from '@/domains/event';
@@ -69,6 +69,7 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
   const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(
     null
   );
+  const savedScrollY = useRef(0);
   const [venueSlug, setVenueSlug] = useState(searchParams.get('venue') ?? '');
   const [venueName, setVenueName] = useState(
     searchParams.get('venueName') ?? ''
@@ -264,7 +265,29 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
         : "You haven't participated in any past event.";
 
   return (
-    <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 space-y-6">
+    <>
+    {selectedEvent && (
+      <EventDetailView
+        event={selectedEvent}
+        imageBaseUrl={imageBaseUrl}
+        onClose={() => {
+          const y = savedScrollY.current;
+          setSelectedEvent(null);
+          requestAnimationFrame(() => window.scrollTo({ top: y }));
+        }}
+        onEnrollmentChange={(eventId, newType) => {
+          setSelectedEvent((prev) =>
+            prev?._id === eventId
+              ? { ...prev, rosterStatus: newType, status: newType }
+              : prev
+          );
+          queryClient.invalidateQueries({ queryKey: ['events-all'] });
+          queryClient.invalidateQueries({ queryKey: ['events-my'] });
+          queryClient.invalidateQueries({ queryKey: ['events-past'] });
+        }}
+      />
+    )}
+    <div className={`max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 space-y-6${selectedEvent ? ' hidden' : ''}`}>
       {/* Venue filter banner */}
       {venueFromUrl && venueSlug && (
         <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-sky-50 border border-sky-100">
@@ -435,7 +458,10 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
                   key={event._id}
                   event={event}
                   imageBaseUrl={imageBaseUrl}
-                  onClick={() => setSelectedEvent(event)}
+                  onClick={() => {
+                    savedScrollY.current = window.scrollY;
+                    setSelectedEvent(event);
+                  }}
                 />
               ))}
               <div ref={sentinelRef} className="col-span-full h-4" />
@@ -449,25 +475,6 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
         </CardContent>
       </Card>
 
-      {selectedEvent && (
-        <EventDetailModal
-          event={selectedEvent}
-          imageBaseUrl={imageBaseUrl}
-          open={!!selectedEvent}
-          onClose={() => setSelectedEvent(null)}
-          onEnrollmentChange={(eventId, newType) => {
-            setSelectedEvent((prev) =>
-              prev?._id === eventId
-                ? { ...prev, rosterStatus: newType, status: newType }
-                : prev
-            );
-            queryClient.invalidateQueries({ queryKey: ['events-all'] });
-            queryClient.invalidateQueries({ queryKey: ['events-my'] });
-            queryClient.invalidateQueries({ queryKey: ['events-past'] });
-          }}
-        />
-      )}
-
       <IncomingCoverRequestsModal
         open={incomingCoverModalOpen}
         onClose={() => setIncomingCoverModalOpen(false)}
@@ -475,6 +482,7 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
         isLoading={incomingCoverListLoading}
       />
     </div>
+    </>
   );
 }
 

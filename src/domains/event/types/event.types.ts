@@ -121,6 +121,8 @@ export interface GignologyEvent {
   favorite?: boolean;
   isEventAdmin?: boolean;
   rosterStatus?: string;
+  /** The requesting user's own applicant entry — populated by the event detail endpoint */
+  currentApplicant?: EventApplicant | null;
   /** Pending call-off row id in `swap-requests` for the current user, if any */
   pendingCallOffRequestId?: string | null;
   /** Pending “let someone cover” row id for the current user as requester */
