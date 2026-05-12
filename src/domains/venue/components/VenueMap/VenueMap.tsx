@@ -9,9 +9,10 @@ type Props = {
   coordinates: [number, number]; // [longitude, latitude]
   radius?: number;        // main geofence radius in meters
   graceDistance?: number; // grace zone width in meters
+  showHeader?: boolean;
 };
 
-export const VenueMap = ({ coordinates, radius, graceDistance }: Props) => {
+export const VenueMap = ({ coordinates, radius, graceDistance, showHeader = true }: Props) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
   const circlesRef = useRef<google.maps.Circle[]>([]);
@@ -92,18 +93,20 @@ export const VenueMap = ({ coordinates, radius, graceDistance }: Props) => {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-sm font-semibold text-slate-700">Location</h4>
-        <a
-          href={mapsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs font-medium text-appPrimary hover:underline inline-flex items-center gap-1"
-        >
-          <MapPin className="w-3 h-3" />
-          Get Directions
-        </a>
-      </div>
+      {showHeader && (
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-sm font-semibold text-slate-700">Location</h4>
+          <a
+            href={mapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-medium text-appPrimary hover:underline inline-flex items-center gap-1"
+          >
+            <MapPin className="w-3 h-3" />
+            Get Directions
+          </a>
+        </div>
+      )}
       <div
         ref={mapRef}
         className="w-full h-48 rounded-lg overflow-hidden border border-zinc-200"
