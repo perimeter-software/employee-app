@@ -886,13 +886,50 @@ export const EventDetailView = ({
         {enrollmentLoading ? (
           <div className="h-16 rounded-xl bg-zinc-100 animate-pulse" />
         ) : enrollment ? (
-          <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm">
+          <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm space-y-3">
             <ActionSection
               enrollment={enrollment}
               onAction={handleAction}
               submitting={submitting}
               selectedPosition={selectedPosition}
             />
+            {enrollment.type === 'Roster' &&
+              enrollment.status === 'Warning' &&
+              showEventCoverActions && (
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="flex flex-col gap-0.5 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCoverIntent('invite-cover');
+                        setCoverModalOpen(true);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      Let someone cover for me
+                    </button>
+                    {event.pendingCoverRequestId && (
+                      <span className="block text-[10px] text-violet-600 font-medium text-center">
+                        Requested
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-0.5 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => setCallOffConfirmOpen(true)}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg border border-red-200 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      Call off request
+                    </button>
+                    {event.pendingCallOffRequestId && (
+                      <span className="block text-[10px] text-amber-700 font-medium text-center">
+                        Requested
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
           </div>
         ) : null}
 
@@ -1006,46 +1043,6 @@ export const EventDetailView = ({
                     <Navigation className="w-4 h-4" />
                     Get directions
                   </a>
-                </div>
-              </div>
-            )}
-
-            {/* Need help (cover / call off) */}
-            {showEventCoverActions && (
-              <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
-                <h3 className="font-bold text-slate-900 mb-3">Need help?</h3>
-                <div className="space-y-2">
-                  <div className="flex flex-col gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCoverIntent('invite-cover');
-                        setCoverModalOpen(true);
-                      }}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                    >
-                      Let someone cover for me
-                    </button>
-                    {event.pendingCoverRequestId && (
-                      <span className="text-[10px] text-violet-600 font-medium text-center">
-                        Requested
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setCallOffConfirmOpen(true)}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg border border-red-200 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      Call off
-                    </button>
-                    {event.pendingCallOffRequestId && (
-                      <span className="text-[10px] text-amber-700 font-medium text-center">
-                        Requested
-                      </span>
-                    )}
-                  </div>
                 </div>
               </div>
             )}
