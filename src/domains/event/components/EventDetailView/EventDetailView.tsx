@@ -68,7 +68,10 @@ function buildGoogleCalendarUrl(event: GignologyEvent): string {
     ? new Date(event.eventEndTime)
     : new Date(start.getTime() + 4 * 60 * 60 * 1000);
   const fmt = (d: Date) =>
-    d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    d
+      .toISOString()
+      .replace(/[-:]/g, '')
+      .replace(/\.\d{3}/, '');
   const location = [event.venueName, event.venueCity, event.venueState]
     .filter(Boolean)
     .join(', ');
@@ -166,7 +169,10 @@ function getAvailablePositions(
 
 type ActionSectionProps = {
   enrollment: EnrollmentCheckResult;
-  onAction: (requestType: EnrollmentType, positionName?: string) => Promise<void>;
+  onAction: (
+    requestType: EnrollmentType,
+    positionName?: string
+  ) => Promise<void>;
   submitting: boolean;
   selectedPosition: string;
 };
@@ -435,19 +441,23 @@ export const EventDetailView = ({
     : endTime
       ? `${startTime} – ${endTime}`
       : startTime;
-  const location = [event.venueCity, event.venueState].filter(Boolean).join(', ');
+  const location = [event.venueCity, event.venueState]
+    .filter(Boolean)
+    .join(', ');
 
   const description = stripHtml(event.description);
   const DESCRIPTION_LIMIT = 400;
   const descTooLong = description.length > DESCRIPTION_LIMIT;
 
-  // Applicant entry from event detail (position, reportTime, timeIn, timeOut)
+  // Applicant entry from event detail (position, reportTime, timeIn, timeOut).
+  // The detail endpoint strips the full applicants array but exposes the
+  // requesting user's own entry as currentApplicant.
   const applicantEntry = useMemo(
     () =>
-      event.applicants?.find(
-        (a) => a.id === applicantId && a.status === 'Roster'
-      ),
-    [event.applicants, applicantId]
+      event.currentApplicant?.status === 'Roster'
+        ? event.currentApplicant
+        : undefined,
+    [event.currentApplicant]
   );
 
   const userPosition = applicantEntry?.primaryPosition ?? DEFAULT_POSITION;
@@ -488,7 +498,11 @@ export const EventDetailView = ({
   } = useQuery({
     queryKey: eventQueryKeys.showClockIn(initialEvent._id, applicantId),
     queryFn: () =>
-      EventApiService.getShowClockIn(initialEvent._id, agentName, String(userId)),
+      EventApiService.getShowClockIn(
+        initialEvent._id,
+        agentName,
+        String(userId)
+      ),
     enabled: isOnRoster && !!applicantId && isWithinClockWindow,
     staleTime: 0,
     gcTime: 0,
@@ -499,7 +513,8 @@ export const EventDetailView = ({
     // Prefer applicantEntry timestamps (from event detail) for display; fall back
     // to server-provided ISO strings (returned by showclockin when clocked in).
     const rawTimeIn = applicantEntry?.timeIn ?? serverClockState?.clockInTime;
-    const rawTimeOut = applicantEntry?.timeOut ?? serverClockState?.clockOutTime;
+    const rawTimeOut =
+      applicantEntry?.timeOut ?? serverClockState?.clockOutTime;
     const clockInTime = rawTimeIn ? formatDisplayTime(rawTimeIn) : undefined;
     const clockOutTime = rawTimeOut ? formatDisplayTime(rawTimeOut) : undefined;
 
@@ -518,8 +533,10 @@ export const EventDetailView = ({
     };
   }, [serverClockState, applicantEntry]);
 
-  const rawTimeInForCalc = applicantEntry?.timeIn ?? serverClockState?.clockInTime;
-  const rawTimeOutForCalc = applicantEntry?.timeOut ?? serverClockState?.clockOutTime;
+  const rawTimeInForCalc =
+    applicantEntry?.timeIn ?? serverClockState?.clockInTime;
+  const rawTimeOutForCalc =
+    applicantEntry?.timeOut ?? serverClockState?.clockOutTime;
   const workedHours =
     rawTimeInForCalc && rawTimeOutForCalc
       ? formatWorkedTime(rawTimeInForCalc, rawTimeOutForCalc)
@@ -547,11 +564,16 @@ export const EventDetailView = ({
       queryClient.invalidateQueries({
         queryKey: eventQueryKeys.enrollment(initialEvent._id),
       });
+      queryClient.invalidateQueries({
+        queryKey: eventQueryKeys.detail(initialEvent._id),
+      });
       await refetchEnrollment();
       onEnrollmentChange?.(initialEvent._id, requestType);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : 'Something went wrong. Please try again.'
+        err instanceof Error
+          ? err.message
+          : 'Something went wrong. Please try again.'
       );
     } finally {
       setSubmitting(false);
@@ -709,7 +731,9 @@ export const EventDetailView = ({
                 className="w-full text-sm font-semibold text-slate-900 bg-transparent border-0 p-0 focus:outline-none cursor-pointer"
               >
                 {availablePositions.map((p) => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
                 ))}
               </select>
             ) : (
@@ -752,7 +776,10 @@ export const EventDetailView = ({
             ) : clockState.clockInTime && clockState.clockOutTime ? (
               /* ── Completed: show worked hours ── */
               <div className="flex flex-col items-center gap-2 py-4 text-center">
-                <CheckCircle2 className="w-12 h-12 text-emerald-500" strokeWidth={1.5} />
+                <CheckCircle2
+                  className="w-12 h-12 text-emerald-500"
+                  strokeWidth={1.5}
+                />
                 <p className="text-xl font-bold text-slate-900">
                   Worked {workedHours}
                 </p>
@@ -766,7 +793,14 @@ export const EventDetailView = ({
                   disabled={isClockBusy || clockState.clockOutButtonDisabled}
                   onClick={() =>
                     clockOutMutation.mutate(
-                      { eventId: event._id, payload: { applicantId, agent: agentName, createAgent: userId } },
+                      {
+                        eventId: event._id,
+                        payload: {
+                          applicantId,
+                          agent: agentName,
+                          createAgent: userId,
+                        },
+                      },
                       { onSuccess: () => refetchClockState() }
                     )
                   }
@@ -794,7 +828,15 @@ export const EventDetailView = ({
                   disabled={isClockBusy || clockState.clockInButtonDisabled}
                   onClick={() =>
                     clockInMutation.mutate(
-                      { eventId: event._id, payload: { applicantId, agent: agentName, createAgent: userId }, geoFence: event.geoFence },
+                      {
+                        eventId: event._id,
+                        payload: {
+                          applicantId,
+                          agent: agentName,
+                          createAgent: userId,
+                        },
+                        geoFence: event.geoFence,
+                      },
                       { onSuccess: () => refetchClockState() }
                     )
                   }

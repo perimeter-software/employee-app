@@ -93,14 +93,36 @@ async function getEventDetailHandler(
     // Enrich with rosterStatus for the requesting user
     const applicantId = user.applicantId ? String(user.applicantId) : '';
     if (applicantId) {
-      const applicants = (event.applicants as { id: string; status: string }[]) ?? [];
+      type MongoApplicant = {
+        id?: string;
+        status?: string;
+        position?: string; // MongoDB field name
+        primaryPosition?: string; // SP1 field name (may also be present)
+        reportTime?: string;
+        timeIn?: string | null;
+        timeOut?: string | null;
+        agent?: string;
+      };
+      const applicants = (event.applicants as MongoApplicant[]) ?? [];
       const found = applicants.find((a) => a.id === applicantId);
-      event.rosterStatus = found ? found.status : 'Not Roster';
+      event.rosterStatus = found?.status ?? 'Not Roster';
+      event.currentApplicant = found
+        ? {
+            id: found.id ?? applicantId,
+            status: found.status ?? '',
+            // MongoDB stores the position as "position"; SP1 uses "primaryPosition"
+            primaryPosition: found.primaryPosition ?? found.position ?? '',
+            reportTime: found.reportTime,
+            timeIn: found.timeIn,
+            timeOut: found.timeOut,
+            agent: found.agent,
+          }
+        : null;
 
       const eventUrlStr = String(event.eventUrl || '').trim();
       if (eventUrlStr) {
-        const [pendingCallOff, pendingCover, incomingCover] =
-          await Promise.all([
+        const [pendingCallOff, pendingCover, incomingCover] = await Promise.all(
+          [
             db.collection('swap-requests').findOne(
               {
                 ...EVENT_CALL_OFF_DOC_FILTER,
@@ -127,7 +149,8 @@ async function getEventDetailHandler(
               },
               { projection: { _id: 1 } }
             ),
-          ]);
+          ]
+        );
         event.pendingCallOffRequestId = pendingCallOff
           ? String(pendingCallOff._id)
           : null;
@@ -138,10 +161,12 @@ async function getEventDetailHandler(
           event.pendingCoverRequestId = String(pendingCover._id);
           const toId = String(pendingCover.toEmployeeId);
           const peerDoc = ObjectId.isValid(toId)
-            ? await db.collection('applicants').findOne(
-                { _id: new ObjectId(toId) },
-                { projection: { email: 1, emailAddress: 1 } }
-              )
+            ? await db
+                .collection('applicants')
+                .findOne(
+                  { _id: new ObjectId(toId) },
+                  { projection: { email: 1, emailAddress: 1 } }
+                )
             : null;
           const pem = peerDoc?.email ?? peerDoc?.emailAddress;
           event.pendingCoverPeerEmail =
@@ -201,7 +226,10 @@ async function updateEventHandler(
     if (user.userType === 'Client') {
       const eventDoc = await db
         .collection('events')
-        .findOne({ _id: new ObjectId(eventId) }, { projection: { venueSlug: 1 } });
+        .findOne(
+          { _id: new ObjectId(eventId) },
+          { projection: { venueSlug: 1 } }
+        );
 
       if (!eventDoc) {
         return NextResponse.json(
@@ -220,8 +248,11 @@ async function updateEventHandler(
             { projection: { clientOrgs: 1 } }
           );
         const clientOrgs =
-          (clientDoc as { clientOrgs?: { slug?: string }[] } | null)?.clientOrgs ?? [];
-        clientOrgSlugs = clientOrgs.map((org) => org.slug ?? '').filter(Boolean);
+          (clientDoc as { clientOrgs?: { slug?: string }[] } | null)
+            ?.clientOrgs ?? [];
+        clientOrgSlugs = clientOrgs
+          .map((org) => org.slug ?? '')
+          .filter(Boolean);
       }
 
       if (!clientOrgSlugs.includes(String(eventDoc.venueSlug ?? ''))) {
@@ -241,12 +272,22 @@ async function updateEventHandler(
 
     const body = await request.json();
     const { tenant } = user;
-    const sp1 = getSp1Client(user.sub, user.email, tenant?.clientDomain || tenant?.url);
+    const sp1 = getSp1Client(
+      user.sub,
+      user.email,
+      tenant?.clientDomain || tenant?.url
+    );
 
     const res = await sp1.put(`/events/${eventId}`, body);
-    return NextResponse.json({ success: true, data: res.data }, { status: 200 });
+    return NextResponse.json(
+      { success: true, data: res.data },
+      { status: 200 }
+    );
   } catch (error: unknown) {
-    const e = error as { response?: { status?: number; data?: unknown }; message?: string };
+    const e = error as {
+      response?: { status?: number; data?: unknown };
+      message?: string;
+    };
     console.error('[Event Update API] Error:', e.message);
     return NextResponse.json(
       e.response?.data ?? { success: false, message: 'Internal server error' },
