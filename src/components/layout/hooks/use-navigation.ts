@@ -12,7 +12,6 @@ import {
   MessageCircleQuestion,
   Receipt,
   ClipboardList,
-  CalendarDays,
   CalendarRange,
   MapPin,
   GraduationCap,
@@ -116,17 +115,6 @@ export function useNavigation() {
       icon: Home,
       current: pathname === '/home',
     });
-
-    if (!isClient) {
-      workspaceItems.push({
-        name: 'Shift Requests',
-        href: '/shift-requests',
-        icon: CalendarDays,
-        current:
-          pathname === '/shift-requests' ||
-          pathname.startsWith('/shift-requests'),
-      });
-    }
 
     if ((!isClient && isVenueCompany) || (hasClientOrgs && isVenueCompany)) {
       workspaceItems.push(
