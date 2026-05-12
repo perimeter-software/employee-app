@@ -148,7 +148,7 @@ function getAvailablePositions(
     const assigned = (existingApplicants ?? []).filter(
       (a) => a.status === 'Roster' && a.primaryPosition === pos.positionName
     ).length;
-    return assigned < pos.numberPositions;
+    return assigned < Number(pos.numberPositions);
   });
   const hasEventStaff = filtered.some(
     (p) => p.positionName === DEFAULT_POSITION
@@ -166,27 +166,18 @@ function getAvailablePositions(
 
 type ActionSectionProps = {
   enrollment: EnrollmentCheckResult;
-  event: GignologyEvent;
-  imageBaseUrl?: string;
   onAction: (requestType: EnrollmentType, positionName?: string) => Promise<void>;
   submitting: boolean;
+  selectedPosition: string;
 };
 
 function ActionSection({
   enrollment,
-  event,
   onAction,
   submitting,
+  selectedPosition,
 }: ActionSectionProps) {
   const { type, allowed, message, status } = enrollment;
-  const [selectedPosition, setSelectedPosition] = useState(DEFAULT_POSITION);
-
-  const availablePositions = useMemo(
-    () => getAvailablePositions(event.positions, event.applicants),
-    [event.positions, event.applicants]
-  );
-
-  const showPositionPicker = allowed === 'Roster' && availablePositions.length > 1;
 
   if (type === 'Roster') {
     if (allowed === 'Roster' && status === 'Warning') {
@@ -261,37 +252,11 @@ function ActionSection({
   if (allowed === 'Roster') {
     return (
       <div className="space-y-3">
-        {showPositionPicker && (
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">
-              Select a position
-            </label>
-            <select
-              title="Select a position"
-              value={selectedPosition}
-              onChange={(e) => setSelectedPosition(e.target.value)}
-              className="w-full text-sm rounded-md border border-zinc-200 bg-white px-3 py-2 text-zinc-900 focus:outline-none focus:ring-2 focus:ring-appPrimary/30 focus:border-appPrimary"
-            >
-              {availablePositions.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
         <Button
           variant="success"
           fullWidth
           loading={submitting}
-          onClick={() =>
-            onAction(
-              'Roster',
-              showPositionPicker && selectedPosition !== DEFAULT_POSITION
-                ? selectedPosition
-                : undefined
-            )
-          }
+          onClick={() => onAction('Roster', selectedPosition)}
         >
           Register for Event
         </Button>
@@ -370,11 +335,13 @@ export const EventDetailView = ({
   const [callOffSubmitting, setCallOffSubmitting] = useState(false);
   const [coverIntent, setCoverIntent] =
     useState<EventCoverModalIntent>('invite-cover');
+  const [selectedPosition, setSelectedPosition] = useState(DEFAULT_POSITION);
 
   useEffect(() => {
     setDescExpanded(false);
     setLogoError(false);
     setBannerError(false);
+    setSelectedPosition(DEFAULT_POSITION);
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [initialEvent._id]);
 
@@ -483,8 +450,21 @@ export const EventDetailView = ({
     [event.applicants, applicantId]
   );
 
-  const userPosition = applicantEntry?.primaryPosition ?? '—';
+  const userPosition = applicantEntry?.primaryPosition ?? DEFAULT_POSITION;
   const isOnRoster = !!applicantEntry || enrollment?.type === 'Roster';
+
+  const availablePositions = useMemo(
+    () => getAvailablePositions(event.positions, event.applicants),
+    [event.positions, event.applicants]
+  );
+  const isPositionLocked =
+    isOnRoster ||
+    enrollment?.type === 'Waitlist' ||
+    enrollment?.type === 'Request';
+  const showPositionPicker =
+    !isPositionLocked &&
+    enrollment?.allowed === 'Roster' &&
+    availablePositions.length > 1;
 
   // Mirror mobile app's isWithin6Hours: only show clock UI (and call the server)
   // when current time is within [reportTime - 6h, eventEndTime + 6.5h].
@@ -703,7 +683,6 @@ export const EventDetailView = ({
             { label: 'Date', value: formattedShortDate || '—' },
             { label: 'Time', value: timeDisplay || '—' },
             { label: 'Location', value: location || '—' },
-            { label: 'Position', value: userPosition },
           ].map(({ label, value }) => (
             <div
               key={label}
@@ -717,6 +696,28 @@ export const EventDetailView = ({
               </p>
             </div>
           ))}
+          {/* Position tile — dropdown when registering, locked text when on roster */}
+          <div className="bg-white rounded-xl border border-slate-100 p-3 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">
+              Position
+            </p>
+            {showPositionPicker ? (
+              <select
+                title="Select a position"
+                value={selectedPosition}
+                onChange={(e) => setSelectedPosition(e.target.value)}
+                className="w-full text-sm font-semibold text-slate-900 bg-transparent border-0 p-0 focus:outline-none cursor-pointer"
+              >
+                {availablePositions.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-sm font-semibold text-slate-900 leading-snug">
+                {userPosition}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Clock In / Out */}
@@ -846,10 +847,9 @@ export const EventDetailView = ({
           <div className="bg-white rounded-xl border border-slate-100 p-4 shadow-sm">
             <ActionSection
               enrollment={enrollment}
-              event={event}
-              imageBaseUrl={imageBaseUrl}
               onAction={handleAction}
               submitting={submitting}
+              selectedPosition={selectedPosition}
             />
           </div>
         ) : null}
