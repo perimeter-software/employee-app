@@ -28,8 +28,8 @@ export const ClientVenueCard = ({
       : null;
 
   return (
-    <Card className="hover:shadow-md transition-shadow hover:border-appPrimary/40 h-full">
-      <CardContent className="p-4 flex gap-4 items-start">
+    <Card className="hover:shadow-md transition-shadow hover:border-appPrimary/40 h-full min-w-0">
+      <CardContent className="p-4 flex gap-4 items-center">
         <div className="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-zinc-100 flex items-center justify-center">
           {fullLogoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -65,7 +65,7 @@ export const ClientVenueCard = ({
             </div>
           )}
 
-          <div className="mt-2.5 flex gap-2">
+          <div className="mt-2.5 flex flex-wrap gap-2">
             <Button
               size="sm"
               variant="outline"
