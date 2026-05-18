@@ -17,7 +17,7 @@ jobs:
       - name: Deploy to V4 EC2 via SSH
         uses: appleboy/ssh-action@v1
         with:
-          host: 3.15.173.79
+          host: 3.136.160.66
           username: ${{ secrets.V4_DEPLOY_USER }}
           key: ${{ secrets.V4_DEPLOY_SSH_KEY }}
           command_timeout: 30m
