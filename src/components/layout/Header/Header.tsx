@@ -13,13 +13,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/DropdownMenu';
-import { ChevronDown, LogOut, Settings, User, Mail } from 'lucide-react';
+import { ChevronDown, LogOut, Settings, User } from 'lucide-react';
 import { TenantInfo, useSwitchTenant } from '@/domains/tenant';
 import { useCurrentUser } from '@/domains/user';
 import { NotificationBell } from '@/components/shared/NotificationBell';
-import { UserButton } from '@clerk/nextjs';
 import { IS_V4 } from '@/lib/config/auth-mode';
-import { EmailAddressesManager } from '@/components/auth/EmailAddressesManager';
+import { ClerkAccountMenuItem } from '@/components/auth/ClerkAccountMenuItem';
 
 function TenantLogo({
   src,
@@ -243,23 +242,6 @@ const Header: React.FC = () => {
           {/* Notifications */}
           <NotificationBell />
 
-          {/* Clerk account menu (V4 only) — opens the account modal with a
-              custom Email addresses tab. Shown alongside the existing menu. */}
-          {IS_V4 && (
-            <UserButton
-              afterSignOutUrl="/"
-              appearance={{ elements: { avatarBox: 'h-8 w-8' } }}
-            >
-              <UserButton.UserProfilePage
-                label="Email addresses"
-                labelIcon={<Mail className="h-4 w-4" />}
-                url="email-addresses"
-              >
-                <EmailAddressesManager />
-              </UserButton.UserProfilePage>
-            </UserButton>
-          )}
-
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -362,10 +344,17 @@ const Header: React.FC = () => {
                 </div>
               )}
 
-              <DropdownMenuItem>
-                <User className="w-4 h-4 mr-2" />
-                Profile
-              </DropdownMenuItem>
+              {/* On V4 (Clerk), open the account modal (with our custom Email
+                  addresses tab) instead of a dead Profile link — no second
+                  avatar needed. */}
+              {IS_V4 ? (
+                <ClerkAccountMenuItem />
+              ) : (
+                <DropdownMenuItem>
+                  <User className="w-4 h-4 mr-2" />
+                  Profile
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem>
                 <Settings className="w-4 h-4 mr-2" />
                 Settings
