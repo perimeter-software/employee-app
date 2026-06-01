@@ -35,6 +35,21 @@ jobs:
             # default PM2 daemon can't wipe v4-employee-app off the box.
             export PM2_HOME="$HOME/.pm2-employee"
 
+            # Helper: free a TCP port by killing whoever's listening on it.
+            # Used only on the FRESH-start branches below — the reload branch
+            # keeps the same process and doesn't need it. Protects against
+            # orphan processes from manual runs or interrupted prior deploys.
+            free_port() {
+              local port="$1" pids
+              pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+              if [ -n "$pids" ]; then
+                echo "Freeing port $port (killing pids: $pids)"
+                kill -TERM $pids 2>/dev/null || true
+                sleep 2
+                kill -KILL $pids 2>/dev/null || true
+              fi
+            }
+
             cd /var/node/v4-employee-app
             git fetch origin
             git checkout develop
@@ -108,6 +123,19 @@ jobs:
               exit 1
             fi
 
+            # Migration safety: any v4-employee-app tracked by a DIFFERENT PM2
+            # daemon (typically the default ~/.pm2 from before isolation was
+            # introduced) would keep respawning a parallel process and steal
+            # port 3000 — making our `pm2 start` below fail with EADDRINUSE.
+            # Sweep other daemons AFTER the build, so the existing process
+            # keeps serving traffic while we build. Idempotent and silent if
+            # nothing's there.
+            for OTHER_PM2_HOME in "$HOME/.pm2"; do
+              if [ "$OTHER_PM2_HOME" != "$PM2_HOME" ] && [ -d "$OTHER_PM2_HOME" ]; then
+                PM2_HOME="$OTHER_PM2_HOME" pm2 delete v4-employee-app >/dev/null 2>&1 || true
+              fi
+            done
+
             # Self-healing PM2 management:
             #  - If the process is online → reload with new env.
             #  - If it's tracked but stopped/errored (hit max restarts) →
@@ -128,9 +156,11 @@ jobs:
               else
                 echo "v4-employee-app is tracked but not online; recreating"
                 pm2 delete v4-employee-app || true
+                free_port 3000
                 pm2 start "$YARN_BIN" $PM2_FLAGS -- start
               fi
             else
+              free_port 3000
               pm2 start "$YARN_BIN" $PM2_FLAGS -- start
             fi
             pm2 save
