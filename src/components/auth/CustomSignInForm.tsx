@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { Alert, AlertDescription } from '@/components/ui/Alert';
 import { Loader2, Mail, Lock } from 'lucide-react';
+import { pickEmailFactor } from '@/components/auth/pickEmailFactor';
 
 type Step = 'credentials' | 'verify-email-code' | 'reset-password';
 
@@ -72,9 +73,10 @@ export function CustomSignInForm({ redirectUrl }: { redirectUrl: string }) {
 
   async function startEmailCodeSignIn(forEmail: string) {
     const created = await signIn!.create({ identifier: forEmail });
-    const emailFactor = created.supportedFirstFactors?.find(
-      (f: { strategy: string }) => f.strategy === 'email_code',
-    ) as { strategy: 'email_code'; emailAddressId: string } | undefined;
+    const emailFactor = pickEmailFactor<{
+      strategy: 'email_code';
+      emailAddressId: string;
+    }>(created.supportedFirstFactors ?? [], 'email_code', forEmail);
     if (!emailFactor) {
       throw new Error(
         "This email isn't set up for one-time codes. Contact support.",
@@ -94,9 +96,13 @@ export function CustomSignInForm({ redirectUrl }: { redirectUrl: string }) {
       const created = await signIn!.create({ identifier: email });
       const factors = created.supportedFirstFactors ?? [];
       const hasPassword = factors.some((f) => f.strategy === 'password');
-      const emailFactor = factors.find(
-        (f) => f.strategy === 'email_code',
-      ) as { strategy: 'email_code'; emailAddressId: string } | undefined;
+      // Match the email_code factor to the email the user actually typed —
+      // not just "first email_code factor on the account" — so the code is
+      // delivered to the address being used to sign in.
+      const emailFactor = pickEmailFactor<{
+        strategy: 'email_code';
+        emailAddressId: string;
+      }>(factors, 'email_code', email);
 
       if (hasPassword) {
         const result = await signIn!.attemptFirstFactor({
@@ -112,11 +118,12 @@ export function CustomSignInForm({ redirectUrl }: { redirectUrl: string }) {
         return;
       }
 
-      const resetFactor = factors.find(
-        (f) => f.strategy === 'reset_password_email_code',
-      ) as
-        | { strategy: 'reset_password_email_code'; emailAddressId: string }
-        | undefined;
+      // Same idea for reset_password_email_code — per-address, so route the
+      // code to the typed email.
+      const resetFactor = pickEmailFactor<{
+        strategy: 'reset_password_email_code';
+        emailAddressId: string;
+      }>(factors, 'reset_password_email_code', email);
 
       if (resetFactor) {
         await signIn!.prepareFirstFactor({

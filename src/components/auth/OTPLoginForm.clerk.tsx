@@ -10,6 +10,7 @@ import { useSignIn } from '@clerk/nextjs';
 import { Button } from '@/components/ui/Button';
 import { Mail, Lock, Loader2 } from 'lucide-react';
 import type { OTPLoginFormProps } from './OTPLoginForm.types';
+import { pickEmailFactor } from './pickEmailFactor';
 
 export function OTPLoginFormClerk({ returnUrl, onError }: OTPLoginFormProps) {
   const { signIn, setActive, isLoaded } = useSignIn();
@@ -35,10 +36,13 @@ export function OTPLoginFormClerk({ returnUrl, onError }: OTPLoginFormProps) {
       // Create the sign-in attempt with the email identifier.
       await signIn.create({ identifier: email });
 
-      // Find the email_code first-factor strategy for this email.
-      const emailFactor = signIn.supportedFirstFactors?.find(
-        (f) => f.strategy === 'email_code'
-      ) as { strategy: 'email_code'; emailAddressId: string } | undefined;
+      // Find the email_code first-factor matching the email the user typed —
+      // not just "first email_code factor on the account" — so the OTP goes
+      // to the address the user wants to sign in with.
+      const emailFactor = pickEmailFactor<{
+        strategy: 'email_code';
+        emailAddressId: string;
+      }>(signIn.supportedFirstFactors ?? [], 'email_code', email);
 
       if (!emailFactor) {
         throw new Error('Email one-time code is not enabled for this account');
