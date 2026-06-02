@@ -15,6 +15,7 @@ import {
   CalendarRange,
   MapPin,
   GraduationCap,
+  User,
 } from 'lucide-react';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { useCurrentUser } from '@/domains/user/hooks/use-current-user';
@@ -210,6 +211,14 @@ export function useNavigation() {
         }
       );
     }
+
+    // Every full user can view/edit their own profile.
+    selfServiceItems.push({
+      name: 'My Profile',
+      href: '/profile',
+      icon: User,
+      current: pathname === '/profile' || pathname.startsWith('/profile'),
+    });
 
     const groups: NavigationGroup[] = [];
     if (workspaceItems.length > 0)
