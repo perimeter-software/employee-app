@@ -17,7 +17,15 @@ jobs:
       - name: Deploy to V4 EC2 via SSH
         uses: appleboy/ssh-action@v1
         with:
-          host: 3.136.160.66
+          # Host comes from the `V4_DEPLOY_HOST` repo/environment Variable rather
+          # than a hardcoded IP. The v4 EC2 box has an ephemeral public IP that
+          # changes whenever it is stopped/started (a stop/start already broke
+          # this deploy once — see #142), so hardcoding forces a code change +
+          # PR every time. With a Variable, an IP change is a one-field edit in
+          # Settings → Variables (no deploy code churn).
+          #   Permanent fix: attach an Elastic IP to the box and point
+          #   V4_DEPLOY_HOST at it once — then it never drifts again.
+          host: ${{ vars.V4_DEPLOY_HOST }}
           username: ${{ secrets.V4_DEPLOY_USER }}
           key: ${{ secrets.V4_DEPLOY_SSH_KEY }}
           command_timeout: 30m
