@@ -5,7 +5,7 @@ import Layout from '@/components/layout/Layout';
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/Card';
-import { Bell, MapPin, CalendarRange } from 'lucide-react';
+import { Bell, MapPin, CalendarRange, QrCode } from 'lucide-react';
 import { useCurrentUser } from '@/domains/user';
 import { useAppUser } from '@/domains/user/hooks/useAppUser';
 import { usePageAuth } from '@/domains/shared/hooks/use-page-auth';
@@ -27,6 +27,7 @@ import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { StatCard } from '@/domains/home/components/StatCard';
 import { ShiftCard } from '@/domains/home/components/ShiftCard';
 import { ShiftCardSkeleton } from '@/domains/home/components/ShiftCardSkeleton';
+import { QrCodeModal } from '@/domains/home/components/QrCodeModal';
 
 const HomePage: NextPage = () => {
   const { user, error: authError, isLoading: authLoading } = useAppUser();
@@ -34,6 +35,7 @@ const HomePage: NextPage = () => {
   const { data: primaryCompany } = usePrimaryCompany();
   const queryClient = useQueryClient();
   const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(null);
+  const [qrOpen, setQrOpen] = useState(false);
   const {
     shouldShowContent,
     isLoading: pageAuthLoading,
@@ -165,6 +167,25 @@ const HomePage: NextPage = () => {
           />
         </div>
 
+        {/* Show my QR code */}
+        <button
+          onClick={() => setQrOpen(true)}
+          className="flex w-full items-center justify-between rounded-2xl border border-appPrimary/20 bg-appPrimary/5 p-4 text-left transition active:scale-[0.99]"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-appPrimary text-white">
+              <QrCode className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="font-bold text-gray-900">Show my QR code</div>
+              <div className="text-sm text-gray-500">
+                Clock in or out with a scan
+              </div>
+            </div>
+          </div>
+          <span className="text-sm font-semibold text-appPrimary">Open</span>
+        </button>
+
         {/* What's Next */}
         <div>
           <div className="flex items-center justify-between mb-3">
@@ -215,6 +236,12 @@ const HomePage: NextPage = () => {
           )}
         </div>
       </div>
+
+      <QrCodeModal
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        event={upcomingEvents[0]}
+      />
 
       {selectedEvent && (
         <EventDetailModal
