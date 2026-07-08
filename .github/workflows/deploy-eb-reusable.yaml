@@ -18,6 +18,11 @@ on:
       s3_key_prefix:
         required: true
         type: string
+      is_v4:
+        description: When 'true', build/run the V4 (Clerk) variant instead of legacy Auth0.
+        required: false
+        type: string
+        default: 'false'
     secrets:
       AUTH0_SECRET:
         required: true
@@ -25,6 +30,8 @@ on:
         required: true
       MONGODB_CONNECTION_STRING:
         required: true
+      CLERK_SECRET_KEY:
+        required: false
       NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:
         required: true
       GOOGLE_MAPS_API_KEY_TWO:
@@ -127,5 +134,7 @@ jobs:
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=SP1_API_ORIGIN,Value=${{ vars.SP1_API_ORIGIN }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=CLUSTER_ENABLED,Value=${{ vars.CLUSTER_ENABLED }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=CLUSTER_WORKERS,Value=${{ vars.CLUSTER_WORKERS }}" \
-                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=IS_V4,Value=false" \
-                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_IS_V4,Value=false"
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=IS_V4,Value=${{ inputs.is_v4 }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_IS_V4,Value=${{ inputs.is_v4 }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,Value=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=CLERK_SECRET_KEY,Value=${{ secrets.CLERK_SECRET_KEY }}"
