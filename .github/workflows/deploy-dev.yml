@@ -8,13 +8,14 @@ jobs:
   deploy:
     uses: ./.github/workflows/deploy-eb-reusable.yaml
     with:
-      # Deploy Dev through the v4-develop environment: it carries the Clerk keys
-      # and the v4 tenant Mongo URI, so the employee app runs as the V4 (Clerk)
-      # build against the same database the v4 admin/backend use. is_v4=true
-      # flips the build-time auth layer from Auth0 to Clerk.
-      environment: v4-develop
+      # NOTE: reverted from the v4-develop / is_v4:true switch — the
+      # employee-app-dev EB box has no network path to the v4 Mongo/Redis
+      # (server-selection timeout → app hung on "Checking authentication").
+      # Re-enable the v4 cutover only after the box's egress IP is added to the
+      # v4 Atlas allowlist AND it can reach the v4 Redis. The reusable still
+      # supports is_v4 for when that's ready.
+      environment: develop
       eb_env_name: employee-app-dev
       eb_app_name: employee-app
       s3_key_prefix: employee-app/dev
-      is_v4: 'true'
     secrets: inherit
