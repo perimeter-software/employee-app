@@ -15,13 +15,16 @@ import AlertsSection from './AlertsSection';
 import MessageSection from './MessageSection';
 import FormContainer from './FormContainer';
 import type { OutsideMode } from '../types';
-import { useUser } from '@auth0/nextjs-auth0/client';
+// Use the auth-provider-agnostic hook (Clerk under V4, Auth0 under legacy)
+// instead of Auth0's useUser directly — the latter throws
+// "You forgot to wrap your app in <UserProvider>" in Clerk mode.
+import { useAppUser } from '@/domains/user/hooks/useAppUser';
 import { useApplicantSubType } from '@/lib/hooks/use-applicant-route-protection';
 
 const NewOnboarding: React.FC = () => {
   const params = useParams();
   const urlStep = (params?.step as string | undefined) ?? undefined;
-  const { user } = useUser();
+  const { user } = useAppUser();
   const contextOutsideMode: OutsideMode = user ? '' : 'protected';
 
   const { data: currentApplicant, isLoading } = useCurrentApplicant('protected');
