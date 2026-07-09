@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo } from 'react';
-import { format } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/Card';
 import { MapPin, Clock, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -102,13 +101,24 @@ function computeClockState(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function formatTimeRange(eventDate: string, eventEndTime?: string): string {
+// All event date/time labels render in the EVENT's timezone (not the worker's
+// device) so a US event reads correctly from anywhere — matching EventCard.
+function formatTimeRange(
+  eventDate: string,
+  eventEndTime?: string,
+  timeZone?: string
+): string {
   try {
-    const start = format(new Date(eventDate), 'h:mm a');
+    const fmt = (iso: string) =>
+      new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: timeZone || undefined,
+      }).format(new Date(iso));
+    const start = fmt(eventDate);
     if (!eventEndTime) return start;
     try {
-      const end = format(new Date(eventEndTime), 'h:mm a');
-      return `${start} – ${end}`;
+      return `${start} – ${fmt(eventEndTime)}`;
     } catch {
       return `${start} – ${eventEndTime}`;
     }
@@ -126,17 +136,25 @@ function isEventActive(eventDate: string): boolean {
   }
 }
 
-function getMonthLabel(eventDate: string): string {
+function getMonthLabel(eventDate: string, timeZone?: string): string {
   try {
-    return format(new Date(eventDate), 'MMM').toUpperCase();
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      timeZone: timeZone || undefined,
+    })
+      .format(new Date(eventDate))
+      .toUpperCase();
   } catch {
     return '';
   }
 }
 
-function getDayLabel(eventDate: string): string {
+function getDayLabel(eventDate: string, timeZone?: string): string {
   try {
-    return format(new Date(eventDate), 'd');
+    return new Intl.DateTimeFormat('en-US', {
+      day: 'numeric',
+      timeZone: timeZone || undefined,
+    }).format(new Date(eventDate));
   } catch {
     return '';
   }
@@ -156,7 +174,7 @@ export interface ShiftCardProps {
 export function ShiftCard({ event, applicantId, userId, agentName, onClick }: ShiftCardProps) {
   const today = isEventActive(event.eventDate);
   const location = [event.venueCity, event.venueState].filter(Boolean).join(', ');
-  const timeRange = formatTimeRange(event.eventDate, event.eventEndTime);
+  const timeRange = formatTimeRange(event.eventDate, event.eventEndTime, event.timeZone);
 
   const clockInMutation = useEventClockIn();
   const clockOutMutation = useEventClockOut();
@@ -198,10 +216,10 @@ export function ShiftCard({ event, applicantId, userId, agentName, onClick }: Sh
           {/* Date badge */}
           <div className="shrink-0 w-11 rounded-lg bg-appPrimary text-white text-center py-1.5">
             <p className="text-[10px] font-semibold uppercase leading-none tracking-wide">
-              {getMonthLabel(event.eventDate)}
+              {getMonthLabel(event.eventDate, event.timeZone)}
             </p>
             <p className="text-lg font-bold leading-tight">
-              {getDayLabel(event.eventDate)}
+              {getDayLabel(event.eventDate, event.timeZone)}
             </p>
           </div>
 

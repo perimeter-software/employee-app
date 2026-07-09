@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { format } from 'date-fns';
 import { Clock, MapPin, RefreshCw, ShieldCheck, QrCode } from 'lucide-react';
 import {
   Dialog,
@@ -227,7 +226,22 @@ export function QrCodeModal({ open, onClose, event }: QrCodeModalProps) {
                   <span>
                     {(() => {
                       try {
-                        return format(new Date(event.eventDate), 'EEE, MMM d · h:mm a');
+                        // Render in the EVENT's timezone (not the worker's
+                        // device) so a US event reads correctly from anywhere.
+                        const d = new Date(event.eventDate);
+                        const tz = event.timeZone || undefined;
+                        const datePart = new Intl.DateTimeFormat('en-US', {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                          timeZone: tz,
+                        }).format(d);
+                        const timePart = new Intl.DateTimeFormat('en-US', {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          timeZone: tz,
+                        }).format(d);
+                        return `${datePart} · ${timePart}`;
                       } catch {
                         return '';
                       }
