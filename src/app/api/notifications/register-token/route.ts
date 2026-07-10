@@ -37,7 +37,11 @@ async function registerTokenHandler(request: AuthenticatedRequest) {
   }
 
   const { sub: userSub, email, tenant } = user;
-  const sp1 = getSp1Client(userSub, email || '', tenant?.clientDomain || tenant?.url);
+  const sp1 = getSp1Client(
+    userSub,
+    email || '',
+    tenant?.clientDomain || tenant?.url
+  );
 
   try {
     const { data } = await sp1.put(`/users/id/${userId}`, {

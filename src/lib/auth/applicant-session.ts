@@ -1,0 +1,249 @@
+// lib/auth/applicant-session.ts
+//
+// Shared helpers for minting an applicant-only OTP session.
+//
+// Historically this logic lived inline inside /api/auth/otp/verify. It is now
+// extracted so that BOTH entry points build identical sessions:
+//   1. OTP verify  — applicant enters an emailed code.
+//   2. Handoff consume — an external app (e.g. the admin app) hands the applicant
+//      off via a single-use, server-minted token so they land pre-authenticated.
+//
+// Keeping the gating + session shape in one place guarantees the two paths can
+// never drift (same status/stage checks, same tenant caching, same cookie set).
+import { NextResponse } from 'next/server';
+import crypto from 'crypto';
+import redisService from '@/lib/cache/redis-client';
+
+const ALL_APPLICANT_STAGES = ['New', 'ATC', 'Screened', 'Pre-Hire'];
+const DEFAULT_MIN_STAGE = 'Screened';
+
+export interface ApplicantSessionData {
+  userId: string;
+  applicantId: string;
+  email: string;
+  name: string;
+  firstName?: string;
+  lastName?: string;
+  loginMethod: 'otp';
+  isLimitedAccess: boolean;
+  isApplicantOnly: true;
+  userType: 'applicant';
+  status?: string;
+  employmentStatus?: string;
+  applicantStatus?: string;
+  acknowledgedDate?: string | null;
+  tenant?: unknown;
+  availableTenants?: unknown[];
+  createdAt: string;
+}
+
+export type BuildApplicantSessionResult =
+  | { ok: true; sessionData: ApplicantSessionData; redirectUrl: string }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Only allow relative, same-origin paths to prevent open redirects.
+ * Mirrors the guard already used in the OTP verify route.
+ */
+export function isSafeRelativePath(path: string | null | undefined): path is string {
+  if (!path) return false;
+  return path.startsWith('/') && !path.startsWith('//');
+}
+
+/**
+ * A deep-link is only honored for applicant-only sessions when it targets the
+ * applicant portal. This prevents a generic `returnTo` default (e.g. "/time",
+ * which the OTP login form sends) from bouncing an applicant out of their
+ * portal, while still allowing "/applicant/jobs?run=aiscreening" style links.
+ */
+export function isApplicantPortalPath(path: string | null | undefined): path is string {
+  return isSafeRelativePath(path) && /^\/applicant(\/|\?|$)/.test(path);
+}
+
+/**
+ * Normalize a tenant domain for comparison: lowercase, strip scheme + trailing
+ * slash. The backend stores the tenant's canonical `clientDomain`; on our side a
+ * resolved tenant carries the same value in `url` (and sometimes `clientDomain`).
+ */
+function normalizeDomain(domain: string | null | undefined): string {
+  if (!domain) return '';
+  return domain
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/+$/, '');
+}
+
+/**
+ * Validate an applicant by email and build the OTP session payload + default
+ * redirect. Runs the exact status/stage gating used by the OTP flow.
+ *
+ * @param email        Raw email; will be normalized.
+ * @param destination  Optional deep-link (e.g. "/applicant/jobs?run=aiscreening").
+ *                     Used as the redirect when it is a safe relative path AND the
+ *                     applicant is eligible for the onboarding portal.
+ * @param preferredTenantDomain  Optional canonical tenant domain (the handoff's
+ *                     `tenantDomain`). When it matches one of the applicant's
+ *                     tenants, that tenant is pinned as primary so the applicant
+ *                     lands in the tenant they were handed off from — rather than
+ *                     defaulting to the first tenant found (matters only for
+ *                     applicants that exist in more than one tenant).
+ */
+export async function buildApplicantSessionData(
+  email: string,
+  destination?: string | null,
+  preferredTenantDomain?: string | null
+): Promise<BuildApplicantSessionResult> {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  const { findApplicantAndTenantsByEmail } = await import(
+    '@/domains/user/utils/mongo-user-utils'
+  );
+  const applicantData = await findApplicantAndTenantsByEmail(normalizedEmail);
+
+  if (!applicantData || applicantData.tenants.length === 0) {
+    return {
+      ok: false,
+      status: 404,
+      error: 'Account not found. Please contact your supervisor.',
+    };
+  }
+
+  // Pin the handoff's intended tenant as primary when supplied and present.
+  let tenants = applicantData.tenants;
+  if (preferredTenantDomain) {
+    const target = normalizeDomain(preferredTenantDomain);
+    const idx = tenants.findIndex(
+      (t) =>
+        normalizeDomain(
+          (t as { clientDomain?: string }).clientDomain
+        ) === target || normalizeDomain(t.url) === target
+    );
+    if (idx > 0) {
+      tenants = [tenants[idx], ...tenants.slice(0, idx), ...tenants.slice(idx + 1)];
+    } else if (idx === -1) {
+      console.warn(
+        `Handoff tenantDomain "${preferredTenantDomain}" not among applicant tenants for ${normalizedEmail}; using default order.`
+      );
+    }
+  }
+
+  const { status, applicantStatus, acknowledgedDate } =
+    applicantData.applicantInfo;
+
+  // Block login if the applicant record status is not a recognized value
+  if (status !== 'Employee' && status !== 'Applicant') {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        'Your account is not currently active. Please contact your supervisor.',
+    };
+  }
+
+  // For "Applicant" status, also validate applicantStatus is a known pipeline stage
+  if (status === 'Applicant') {
+    if (!applicantStatus || !ALL_APPLICANT_STAGES.includes(applicantStatus)) {
+      return {
+        ok: false,
+        status: 403,
+        error:
+          'Your application is not in an eligible stage. Please contact your supervisor.',
+      };
+    }
+  }
+
+  // Cache tenant data immediately so withEnhancedAuthAPI can resolve tenant on
+  // the very first authenticated request, without waiting for /api/current-user.
+  await redisService.setTenantData(
+    normalizedEmail,
+    {
+      tenant: tenants[0],
+      availableTenants: tenants.slice(1),
+      isApplicantOnly: true,
+    },
+    24 * 60 * 60
+  );
+
+  // Resolve redirect. Default mirrors the OTP flow (/applicant for applicants
+  // that can onboard, /payroll for Employee-status paystub access). A safe
+  // relative `destination` overrides the default for "Applicant" status only —
+  // Employee-status applicants remain constrained to /payroll.
+  let redirectUrl: string;
+  if (status === 'Applicant') {
+    // Kept for parity with the OTP flow; the client-side protection hook
+    // enforces the actual company minStageToOnboarding setting.
+    const minStageIndex = ALL_APPLICANT_STAGES.indexOf(DEFAULT_MIN_STAGE);
+    const stageIndex = ALL_APPLICANT_STAGES.indexOf(applicantStatus ?? '');
+    void (stageIndex >= minStageIndex && stageIndex !== -1);
+
+    redirectUrl = isApplicantPortalPath(destination) ? destination : '/applicant';
+  } else {
+    // status === 'Employee': payroll/paystub access only
+    redirectUrl = '/payroll';
+  }
+
+  const sessionData: ApplicantSessionData = {
+    userId: applicantData.applicantId,
+    applicantId: applicantData.applicantId,
+    email: normalizedEmail,
+    name:
+      applicantData.applicantInfo.firstName &&
+      applicantData.applicantInfo.lastName
+        ? `${applicantData.applicantInfo.firstName} ${applicantData.applicantInfo.lastName}`.trim()
+        : applicantData.applicantInfo.firstName ||
+          applicantData.applicantInfo.lastName ||
+          normalizedEmail,
+    firstName: applicantData.applicantInfo.firstName,
+    lastName: applicantData.applicantInfo.lastName,
+    loginMethod: 'otp',
+    isLimitedAccess: true,
+    isApplicantOnly: true,
+    userType: 'applicant',
+    status,
+    employmentStatus: applicantData.applicantInfo.employmentStatus,
+    applicantStatus: applicantData.applicantInfo.applicantStatus,
+    acknowledgedDate: applicantData.applicantInfo.acknowledgedDate,
+    tenant: tenants[0] ?? null,
+    availableTenants: tenants.slice(1),
+    createdAt: new Date().toISOString(),
+  };
+
+  return { ok: true, sessionData, redirectUrl };
+}
+
+/**
+ * Persist an OTP session in Redis (24h) and return the session id used as the
+ * `otp_session_id` cookie value.
+ */
+export async function createOtpSession(sessionData: unknown): Promise<string> {
+  const sessionId = `otp_session_${crypto.randomUUID()}`;
+  await redisService.set(`otp_session:${sessionId}`, sessionData, 24 * 60 * 60);
+  return sessionId;
+}
+
+/**
+ * Attach the OTP session cookies to a response. `otp_session_id` is the httpOnly
+ * session handle; `auth0.is.authenticated` is a non-httpOnly compatibility flag
+ * read by existing client checks.
+ */
+export function setOtpSessionCookies(
+  response: NextResponse,
+  sessionId: string
+): void {
+  const maxAge = 24 * 60 * 60; // 24 hours
+  response.cookies.set('otp_session_id', sessionId, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge,
+  });
+  response.cookies.set('auth0.is.authenticated', 'true', {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge,
+  });
+}

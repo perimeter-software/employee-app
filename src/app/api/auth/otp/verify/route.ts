@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mongoConn } from '@/lib/db/mongodb';
 import { checkUserExistsByEmail } from '@/domains/user/utils/mongo-user-utils';
 import redisService from '@/lib/cache/redis-client';
+import { buildApplicantSessionData } from '@/lib/auth/applicant-session';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -118,119 +119,25 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // APPLICANT-ONLY FLOW
-      const { findApplicantAndTenantsByEmail } = await import(
-        '@/domains/user/utils/mongo-user-utils'
+      // Gating + session shape are shared with the handoff-consume route so the
+      // two entry points can never drift. A safe relative `returnTo` deep-links
+      // "Applicant"-status users (e.g. /applicant/jobs?run=aiscreening).
+      const result = await buildApplicantSessionData(
+        normalizedEmail,
+        returnTo ? decodeURIComponent(returnTo) : undefined
       );
-      const applicantData =
-        await findApplicantAndTenantsByEmail(normalizedEmail);
 
-      if (!applicantData || applicantData.tenants.length === 0) {
+      if (!result.ok) {
         await redisService.del(otpKey);
         return NextResponse.json(
-          { error: 'Account not found. Please contact your supervisor.' },
-          { status: 404 }
+          { error: result.error },
+          { status: result.status }
         );
-      }
-
-      const { status, applicantStatus, acknowledgedDate } =
-        applicantData.applicantInfo;
-
-      // Block login if the applicant record status is not a recognized value
-      if (status !== 'Employee' && status !== 'Applicant') {
-        await redisService.del(otpKey);
-        return NextResponse.json(
-          {
-            error:
-              'Your account is not currently active. Please contact your supervisor.',
-          },
-          { status: 403 }
-        );
-      }
-
-      // For "Applicant" status, also validate applicantStatus is a known pipeline stage
-      if (status === 'Applicant') {
-        const ALL_APPLICANT_STAGES = ['New', 'ATC', 'Screened', 'Pre-Hire'];
-        if (
-          !applicantStatus ||
-          !ALL_APPLICANT_STAGES.includes(applicantStatus)
-        ) {
-          await redisService.del(otpKey);
-          return NextResponse.json(
-            {
-              error:
-                'Your application is not in an eligible stage. Please contact your supervisor.',
-            },
-            { status: 403 }
-          );
-        }
       }
 
       isApplicantOnly = true;
-
-      // Cache tenant data immediately so withEnhancedAuthAPI can resolve tenant on
-      // the very first authenticated request, without waiting for /api/current-user.
-      if (applicantData.tenants.length > 0) {
-        await redisService.setTenantData(
-          normalizedEmail,
-          {
-            tenant: applicantData.tenants[0],
-            availableTenants: applicantData.tenants.slice(1),
-            isApplicantOnly: true,
-          },
-          24 * 60 * 60
-        );
-      }
-
-      // Determine the redirect URL.
-      // For "Employee" status applicants: existing payroll flow.
-      // For "Applicant" status: determine sub-type using the default minStageToOnboarding
-      // ("Screened"). The client-side protection hook will enforce the actual company setting.
-      if (status === 'Applicant') {
-        const DEFAULT_MIN_STAGE = 'Screened';
-        const ALL_STAGES = ['New', 'ATC', 'Screened', 'Pre-Hire'];
-        const minStageIndex = ALL_STAGES.indexOf(DEFAULT_MIN_STAGE);
-        const stageIndex = ALL_STAGES.indexOf(applicantStatus ?? '');
-        const isAllowedForOnboarding =
-          stageIndex >= minStageIndex && stageIndex !== -1;
-
-        if (isAllowedForOnboarding && !acknowledgedDate) {
-          // Ready for onboarding, hasn't completed it yet
-          redirectUrl = '/applicant';
-        } else {
-          redirectUrl = '/applicant';
-        }
-      } else {
-        // status === 'Employee': payroll/paystub access only
-        redirectUrl = '/payroll';
-      }
-
-      sessionData = {
-        userId: applicantData.applicantId,
-        applicantId: applicantData.applicantId,
-        email: normalizedEmail,
-        name:
-          applicantData.applicantInfo.firstName &&
-          applicantData.applicantInfo.lastName
-            ? `${applicantData.applicantInfo.firstName} ${applicantData.applicantInfo.lastName}`.trim()
-            : applicantData.applicantInfo.firstName ||
-              applicantData.applicantInfo.lastName ||
-              normalizedEmail,
-        firstName: applicantData.applicantInfo.firstName,
-        lastName: applicantData.applicantInfo.lastName,
-        loginMethod: 'otp',
-        isLimitedAccess: true,
-        isApplicantOnly: true,
-        userType: 'applicant',
-        status, // "Employee" | "Applicant"
-        employmentStatus: applicantData.applicantInfo.employmentStatus,
-        applicantStatus: applicantData.applicantInfo.applicantStatus,
-        acknowledgedDate: applicantData.applicantInfo.acknowledgedDate,
-        // Persist the resolved tenant so every authenticated request can read it
-        // directly from the session without a second Redis lookup or DB scan.
-        tenant: applicantData.tenants[0] ?? null,
-        availableTenants: applicantData.tenants.slice(1),
-        createdAt: new Date().toISOString(),
-      };
+      sessionData = result.sessionData;
+      redirectUrl = result.redirectUrl;
     }
 
     // Delete OTP after successful verification

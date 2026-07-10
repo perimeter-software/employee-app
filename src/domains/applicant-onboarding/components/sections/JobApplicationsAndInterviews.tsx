@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { Calendar, Trash2, Info, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
@@ -176,6 +177,21 @@ const JobApplicationsAndInterviews: React.FC = () => {
     (applicant.applicantStatus === 'New' ||
       applicant.applicantStatus === 'ATC') &&
     !((applicant.interviews as unknown[]) ?? []).length;
+
+  // Deep-link support: /applicant/jobs?run=aiscreening auto-opens the AI screening
+  // modal once the applicant is eligible (ported from stadium-people). This is what
+  // the external admin-app handoff targets so the applicant lands directly in the
+  // screening. Guarded by a ref so it opens once and does not re-trigger when the
+  // user closes the modal.
+  const searchParams = useSearchParams();
+  const autoRunHandledRef = useRef(false);
+  useEffect(() => {
+    if (autoRunHandledRef.current) return;
+    if (canStartAIInterview && searchParams.get('run') === 'aiscreening') {
+      autoRunHandledRef.current = true;
+      setIsAiChatbotModalOpen(true);
+    }
+  }, [canStartAIInterview, searchParams]);
 
   const allInterviews = useMemo<InterviewRow[]>(() => {
     const jobsWithAutoScheduling: Array<{
