@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     try {
       const otpSessionId = request.cookies.get('otp_session_id')?.value;
       if (otpSessionId) {
-        await redisService.delete(`otp_session:${otpSessionId}`);
+        await redisService.del(`otp_session:${otpSessionId}`);
       }
     } catch (error) {
       console.error('V4 logout: OTP session cleanup failed', error);
