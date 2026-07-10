@@ -137,4 +137,5 @@ jobs:
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=IS_V4,Value=${{ inputs.is_v4 }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_IS_V4,Value=${{ inputs.is_v4 }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,Value=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}" \
+                "Namespace=aws:elasticbeanstalk:application:environment,OptionName=HANDOFF_SHARED_SECRET,Value=${{ secrets.HANDOFF_SHARED_SECRET }}" \
                 "Namespace=aws:elasticbeanstalk:application:environment,OptionName=CLERK_SECRET_KEY,Value=${{ secrets.CLERK_SECRET_KEY }}"
