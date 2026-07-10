@@ -36,8 +36,21 @@ const HANDOFF_CONSUME_PATH =
 
 const DEFAULT_DESTINATION = '/applicant';
 
+// Behind nginx, request.url / request.nextUrl.origin is the internal upstream
+// address (e.g. http://localhost:8080), not the public host — so redirects built
+// from it send the browser to localhost. Reconstruct the public origin from the
+// forwarded headers, mirroring the logout route.
+function getPublicOrigin(request: NextRequest): string {
+  const forwardedHost =
+    request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  const forwardedProto = request.headers.get('x-forwarded-proto') ?? 'https';
+  return forwardedHost
+    ? `${forwardedProto}://${forwardedHost}`
+    : request.nextUrl.origin;
+}
+
 function redirectToLogin(request: NextRequest, error: string): NextResponse {
-  const url = new URL('/', request.url);
+  const url = new URL('/', getPublicOrigin(request));
   url.searchParams.set('error', error);
   return NextResponse.redirect(url);
 }
@@ -121,7 +134,7 @@ export async function GET(request: NextRequest) {
   const sessionId = await createOtpSession(result.sessionData);
 
   const response = NextResponse.redirect(
-    new URL(result.redirectUrl, request.url)
+    new URL(result.redirectUrl, getPublicOrigin(request))
   );
   setOtpSessionCookies(response, sessionId);
   return response;
