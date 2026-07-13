@@ -12,7 +12,14 @@ const isProtected = createRouteMatcher(
 const clerkHandler = clerkMiddleware(async (auth, req) => {
   if (isProtected(req)) {
     const { userId, redirectToSignIn } = await auth();
-    if (!userId) return redirectToSignIn();
+    // V4 supports two session types: Clerk (userId) and the Redis-backed OTP
+    // email-code flow (an `otp_session_id` cookie, no Clerk userId). Let an
+    // OTP-authenticated request through — the page's client guard and the
+    // withEnhancedAuthAPI handlers still validate the session for real. Without
+    // this, OTP users get bounced to Clerk sign-in on every protected route
+    // (e.g. /profile, /dashboard).
+    const hasOtpSession = !!req.cookies.get('otp_session_id')?.value;
+    if (!userId && !hasOtpSession) return redirectToSignIn();
   }
 });
 
