@@ -15,11 +15,9 @@ import { useNewApplicantContext } from '../../state/new-applicant-context';
 import { getRequiredEmptyBoxes, type AttachmentFile } from '../../utils/attachment-helpers';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import UploadFileModal from './UploadFileModal';
+import { getStaticAssetUrl } from '@/lib/utils';
 
 const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
-// Common/shared static assets live at /common on the same image host.
-// Mirrors stadium-people's getCommonBaseImageUrl which replaces the uploadPath with /common.
-const COMMON_BASE = `${IMAGE_SERVER}/common`;
 const IMAGE_EXTS = ['jpeg', 'jpg', 'png', 'bmp', 'gif', 'webp'];
 
 function getExt(filename: string): string {
@@ -34,7 +32,7 @@ const OnboardingGuideModal: React.FC<{ open: boolean; onOpenChange: (v: boolean)
   open,
   onOpenChange,
 }) => {
-  const pdfUrl = `${COMMON_BASE}/static/i-9%20example%20docs.pdf`;
+  const pdfUrl = getStaticAssetUrl(IMAGE_SERVER, 'i-9%20example%20docs.pdf');
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl w-[80vw]">
@@ -211,7 +209,7 @@ const UploadID: React.FC = () => {
             Click here for onboarding documents upload guide
           </button>
           <a
-            href={`${COMMON_BASE}/static/How%20to%20Compress%20Your%20Images%20for%20Upload.pdf`}
+            href={getStaticAssetUrl(IMAGE_SERVER, 'How%20to%20Compress%20Your%20Images%20for%20Upload.pdf')}
             target="_blank"
             rel="noopener noreferrer"
             className="block text-sm text-blue-600 underline hover:text-blue-800"

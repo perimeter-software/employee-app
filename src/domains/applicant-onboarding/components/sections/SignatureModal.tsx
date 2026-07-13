@@ -12,6 +12,8 @@ import {
   DialogFooter,
 } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
+import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
+import { getApplicantFileUrl } from '@/lib/utils';
 
 interface SignatureModalProps {
   applicantId: string;
@@ -34,6 +36,7 @@ const SignatureModal: React.FC<SignatureModalProps> = ({
   onOpenChange,
   onSignatureSaved,
 }) => {
+  const { data: primaryCompany } = usePrimaryCompany();
   const [emptyCanvas, setEmptyCanvas] = useState(false);
   const [editMode, setEditMode] = useState(!existingSignature);
   const [saving, setSaving] = useState(false);
@@ -154,7 +157,13 @@ const SignatureModal: React.FC<SignatureModalProps> = ({
               <p className="mb-1 text-sm font-semibold">E-Signature</p>
               <div className="rounded border">
                 <img
-                  src={`${IMAGE_SERVER}/applicants/${applicantId}/signature/${existingSignature}?${Date.now()}`}
+                  src={`${getApplicantFileUrl(
+                    IMAGE_SERVER,
+                    primaryCompany?.uploadPath,
+                    applicantId,
+                    'signature',
+                    existingSignature
+                  )}?${Date.now()}`}
                   alt="signature"
                   className="w-full"
                 />

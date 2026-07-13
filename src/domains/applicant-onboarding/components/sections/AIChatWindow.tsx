@@ -3,6 +3,7 @@
 import { format, isToday } from 'date-fns';
 import { useMemo } from 'react';
 import DOMPurify from 'dompurify';
+import { getStaticAssetUrl } from '@/lib/utils';
 
 export interface ChatMessage {
   index: number;
@@ -48,9 +49,7 @@ interface AIChatWindowProps {
 
 const getBotAvatarSrc = () => {
   const imageServer = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
-  return imageServer
-    ? `${imageServer}/common/static/aiChatbotProfilePicture.png`
-    : '/static/aiChatbotProfilePicture.png';
+  return getStaticAssetUrl(imageServer, 'aiChatbotProfilePicture.png');
 };
 
 const AIChatWindow: React.FC<AIChatWindowProps> = ({

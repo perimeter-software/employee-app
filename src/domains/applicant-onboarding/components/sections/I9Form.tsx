@@ -10,6 +10,8 @@ import { Label } from '@/components/ui/Label';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import { i9Schema } from '../../data/i9-schema';
 import SignatureModal from './SignatureModal';
+import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
+import { getApplicantFileUrl } from '@/lib/utils';
 
 interface I9FormValues {
   citizenshipStatus: string;
@@ -79,6 +81,8 @@ const I9Form: React.FC = () => {
     updateCurrentFormState,
     submitRef,
   } = useNewApplicantContext();
+
+  const { data: primaryCompany } = usePrimaryCompany();
 
   const i9 = applicant?.i9Form as Record<string, unknown> | undefined;
 
@@ -163,12 +167,12 @@ const I9Form: React.FC = () => {
       previous: { show: true, disabled: false },
       next: {
         show: true,
-        disabled: !canContinue || !applicant?.i9Form?.signature,
+        disabled: !canContinue || !i9?.signature,
       },
       submit: { show: true, disabled: !isDirty },
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canContinue, applicant?.i9Form?.signature, isDirty]);
+  }, [canContinue, i9?.signature, isDirty]);
 
   useEffect(() => {
     updateCurrentFormState({ isDirty });
@@ -211,7 +215,7 @@ const I9Form: React.FC = () => {
     setValue('preparerOrTranslator', value, { shouldDirty: true });
   };
 
-  const existingSignature = applicant?.i9Form?.signature as string | undefined;
+  const existingSignature = i9?.signature as string | undefined;
   const processedDate = i9?.processedDate
     ? new Date(i9.processedDate as string).toLocaleDateString()
     : new Date().toLocaleDateString();
@@ -454,7 +458,13 @@ const I9Form: React.FC = () => {
                 <p className="mb-1 text-sm font-semibold">E-Signature</p>
                 <Card className="w-1/2">
                   <img
-                    src={`${IMAGE_SERVER}/applicants/${applicant._id}/signature/${existingSignature}?${Date.now()}`}
+                    src={`${getApplicantFileUrl(
+                      IMAGE_SERVER,
+                      primaryCompany?.uploadPath,
+                      applicant._id,
+                      'signature',
+                      existingSignature
+                    )}?${Date.now()}`}
                     alt="signature"
                     className="w-full"
                   />
