@@ -194,7 +194,7 @@ const ChatMessageBubble: React.FC<BubbleProps> = ({
         <BotAvatar />
         <div className="flex flex-col gap-1 max-w-[60%]">
           <div
-            className="bg-blue-600 text-white rounded-2xl rounded-bl-none px-4 py-2 text-sm [&>div]:inline [&>p]:inline"
+            className="bg-blue-600 text-white rounded-2xl rounded-bl-none px-4 py-2 text-sm whitespace-pre-wrap [&>div]:inline [&>p]:inline"
             dangerouslySetInnerHTML={{
               __html: DOMPurify.sanitize(item.message ?? ''),
             }}
