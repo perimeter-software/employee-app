@@ -18,17 +18,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/Dialog';
-import { clsxm } from '@/lib/utils';
+import { clsxm, userPhotoKey } from '@/lib/utils';
 import { baseInstance } from '@/lib/api/instance';
-import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
+import { useFileUrl } from '@/lib/hooks/use-file-url';
 import {
   EmployeeViewModal,
   type StaffingEmployee,
 } from '../EmployeeViewModal/EmployeeViewModal';
 import { SendMessageModal } from '../SendMessageModal/SendMessageModal';
 import { StaffingPoolExportModal } from '../StaffingPoolExportModal/StaffingPoolExportModal';
-
-const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -121,11 +119,6 @@ export const StaffingPoolModal = ({
   onClose,
 }: Props) => {
   const queryClient = useQueryClient();
-  const { data: company } = usePrimaryCompany();
-  const imageBase =
-    IMAGE_SERVER && company?.uploadPath
-      ? `${IMAGE_SERVER}/${company.uploadPath}`
-      : null;
 
   const [filter, setFilter] = useState<StaffingFilter>('all');
   const [search, setSearch] = useState('');
@@ -323,7 +316,6 @@ export const StaffingPoolModal = ({
             ) : (
               <EmployeeTable
                 rows={filteredEmployees}
-                imageBase={imageBase}
                 onEdit={setEditEmployee}
                 onMessage={setMessageEmployee}
               />
@@ -438,15 +430,28 @@ function SortableTH({
   );
 }
 
+/**
+ * Avatar for an employee row. Resolves `profileImg` to a displayable src:
+ * an absolute URL passes through, a bare filename is presigned out of the
+ * tenant's S3 bucket, and anything unresolved falls back to initials.
+ */
 function EmployeeAvatar({
   firstName,
   lastName,
-  imageSrc,
+  profileImg,
+  userId,
 }: {
   firstName: string;
   lastName: string;
-  imageSrc?: string;
+  profileImg?: string | null;
+  userId?: string | null;
 }) {
+  const isAbsolute = !!profileImg && /^https?:\/\//i.test(profileImg);
+  const presignedSrc = useFileUrl(
+    !isAbsolute && profileImg && userId ? userPhotoKey(userId, profileImg) : null
+  );
+  const imageSrc = isAbsolute ? profileImg : presignedSrc;
+
   const [imgError, setImgError] = React.useState(false);
   const initials =
     `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.toUpperCase();
@@ -469,12 +474,10 @@ function EmployeeAvatar({
 
 function EmployeeTable({
   rows,
-  imageBase,
   onEdit,
   onMessage,
 }: {
   rows: StaffingEmployee[];
-  imageBase: string | null;
   onEdit: (e: StaffingEmployee) => void;
   onMessage: (e: StaffingEmployee) => void;
 }) {
@@ -526,13 +529,8 @@ function EmployeeTable({
               <EmployeeAvatar
                 firstName={emp.firstName}
                 lastName={emp.lastName}
-                imageSrc={
-                  emp.profileImg?.startsWith('https')
-                    ? emp.profileImg
-                    : imageBase && emp.profileImg && emp.userId
-                      ? `${imageBase}/users/${emp.userId}/photo/${emp.profileImg}`
-                      : undefined
-                }
+                profileImg={emp.profileImg}
+                userId={emp.userId}
               />
             </td>
             <td className="px-4 py-2.5 text-slate-800 font-medium">

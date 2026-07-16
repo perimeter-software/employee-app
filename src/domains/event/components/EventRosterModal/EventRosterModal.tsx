@@ -21,12 +21,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/Dialog';
-import { clsxm } from '@/lib/utils';
-import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
+import { clsxm, userPhotoKey } from '@/lib/utils';
+import { useFileUrl } from '@/lib/hooks/use-file-url';
 import { SendMessageModal } from '@/domains/staffing/components/SendMessageModal/SendMessageModal';
 import type { StaffingEmployee } from '@/domains/staffing/components/EmployeeViewModal/EmployeeViewModal';
 
-const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
 const PAGE_LIMIT = 25;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -189,15 +188,28 @@ function RosterStatusCell({
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
+/**
+ * Avatar for a roster entry. Resolves `profileImg` to a displayable src:
+ * an absolute URL passes through, a bare filename is presigned out of the
+ * tenant's S3 bucket, and anything unresolved falls back to initials.
+ */
 function ApplicantAvatar({
   firstName = '',
   lastName = '',
-  imageSrc,
+  profileImg,
+  userId,
 }: {
   firstName?: string;
   lastName?: string;
-  imageSrc?: string;
+  profileImg?: string | null;
+  userId?: string | null;
 }) {
+  const isAbsolute = !!profileImg && /^https?:\/\//i.test(profileImg);
+  const presignedSrc = useFileUrl(
+    !isAbsolute && profileImg && userId ? userPhotoKey(userId, profileImg) : null
+  );
+  const imageSrc = isAbsolute ? profileImg : presignedSrc;
+
   const [imgError, setImgError] = React.useState(false);
   const initials = `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase();
   if (imageSrc && !imgError) {
@@ -369,7 +381,6 @@ function NotesModal({
 
 function RosterTable({
   rows,
-  imageBase,
   eventId,
   onMessage,
   onNote,
@@ -379,7 +390,6 @@ function RosterTable({
   onSort,
 }: {
   rows: RosterApplicant[];
-  imageBase: string | null;
   eventId: string;
   onMessage: (a: RosterApplicant) => void;
   onNote: (a: RosterApplicant) => void;
@@ -434,19 +444,14 @@ function RosterTable({
       </thead>
       <tbody className="divide-y divide-slate-100">
         {rows.map((row) => {
-          const imgSrc = row.profileImg?.startsWith('https')
-            ? row.profileImg
-            : imageBase && row.profileImg && row.userRecordId
-              ? `${imageBase}/users/${row.userRecordId}/photo/${row.profileImg}`
-              : undefined;
-
           return (
             <tr key={row._id} className="hover:bg-slate-50 transition-colors">
               <td className="pl-3 pr-1 py-2">
                 <ApplicantAvatar
                   firstName={row.firstName}
                   lastName={row.lastName}
-                  imageSrc={imgSrc}
+                  profileImg={row.profileImg}
+                  userId={row.userRecordId}
                 />
               </td>
               <td className="px-3 py-2">
@@ -529,12 +534,6 @@ export function EventRosterModal({
   open,
   onClose,
 }: Props) {
-  const { data: company } = usePrimaryCompany();
-  const imageBase =
-    IMAGE_SERVER && company?.uploadPath
-      ? `${IMAGE_SERVER}/${company.uploadPath}`
-      : null;
-
   const queryClient = useQueryClient();
 
   const [filter, setFilter] = useState<RosterFilter>('all');
@@ -762,7 +761,6 @@ export function EventRosterModal({
               <>
                 <RosterTable
                   rows={filteredRows}
-                  imageBase={imageBase}
                   eventId={eventId}
                   onMessage={setMessageApplicant}
                   onNote={setNoteApplicant}

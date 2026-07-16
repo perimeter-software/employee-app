@@ -13,19 +13,17 @@ import {
 import { Button } from '@/components/ui/Button';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import { getRequiredEmptyBoxes, type AttachmentFile } from '../../utils/attachment-helpers';
-import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import UploadFileModal from './UploadFileModal';
-import { getStaticAssetUrl } from '@/lib/utils';
+import { applicantFileKey, getStaticAssetUrl } from '@/lib/utils';
+import { useFileUrl } from '@/lib/hooks/use-file-url';
 
+// Only the shared guide PDFs below still come from the legacy image server;
+// applicant files are presigned out of S3 via useFileUrl.
 const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
 const IMAGE_EXTS = ['jpeg', 'jpg', 'png', 'bmp', 'gif', 'webp'];
 
 function getExt(filename: string): string {
   return filename.split('.').pop()?.toLowerCase() ?? '';
-}
-
-function getDirectUrl(uploadPath: string, applicantId: string, type: string, filename: string): string {
-  return `${IMAGE_SERVER}/${uploadPath}/applicants/${applicantId}/${type}/${filename}`;
 }
 
 const OnboardingGuideModal: React.FC<{ open: boolean; onOpenChange: (v: boolean) => void }> = ({
@@ -65,15 +63,18 @@ const OnboardingGuideModal: React.FC<{ open: boolean; onOpenChange: (v: boolean)
 interface AttachmentCardProps {
   file: AttachmentFile;
   applicantId: string;
-  uploadPath: string;
   onDelete: () => void;
 }
 
-const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, uploadPath, onDelete }) => {
+const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, onDelete }) => {
   const filename = file.filename ?? file.name ?? '';
   const type = file.type ?? '';
   const ext = file.docType ?? getExt(filename);
-  const directUrl = getDirectUrl(uploadPath, applicantId, type, filename);
+  const fileUrl = useFileUrl(
+    applicantId && type && filename
+      ? applicantFileKey(applicantId, type, filename)
+      : null
+  );
   const isImage = IMAGE_EXTS.includes(ext);
 
   return (
@@ -89,13 +90,14 @@ const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, uplo
 
       <button
         type="button"
-        onClick={() => window.open(directUrl, '_blank')}
+        onClick={() => fileUrl && window.open(fileUrl, '_blank')}
+        disabled={!fileUrl}
         className="flex flex-col items-center gap-1 hover:opacity-75"
       >
-        {isImage ? (
+        {isImage && fileUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={directUrl}
+            src={fileUrl}
             alt={type}
             className="h-[80px] w-full object-cover rounded"
           />
@@ -119,9 +121,6 @@ const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, uplo
 const UploadID: React.FC = () => {
   const { applicant, updateButtons, updateCurrentFormState, submitRef, updateApplicantAction } =
     useNewApplicantContext();
-  const { data: company } = usePrimaryCompany();
-  const uploadPath = company?.uploadPath ?? 'sp';
-
   const [uploadOpen, setUploadOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -226,7 +225,6 @@ const UploadID: React.FC = () => {
             key={`${file.name ?? ''}_${file.type ?? ''}_${idx}`}
             file={file}
             applicantId={applicantId}
-            uploadPath={uploadPath}
             onDelete={() => handleDelete(idx)}
           />
         ))}

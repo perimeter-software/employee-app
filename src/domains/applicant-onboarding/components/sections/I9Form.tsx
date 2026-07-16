@@ -10,8 +10,8 @@ import { Label } from '@/components/ui/Label';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import { i9Schema } from '../../data/i9-schema';
 import SignatureModal from './SignatureModal';
-import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
-import { getApplicantFileUrl } from '@/lib/utils';
+import { applicantFileKey } from '@/lib/utils';
+import { useFileUrl } from '@/lib/hooks/use-file-url';
 
 interface I9FormValues {
   citizenshipStatus: string;
@@ -29,8 +29,6 @@ interface CountryOption {
   code: string;
   label?: string;
 }
-
-const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
 
 // ── Field row ──────────────────────────────────────────────────────────────
 const Field: React.FC<{
@@ -81,8 +79,6 @@ const I9Form: React.FC = () => {
     updateCurrentFormState,
     submitRef,
   } = useNewApplicantContext();
-
-  const { data: primaryCompany } = usePrimaryCompany();
 
   const i9 = applicant?.i9Form as Record<string, unknown> | undefined;
 
@@ -216,6 +212,11 @@ const I9Form: React.FC = () => {
   };
 
   const existingSignature = i9?.signature as string | undefined;
+  const signatureUrl = useFileUrl(
+    applicant?._id && existingSignature
+      ? applicantFileKey(applicant._id, 'signature', existingSignature)
+      : null
+  );
   const processedDate = i9?.processedDate
     ? new Date(i9.processedDate as string).toLocaleDateString()
     : new Date().toLocaleDateString();
@@ -453,21 +454,11 @@ const I9Form: React.FC = () => {
         {/* ── Signature + date ─────────────────────────────────────────── */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            {applicant?._id && existingSignature && (
+            {signatureUrl && (
               <>
                 <p className="mb-1 text-sm font-semibold">E-Signature</p>
                 <Card className="w-1/2">
-                  <img
-                    src={`${getApplicantFileUrl(
-                      IMAGE_SERVER,
-                      primaryCompany?.uploadPath,
-                      applicant._id,
-                      'signature',
-                      existingSignature
-                    )}?${Date.now()}`}
-                    alt="signature"
-                    className="w-full"
-                  />
+                  <img src={signatureUrl} alt="signature" className="w-full" />
                 </Card>
               </>
             )}

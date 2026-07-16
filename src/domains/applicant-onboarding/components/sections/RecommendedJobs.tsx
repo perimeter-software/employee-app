@@ -6,6 +6,7 @@ import axios from 'axios';
 import DOMPurify from 'dompurify';
 import Image from 'next/image';
 import { MapPin, ChevronDown, ArrowUpDown, Filter } from 'lucide-react';
+import { resolveVenueLogoUrl } from '@/lib/utils';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import {
   useOnboardingVenues,
@@ -241,6 +242,8 @@ const RecommendedJobs: React.FC = () => {
       'recommended-jobs',
       applicant?._id,
       queryBody,
+      // Logos are built from the company slug, so re-map once it lands.
+      company?.slug,
     ],
     queryFn: async () => {
       const { data } = await axios.post(
@@ -248,8 +251,7 @@ const RecommendedJobs: React.FC = () => {
         queryBody
       );
       if (data?.data?.length && companyType === 'Venue' && venues) {
-        const imageServer = process.env.NEXT_PUBLIC_IMAGE_SERVER;
-        const uploadPath = company?.uploadPath;
+        const companySlug = company?.slug;
         return {
           ...data,
           data: data.data.map((job: JobResult) => {
@@ -257,11 +259,11 @@ const RecommendedJobs: React.FC = () => {
             const venue = venues[venueSlug] as
               | { logoUrl?: string; name?: string }
               | undefined;
-            const rawLogoUrl = venue?.logoUrl;
-            const logoUrl =
-              imageServer && uploadPath && venueSlug && rawLogoUrl
-                ? `${imageServer}/${uploadPath}/${venueSlug}/venues/logo/${rawLogoUrl}`
-                : undefined;
+            const logoUrl = resolveVenueLogoUrl(
+              venue?.logoUrl,
+              venueSlug,
+              companySlug
+            );
             return {
               ...job,
               logoUrl,

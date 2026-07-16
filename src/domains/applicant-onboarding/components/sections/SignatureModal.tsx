@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import SignaturePad from 'signature_pad';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -12,8 +13,8 @@ import {
   DialogFooter,
 } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
-import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
-import { getApplicantFileUrl } from '@/lib/utils';
+import { applicantFileKey } from '@/lib/utils';
+import { fileUrlQueryKeys, useFileUrl } from '@/lib/hooks/use-file-url';
 
 interface SignatureModalProps {
   applicantId: string;
@@ -25,8 +26,6 @@ interface SignatureModalProps {
   onSignatureSaved: (filename: string) => void;
 }
 
-const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
-
 const SignatureModal: React.FC<SignatureModalProps> = ({
   applicantId,
   applicantFirstName,
@@ -36,7 +35,11 @@ const SignatureModal: React.FC<SignatureModalProps> = ({
   onOpenChange,
   onSignatureSaved,
 }) => {
-  const { data: primaryCompany } = usePrimaryCompany();
+  const queryClient = useQueryClient();
+  const signatureKey = existingSignature
+    ? applicantFileKey(applicantId, 'signature', existingSignature)
+    : null;
+  const signatureUrl = useFileUrl(signatureKey);
   const [emptyCanvas, setEmptyCanvas] = useState(false);
   const [editMode, setEditMode] = useState(!existingSignature);
   const [saving, setSaving] = useState(false);
@@ -130,6 +133,14 @@ const SignatureModal: React.FC<SignatureModalProps> = ({
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
 
+      // The signature always lands on the same key, so the cached presigned URL
+      // would keep resolving to the previous image. Drop it to force a re-sign.
+      await queryClient.invalidateQueries({
+        queryKey: fileUrlQueryKeys.detail(
+          applicantFileKey(applicantId, 'signature', 'signatureFile.png')
+        ),
+      });
+
       toast.success('Signature has been updated!');
       onSignatureSaved('signatureFile.png');
       setEditMode(false);
@@ -152,21 +163,11 @@ const SignatureModal: React.FC<SignatureModalProps> = ({
 
         <div className="space-y-4">
           {/* Existing signature preview (when not in edit mode) */}
-          {!editMode && existingSignature && (
+          {!editMode && existingSignature && signatureUrl && (
             <div>
               <p className="mb-1 text-sm font-semibold">E-Signature</p>
               <div className="rounded border">
-                <img
-                  src={`${getApplicantFileUrl(
-                    IMAGE_SERVER,
-                    primaryCompany?.uploadPath,
-                    applicantId,
-                    'signature',
-                    existingSignature
-                  )}?${Date.now()}`}
-                  alt="signature"
-                  className="w-full"
-                />
+                <img src={signatureUrl} alt="signature" className="w-full" />
               </div>
             </div>
           )}
