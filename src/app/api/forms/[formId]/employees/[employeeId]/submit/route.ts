@@ -7,7 +7,7 @@ import {
 } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { ObjectId } from 'mongodb';
-import { validateForm } from '@/domains/forms/utils/formValidator';
+import { validateFields } from '@/lib/forms/formValidation';
 import { getAllFieldsFromSections } from '@/domains/forms/utils/formMapper';
 import { writeFilledPdfAndBuildAttachment } from '@/lib/pdf/generate-filled-form-pdf';
 import { findPrimaryCompany } from '@/domains/company';
@@ -98,7 +98,7 @@ async function submitFormHandler(
     );
 
     // Validate form (isSubmit = true enforces required fields)
-    const validationResult = validateForm(formValues, fields, true);
+    const validationResult = validateFields(formValues, fields, { isSubmit: true });
 
     if (!validationResult.isValid) {
       return NextResponse.json(

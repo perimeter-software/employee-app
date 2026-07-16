@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/Dialog';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import { OnboardingService } from '../../services/onboarding-service';
+import { validateFormValues } from '@/lib/forms/formValidation';
 import FormRenderer, { type DynamicFormData } from './FormRenderer';
 
 // ---------- Types ----------
@@ -75,6 +76,7 @@ const AdditionalForms: React.FC = () => {
 
   const [selectedForm, setSelectedForm] = useState<DynamicForm | null>(null);
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoadingFormData, setIsLoadingFormData] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -254,30 +256,33 @@ const AdditionalForms: React.FC = () => {
     setIsDialogOpen(false);
     setSelectedForm(null);
     setFormValues({});
+    setFieldErrors({});
   }, []);
 
   const handleInputChange = useCallback((id: string, value: unknown) => {
     setFormValues((prev) => ({ ...prev, [id]: value }));
+    // Clear a field's error as soon as the user edits it (re-validated on submit).
+    setFieldErrors((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }, []);
 
   const handleSubmitForm = useCallback(async () => {
     if (!selectedForm || !applicant?._id) return;
 
-    // Validate required fields
-    let missingRequired = false;
-    selectedForm.form?.sections?.forEach((section) => {
-      section.rows?.forEach((row) => {
-        row.columns?.forEach((field) => {
-          if (field.required && !formValues[field.id]) {
-            missingRequired = true;
-          }
-        });
-      });
-    });
-    if (missingRequired) {
-      toast.error('Please fill all required fields');
+    // Type-aware validation (required-emptiness + email/phone/ssn/zip formats,
+    // numeric range, options-membership, length, etc.). Skips hidden/readOnly/
+    // display-only fields and treats 0/false as answered. See formValidation.ts.
+    const { isValid, errors } = validateFormValues(selectedForm.form, formValues);
+    if (!isValid) {
+      setFieldErrors(errors);
+      toast.error(Object.values(errors)[0] ?? 'Please fix the highlighted fields');
       return;
     }
+    setFieldErrors({});
 
     setIsSubmitting(true);
     try {
@@ -510,6 +515,7 @@ const AdditionalForms: React.FC = () => {
                   formValues={formValues}
                   onInputChange={handleInputChange}
                   applicant={applicant as Record<string, unknown> | undefined}
+                  errors={fieldErrors}
                 />
               )}
             </div>

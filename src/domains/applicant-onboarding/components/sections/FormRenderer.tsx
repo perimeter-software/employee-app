@@ -27,6 +27,16 @@ interface FormField {
   content?: string;
   level?: number;
   signatureType?: string;
+  // Stored verbatim by the AI extractor (min/max/lengths come through as
+  // strings); read by formValidation.ts at submit time.
+  validation?: {
+    pattern?: string;
+    min?: string | number;
+    max?: string | number;
+    minLength?: string | number;
+    maxLength?: string | number;
+    format?: string;
+  } | null;
 }
 
 interface FormRow {
@@ -58,6 +68,8 @@ interface FormRendererProps {
   formValues: Record<string, unknown>;
   onInputChange: (id: string, value: unknown) => void;
   applicant?: Record<string, unknown>;
+  /** Per-field validation errors keyed by field id (from validateFormValues). */
+  errors?: Record<string, string>;
 }
 
 // ---------- Field rendering ----------
@@ -78,7 +90,13 @@ const renderField = (
     case 'number':
     case 'currency': {
       const inputType =
-        type === 'email' ? 'email' : type === 'number' || type === 'currency' ? 'number' : 'text';
+        type === 'email'
+          ? 'email'
+          : type === 'phone'
+            ? 'tel'
+            : type === 'number' || type === 'currency'
+              ? 'number'
+              : 'text';
       return (
         <div className="space-y-1">
           {label && <Label>{label}</Label>}
@@ -162,12 +180,47 @@ const renderField = (
       );
 
     case 'checkbox':
+      // With options[] this is a multi-select storing a string[] (each selected
+      // option's text); without options it's a single boolean acknowledgment.
+      // Mirrors the v4 renderers so both apps store the same value shape and the
+      // shared validator reads them identically.
+      if (options && options.length > 0) {
+        const arr = Array.isArray(formValues[id]) ? (formValues[id] as string[]) : [];
+        return (
+          <div className="space-y-1">
+            {name && (
+              <span className="text-sm font-medium text-gray-700">
+                {name}{required ? ' *' : ''}
+              </span>
+            )}
+            <div className="space-y-1">
+              {options.map((opt) => (
+                <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                    checked={arr.includes(opt)}
+                    onChange={(e) => {
+                      const set = new Set(arr);
+                      if (e.target.checked) set.add(opt);
+                      else set.delete(opt);
+                      onInputChange(id, Array.from(set));
+                    }}
+                    disabled={readOnly}
+                  />
+                  <span className="text-sm text-gray-700">{opt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      }
       return (
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
             className="h-4 w-4 rounded border-gray-300 text-blue-600"
-            checked={!!value}
+            checked={value === true}
             onChange={(e) => onInputChange(id, e.target.checked)}
             disabled={readOnly}
           />
@@ -176,6 +229,12 @@ const renderField = (
       );
 
     case 'radio':
+    case 'boolean': {
+      // `boolean` fields are authored in the v4 editor seeded with options
+      // ["True","False"]; render as a radio pair so a required one is fillable
+      // (previously fell through to null → unsubmittable). Same value shape as
+      // radio (stores the selected option string).
+      const radioOptions = options?.length ? options : type === 'boolean' ? ['True', 'False'] : [];
       return (
         <div className="space-y-1">
           {name && (
@@ -184,7 +243,7 @@ const renderField = (
             </span>
           )}
           <div className="space-y-1">
-            {options?.map((opt) => (
+            {radioOptions.map((opt) => (
               <label key={opt} className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="radio"
@@ -200,6 +259,7 @@ const renderField = (
           </div>
         </div>
       );
+    }
 
     case 'paragraph':
       return <p className="text-sm text-gray-700">{field.content}</p>;
@@ -234,12 +294,6 @@ const TextBlock: React.FC<{ block: TextBlock }> = ({ block }) => (
 
 // ---------- Grid layout helpers ----------
 
-const colSpanClass = (count: number, col: number): string => {
-  // Each row gets equal columns. Use CSS grid with a data attribute approach via inline style.
-  // We'll rely on grid-cols-N Tailwind classes.
-  return ''; // handled by parent grid
-};
-
 const gridColsClass = (count: number) => {
   switch (count) {
     case 1: return 'grid-cols-1';
@@ -256,6 +310,7 @@ const FormRenderer: React.FC<FormRendererProps> = ({
   formData,
   formValues,
   onInputChange,
+  errors,
 }) => {
   if (!formData) return null;
 
@@ -299,6 +354,9 @@ const FormRenderer: React.FC<FormRendererProps> = ({
                 {visibleCols.map((field) => (
                   <div key={field.id}>
                     {renderField(field, formValues, onInputChange)}
+                    {errors?.[field.id] && (
+                      <p className="text-xs text-red-600 mt-1">{errors[field.id]}</p>
+                    )}
                   </div>
                 ))}
               </div>
