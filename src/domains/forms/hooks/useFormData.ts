@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { FormField, ValidationResult } from '../types/form.types';
-import { validateForm } from '../utils/formValidator';
+import { validateFields } from '@/lib/forms/formValidation';
 
 export interface UseFormDataOptions {
   initialValues?: Record<string, any>;
@@ -93,7 +93,7 @@ export const useFormData = ({
       const field = fields.find((f) => f.id === fieldId);
       if (!field) return;
 
-      const result = validateForm(formValues, [field], false);
+      const result = validateFields(formValues, [field], { isSubmit: false });
       if (result.errors[fieldId]) {
         setErrors((prev) => ({ ...prev, [fieldId]: result.errors[fieldId] }));
       } else {
@@ -112,7 +112,7 @@ export const useFormData = ({
    */
   const validateAllFields = useCallback(
     (isSubmit: boolean = false): ValidationResult => {
-      const result = validateForm(formValues, fields, isSubmit);
+      const result = validateFields(formValues, fields, { isSubmit });
       setErrors(result.errors);
       return result;
     },
