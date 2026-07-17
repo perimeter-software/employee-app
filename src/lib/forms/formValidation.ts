@@ -47,7 +47,10 @@ export interface ValidationResult {
   errors: Record<string, string>;
 }
 
-const DISPLAY_ONLY = new Set(["paragraph", "heading", "divider"]);
+// `image` = an image embedded in the source form (a logo/diagram), not a fillable
+// value — treat it as display-only like paragraph/heading/divider so a mis-extracted
+// `required` flag on it can never block submission.
+const DISPLAY_ONLY = new Set(["paragraph", "heading", "divider", "image"]);
 // `dropdown` is normalized to `select` before this check runs.
 const OPTION_TYPES = new Set(["select", "radio", "boolean"]);
 
@@ -155,11 +158,24 @@ export function validateFields(
     const options = Array.isArray(field.options) ? field.options : [];
     const isMulti = type === "checkbox" && options.length > 0;
     const isSingleCheckbox = type === "checkbox" && options.length === 0;
+    const isTable = type === "table";
 
     // Type-aware emptiness. 0 and false are legitimate values, NOT "missing".
     let empty: boolean;
     if (isMulti) empty = !Array.isArray(value) || value.length === 0;
     else if (isSingleCheckbox) empty = value !== true;
+    else if (isTable)
+      // A table value is an array of row objects keyed by column key; empty when
+      // there are no rows, or every row's cells are all empty.
+      empty =
+        !Array.isArray(value) ||
+        value.length === 0 ||
+        (value as unknown[]).every(
+          (r) =>
+            !r ||
+            typeof r !== "object" ||
+            Object.values(r as Record<string, unknown>).every(isEmptyScalar),
+        );
     else empty = isEmptyScalar(value);
 
     if (isSubmit && required && empty) {
@@ -168,6 +184,9 @@ export function validateFields(
     }
     // Optional + empty: nothing further to validate.
     if (empty) continue;
+    // A table's value is an array of row objects — the scalar/format/options
+    // rules below don't apply to it.
+    if (isTable) continue;
 
     // Options membership (choice types). Trim-tolerant so a stored/prefilled
     // value with whitespace drift isn't wrongly rejected.

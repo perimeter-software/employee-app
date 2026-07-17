@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/Select';
 import { Separator } from '@/components/ui/Separator';
+import { DynamicFormTable, type TableColumn } from './DynamicFormTable';
 
 // ---------- Types ----------
 
@@ -37,6 +38,8 @@ interface FormField {
     maxLength?: string | number;
     format?: string;
   } | null;
+  // Column defs for type="table" (distinct from FormRow.columns, the row layout).
+  columns?: TableColumn[];
 }
 
 interface FormRow {
@@ -260,6 +263,57 @@ const renderField = (
         </div>
       );
     }
+
+    case 'time':
+      return (
+        <div className="space-y-1">
+          {label && <Label>{label}</Label>}
+          <Input
+            type="time"
+            value={value as string}
+            onChange={(e) => onInputChange(id, e.target.value)}
+            disabled={readOnly}
+          />
+        </div>
+      );
+
+    case 'address':
+      return (
+        <div className="space-y-1">
+          {label && <Label>{label}</Label>}
+          <Textarea
+            placeholder={placeholder ?? 'Street, City, State, ZIP'}
+            rows={2}
+            value={value as string}
+            onChange={(e) => onInputChange(id, e.target.value)}
+            disabled={readOnly}
+          />
+        </div>
+      );
+
+    case 'table':
+      return (
+        <div className="space-y-1">
+          {name && (
+            <span className="text-sm font-medium text-gray-700">
+              {name}{required ? ' *' : ''}
+            </span>
+          )}
+          <DynamicFormTable
+            columns={field.columns}
+            value={formValues[id]}
+            readOnly={readOnly}
+            onChange={(rows) => onInputChange(id, rows)}
+          />
+        </div>
+      );
+
+    case 'image':
+      // Embedded form image — display-only (we don't have the pixels as a value).
+      // Show a caption placeholder; the validator treats 'image' as display-only.
+      return (
+        <p className="text-xs italic text-gray-400">{field.content || name || 'Image'}</p>
+      );
 
     case 'paragraph':
       return <p className="text-sm text-gray-700">{field.content}</p>;
