@@ -147,7 +147,7 @@ const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, company
                 loading={isSubmitting}
                 onClick={handleSubmit}
                 rightIcon={<Save className="h-4 w-4" />}
-                className="w-full sm:w-auto"
+                className="hidden lg:inline-flex"
               >
                 {submitLabel}
               </Button>
@@ -183,6 +183,19 @@ const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, company
         </CardHeader>
         <CardContent className={clsxm('relative border p-4')}>
           <NewApplicantForms />
+          {buttonState.submit.show && (
+            <Button
+              type="button"
+              form="current-form"
+              disabled={buttonState.submit.disabled}
+              loading={isSubmitting}
+              onClick={handleSubmit}
+              rightIcon={<Save className="h-4 w-4" />}
+              className="mt-5 w-full lg:hidden"
+            >
+              {submitLabel}
+            </Button>
+          )}
         </CardContent>
       </Card>
       <UnsavedChangesModal
