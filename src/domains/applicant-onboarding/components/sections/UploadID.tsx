@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
-import { getRequiredEmptyBoxes, type AttachmentFile } from '../../utils/attachment-helpers';
+import { type AttachmentFile } from '../../utils/attachment-helpers';
 import UploadFileModal from './UploadFileModal';
 import { applicantFileKey, getStaticAssetUrl } from '@/lib/utils';
 import { useFileUrl } from '@/lib/hooks/use-file-url';
@@ -127,9 +127,13 @@ const UploadID: React.FC = () => {
 
   const applicantId = applicant._id ?? '';
   const rawAttachments = applicant.attachments as AttachmentFile[] | undefined;
-  const { complete, validIDs = [] } = (
+  const { complete, validIDs = [], requiredDocuments = [] } = (
     applicant.onboardingDocsComplete as
-      | { complete?: string; validIDs?: string[] }
+      | {
+          complete?: string;
+          validIDs?: string[];
+          requiredDocuments?: { type: string; description: string }[];
+        }
       | undefined
   ) ?? {};
 
@@ -144,10 +148,9 @@ const UploadID: React.FC = () => {
     [rawAttachments]
   );
 
-  const requiredEmptyBoxes = useMemo(
-    () => getRequiredEmptyBoxes(visibleAttachments),
-    [visibleAttachments]
-  );
+  // The documents still required come straight from the backend (single source of
+  // truth for the I-9 completeness rule); the frontend only renders them.
+  const requiredEmptyBoxes = requiredDocuments;
 
   useEffect(() => {
     updateCurrentFormState({ isDirty: false });
