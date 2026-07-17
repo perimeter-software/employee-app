@@ -98,23 +98,22 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // In production, only fail if it's not an email verification issue
-      // (Email verification issues are handled gracefully by the email service)
-      if (process.env.NODE_ENV === 'production') {
-        // If it's an email verification error, the email service already logged it
-        // We'll still return success to prevent user enumeration
-        if (
-          !errorMessage.includes('not verified') &&
-          !errorMessage.includes('MessageRejected')
-        ) {
-          return NextResponse.json(
-            { error: 'Failed to send email. Please try again later.' },
-            { status: 500 }
-          );
-        }
-        // For verification errors, we still return success (security best practice)
-        // The OTP is stored and can be used, but email wasn't sent
+      // Email verification issues are handled gracefully: the OTP is stored and
+      // usable, and we still return success to prevent user enumeration.
+      // A genuine send failure (queue/Redis down, timeout, credentials) is a
+      // real outage — surface it in every environment so the UI doesn't
+      // falsely tell the user a code was sent.
+      const isVerificationIssue =
+        errorMessage.includes('not verified') ||
+        errorMessage.includes('MessageRejected');
+
+      if (!isVerificationIssue) {
+        return NextResponse.json(
+          { error: 'Failed to send email. Please try again later.' },
+          { status: 500 }
+        );
       }
+      // For verification errors, fall through to the success response below.
     }
 
     return NextResponse.json({

@@ -13,28 +13,24 @@ import {
 import { Button } from '@/components/ui/Button';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import { getRequiredEmptyBoxes, type AttachmentFile } from '../../utils/attachment-helpers';
-import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import UploadFileModal from './UploadFileModal';
+import { applicantFileKey, getStaticAssetUrl } from '@/lib/utils';
+import { useFileUrl } from '@/lib/hooks/use-file-url';
 
+// Only the shared guide PDFs below still come from the legacy image server;
+// applicant files are presigned out of S3 via useFileUrl.
 const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
-// Common/shared static assets live at /common on the same image host.
-// Mirrors stadium-people's getCommonBaseImageUrl which replaces the uploadPath with /common.
-const COMMON_BASE = `${IMAGE_SERVER}/common`;
 const IMAGE_EXTS = ['jpeg', 'jpg', 'png', 'bmp', 'gif', 'webp'];
 
 function getExt(filename: string): string {
   return filename.split('.').pop()?.toLowerCase() ?? '';
 }
 
-function getDirectUrl(uploadPath: string, applicantId: string, type: string, filename: string): string {
-  return `${IMAGE_SERVER}/${uploadPath}/applicants/${applicantId}/${type}/${filename}`;
-}
-
 const OnboardingGuideModal: React.FC<{ open: boolean; onOpenChange: (v: boolean) => void }> = ({
   open,
   onOpenChange,
 }) => {
-  const pdfUrl = `${COMMON_BASE}/static/i-9%20example%20docs.pdf`;
+  const pdfUrl = getStaticAssetUrl(IMAGE_SERVER, 'i-9%20example%20docs.pdf');
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl w-[80vw]">
@@ -67,15 +63,18 @@ const OnboardingGuideModal: React.FC<{ open: boolean; onOpenChange: (v: boolean)
 interface AttachmentCardProps {
   file: AttachmentFile;
   applicantId: string;
-  uploadPath: string;
   onDelete: () => void;
 }
 
-const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, uploadPath, onDelete }) => {
+const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, onDelete }) => {
   const filename = file.filename ?? file.name ?? '';
   const type = file.type ?? '';
   const ext = file.docType ?? getExt(filename);
-  const directUrl = getDirectUrl(uploadPath, applicantId, type, filename);
+  const fileUrl = useFileUrl(
+    applicantId && type && filename
+      ? applicantFileKey(applicantId, type, filename)
+      : null
+  );
   const isImage = IMAGE_EXTS.includes(ext);
 
   return (
@@ -91,13 +90,14 @@ const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, uplo
 
       <button
         type="button"
-        onClick={() => window.open(directUrl, '_blank')}
+        onClick={() => fileUrl && window.open(fileUrl, '_blank')}
+        disabled={!fileUrl}
         className="flex flex-col items-center gap-1 hover:opacity-75"
       >
-        {isImage ? (
+        {isImage && fileUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={directUrl}
+            src={fileUrl}
             alt={type}
             className="h-[80px] w-full object-cover rounded"
           />
@@ -121,9 +121,6 @@ const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, uplo
 const UploadID: React.FC = () => {
   const { applicant, updateButtons, updateCurrentFormState, submitRef, updateApplicantAction } =
     useNewApplicantContext();
-  const { data: company } = usePrimaryCompany();
-  const uploadPath = company?.uploadPath ?? 'sp';
-
   const [uploadOpen, setUploadOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -211,7 +208,7 @@ const UploadID: React.FC = () => {
             Click here for onboarding documents upload guide
           </button>
           <a
-            href={`${COMMON_BASE}/static/How%20to%20Compress%20Your%20Images%20for%20Upload.pdf`}
+            href={getStaticAssetUrl(IMAGE_SERVER, 'How%20to%20Compress%20Your%20Images%20for%20Upload.pdf')}
             target="_blank"
             rel="noopener noreferrer"
             className="block text-sm text-blue-600 underline hover:text-blue-800"
@@ -228,7 +225,6 @@ const UploadID: React.FC = () => {
             key={`${file.name ?? ''}_${file.type ?? ''}_${idx}`}
             file={file}
             applicantId={applicantId}
-            uploadPath={uploadPath}
             onDelete={() => handleDelete(idx)}
           />
         ))}

@@ -244,19 +244,28 @@ let emailQueue: Bull.Queue | null = null;
 function getEmailQueue(): Bull.Queue {
   if (!emailQueue) {
     emailQueue = new Bull('emailQueue', {
-      // V4-only:
-      //  - Use the {v4} hash-tag prefix so Bull's multi-key Lua scripts
-      //    hash to the same slot on cluster-mode ElastiCache (CROSSSLOT
-      //    error otherwise). Matches gig-v4-backend's QUEUE_PREFIX so the
-      //    same email-queue worker consumes our jobs.
-      //  - Pass tls: {} to ioredis so the connection completes the TLS
-      //    handshake; the V4 ElastiCache rejects plaintext.
-      // EB stacks keep the original behavior — no prefix, no TLS.
+      // The {v4} hash-tag prefix (V4-only) makes Bull's multi-key Lua scripts
+      // hash to the same slot on cluster-mode ElastiCache (CROSSSLOT error
+      // otherwise). Matches gig-v4-backend's QUEUE_PREFIX so the same
+      // email-queue worker consumes our jobs. TLS is handled separately below,
+      // driven by API_REDIS_TLS rather than the app version.
       ...(IS_V4 ? { prefix: '{v4}' } : {}),
       redis: {
         host: env.redis.api_host,
         port: env.redis.api_port,
-        ...(IS_V4 ? { tls: {} } : {}),
+        // TLS is a property of the target Redis instance, not the app version,
+        // so it's driven by API_REDIS_TLS (not tied to IS_V4). Set
+        // API_REDIS_TLS=true for in-transit-encrypted ElastiCache.
+        ...(env.redis.api_tls ? { tls: {} } : {}),
+        // Fail fast instead of buffering commands forever when the queue's
+        // Redis (API_REDIS_HOST) is unreachable. Without these, ioredis holds
+        // `.add()` open indefinitely and hangs the calling request.
+        connectTimeout: 5000,
+        maxRetriesPerRequest: 3,
+        // Give up reconnecting after a few tries (null stops the retry loop)
+        // so pending commands reject rather than wait for a host that's down.
+        retryStrategy: (times: number) =>
+          times > 5 ? null : Math.min(times * 200, 1000),
       },
       defaultJobOptions: {
         removeOnComplete: true,
@@ -426,8 +435,20 @@ export async function sendQueuedEmail(
   }
 
   // ── 9. Dispatch ──────────────────────────────────────────────────────────────
+  // Hard cap the enqueue so an unreachable queue Redis can't hang the caller.
+  const addWithTimeout = (packet: Record<string, unknown>) =>
+    Promise.race([
+      getEmailQueue().add(packet),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('email queue enqueue timed out')),
+          6000
+        )
+      ),
+    ]);
+
   try {
-    await getEmailQueue().add(mailPacket);
+    await addWithTimeout(mailPacket);
     console.log('[email-queue] Enqueued email job', {
       to: toEmail,
       subject: mailSubject,

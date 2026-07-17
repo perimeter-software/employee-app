@@ -41,6 +41,31 @@ interface TimeSlot {
   userId?: string;
 }
 
+type SuggestionRejection =
+  | 'PAST'
+  | 'TOO_SOON'
+  | 'TOO_FAR'
+  | 'MISSING_TIME'
+  | 'MISSING_DATE';
+
+interface SuggestionDetail {
+  raw: string;
+  iso: string | null;
+  /** Pre-formatted in the applicant's timezone — render as-is, don't re-format. */
+  label: string | null;
+  /** null means the suggestion was accepted. */
+  rejection: SuggestionRejection | null;
+}
+
+interface SuggestSlotsResponse {
+  success: boolean;
+  /** Complete applicant-facing reply. Multi-line (\r\n), may contain a bulleted list. */
+  message: string;
+  /** UTC ISO 8601. Always empty when success is false. */
+  suggestions: string[];
+  details?: SuggestionDetail[];
+}
+
 export interface AIInterviewModalProps {
   open: boolean;
   onClose: () => void;
@@ -81,7 +106,7 @@ const AIInterviewModal: React.FC<AIInterviewModalProps> = ({
   const [interviewSchedulingFinished, setInterviewSchedulingFinished] = useState(false);
   const [isSchedulingInterview, setIsSchedulingInterview] = useState(false);
   const [isSuggestingSlots, setIsSuggestingSlots] = useState(false);
-  const [suggestedDatetimes, setSuggestedDatetimes] = useState<unknown>(null);
+  const [suggestedDatetimes, setSuggestedDatetimes] = useState<string[] | null>(null);
   const [selectedAvailabilityDate, setSelectedAvailabilityDate] = useState<string | null>(null);
   const [selectedAvailabilitySlot, setSelectedAvailabilitySlot] = useState<TimeSlot | null>(null);
   const [availabilitySlots, setAvailabilitySlots] = useState<Record<string, TimeSlot[]> | undefined>(undefined);
@@ -470,7 +495,7 @@ const AIInterviewModal: React.FC<AIInterviewModalProps> = ({
     if (!isSchedulingInterview) return [null, null];
 
     if (isSuggestingSlots) {
-      if (suggestedDatetimes) {
+      if (suggestedDatetimes?.length) {
         return [
           [
             { label: 'No', value: 'No', selected: false, onClick: handleCancelSuggestion },
@@ -581,7 +606,7 @@ const AIInterviewModal: React.FC<AIInterviewModalProps> = ({
     interviewFinished ||
     interviewSchedulingFinished ||
     (isSchedulingInterview && !isSuggestingSlots) ||
-    (isSchedulingInterview && isSuggestingSlots && suggestedDatetimes != null);
+    (isSchedulingInterview && isSuggestingSlots && !!suggestedDatetimes?.length);
 
   const onPressSend = () => {
     if (!textValue.trim()) return;
@@ -589,6 +614,15 @@ const AIInterviewModal: React.FC<AIInterviewModalProps> = ({
     if (isSuggestingSlots) {
       const val = textValue;
       setTextValue('');
+
+      // Captured before pushing `val` so the backend can fold in the current turn
+      // (sent as `message`) itself without seeing it twice. Passing the thread is
+      // what lets a bare follow-up like "9am" resolve against the previous question.
+      const priorHistory = localHistoryRef.current.map((msg) => ({
+        role: msg.isAnswer ? ('user' as const) : ('assistant' as const),
+        content: msg.message,
+      }));
+
       pushNewMessage({
         message: val,
         isAnswer: true,
@@ -598,18 +632,19 @@ const AIInterviewModal: React.FC<AIInterviewModalProps> = ({
           OnboardingService.suggestAIInterviewSlots(applicantId, jobSlug, {
             message: val,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            history: priorHistory,
           })
             .then((res) => {
               isWaitingForAIResponseRef.current = false;
-              const data = res as Record<string, unknown> | undefined;
-              if (data?.success) {
-                setSuggestedDatetimes(data.suggestions);
-                pushNewMessage({ message: data.message as string, isAnswer: false });
-              } else if (data?.message) {
-                pushNewMessage({ message: data.message as string, isAnswer: false });
-              } else {
+              const data = res as SuggestSlotsResponse | undefined;
+              if (!data?.message) {
                 toast.error('Error processing suggestion. Please try again.');
+                return;
               }
+              if (data.success && data.suggestions?.length) {
+                setSuggestedDatetimes(data.suggestions);
+              }
+              pushNewMessage({ message: data.message, isAnswer: false });
             })
             .catch(() => toast.error('Error processing suggestion. Please try again.'))
             .finally(() => setIsLoadingConversation(false));

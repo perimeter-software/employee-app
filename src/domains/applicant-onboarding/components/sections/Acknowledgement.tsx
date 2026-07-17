@@ -5,8 +5,8 @@ import DOMPurify from 'dompurify';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import { OnboardingService } from '../../services/onboarding-service';
 import type { Company } from '@/domains/company/types';
-
-const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
+import { applicantFileKey } from '@/lib/utils';
+import { useFileUrl } from '@/lib/hooks/use-file-url';
 
 const Acknowledgement: React.FC = () => {
   const {
@@ -98,10 +98,11 @@ const Acknowledgement: React.FC = () => {
       ? DOMPurify.sanitize(company.acknowledgmentText)
       : '';
 
-  const signatureUrl =
+  const signatureUrl = useFileUrl(
     applicant._id && i9Form?.signature
-      ? `${IMAGE_SERVER}/applicants/${applicant._id}/signature/${i9Form.signature}`
-      : null;
+      ? applicantFileKey(applicant._id, 'signature', i9Form.signature)
+      : null
+  );
 
   const signedDate = i9Form?.processedDate
     ? new Date(i9Form.processedDate).toLocaleDateString('en-US', {

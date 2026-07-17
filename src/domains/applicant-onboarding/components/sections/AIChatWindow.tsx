@@ -3,6 +3,7 @@
 import { format, isToday } from 'date-fns';
 import { useMemo } from 'react';
 import DOMPurify from 'dompurify';
+import { getStaticAssetUrl } from '@/lib/utils';
 
 export interface ChatMessage {
   index: number;
@@ -48,9 +49,7 @@ interface AIChatWindowProps {
 
 const getBotAvatarSrc = () => {
   const imageServer = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
-  return imageServer
-    ? `${imageServer}/common/static/aiChatbotProfilePicture.png`
-    : '/static/aiChatbotProfilePicture.png';
+  return getStaticAssetUrl(imageServer, 'aiChatbotProfilePicture.png');
 };
 
 const AIChatWindow: React.FC<AIChatWindowProps> = ({
@@ -195,7 +194,7 @@ const ChatMessageBubble: React.FC<BubbleProps> = ({
         <BotAvatar />
         <div className="flex flex-col gap-1 max-w-[60%]">
           <div
-            className="bg-blue-600 text-white rounded-2xl rounded-bl-none px-4 py-2 text-sm [&>div]:inline [&>p]:inline"
+            className="bg-blue-600 text-white rounded-2xl rounded-bl-none px-4 py-2 text-sm whitespace-pre-wrap [&>div]:inline [&>p]:inline"
             dangerouslySetInnerHTML={{
               __html: DOMPurify.sanitize(item.message ?? ''),
             }}

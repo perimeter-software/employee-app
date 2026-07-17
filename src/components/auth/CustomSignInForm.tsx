@@ -85,6 +85,37 @@ export function CustomSignInForm({ redirectUrl }: { redirectUrl: string }) {
     await sendEmailCode(emailFactor, forEmail);
   }
 
+  // Explicit "forgot my password" recovery. Unlike handleSignIn — which only
+  // offers a reset when the account has NO password — this runs the reset flow
+  // on demand for a user whose password exists but is forgotten/bad. Emails a
+  // code, then reuses the 'reset-password' step (code + new password), so the
+  // user never leaves the app for Clerk's generic hosted reset page.
+  async function startPasswordReset(forEmail: string) {
+    const created = await signIn!.create({ identifier: forEmail });
+    const resetFactor = pickEmailFactor<{
+      strategy: 'reset_password_email_code';
+      emailAddressId: string;
+    }>(
+      created.supportedFirstFactors ?? [],
+      'reset_password_email_code',
+      forEmail,
+    );
+    if (!resetFactor) {
+      throw new Error(
+        "This email isn't set up for password reset. Try the one-time email code, or contact support.",
+      );
+    }
+    await signIn!.prepareFirstFactor({
+      strategy: 'reset_password_email_code',
+      emailAddressId: resetFactor.emailAddressId,
+    });
+    setStep('reset-password');
+    setInfo(
+      `We emailed a password-reset code to ${forEmail}. Enter it and choose a new password to finish signing in.`,
+    );
+    setError(null);
+  }
+
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
@@ -436,6 +467,31 @@ export function CustomSignInForm({ redirectUrl }: { redirectUrl: string }) {
       >
         Sign in
       </Button>
+
+      <button
+        type="button"
+        className="w-full text-center text-sm text-gray-500 hover:text-gray-900"
+        onClick={async () => {
+          if (!email) {
+            setError('Enter your email first.');
+            return;
+          }
+          setBusy(true);
+          setError(null);
+          try {
+            await startPasswordReset(email);
+          } catch (err) {
+            setError(
+              clerkMessage(err, "We couldn't start a password reset."),
+            );
+          } finally {
+            setBusy(false);
+          }
+        }}
+        disabled={busy}
+      >
+        Forgot your password?
+      </button>
 
       <button
         type="button"

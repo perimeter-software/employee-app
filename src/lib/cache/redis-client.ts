@@ -30,7 +30,18 @@ class RedisService {
       this.client = createClient({
         url: redisUrl,
         socket: {
-          reconnectStrategy: (retries) => Math.min(retries * 50, 500),
+          // Fail a single connection attempt fast instead of hanging on a
+          // dropped SYN (e.g. Security Group blocking the port).
+          connectTimeout: 5000,
+          // Give up after a handful of retries so connect() rejects instead of
+          // retrying forever. Returning an Error stops reconnection and lets
+          // callers (which all fail-open) proceed without Redis.
+          reconnectStrategy: (retries) => {
+            if (retries >= 5) {
+              return new Error('Redis unreachable — giving up');
+            }
+            return Math.min(retries * 50, 500);
+          },
           ...(useTls ? { tls: true } : {}),
         },
       });
@@ -43,11 +54,27 @@ class RedisService {
         console.log("Redis Client Connected");
       });
 
-      await this.client.connect();
+      // Hard cap the total connect time so one request can't wait through
+      // several retry attempts. Whichever settles first wins; on timeout we
+      // tear down the half-open client so the next call starts fresh.
+      await Promise.race([
+        this.client.connect(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Redis connect timed out')), 6000)
+        ),
+      ]);
       this.isConnecting = false;
       return this.client;
     } catch (error) {
       this.isConnecting = false;
+      // Tear down the half-open client so it doesn't keep a reconnect loop
+      // alive in the background, and so the next call builds a fresh one.
+      try {
+        await this.client?.destroy();
+      } catch {
+        // ignore — client may already be unusable
+      }
+      this.client = null;
       console.error("Failed to connect to Redis:", error);
       throw error;
     }

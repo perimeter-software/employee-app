@@ -2,5 +2,6 @@
 export * from './class-utils';
 export * from './date-utils';
 export * from './format-utils';
+export * from './image-url-utils';
 export * from './location-utils';
 export * from './reset-stores';

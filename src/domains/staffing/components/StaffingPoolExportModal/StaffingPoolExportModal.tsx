@@ -4,10 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
-import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import type { StaffingFilter } from '../StaffingPoolModal/StaffingPoolModal';
-
-const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
 
 type ExportField = { name: string; label: string };
 
@@ -76,7 +73,6 @@ export const StaffingPoolExportModal = ({
   filterMode,
   onClose,
 }: Props) => {
-  const { data: company } = usePrimaryCompany();
   const [fields, setFields] = useState<Record<string, boolean>>(INITIAL_FIELDS);
   const [exporting, setExporting] = useState(false);
 
@@ -109,10 +105,9 @@ export const StaffingPoolExportModal = ({
       }
       const exportUrl: string = json.data?.exportUrl ?? json.data?.data?.exportUrl ?? '';
       if (exportUrl) {
-        const base = IMAGE_SERVER && company?.uploadPath
-          ? `${IMAGE_SERVER}/${company.uploadPath}`
-          : IMAGE_SERVER;
-        window.open(`${base}${exportUrl}`, '_blank');
+        // The API uploads the CSV to S3 and hands back a ready presigned URL;
+        // prefixing it with anything would corrupt the signature.
+        window.open(exportUrl, '_blank');
       }
       toast.success('Your CSV is being prepared — it will open in a new tab.');
       onClose();
