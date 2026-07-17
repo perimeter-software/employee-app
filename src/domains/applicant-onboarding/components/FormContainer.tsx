@@ -132,63 +132,57 @@ const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, company
   return (
     <>
       <Card className="mt-8">
-        <CardHeader className="flex flex-row items-center justify-between border-b">
-          <CardTitle className="text-base">
+        <CardHeader className="sticky top-16 z-20 flex flex-col gap-3 border-b bg-card sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="min-w-0 truncate text-base">
             {activeStep?.label}
             {isSubStep && activeSubStep?.label ? ` — ${activeSubStep.label}` : ''}
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
             {buttonState.submit.show && (
               <Button
                 type="button"
                 form="current-form"
+                size="sm"
                 disabled={buttonState.submit.disabled}
                 loading={isSubmitting}
                 onClick={handleSubmit}
                 rightIcon={<Save className="h-4 w-4" />}
-                className="hidden lg:inline-flex"
+                className="w-full sm:w-auto"
               >
                 {submitLabel}
               </Button>
             )}
-            {buttonState.previous.show && !isPreOnboarding && (isOnboardingAvailable || isSubStep) && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handlePrevious}
-                disabled={isSubStep ? atFirstSub : buttonState.previous.disabled}
-              >
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Previous
-              </Button>
-            )}
-            {buttonState.next.show && !isPreOnboarding && (isOnboardingAvailable || isSubStep) && (
-              <Button
-                type="button"
-                onClick={handleNext}
-                disabled={isSubStep ? atLastSub : buttonState.next.disabled}
-              >
-                Next
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {buttonState.previous.show && !isPreOnboarding && (isOnboardingAvailable || isSubStep) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrevious}
+                  disabled={isSubStep ? atFirstSub : buttonState.previous.disabled}
+                  className="flex-1 sm:flex-none"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Previous
+                </Button>
+              )}
+              {buttonState.next.show && !isPreOnboarding && (isOnboardingAvailable || isSubStep) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleNext}
+                  disabled={isSubStep ? atLastSub : buttonState.next.disabled}
+                  className="flex-1 sm:flex-none"
+                >
+                  Next
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className={clsxm('relative border p-4')}>
           <NewApplicantForms />
-          {buttonState.submit.show && (
-            <Button
-              type="button"
-              form="current-form"
-              disabled={buttonState.submit.disabled}
-              loading={isSubmitting}
-              onClick={handleSubmit}
-              rightIcon={<Save className="h-4 w-4" />}
-              className="mt-5 w-full lg:hidden"
-            >
-              {submitLabel}
-            </Button>
-          )}
         </CardContent>
       </Card>
       <UnsavedChangesModal

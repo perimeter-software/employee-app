@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import axios from 'axios';
+import { toast } from 'sonner';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
@@ -178,6 +179,7 @@ const I9Form: React.FC = () => {
   const validateAndSign = async () => {
     const valid = await trigger();
     if (valid) setSignatureModalOpen(true);
+    else toast.error('Please complete all required fields before saving.');
   };
 
   useEffect(() => {
@@ -282,7 +284,7 @@ const I9Form: React.FC = () => {
                 label="4. An alien authorized to work until expiration date"
               />
               {citizenshipStatus === 'Authorized Alien' && (
-                <div className="ml-5 grid grid-cols-2 gap-3">
+                <div className="ml-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Controller
                     name="expirationDate"
                     control={control}
