@@ -11,6 +11,7 @@ import {
   type FieldValues,
   type Resolver,
 } from 'react-hook-form';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import type { ApplicantRecord } from '../../types';
@@ -94,7 +95,9 @@ export function StepScaffold<T extends FieldValues>({
   );
 
   useEffect(() => {
-    submitRef.current = handleSubmit(onSubmit);
+    submitRef.current = handleSubmit(onSubmit, () => {
+      toast.error('Please complete all required fields before saving.');
+    });
     return () => {
       submitRef.current = null;
     };

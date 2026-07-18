@@ -51,16 +51,15 @@ const UploadFileModal: React.FC<UploadFileModalProps> = ({
 
   useEffect(() => {
     if (!open) return;
+    if (defaultType) {
+      setAttachmentType(defaultType);
+      return;
+    }
     axios
       .get('/api/applicant-onboarding/dropdowns/attachmentTypes')
       .then((res) => {
         const types = res.data?.data?.arrayValue ?? res.data?.data ?? res.data;
-        if (Array.isArray(types)) {
-          setAttachmentTypes(types);
-          if (defaultType && types.includes(defaultType)) {
-            setAttachmentType(defaultType);
-          }
-        }
+        if (Array.isArray(types)) setAttachmentTypes(types);
       })
       .catch(() => {});
   }, [open, defaultType]);
@@ -141,21 +140,23 @@ const UploadFileModal: React.FC<UploadFileModalProps> = ({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Attachment Type</Label>
-            <Select value={attachmentType} onValueChange={setAttachmentType}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select type…" />
-              </SelectTrigger>
-              <SelectContent>
-                {attachmentTypes.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {!defaultType && (
+            <div className="space-y-1.5">
+              <Label>Attachment Type</Label>
+              <Select value={attachmentType} onValueChange={setAttachmentType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attachmentTypes.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label>Name or Title (optional)</Label>
