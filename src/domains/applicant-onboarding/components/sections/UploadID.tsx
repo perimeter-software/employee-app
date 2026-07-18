@@ -31,6 +31,25 @@ const OnboardingGuideModal: React.FC<{ open: boolean; onOpenChange: (v: boolean)
   onOpenChange,
 }) => {
   const pdfUrl = getStaticAssetUrl(IMAGE_SERVER, 'i-9%20example%20docs.pdf');
+
+  // Inline <object> embedding of a PDF only works when the browser has a native
+  // PDF viewer. iOS Safari (and Android Chrome) have none: they render a blank
+  // area and do NOT fall back to the <object>'s child content, so we can't rely
+  // on that fallback to surface a link. Rather than guess from screen size,
+  // query the capability directly via navigator.pdfViewerEnabled, and only fall
+  // back to a coarse-pointer heuristic on older browsers that lack it.
+  const [canEmbedPdf, setCanEmbedPdf] = useState(true);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const supportsInlinePdf = navigator.pdfViewerEnabled;
+    if (typeof supportsInlinePdf === 'boolean') {
+      setCanEmbedPdf(supportsInlinePdf);
+    } else {
+      // Older browsers: assume touch/coarse-pointer devices can't embed.
+      setCanEmbedPdf(!window.matchMedia('(pointer: coarse)').matches);
+    }
+  }, []);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl w-[80vw]">
@@ -38,19 +57,28 @@ const OnboardingGuideModal: React.FC<{ open: boolean; onOpenChange: (v: boolean)
           <DialogTitle>Onboarding Documents Upload Guide</DialogTitle>
         </DialogHeader>
         <div className="w-full">
-          <object
-            data={pdfUrl}
-            type="application/pdf"
-            className="w-full h-[70vh]"
-          >
-            <p className="text-sm text-gray-600">
-              Unable to display PDF.{' '}
-              <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-                Download
-              </a>{' '}
-              instead.
+          {canEmbedPdf ? (
+            <object data={pdfUrl} type="application/pdf" className="w-full h-[70vh]">
+              <p className="text-sm text-gray-600">
+                Unable to display PDF.{' '}
+                <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                  Download
+                </a>{' '}
+                instead.
+              </p>
+            </object>
+          ) : (
+            <p className="text-sm text-gray-600 py-4">
+              <a
+                href={pdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 underline"
+              >
+                Open the onboarding documents upload guide (PDF)
+              </a>
             </p>
-          </object>
+          )}
         </div>
         <DialogFooter>
           <Button onClick={() => onOpenChange(false)}>Close</Button>
