@@ -7,7 +7,7 @@ import {
 } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { ObjectId } from 'mongodb';
-import { validateFields } from '@/lib/forms/formValidation';
+import { validateFields, pickInputValues } from '@/lib/forms/formValidation';
 import { getAllFieldsFromSections } from '@/domains/forms/utils/formMapper';
 import { writeFilledPdfAndBuildAttachment } from '@/lib/pdf/generate-filled-form-pdf';
 import { findPrimaryCompany } from '@/domains/company';
@@ -184,10 +184,12 @@ async function submitFormHandler(
       );
     }
 
-    // Prepare form response data
+    // Prepare form response data. Persist ONLY real input-field values — display-only
+    // blocks (heading/paragraph/divider/image) and any extraneous keys are dropped at
+    // the storage boundary so a response can never accumulate empty content-block keys.
     const now = new Date();
     const formResponse = {
-      ...formValues,
+      ...pickInputValues(form.formData?.form, formValues),
       _metadata: {
         status: 'submitted',
         lastSavedAt: now,

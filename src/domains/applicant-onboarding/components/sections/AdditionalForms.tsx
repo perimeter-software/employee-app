@@ -23,7 +23,11 @@ import {
 } from '@/components/ui/Dialog';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import { OnboardingService } from '../../services/onboarding-service';
-import { validateFormValues } from '@/lib/forms/formValidation';
+import {
+  validateFormValues,
+  isInputFieldType,
+  pickInputValues,
+} from '@/lib/forms/formValidation';
 import FormRenderer, { type DynamicFormData } from './FormRenderer';
 
 // ---------- Types ----------
@@ -234,11 +238,14 @@ const AdditionalForms: React.FC = () => {
         }
 
         // Initialise defaults from form definition
+        // Seed defaults for INPUT fields only — display-only blocks (heading/
+        // paragraph/divider/image) carry no value and must not enter formValues,
+        // or they'd ride into the stored response as empty keys.
         const initial: Record<string, unknown> = {};
         form.form?.sections?.forEach((section) => {
           section.rows?.forEach((row) => {
             row.columns?.forEach((field) => {
-              if (field.id) {
+              if (field.id && isInputFieldType(field.type)) {
                 initial[field.id] = field.defaultValue ?? '';
               }
             });
@@ -292,7 +299,7 @@ const AdditionalForms: React.FC = () => {
       const submittedDate = new Date().toISOString();
 
       const formData = {
-        ...formValues,
+        ...pickInputValues(selectedForm.form, formValues),
         submittedDate,
         completedBy,
         completedById,
@@ -494,7 +501,7 @@ const AdditionalForms: React.FC = () => {
         open={isDialogOpen}
         onOpenChange={(open) => !open && handleCloseDialog()}
       >
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selectedForm?.name ?? 'Form'}</DialogTitle>
           </DialogHeader>
