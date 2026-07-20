@@ -6,6 +6,7 @@ import {
 } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { ObjectId } from 'mongodb';
+import { pickInputValues } from '@/lib/forms/formValidation';
 
 // POST Handler for Saving Form Draft
 async function saveDraftHandler(
@@ -146,9 +147,10 @@ async function saveDraftHandler(
       );
     }
 
-    // Prepare form response data
+    // Prepare form response data. Persist ONLY real input-field values (drops
+    // display-only blocks + extraneous keys) — same storage-boundary rule as submit.
     const formResponse = {
-      ...formValues,
+      ...pickInputValues(form.formData?.form, formValues),
       _metadata: {
         status: 'draft',
         lastSavedAt: new Date(),

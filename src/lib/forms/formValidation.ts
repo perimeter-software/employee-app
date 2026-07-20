@@ -296,3 +296,42 @@ export const validateFormValues = (
   form: unknown,
   values: Record<string, unknown>,
 ): ValidationResult => validateFields(values, flattenFields(form), { isSubmit: true });
+
+// ————————————————————————————————————————————————————————————————————————
+// Storage hygiene (shared with the server). A submitted/draft response must
+// persist ONLY real INPUT-field values. Display-only blocks (heading /
+// paragraph / divider / image) carry no fillable value and must never be
+// written into applicants.dynamicForms — that is what produced submissions
+// full of empty content-block keys. hidden / readOnly INPUT fields ARE kept
+// (they can hold real autofilled data); only display-only *types* are dropped.
+// Uses the same DISPLAY_ONLY set the validator skips on.
+
+/** True for a field type that captures a value (i.e. not display-only). */
+export const isInputFieldType = (type: string | undefined): boolean =>
+  !DISPLAY_ONLY.has(normType(type ?? ""));
+
+/** Ids of every input-bearing field in a form (`form` is the object with `.sections`). */
+export function getInputFieldIds(form: unknown): Set<string> {
+  const ids = new Set<string>();
+  for (const f of flattenFields(form)) {
+    if (f?.id && isInputFieldType(f.type)) ids.add(f.id);
+  }
+  return ids;
+}
+
+/**
+ * Keep only the values whose field is a real input; drops display-only field
+ * ids and any unknown/extraneous keys. Meta keys added around the response
+ * (submittedDate/_metadata/…) are the caller's concern — filter BEFORE adding them.
+ */
+export function pickInputValues(
+  form: unknown,
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  const ids = getInputFieldIds(form);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(values ?? {})) {
+    if (ids.has(k)) out[k] = v;
+  }
+  return out;
+}
