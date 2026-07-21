@@ -15,8 +15,7 @@ import {
 } from '@/components/ui/Dialog';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import type { StateTaxFormConfig, StateTaxFieldConfig, DslNode } from '../../hooks/use-dynamic-state-tax-forms';
-
-const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
+import { resolveCommonAssetUrl } from '@/lib/utils';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -343,7 +342,7 @@ const DynamicStateTaxForm: React.FC<Props> = ({
 
   const [showPdf, setShowPdf] = useState(false);
   const pdfRelPath = formConfig?.metadata?.pdfSource?.relativePath;
-  const pdfUrl = pdfRelPath ? `${IMAGE_SERVER}/common${pdfRelPath}` : '';
+  const pdfUrl = pdfRelPath ? resolveCommonAssetUrl(pdfRelPath) : '';
 
   // ── Field renderer ────────────────────────────────────────────────────────
 

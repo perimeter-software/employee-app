@@ -3,7 +3,7 @@
 import { format, isToday } from 'date-fns';
 import { useMemo } from 'react';
 import DOMPurify from 'dompurify';
-import { getStaticAssetUrl } from '@/lib/utils';
+import { commonStaticAssetUrl } from '@/lib/utils';
 
 export interface ChatMessage {
   index: number;
@@ -46,11 +46,6 @@ interface AIChatWindowProps {
   firstLevelButtons?: ChatButton[] | null;
   secondLevelButtons?: ChatButton[] | null;
 }
-
-const getBotAvatarSrc = () => {
-  const imageServer = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
-  return getStaticAssetUrl(imageServer, 'aiChatbotProfilePicture.png');
-};
 
 const AIChatWindow: React.FC<AIChatWindowProps> = ({
   firstName,
@@ -269,7 +264,7 @@ const ChatMessageBubble: React.FC<BubbleProps> = ({
 const BotAvatar: React.FC = () => (
   <div className="flex-shrink-0 w-10 h-10 rounded-full overflow-hidden bg-gray-200">
     <img
-      src={getBotAvatarSrc()}
+      src={commonStaticAssetUrl('aiChatbotProfilePicture.png')}
       alt="AI Bot"
       className="w-full h-full object-cover"
       onError={(e) => {
