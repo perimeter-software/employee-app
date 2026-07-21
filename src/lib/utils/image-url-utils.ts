@@ -1,17 +1,18 @@
 // Asset URL helpers.
 //
-// Two distinct storage backends are in play, and the split matters:
+// Two S3 storage backends are in play, and the split matters:
 //
 //   1. Tenant-owned files (applicant attachments, signatures, user photos,
-//      venue logos) live in S3, in a per-tenant bucket named
+//      venue logos) live in a per-tenant bucket named
 //      `gignology-{companySlug}-{stage|prod}`.
-//   2. Shared/common assets (file-type icons, guide PDFs, state-tax form PDFs)
-//      still live on the legacy image server, which serves them off `/common`.
-//      They were never migrated to S3, so they keep using NEXT_PUBLIC_IMAGE_SERVER.
+//   2. Shared/common assets (chatbot avatar, onboarding guide PDFs, state-tax
+//      form PDFs) live in the single `gignology-common-{stage|prod}` bucket.
 //
-// Private tenant files must be presigned by the API — see `useFileUrl`. Only
-// assets covered by the buckets' public-read policy (logos/banners) may be
-// addressed directly via `resolveVenueLogoUrl`.
+// Private tenant files (applicant attachments, signatures, user photos) must be
+// presigned by the API — see `useFileUrl`. Public-read assets are addressed
+// directly as plain URLs, no presigning: venue logos/banners via
+// `resolveVenueLogoUrl`, and every common-bucket asset via
+// `resolveCommonAssetUrl` (the common bucket is public-read in full).
 
 const AWS_REGION = process.env.NEXT_PUBLIC_AWS_REGION || 'us-east-2';
 
@@ -78,44 +79,38 @@ export function userPhotoKey(userId: string, filename: string): string {
   return `users/${userId}/photo/${filename}`;
 }
 
-// ─── Legacy image server (common assets only) ───────────────────────────────
+// ─── Common bucket (shared assets) ──────────────────────────────────────────
+//
+// Shared assets live in the single `gignology-common-{stage|prod}` bucket — not
+// a tenant bucket. The bucket IS the "common" namespace (there is no `common/`
+// prefix inside it), with a top-level `static/` folder. The whole bucket is
+// public-read, so — like venue logos — assets resolve to a direct URL with no
+// presigning. This is the fixed-bucket analog of `buildTenantS3BaseUrl`: the
+// old `{imageServer}/common/{key}` becomes `{commonBucketBase}/{key}`.
 
-/**
- * Returns the origin (protocol + hostname) of the configured image server,
- * stripping any path or port. The raw image-server value may carry an
- * upload path or port; shared assets are served from the bare host.
- *
- * @param imageServer Raw image server value (e.g. NEXT_PUBLIC_IMAGE_SERVER).
- * @returns The `${protocol}//${hostname}` origin, or '' when no server is set.
- */
-export function getImageServerOrigin(imageServer?: string): string {
-  if (!imageServer) return '';
-
-  try {
-    const url = new URL(imageServer);
-    return `${url.protocol}//${url.hostname}`;
-  } catch {
-    return imageServer;
-  }
+/** Base URL of the shared common-assets S3 bucket for the current environment. */
+export function buildCommonS3BaseUrl(): string {
+  return `https://gignology-common-${BUCKET_SUFFIX}.s3.${AWS_REGION}.amazonaws.com`;
 }
 
 /**
- * Builds a full URL to a shared static asset. Shared assets live under
- * `/common/static` on the image host — mirroring stadium-people's
- * `getCommonBaseImageUrl`, which maps the company upload path to `/common`.
+ * Public URL for a shared/common asset.
  *
- * NOTE: these assets are still served by the legacy image server; they were not
- * part of the S3 migration. Tenant-owned files must NOT use this helper.
- *
- * @param imageServer Raw image server value (e.g. NEXT_PUBLIC_IMAGE_SERVER).
- * @param assetPath Path to the asset relative to `/common/static`
- *                  (e.g. 'pdf-icon.png').
- * @returns The full asset URL, falling back to a root-relative `/static/...`
- *          path (served by the app's own public assets) when no image server
- *          is configured.
+ * @param assetPath Bucket-relative path from `static/…` onward (a leading slash
+ *                  is tolerated and stripped — pass a raw path with spaces,
+ *                  e.g. 'static/i-9 example docs.pdf'; segments are URL-encoded).
  */
-export function getStaticAssetUrl(imageServer: string | undefined, assetPath: string): string {
-  const normalizedPath = assetPath.replace(/^\/+/, '');
-  const origin = getImageServerOrigin(imageServer);
-  return origin ? `${origin}/common/static/${normalizedPath}` : `/static/${normalizedPath}`;
+export function resolveCommonAssetUrl(assetPath: string): string {
+  const key = assetPath.replace(/^\/+/, '');
+  // Encode each segment but keep the '/' that delimit S3 "folders".
+  const encoded = key.split('/').map(encodeURIComponent).join('/');
+  return `${buildCommonS3BaseUrl()}/${encoded}`;
+}
+
+/**
+ * Public URL for a shared static asset (chatbot avatar, guide PDFs) under the
+ * common bucket's `static/` folder. Pass the raw filename, spaces and all.
+ */
+export function commonStaticAssetUrl(filename: string): string {
+  return resolveCommonAssetUrl(`static/${filename}`);
 }

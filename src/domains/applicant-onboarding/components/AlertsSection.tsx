@@ -12,7 +12,8 @@ interface Props {
 }
 
 const AlertsSection: React.FC<Props> = ({ isAvailable, currentApplicant }) => {
-  const { applicant, setActiveStep, activeStep } = useNewApplicantContext();
+  const { applicant, setActiveStep, activeStep, setPendingAIScreening } =
+    useNewApplicantContext();
 
   const {
     currentMissingFields,
@@ -80,7 +81,10 @@ const AlertsSection: React.FC<Props> = ({ isAvailable, currentApplicant }) => {
         description:
           'You can start an AI Screening Interview that will increase your chances of getting hired.',
         action: 'Start Now',
-        func: () => setActiveStep(5),
+        func: () => {
+          setPendingAIScreening(true);
+          setActiveStep(5);
+        },
       });
     }
 
@@ -103,6 +107,7 @@ const AlertsSection: React.FC<Props> = ({ isAvailable, currentApplicant }) => {
     currentMissingFields,
     hasResume,
     setActiveStep,
+    setPendingAIScreening,
   ]);
 
   if (

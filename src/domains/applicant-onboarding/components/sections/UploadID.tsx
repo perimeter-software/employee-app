@@ -14,12 +14,9 @@ import { Button } from '@/components/ui/Button';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import { type AttachmentFile } from '../../utils/attachment-helpers';
 import UploadFileModal from './UploadFileModal';
-import { applicantFileKey, getStaticAssetUrl } from '@/lib/utils';
+import { applicantFileKey, commonStaticAssetUrl } from '@/lib/utils';
 import { useFileUrl } from '@/lib/hooks/use-file-url';
 
-// Only the shared guide PDFs below still come from the legacy image server;
-// applicant files are presigned out of S3 via useFileUrl.
-const IMAGE_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
 const IMAGE_EXTS = ['jpeg', 'jpg', 'png', 'bmp', 'gif', 'webp'];
 
 function getExt(filename: string): string {
@@ -30,7 +27,7 @@ const OnboardingGuideModal: React.FC<{ open: boolean; onOpenChange: (v: boolean)
   open,
   onOpenChange,
 }) => {
-  const pdfUrl = getStaticAssetUrl(IMAGE_SERVER, 'i-9%20example%20docs.pdf');
+  const pdfUrl = commonStaticAssetUrl('i-9 example docs.pdf');
 
   // Inline <object> embedding of a PDF only works when the browser has a native
   // PDF viewer. iOS Safari (and Android Chrome) have none: they render a blank
@@ -152,6 +149,7 @@ const UploadID: React.FC = () => {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const compressGuideUrl = commonStaticAssetUrl('How to Compress Your Images for Upload.pdf');
 
   const applicantId = applicant._id ?? '';
   const rawAttachments = applicant.attachments as AttachmentFile[] | undefined;
@@ -239,7 +237,7 @@ const UploadID: React.FC = () => {
             Click here for onboarding documents upload guide
           </button>
           <a
-            href={getStaticAssetUrl(IMAGE_SERVER, 'How%20to%20Compress%20Your%20Images%20for%20Upload.pdf')}
+            href={compressGuideUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="block text-sm text-blue-600 underline hover:text-blue-800"

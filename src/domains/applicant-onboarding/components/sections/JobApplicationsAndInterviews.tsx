@@ -70,6 +70,8 @@ const JobApplicationsAndInterviews: React.FC = () => {
     loadApplicantAction,
     setActiveStep,
     setApplicantSteps,
+    pendingAIScreening,
+    setPendingAIScreening,
   } = useNewApplicantContext();
 
   const [isAiChatbotModalOpen, setIsAiChatbotModalOpen] = useState(false);
@@ -192,6 +194,16 @@ const JobApplicationsAndInterviews: React.FC = () => {
       setIsAiChatbotModalOpen(true);
     }
   }, [canStartAIInterview, searchParams]);
+
+  // In-app handoff: the "Start Now" AI screening alert switches to this step and sets
+  // pendingAIScreening. Once eligible, auto-open the screening modal and clear the flag.
+  useEffect(() => {
+    if (!pendingAIScreening) return;
+    if (canStartAIInterview) {
+      setIsAiChatbotModalOpen(true);
+    }
+    setPendingAIScreening(false);
+  }, [pendingAIScreening, canStartAIInterview, setPendingAIScreening]);
 
   const allInterviews = useMemo<InterviewRow[]>(() => {
     const jobsWithAutoScheduling: Array<{
