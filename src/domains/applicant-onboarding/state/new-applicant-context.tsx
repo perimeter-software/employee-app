@@ -170,6 +170,11 @@ export interface NewApplicantContextValue extends NewApplicantState {
     initialStep?: string
   ) => void;
   submitRef: MutableRefObject<null | (() => Promise<void> | void)>;
+  // Intent flag: when a "Start Now" alert switches to the interviews step, the
+  // JobApplicationsAndInterviews view reads this to auto-open the AI screening modal
+  // once the applicant is eligible, then clears it.
+  pendingAIScreening: boolean;
+  setPendingAIScreening: (v: boolean) => void;
 }
 
 const NewApplicantContext = createContext<NewApplicantContextValue | null>(null);
@@ -192,6 +197,7 @@ export const NewApplicantContextProvider: React.FC<ProviderProps> = ({
   // snaps the user to the requested step (from URL) or to step 1.
   const [stepsRefreshed, setStepsRefreshed] = useState(0);
   const [stepToGo, setStepToGo] = useState<string | null>(null);
+  const [pendingAIScreening, setPendingAIScreening] = useState(false);
 
   const submitRef: MutableRefObject<null | (() => Promise<void> | void)> = useRef(null);
 
@@ -543,6 +549,8 @@ export const NewApplicantContextProvider: React.FC<ProviderProps> = ({
       updateApplicantAction,
       setApplicantSteps,
       submitRef,
+      pendingAIScreening,
+      setPendingAIScreening,
     }),
     [
       state,
@@ -565,6 +573,7 @@ export const NewApplicantContextProvider: React.FC<ProviderProps> = ({
       loadApplicantAction,
       updateApplicantAction,
       setApplicantSteps,
+      pendingAIScreening,
     ]
   );
 
