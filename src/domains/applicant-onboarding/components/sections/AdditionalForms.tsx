@@ -251,6 +251,13 @@ const AdditionalForms: React.FC = () => {
             });
           });
         });
+        // Default the acknowledgement signing date to today (still editable) so the
+        // applicant doesn't hand-enter it. Scoped to the canonical ack date field —
+        // other date fields (DOB, etc.) must NOT be forced to today.
+        if ('acknowledgementDate' in initial && !initial.acknowledgementDate) {
+          const now = new Date();
+          initial.acknowledgementDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        }
         setFormValues(initial);
       } finally {
         setIsLoadingFormData(false);
@@ -468,7 +475,7 @@ const AdditionalForms: React.FC = () => {
                     <Button
                       type="button"
                       size="sm"
-                      variant={isCompleted ? 'outline' : 'default'}
+                      variant={isCompleted ? 'outline' : 'primary'}
                       onClick={() => handleFillForm(form)}
                       className={
                         isCompleted
@@ -522,6 +529,7 @@ const AdditionalForms: React.FC = () => {
                   formValues={formValues}
                   onInputChange={handleInputChange}
                   applicant={applicant as Record<string, unknown> | undefined}
+                  shortName={selectedForm.metadata?.shortName}
                   errors={fieldErrors}
                 />
               )}

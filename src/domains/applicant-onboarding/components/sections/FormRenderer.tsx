@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/Select';
 import { Separator } from '@/components/ui/Separator';
 import { DynamicFormTable, type TableColumn } from './DynamicFormTable';
+import DynamicSignatureField from './DynamicSignatureField';
 
 // ---------- Types ----------
 
@@ -71,16 +72,28 @@ interface FormRendererProps {
   formValues: Record<string, unknown>;
   onInputChange: (id: string, value: unknown) => void;
   applicant?: Record<string, unknown>;
+  /** metadata.shortName of the form being filled — namespaces signature files. */
+  shortName?: string;
   /** Per-field validation errors keyed by field id (from validateFormValues). */
   errors?: Record<string, string>;
 }
 
 // ---------- Field rendering ----------
 
+/** Context a signature field needs to store its drawn image against the applicant. */
+interface SignatureContext {
+  applicantId: string;
+  shortName: string;
+  canonicalSignature?: string;
+  applicantFirstName?: string;
+  applicantLastName?: string;
+}
+
 const renderField = (
   field: FormField,
   formValues: Record<string, unknown>,
-  onInputChange: (id: string, value: unknown) => void
+  onInputChange: (id: string, value: unknown) => void,
+  sig: SignatureContext
 ) => {
   const { id, type, name, placeholder, options, required, defaultValue, readOnly } = field;
   const value = formValues[id] ?? defaultValue ?? '';
@@ -115,17 +128,22 @@ const renderField = (
     }
 
     case 'signature':
+      // Drawn signature (canvas), stored as an S3 filename — not a typed name.
+      // `value` is read directly from formValues (ignoring defaultValue) so a
+      // stray default can't masquerade as a signed filename.
       return (
-        <div className="space-y-1">
-          {label && <Label>{label}</Label>}
-          <Input
-            type="text"
-            placeholder={placeholder ?? 'Type your full name as signature'}
-            value={value as string}
-            onChange={(e) => onInputChange(id, e.target.value)}
-            disabled={readOnly}
-          />
-        </div>
+        <DynamicSignatureField
+          fieldId={id}
+          label={label}
+          readOnly={readOnly}
+          value={typeof formValues[id] === 'string' ? (formValues[id] as string) : ''}
+          onChange={(fn) => onInputChange(id, fn)}
+          applicantId={sig.applicantId}
+          shortName={sig.shortName}
+          canonicalSignature={sig.canonicalSignature}
+          applicantFirstName={sig.applicantFirstName}
+          applicantLastName={sig.applicantLastName}
+        />
       );
 
     case 'date':
@@ -364,9 +382,19 @@ const FormRenderer: React.FC<FormRendererProps> = ({
   formData,
   formValues,
   onInputChange,
+  applicant,
+  shortName,
   errors,
 }) => {
   if (!formData) return null;
+
+  const sigCtx: SignatureContext = {
+    applicantId: (applicant?._id as string) || '',
+    shortName: shortName || '',
+    canonicalSignature: (applicant?.i9Form as { signature?: string } | undefined)?.signature,
+    applicantFirstName: applicant?.firstName as string | undefined,
+    applicantLastName: applicant?.lastName as string | undefined,
+  };
 
   return (
     <div className="space-y-6">
@@ -407,7 +435,7 @@ const FormRenderer: React.FC<FormRendererProps> = ({
               <div key={ri} className={`grid gap-4 ${gridColsClass(count)}`}>
                 {visibleCols.map((field) => (
                   <div key={field.id}>
-                    {renderField(field, formValues, onInputChange)}
+                    {renderField(field, formValues, onInputChange, sigCtx)}
                     {errors?.[field.id] && (
                       <p className="text-xs text-red-600 mt-1">{errors[field.id]}</p>
                     )}
