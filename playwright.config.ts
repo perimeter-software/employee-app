@@ -1,4 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
+import dotenv from 'dotenv';
+
+// Load BASE_URL / TEST_USER_* from a local .env when present.
+dotenv.config();
 
 /**
  * Playwright Configuration — Employee Portal E2E smoke suite
