@@ -44,6 +44,11 @@ test.describe('Sign-in form validation', () => {
       .getByRole('button', { name: /one-time email code/i })
       .click();
 
-    await expect(page.getByRole('alert')).toContainText(/enter your email/i);
+    // Scope to the destructive form alert. A bare getByRole('alert') also
+    // matches Next.js's __next-route-announcer__ (role="alert"), which trips
+    // strict mode.
+    await expect(
+      page.getByRole('alert').filter({ hasText: /enter your email/i })
+    ).toBeVisible();
   });
 });

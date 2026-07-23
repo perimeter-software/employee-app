@@ -69,9 +69,11 @@ test.describe('Authentication', () => {
       timeout: 20_000,
     });
 
-    // Hitting the logout route should clear the session; afterwards a
-    // protected route must bounce back to sign-in.
-    await page.goto('/logout');
+    // Hit the real logout endpoint. /api/auth/logout is the server route the
+    // app UI uses (Header.tsx) — it revokes the Clerk session and clears the
+    // httpOnly __session cookie. The /logout *page* is a legacy client-side
+    // cookie-clearer that can't touch that cookie, so it won't end a session.
+    await page.goto('/api/auth/logout');
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/sign-in/);
   });
