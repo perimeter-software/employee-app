@@ -16,7 +16,17 @@ import {
   MapPin,
   GraduationCap,
   User,
+  ShieldCheck,
 } from 'lucide-react';
+
+// Reachable in every account state — the right to access/erasure is not
+// status-gated. Added to both the applicant-only and full-user nav below.
+const PRIVACY_NAV = (pathname: string): NavigationItem => ({
+  name: 'Privacy & My Data',
+  href: '/privacy',
+  icon: ShieldCheck,
+  current: pathname === '/privacy' || pathname.startsWith('/privacy'),
+});
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { useCurrentUser } from '@/domains/user/hooks/use-current-user';
 
@@ -70,6 +80,8 @@ export function useNavigation() {
         current:
           pathname === '/applicant' || pathname.startsWith('/applicant/'),
       });
+
+      items.push(PRIVACY_NAV(pathname));
 
       return [{ label: '', items }];
     }
@@ -219,6 +231,9 @@ export function useNavigation() {
       icon: User,
       current: pathname === '/profile' || pathname.startsWith('/profile'),
     });
+
+    // Every full user can access/erase their own data.
+    selfServiceItems.push(PRIVACY_NAV(pathname));
 
     const groups: NavigationGroup[] = [];
     if (workspaceItems.length > 0)
