@@ -79,6 +79,14 @@ test.describe('Authentication', () => {
     // cookie-clearer that can't touch that cookie, so it won't end a session.
     await page.goto('/api/auth/logout');
     await page.goto('/dashboard');
-    await expect(page).toHaveURL(/sign-in/);
+    // Session revoked → the app bounces us off /dashboard to a signed-out
+    // surface. Depending on whether Clerk's session handshake or the app
+    // middleware resolves first, that's either /sign-in or the root landing
+    // carrying a returnTo (/?returnTo=%2Fdashboard). Both are logged-out
+    // screens; the point is we are NOT left on the dashboard. Allow extra
+    // time for the Clerk handshake round-trip.
+    await expect(page).toHaveURL(/\/sign-in|[?&]returnTo=/, {
+      timeout: 15_000,
+    });
   });
 });
