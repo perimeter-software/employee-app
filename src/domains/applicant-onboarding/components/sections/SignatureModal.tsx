@@ -95,7 +95,11 @@ const SignatureModal: React.FC<SignatureModalProps> = ({
       const ctx = canvas.getContext('2d');
       ctx?.scale(ratio, ratio);
       setHasInk(false);
-      padRef.current = new SignaturePad(canvas, { backgroundColor: 'rgb(255,255,255)' });
+      // No backgroundColor → the exported PNG keeps a TRANSPARENT background, so
+      // stamping it onto a PDF never paints a white box over the signature line.
+      // The drawing area still looks white to the user via the canvas `bg-white`
+      // class (display only, separate from the exported pixels).
+      padRef.current = new SignaturePad(canvas);
       // Hide the "Sign here" guide the instant the first stroke begins.
       padRef.current.addEventListener('beginStroke', () => setHasInk(true));
     };
