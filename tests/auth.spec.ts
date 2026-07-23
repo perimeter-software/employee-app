@@ -36,8 +36,12 @@ test.describe('Authentication', () => {
     await page.fill('#password', 'wrong-password-123');
     await page.getByRole('button', { name: /^sign in$/i }).click();
 
-    // The form surfaces Clerk errors in a destructive Alert (role="alert").
-    await expect(page.getByRole('alert')).toBeVisible({ timeout: 10_000 });
+    // The form surfaces Clerk errors in a destructive Alert. Scope to it by
+    // its variant class — a bare getByRole('alert') also matches Next.js's
+    // empty __next-route-announcer__ and trips strict mode.
+    await expect(page.locator('[role="alert"].text-destructive')).toBeVisible({
+      timeout: 10_000,
+    });
     // And keeps the user on the sign-in page.
     await expect(page).toHaveURL(/sign-in/);
   });

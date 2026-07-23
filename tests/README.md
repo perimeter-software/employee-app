@@ -48,12 +48,15 @@ allowlist the CI egress in Clerk or switch to Clerk testing tokens
 
 ## Running
 
+This project uses **yarn**. `BASE_URL` can be set inline (below) or dropped in
+a local `.env` — `playwright.config.ts` loads it via dotenv.
+
 ```bash
-npm install
+yarn install --frozen-lockfile
 npx playwright install --with-deps chromium firefox    # one-time
-BASE_URL=https://your-portal npm test                  # all browsers
-BASE_URL=https://your-portal npm run test:ui           # interactive
-npm run report                                          # open last HTML report
+BASE_URL=https://your-portal yarn test                 # all browsers
+BASE_URL=https://your-portal yarn test:ui              # interactive
+yarn report                                            # open last HTML report
 ```
 
 ## CI
