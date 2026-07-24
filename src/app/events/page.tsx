@@ -22,6 +22,10 @@ import {
   SelectValue,
 } from '@/components/ui/Select';
 import { useCurrentUser } from '@/domains/user';
+// Leaf import — see the note in app/venues/page.tsx: the `utils` barrel is
+// server-only and would pull the mongodb driver into this client bundle.
+import { isEventAdmin, managedVenueSlugs } from '@/domains/user/utils/event-admin';
+import { EventRosterModal } from '@/domains/event/components/EventRosterModal/EventRosterModal';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { clsxm } from '@/lib/utils';
 import {
@@ -69,6 +73,7 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
   const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(
     null
   );
+  const [rosterEvent, setRosterEvent] = useState<GignologyEvent | null>(null);
   const savedScrollY = useRef(0);
   const [venueSlug, setVenueSlug] = useState(searchParams.get('venue') ?? '');
   const [venueName, setVenueName] = useState(
@@ -79,6 +84,15 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
 
   const applicantId = currentUser?.applicantId;
   const isEmployee = currentUser?.userType === 'User';
+
+  // Event Admins can manage rosters for events at their clientOrgs venues.
+  const eventAdmin = isEventAdmin(currentUser);
+  const managedSlugs = useMemo(
+    () => managedVenueSlugs(currentUser),
+    [currentUser]
+  );
+  const canManage = (e: GignologyEvent) =>
+    eventAdmin && !!e.venueSlug && managedSlugs.has(e.venueSlug);
 
   const { data: incomingCoverList = [], isLoading: incomingCoverListLoading } =
     useQuery({
@@ -458,6 +472,8 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
                   key={event._id}
                   event={event}
                   imageBaseUrl={imageBaseUrl}
+                  canManageRoster={canManage(event)}
+                  onManageRoster={() => setRosterEvent(event)}
                   onClick={() => {
                     savedScrollY.current = window.scrollY;
                     setSelectedEvent(event);
@@ -481,6 +497,18 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
         items={incomingCoverList}
         isLoading={incomingCoverListLoading}
       />
+
+      {rosterEvent && (
+        <EventRosterModal
+          eventId={rosterEvent._id}
+          eventName={rosterEvent.eventName}
+          eventDate={rosterEvent.eventDate}
+          eventType={rosterEvent.eventType}
+          venueSlug={rosterEvent.venueSlug}
+          open={!!rosterEvent}
+          onClose={() => setRosterEvent(null)}
+        />
+      )}
     </div>
     </>
   );

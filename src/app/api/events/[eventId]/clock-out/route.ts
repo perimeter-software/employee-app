@@ -6,6 +6,10 @@ import { ObjectId } from 'mongodb';
 import { logActivity, createActivityLogData } from '@/lib/services/activity-logger';
 import { processClockCoordinates } from '@/domains/event/utils/event-clock-geo';
 import type { ApplicantNote } from '@/domains/user/types/applicant.types';
+import {
+  getRosterEntry,
+  updateRosterEntries,
+} from '@/domains/event/utils/event-roster';
 
 /**
  * POST /api/events/[eventId]/clock-out
@@ -66,12 +70,6 @@ async function clockOutHandler(
         { status: 400 }
       );
     }
-    if (!event.applicants?.length) {
-      return NextResponse.json(
-        { error: 'no-applicants', message: 'Event has no applicants' },
-        { status: 400 }
-      );
-    }
 
     // Fetch applicant
     const applicant = await db
@@ -100,10 +98,10 @@ async function clockOutHandler(
       );
     }
 
-    // Find roster record
-    const rosterRecord = (event.applicants as Array<Record<string, unknown>>).find(
-      (a) => a.id?.toString() === applicantId && a.status === 'Roster'
-    );
+    // Find roster record — entries live in the `eventroster` collection now.
+    const rosterRecord = (await getRosterEntry(db, eventId, applicantId, {
+      status: 'Roster',
+    })) as Record<string, unknown> | null;
     if (!rosterRecord) {
       return NextResponse.json(
         { error: 'not-on-roster', message: 'Applicant is not on Roster for this event' },
@@ -206,16 +204,19 @@ async function clockOutHandler(
       ...(coordinates && { clockOutCoordinates: coordinates }),
     };
 
-    await db.collection('events').updateOne(
-      { _id: eventObjectId },
-      {
-        $set: {
-          'applicants.$[elem]': updatedRecord,
-          modifiedDate: now,
-        },
-      },
-      { arrayFilters: [{ 'elem.id': applicantId }] }
-    );
+    // Persist to the eventroster collection (one doc per entry) instead of the old
+    // embedded `applicants.$[elem]` arrayFilters update. Stamp the event's modifiedDate.
+    await Promise.all([
+      updateRosterEntries(
+        db,
+        eventId,
+        { id: applicantId },
+        { $set: updatedRecord }
+      ),
+      db
+        .collection('events')
+        .updateOne({ _id: eventObjectId }, { $set: { modifiedDate: now } }),
+    ]);
 
     await logActivity(
       db,
