@@ -159,7 +159,13 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
       hideEmployeesDetails: !!userExists?.hideEmployeesDetails,
     };
 
-    if (userExists?.userType === 'Client' && userExists._id) {
+    // clientOrgs (managed venues) are needed for Client users AND for Event Admins
+    // (userType 'User' + employeeType 'Event Admin'), who manage rosters on those venues.
+    const needsClientOrgs =
+      userExists?.userType === 'Client' ||
+      (userExists?.userType === 'User' &&
+        userExists?.employeeType === 'Event Admin');
+    if (needsClientOrgs && userExists._id) {
       try {
         const clientDoc = await db.collection('users').findOne(
           { _id: new ObjectId(userExists._id) },

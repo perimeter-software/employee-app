@@ -9,6 +9,7 @@ import {
   EVENT_CALL_OFF_DOC_FILTER,
   EVENT_COVER_DOC_FILTER,
 } from '@/domains/event/services/event-cover-constants';
+import { getRosterEntry } from '@/domains/event/utils/event-roster';
 
 async function getEventDetailHandler(
   request: AuthenticatedRequest,
@@ -75,7 +76,6 @@ async function getEventDetailHandler(
           secondaryLocation: 1,
           numberOnRoster: 1,
           numberOnPremise: 1,
-          applicants: 1,
           jobSlug: 1,
         },
       }
@@ -90,21 +90,11 @@ async function getEventDetailHandler(
 
     const event = convertToJSON(raw) as Record<string, unknown>;
 
-    // Enrich with rosterStatus for the requesting user
+    // Enrich with rosterStatus for the requesting user. The requester's roster entry
+    // now lives in the `eventroster` collection, not an embedded `event.applicants` array.
     const applicantId = user.applicantId ? String(user.applicantId) : '';
     if (applicantId) {
-      type MongoApplicant = {
-        id?: string;
-        status?: string;
-        position?: string; // MongoDB field name
-        primaryPosition?: string; // SP1 field name (may also be present)
-        reportTime?: string;
-        timeIn?: string | null;
-        timeOut?: string | null;
-        agent?: string;
-      };
-      const applicants = (event.applicants as MongoApplicant[]) ?? [];
-      const found = applicants.find((a) => a.id === applicantId);
+      const found = await getRosterEntry(db, eventId, applicantId);
       event.rosterStatus = found?.status ?? 'Not Roster';
       event.currentApplicant = found
         ? {
@@ -182,9 +172,6 @@ async function getEventDetailHandler(
         event.incomingCoverRequestId = null;
       }
     }
-
-    // Strip full applicants array from response (sensitive data)
-    delete event.applicants;
 
     return NextResponse.json({ success: true, data: event }, { status: 200 });
   } catch (error) {

@@ -9,18 +9,24 @@ import {
   EVENT_CALL_OFF_DOC_FILTER,
   EVENT_COVER_DOC_FILTER,
 } from '@/domains/event/services/event-cover-constants';
+import {
+  findRosterEventIds,
+  getRostersByEventIds,
+  type EventRosterEntry,
+} from '@/domains/event/utils/event-roster';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// Mirrors the external API's enrichEventsWithEventNumbers: computes roster counts
-// from the applicants sub-array so clients see accurate numbers even when the
-// stored top-level counter fields are stale or absent.
+// Mirrors the external API's enrichEventsWithEventNumbers: computes roster counts from
+// each event's roster entries so clients see accurate numbers even when the stored
+// top-level counter fields are stale or absent. Roster entries now live in the
+// `eventroster` collection (keyed by event _id), not an embedded array.
 function enrichEventNumbers(
-  events: Record<string, unknown>[]
+  events: Record<string, unknown>[],
+  rostersByEventId: Map<string, EventRosterEntry[]>
 ): Record<string, unknown>[] {
-  type Applicant = { status?: string; timeIn?: string; timeOut?: string | null };
   return events.map((event) => {
-    const applicants = (event.applicants as Applicant[]) ?? [];
+    const applicants = rostersByEventId.get(String(event._id)) ?? [];
     return {
       ...event,
       numberOnRoster: applicants.filter((a) => a.status === 'Roster').length,
@@ -112,19 +118,23 @@ async function getEventsHandler(request: AuthenticatedRequest) {
           : { $lt: cutoffMidnight };
     }
 
-    // ── applicants.id + applicants.status → $elemMatch ───────────────────────
+    // ── applicants.id + applicants.status → event _id set ────────────────────
+    // Roster entries live in the `eventroster` collection, so these dotted keys can no
+    // longer resolve against the events collection. Resolve them to the set of event
+    // ids whose roster matches, then constrain events by _id (mirrors the backend's
+    // resolveApplicantsOptions).
     const applicantIdFilter = options['applicants.id'] as string | undefined;
     const applicantStatusFilter = options['applicants.status'] as
       | string
       | undefined;
-    if (applicantIdFilter && applicantStatusFilter) {
-      options.applicants = {
-        $elemMatch: { id: applicantIdFilter, status: applicantStatusFilter },
-      };
+    if (applicantIdFilter || applicantStatusFilter) {
+      const rosterFilter: Record<string, unknown> = {};
+      if (applicantIdFilter) rosterFilter.id = applicantIdFilter;
+      if (applicantStatusFilter) rosterFilter.status = applicantStatusFilter;
+      const matchedEventIds = await findRosterEventIds(db, rosterFilter);
+      options._id = { $in: matchedEventIds };
       delete options['applicants.id'];
       delete options['applicants.status'];
-    } else if (applicantIdFilter) {
-      options['applicants.id'] = applicantIdFilter;
     }
 
     // ── Employee / Client scoping ─────────────────────────────────────────────
@@ -208,16 +218,18 @@ async function getEventsHandler(request: AuthenticatedRequest) {
     }
 
     if (isEmployee && requestApplicantId) {
+      // Private events are visible only when the requester is on their Roster/Waitlist.
+      // That roster membership now lives in `eventroster`, so resolve it to an event
+      // _id set rather than an embedded $elemMatch.
+      const privateVisibleIds = await findRosterEventIds(db, {
+        id: requestApplicantId,
+        status: { $in: ['Roster', 'Waitlist'] },
+      });
       const visibilityOr = [
         { makePublicAndSendNotification: { $ne: 'No' } },
         {
           makePublicAndSendNotification: { $eq: 'No' },
-          applicants: {
-            $elemMatch: {
-              id: requestApplicantId,
-              status: { $in: ['Roster', 'Waitlist'] },
-            },
-          },
+          _id: { $in: privateVisibleIds },
         },
       ];
 
@@ -260,7 +272,6 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       numberOnPremise: 1,
       makePublicAndSendNotification: 1,
       allowEarlyClockin: 1,
-      applicants: 1,
       timeZone: 1,
       jobSlug: 1,
       eventUrl: 1,
@@ -279,11 +290,18 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       .map((e) => convertToJSON(e))
       .filter(Boolean) as Record<string, unknown>[];
 
+    // ── Load roster entries for this page's events (single query) ────────────
+    // Drives both the per-user rosterStatus and the roster number badges. Entries
+    // live in the `eventroster` collection, so this replaces the old embedded array.
+    const pageEventIds = events
+      .map((e) => String(e._id))
+      .filter((id) => ObjectId.isValid(id));
+    const rostersByEventId = await getRostersByEventIds(db, pageEventIds);
+
     // ── Enrich with rosterStatus if applicantId provided ─────────────────────
     if (requestApplicantId) {
       events = events.map((event) => {
-        const applicants =
-          (event.applicants as { id: string; status: string }[]) ?? [];
+        const applicants = rostersByEventId.get(String(event._id)) ?? [];
         const found = applicants.find((a) => a.id === requestApplicantId);
         return { ...event, rosterStatus: found ? found.status : 'Not Roster' };
       });
@@ -376,16 +394,9 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       }
     }
 
-    // Compute roster numbers from applicants before stripping the array.
+    // Compute roster numbers from each event's roster entries.
     // Mirrors enrichEventsWithEventNumbers in the external API.
-    events = enrichEventNumbers(events);
-
-    // Strip applicants array from response (not needed on the listing page)
-    events = events.map((ev) => {
-      const rest = { ...ev };
-      delete rest.applicants;
-      return rest;
-    });
+    events = enrichEventNumbers(events, rostersByEventId);
 
     // ── Pagination meta ──────────────────────────────────────────────────────
     const totalPages = Math.ceil(total / limit);

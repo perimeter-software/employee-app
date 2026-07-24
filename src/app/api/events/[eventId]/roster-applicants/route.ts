@@ -5,6 +5,11 @@ import { getTenantAwareConnection } from '@/lib/db';
 import { getSp1Client } from '@/lib/sp1Client';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
+import { canManageRoster } from '@/domains/event/utils/roster-access';
+import {
+  getEventRosterEntries,
+  type EventRosterEntry,
+} from '@/domains/event/utils/event-roster';
 
 const DEFAULT_LIMIT = 25;
 
@@ -55,11 +60,11 @@ async function getRosterApplicantsHandler(
     const user = request.user;
     const { db } = await getTenantAwareConnection(request);
 
-    // Always fetch the full event applicants array — it's small and drives everything
-    const eventDoc = await db.collection('events').findOne(
-      { _id: new ObjectId(eventId) },
-      { projection: { venueSlug: 1, applicants: 1 } }
-    );
+    // Roster entries are loaded separately from `eventroster`; the event doc is only
+    // needed for venue scoping / access control.
+    const eventDoc = await db
+      .collection('events')
+      .findOne({ _id: new ObjectId(eventId) }, { projection: { venueSlug: 1 } });
 
     if (!eventDoc) {
       return NextResponse.json(
@@ -68,46 +73,35 @@ async function getRosterApplicantsHandler(
       );
     }
 
-    // Client users: verify venue access
-    if (user.userType === 'Client') {
-      const userId = user.userId ?? user._id;
-      let clientOrgSlugs: string[] = [];
-      if (userId && ObjectId.isValid(String(userId))) {
-        const clientDoc = await db
-          .collection('users')
-          .findOne({ _id: new ObjectId(String(userId)) }, { projection: { clientOrgs: 1 } });
-        const orgs =
-          (clientDoc as { clientOrgs?: { slug?: string }[] } | null)?.clientOrgs ?? [];
-        clientOrgSlugs = orgs.map((o) => o.slug ?? '').filter(Boolean);
-      }
-      if (!clientOrgSlugs.includes(String(eventDoc.venueSlug ?? ''))) {
-        return NextResponse.json(
-          { success: false, message: 'Access denied to this event.' },
-          { status: 403 }
-        );
-      }
+    // Only roster managers may read a roster: Master/Admin, or Client/Event Admin
+    // scoped to their clientOrgs venues. Plain employees are denied.
+    if (!(await canManageRoster(db, user, String(eventDoc.venueSlug ?? '')))) {
+      return NextResponse.json(
+        { success: false, message: 'Access denied to this event.' },
+        { status: 403 }
+      );
     }
 
     const venueSlug = String(eventDoc.venueSlug ?? '');
 
-    type EventApplicant = {
-      id: string;
-      status?: string;
-      dateModified?: string;
-      agent?: string;
-      position?: string;
-      partnerSlug?: string;
-    };
+    type EventApplicant = EventRosterEntry;
 
-    // Exclude partners (they have partnerSlug)
+    // Roster entries live in the `eventroster` collection (one doc per entry), NOT in an
+    // embedded `event.applicants` array. The backend hydrates `applicants` when serving
+    // events over HTTP, but this route reads Mongo directly, where the field is absent —
+    // which is why every row previously resolved to "Not Roster".
+    // Partners stay embedded on the event doc and are excluded here.
     const eventApplicants: EventApplicant[] = (
-      Array.isArray(eventDoc.applicants) ? (eventDoc.applicants as EventApplicant[]) : []
+      await getEventRosterEntries(db, eventId)
     ).filter((a) => !a.partnerSlug);
 
-    // Build lookup maps
+    // Build lookup maps.
+    // `id` may come back from Mongo as an ObjectId rather than a string, so every key
+    // is normalized with String(). Without this the map is keyed by ObjectId while
+    // lookups below use String(applicant._id), so every row falls back to 'Not Roster'.
     const rosterMap = new Map<string, EventApplicant>();
     for (const a of eventApplicants) {
-      if (a.id) rosterMap.set(a.id, a);
+      if (a.id) rosterMap.set(String(a.id), a);
     }
 
     const idsByStatus: Record<string, string[]> = {
@@ -117,10 +111,12 @@ async function getRosterApplicantsHandler(
     };
     for (const a of eventApplicants) {
       if (a.status && a.status in idsByStatus) {
-        idsByStatus[a.status].push(a.id);
+        idsByStatus[a.status].push(String(a.id));
       }
     }
-    const allRosterIds = eventApplicants.map((a) => a.id);
+    const allRosterIds = eventApplicants
+      .filter((a) => a.id)
+      .map((a) => String(a.id));
 
     // ── Build the MongoDB query based on filter ──────────────────────────────
 
@@ -256,7 +252,11 @@ async function getRosterApplicantsHandler(
         rosterStatus: roster?.status ?? 'Not Roster',
         signupDate: roster?.dateModified ?? null,
         agent: roster?.agent ?? null,
-        position: roster?.position ?? null,
+        // Roster entries carry `primaryPosition`; `position` is a legacy fallback.
+        position: roster?.primaryPosition ?? roster?.position ?? null,
+        timeIn: roster?.timeIn ?? null,
+        timeOut: roster?.timeOut ?? null,
+        reportTime: roster?.reportTime ?? null,
       };
     });
 
@@ -329,21 +329,10 @@ async function updateRosterStatusHandler(
       return NextResponse.json({ success: false, message: 'Event not found' }, { status: 404 });
     }
 
-    // Client users: verify venue access
-    if (user.userType === 'Client') {
-      const userId = user.userId ?? user._id;
-      let clientOrgSlugs: string[] = [];
-      if (userId && ObjectId.isValid(String(userId))) {
-        const clientDoc = await db
-          .collection('users')
-          .findOne({ _id: new ObjectId(String(userId)) }, { projection: { clientOrgs: 1 } });
-        const orgs =
-          (clientDoc as { clientOrgs?: { slug?: string }[] } | null)?.clientOrgs ?? [];
-        clientOrgSlugs = orgs.map((o) => o.slug ?? '').filter(Boolean);
-      }
-      if (!clientOrgSlugs.includes(String(eventDoc.venueSlug ?? ''))) {
-        return NextResponse.json({ success: false, message: 'Access denied.' }, { status: 403 });
-      }
+    // Only roster managers may change roster status (Master/Admin, or Client/Event
+    // Admin scoped to their clientOrgs venues).
+    if (!(await canManageRoster(db, user, String(eventDoc.venueSlug ?? '')))) {
+      return NextResponse.json({ success: false, message: 'Access denied.' }, { status: 403 });
     }
 
     const eventUrl = String(eventDoc.eventUrl ?? '');

@@ -613,6 +613,11 @@ export default function ClientEventsView() {
           event={selectedEvent}
           open={!!selectedEvent}
           onClose={() => setSelectedEvent(null)}
+          onManageRoster={() => {
+            const target = selectedEvent;
+            setSelectedEvent(null);
+            setRosterEvent(target);
+          }}
         />
       )}
 
@@ -622,6 +627,7 @@ export default function ClientEventsView() {
           eventId={rosterEvent._id}
           eventName={rosterEvent.eventName}
           eventDate={rosterEvent.eventDate}
+          eventType={rosterEvent.eventType}
           venueSlug={rosterEvent.venueSlug}
           open={!!rosterEvent}
           onClose={() => setRosterEvent(null)}

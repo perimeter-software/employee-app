@@ -10,9 +10,11 @@ type Props = {
   venue: VenueWithStatus;
   imageBaseUrl?: string;
   onClick: () => void;
+  /** True when the current user (Event Admin) manages this venue. */
+  managed?: boolean;
 };
 
-export const VenueCard = ({ venue, imageBaseUrl, onClick }: Props) => {
+export const VenueCard = ({ venue, imageBaseUrl, onClick, managed }: Props) => {
   const [logoError, setLogoError] = useState(false);
   const location = [venue.city, venue.state].filter(Boolean).join(', ');
   const badge = venueBadge(venue.userVenueStatus);
@@ -69,7 +71,16 @@ export const VenueCard = ({ venue, imageBaseUrl, onClick }: Props) => {
 
             {badge && <div className="sm:hidden">{badge}</div>}
           </div>
-          {badge && <div className="hidden sm:block shrink-0">{badge}</div>}
+          {(managed || badge) && (
+            <div className="shrink-0 flex items-center gap-2">
+              {managed && (
+                <span className="inline-flex items-center leading-none rounded-full bg-appPrimary/10 text-appPrimary px-2 py-1 text-[10px] font-semibold uppercase tracking-wide">
+                  Admin
+                </span>
+              )}
+              {badge && <div className="hidden sm:block">{badge}</div>}
+            </div>
+          )}
         </CardContent>
       </Card>
     </button>

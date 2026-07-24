@@ -9,6 +9,10 @@ import Layout from '@/components/layout/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import { useCurrentUser } from '@/domains/user';
+// Import the leaf module, NOT the `utils` barrel — the barrel re-exports
+// mongo-user-utils / mongo-attachment-utils, which are `server-only` and pull
+// the `mongodb` driver (and its `net` dependency) into the client bundle.
+import { isEventAdmin, managedVenueSlugs } from '@/domains/user/utils/event-admin';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { baseInstance } from '@/lib/api/instance';
 import { clsxm } from '@/lib/utils';
@@ -192,6 +196,10 @@ function EmployeeVenuesView() {
   const [selectedVenue, setSelectedVenue] = useState<VenueWithStatus | null>(null);
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [geoResolved, setGeoResolved] = useState(false);
+
+  // Event Admins: venues they manage (their clientOrgs) get a "Managed by you" flag.
+  const eventAdmin = isEventAdmin(currentUser);
+  const managedSlugs = useMemo(() => managedVenueSlugs(currentUser), [currentUser]);
 
   useEffect(() => {
     handleLocationServices().then(({ locationInfo }) => {
@@ -405,6 +413,7 @@ function EmployeeVenuesView() {
                     key={venue._id}
                     venue={venue}
                     imageBaseUrl={primaryCompany?.imageUrl}
+                    managed={eventAdmin && managedSlugs.has(venue.slug)}
                     onClick={() => setSelectedVenue(venue)}
                   />
                 ))}
