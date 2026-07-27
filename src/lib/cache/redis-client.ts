@@ -151,13 +151,30 @@ class RedisService {
   /**
    * Atomic increment with auto-expire. Returns the new count,
    * or null if Redis is unreachable (caller should fail-open).
+   *
+   * INCR and the TTL read are issued as one MULTI. Previously this was
+   * `incr()` followed by `if (count === 1) expire()` as two separate awaited
+   * round trips — if anything interrupted the gap (connection drop, process
+   * exit, a throw from expire() that the catch below swallowed), the key was
+   * left with NO expiry. A counter with no TTL never resets: it climbs forever
+   * and every later request for that key is over the limit, so the route 429s
+   * permanently at any request rate. Re-arming whenever the TTL is missing
+   * (-1 = no expiry, -2 = no key) makes an orphaned key drain in one window
+   * instead of wedging until someone flushes Redis by hand.
    */
   async incr(key: string, expireSeconds: number): Promise<number | null> {
     try {
       const client = await this.getClient();
       if (!client) return null;
-      const count = await client.incr(key);
-      if (count === 1) {
+      const replies = (await client
+        .multi()
+        .incr(key)
+        .ttl(key)
+        .exec()) as unknown as unknown[];
+      const count = Number(replies?.[0]);
+      const ttl = Number(replies?.[1]);
+      if (!Number.isFinite(count)) return null;
+      if (!Number.isFinite(ttl) || ttl < 0) {
         await client.expire(key, expireSeconds);
       }
       return count;

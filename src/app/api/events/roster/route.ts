@@ -8,6 +8,10 @@ import {
   EVENT_CALL_OFF_DOC_FILTER,
   EVENT_COVER_DOC_FILTER,
 } from '@/domains/event/services/event-cover-constants';
+import {
+  findRosterEventIds,
+  getRostersByEventIds,
+} from '@/domains/event/utils/event-roster';
 
 /**
  * GET /api/events/roster?applicantId=<id>[&startDate=<iso>&endDate=<iso>]
@@ -74,16 +78,26 @@ async function getRosterEventsHandler(request: AuthenticatedRequest) {
       );
     }
 
-    // Step 2: query events with all constraints
+    // Step 2: resolve the events this applicant is rostered on. Roster entries live in
+    // the `eventroster` collection — the embedded `events.applicants` array no longer
+    // exists on a direct Mongo read, so an $elemMatch here matches nothing.
+    const rosterEventIds = await findRosterEventIds(db, {
+      id: applicantId,
+      status: 'Roster',
+    });
+
+    if (rosterEventIds.length === 0) {
+      return NextResponse.json(
+        { success: true, message: 'Roster events retrieved successfully', count: 0, data: [] },
+        { status: 200 }
+      );
+    }
+
+    // Step 3: query events with all constraints
     const matchQuery: Record<string, unknown> = {
+      _id: { $in: rosterEventIds },
       eventType: 'Event',
       venueSlug: { $in: staffingPoolSlugs },
-      applicants: {
-        $elemMatch: {
-          id: applicantId,
-          status: 'Roster',
-        },
-      },
     };
 
     if (startDateParam || endDateParam) {
@@ -115,19 +129,6 @@ async function getRosterEventsHandler(request: AuthenticatedRequest) {
         status: 1,
         timeZone: 1,
         allowEarlyClockin: 1,
-        // Only return the applicant entry for this user
-        applicants: {
-          $filter: {
-            input: '$applicants',
-            as: 'a',
-            cond: {
-              $and: [
-                { $eq: ['$$a.id', applicantId] },
-                { $eq: ['$$a.status', 'Roster'] },
-              ],
-            },
-          },
-        },
       })
       .sort({ eventDate: 1 })
       .toArray();
@@ -136,6 +137,17 @@ async function getRosterEventsHandler(request: AuthenticatedRequest) {
       string,
       unknown
     >[];
+
+    // Hydrate `applicants` with just this user's Roster entry, matching the legacy
+    // embedded shape the clients (e.g. ShiftCard's clock state) still read.
+    const rostersByEventId = await getRostersByEventIds(
+      db,
+      converted.map((e) => String(e._id)),
+      { id: applicantId, status: 'Roster' }
+    );
+    for (const e of converted) {
+      e.applicants = rostersByEventId.get(String(e._id)) ?? [];
+    }
 
     const eventUrls = converted
       .map((e) => (e.eventUrl != null ? String(e.eventUrl).trim() : ''))
