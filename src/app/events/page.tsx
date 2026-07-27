@@ -67,7 +67,11 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [tab, setTab] = useState<TabValue>('all');
+  // Deep link support: /events?tab=my (used by the Home "Upcoming" stat card)
+  const [tab, setTab] = useState<TabValue>(() => {
+    const t = searchParams.get('tab');
+    return t === 'my' || t === 'past' ? t : 'all';
+  });
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 400);
   const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(

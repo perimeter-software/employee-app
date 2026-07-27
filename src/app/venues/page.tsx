@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { Suspense, useMemo, useState, useEffect } from 'react';
 import { Building2, ChevronDown, Search } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 // useQueryClient is used in EmployeeVenuesView
 
@@ -190,7 +191,12 @@ function EmployeeVenuesView() {
   const { data: primaryCompany } = usePrimaryCompany();
   const queryClient = useQueryClient();
 
-  const [tab, setTab] = useState<TabValue>('all');
+  // Deep link support: /venues?tab=my (used by the Home "My Venues" stat card)
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<TabValue>(() => {
+    const t = searchParams.get('tab');
+    return t === 'my' || t === 'pending' ? t : 'all';
+  });
   const [search, setSearch] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedVenue, setSelectedVenue] = useState<VenueWithStatus | null>(null);
@@ -438,7 +444,7 @@ function EmployeeVenuesView() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function VenueRequestsPage() {
+function VenuesPageContent() {
   const { data: currentUser } = useCurrentUser();
   const isClient = currentUser?.userType === 'Client';
 
@@ -446,5 +452,14 @@ export default function VenueRequestsPage() {
     <Layout>
       {isClient ? <ClientVenuesView /> : <EmployeeVenuesView />}
     </Layout>
+  );
+}
+
+export default function VenueRequestsPage() {
+  // EmployeeVenuesView reads ?tab= via useSearchParams
+  return (
+    <Suspense fallback={null}>
+      <VenuesPageContent />
+    </Suspense>
   );
 }

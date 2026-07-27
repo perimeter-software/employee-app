@@ -152,18 +152,21 @@ const HomePage: NextPage = () => {
             label="My Venues"
             value={myVenuesCount}
             isLoading={venuesLoading}
+            href="/venues?tab=my"
           />
           <StatCard
             icon={CalendarRange}
             label="Upcoming"
             value={upcomingEvents.length}
             isLoading={eventsLoading}
+            href="/events?tab=my"
           />
           <StatCard
             icon={Bell}
             label="Unread"
             value={unreadCount}
             isLoading={notifLoading}
+            href="/notifications"
           />
         </div>
 

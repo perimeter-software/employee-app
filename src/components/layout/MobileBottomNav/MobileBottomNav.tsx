@@ -3,9 +3,10 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { usePathname } from 'next/navigation';
 import {
   Bell,
-  Settings,
+  // Settings, // re-enable with the Settings row below
   LogOut,
   ChevronRight,
   MoreHorizontal,
@@ -65,7 +66,10 @@ function computeBottomDistribution(flatNavItems: NavigationItem[]): {
 export const MobileBottomNav: React.FC = () => {
   const { flatNavItems } = useNavigation();
   const { data: currentUser } = useCurrentUser();
+  const pathname = usePathname();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+
+  const isNotificationsActive = pathname.startsWith('/notifications');
 
   const userInitial = (
     currentUser?.firstName?.[0] ||
@@ -84,7 +88,8 @@ export const MobileBottomNav: React.FC = () => {
 
   // More button is "active" when the overlay is open, or when the active page
   // is one of the overflow items
-  const isMoreActive = isMoreOpen || moreNavItems.some((i) => i.current);
+  const isMoreActive =
+    isMoreOpen || moreNavItems.some((i) => i.current) || isNotificationsActive;
 
   return (
     <>
@@ -101,9 +106,14 @@ export const MobileBottomNav: React.FC = () => {
               className="object-contain"
             />
             <div className="flex items-center gap-3">
-              <button type="button" className="p-2" aria-label="Notifications">
+              <Link
+                href="/notifications"
+                onClick={closeMore}
+                className="p-2"
+                aria-label="Notifications"
+              >
                 <Bell className="w-5 h-5 text-gray-600" />
-              </button>
+              </Link>
               <div className="w-8 h-8 rounded-full bg-appPrimary flex items-center justify-center">
                 <span className="text-white text-sm font-semibold">
                   {userInitial}
@@ -156,18 +166,37 @@ export const MobileBottomNav: React.FC = () => {
                 </Link>
               ))}
 
-              {/* Notifications — always shown, no action yet */}
-              <button type="button" className="w-full flex items-center gap-3 px-4 py-3.5">
-                <div className="w-9 h-9 rounded-xl bg-sky-50 flex items-center justify-center">
-                  <Bell className="w-5 h-5 text-sky-600" />
+              {/* Notifications — always shown */}
+              <Link
+                href="/notifications"
+                onClick={closeMore}
+                className="w-full flex items-center gap-3 px-4 py-3.5"
+              >
+                <div
+                  className={clsxm(
+                    'w-9 h-9 rounded-xl flex items-center justify-center',
+                    isNotificationsActive ? 'bg-appPrimary/10' : 'bg-sky-50'
+                  )}
+                >
+                  <Bell
+                    className={clsxm(
+                      'w-5 h-5',
+                      isNotificationsActive ? 'text-appPrimary' : 'text-sky-600'
+                    )}
+                  />
                 </div>
-                <span className="flex-1 text-left text-sm font-medium text-gray-800">
+                <span
+                  className={clsxm(
+                    'flex-1 text-left text-sm font-medium',
+                    isNotificationsActive ? 'text-appPrimary' : 'text-gray-800'
+                  )}
+                >
                   Notifications
                 </span>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
-              </button>
+              </Link>
 
-              {/* Settings — always shown, no action yet */}
+              {/* Settings — hidden until it has somewhere to go
               <button type="button" className="w-full flex items-center gap-3 px-4 py-3.5">
                 <div className="w-9 h-9 rounded-xl bg-sky-50 flex items-center justify-center">
                   <Settings className="w-5 h-5 text-sky-600" />
@@ -177,6 +206,7 @@ export const MobileBottomNav: React.FC = () => {
                 </span>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
               </button>
+              */}
             </div>
 
             {/* Log out */}
