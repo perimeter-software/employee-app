@@ -5,6 +5,7 @@ export const useNotification = (id: string) => {
   return useQuery({
     queryKey: notificationQueryKeys.detail(id),
     queryFn: () => NotificationApiService.getNotification(id),
+    enabled: !!id,
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
     retry: (failureCount, error) => {

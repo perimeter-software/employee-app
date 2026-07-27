@@ -25,6 +25,8 @@ import {
 } from '@/domains/venue';
 import { ClientVenueCard } from '@/domains/venue/components/ClientVenueCard/ClientVenueCard';
 import { StaffingPoolModal } from '@/domains/staffing/components/StaffingPoolModal/StaffingPoolModal';
+import { useDeepLink } from '@/lib/notifications/use-deep-link';
+import { DEEP_LINK_PARAMS } from '@/lib/notifications/deep-links';
 
 // ─── Page-local constants ─────────────────────────────────────────────────────
 
@@ -35,6 +37,37 @@ const TABS: { value: TabValue; label: string }[] = [
   { value: 'my', label: 'My Venues' },
   { value: 'pending', label: 'Pending' },
 ];
+
+// ─── Push deep links ──────────────────────────────────────────────────────────
+
+/**
+ * Resolves `?venue=<slug>` (from gignology://venues/<slug>/details, sent when
+ * an admin adds someone to a venue) into a venue object. The venue is often
+ * not in the list the user currently sees — a Pending venue, or one outside
+ * their nearby radius — so it is fetched by slug.
+ */
+function useVenueDeepLink() {
+  const {
+    values: {
+      [DEEP_LINK_PARAMS.venueSlug]: slug,
+      [DEEP_LINK_PARAMS.view]: view,
+    },
+    clear,
+  } = useDeepLink([DEEP_LINK_PARAMS.venueSlug, DEEP_LINK_PARAMS.view]);
+
+  const { data: venue } = useQuery<VenueWithStatus | null>({
+    queryKey: ['venue-detail', slug],
+    queryFn: async () => {
+      const res = await baseInstance.get<VenueWithStatus>(`venues/${slug}`);
+      if (!res.success || !res.data) return null;
+      return res.data;
+    },
+    enabled: !!slug,
+    staleTime: 60 * 1000,
+  });
+
+  return { slug, view, venue, clear };
+}
 
 // ─── Client view ──────────────────────────────────────────────────────────────
 
@@ -57,6 +90,23 @@ function ClientVenuesView() {
     refetchOnWindowFocus: false,
     refetchOnMount: false,
   });
+
+  const {
+    slug: deepLinkSlug,
+    view: deepLinkView,
+    venue: deepLinkVenue,
+    clear: clearDeepLink,
+  } = useVenueDeepLink();
+
+  useEffect(() => {
+    if (!deepLinkSlug || !deepLinkVenue) return;
+    if (deepLinkView === 'staffingpool') {
+      setStaffingVenue(deepLinkVenue);
+    } else {
+      setSelectedVenue(deepLinkVenue);
+    }
+    clearDeepLink();
+  }, [deepLinkSlug, deepLinkVenue, deepLinkView, clearDeepLink]);
 
   const filtered = useMemo(() => {
     let list = venues;
@@ -266,6 +316,20 @@ function EmployeeVenuesView() {
       prev?.slug === slug ? { ...prev, userVenueStatus: newStatus } : prev
     );
   };
+
+  const {
+    slug: deepLinkSlug,
+    venue: deepLinkVenue,
+    clear: clearDeepLink,
+  } = useVenueDeepLink();
+
+  // Employees have no staffing-pool screen, so any venue deep link opens the
+  // venue detail modal.
+  useEffect(() => {
+    if (!deepLinkSlug || !deepLinkVenue) return;
+    setSelectedVenue(deepLinkVenue);
+    clearDeepLink();
+  }, [deepLinkSlug, deepLinkVenue, clearDeepLink]);
 
   const isLoading =
     tab === 'all'

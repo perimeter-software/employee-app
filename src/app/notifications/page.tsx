@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { formatDistanceToNow } from 'date-fns';
 import { NextPage } from 'next';
@@ -23,8 +23,11 @@ import {
   useMarkAllAsRead,
   useNotifications,
   useUpdateNotification,
+  useNotification,
   useUserNotifications,
 } from '@/domains/notification/hooks';
+import { useDeepLink } from '@/lib/notifications/use-deep-link';
+import { DEEP_LINK_PARAMS } from '@/lib/notifications/deep-links';
 import { Notification } from '@/domains/notification/types';
 import { Company } from '@/domains/company/types';
 import { clsxm } from '@/lib/utils';
@@ -190,7 +193,7 @@ const NotificationRow: React.FC<NotificationRowProps> = ({
   );
 };
 
-const NotificationsPage: NextPage = () => {
+const NotificationsPageContent: React.FC = () => {
   const {
     shouldShowContent,
     isLoading: pageAuthLoading,
@@ -205,11 +208,34 @@ const NotificationsPage: NextPage = () => {
   const { data: primaryCompany } = usePrimaryCompany();
   const markAllAsReadMutation = useMarkAllAsRead();
 
-  const serverNotifications = notificationData?.notifications || [];
+  const serverNotifications = useMemo(
+    () => notificationData?.notifications || [],
+    [notificationData?.notifications]
+  );
   const allNotifications = [...serverNotifications, ...localNotifications];
   const unreadCount = allNotifications.filter(
     (n) => n.status === 'unread'
   ).length;
+
+  // Push deep link: gignology://notifications/<id>/details → ?id=<id>
+  const {
+    values: { [DEEP_LINK_PARAMS.notificationId]: deepLinkId },
+    clear: clearDeepLink,
+  } = useDeepLink([DEEP_LINK_PARAMS.notificationId]);
+
+  // The notification may not be on the first page of the list (or the list may
+  // still be loading), so fall back to fetching it by id.
+  const { data: fetchedNotification } = useNotification(deepLinkId ?? '');
+
+  useEffect(() => {
+    if (!deepLinkId) return;
+    const match =
+      serverNotifications.find((n) => n._id === deepLinkId) ??
+      fetchedNotification;
+    if (!match) return;
+    setSelectedNotification(match);
+    clearDeepLink();
+  }, [deepLinkId, serverNotifications, fetchedNotification, clearDeepLink]);
 
   if (pageAuthLoading) {
     return <AuthLoadingState />;
@@ -293,5 +319,12 @@ const NotificationsPage: NextPage = () => {
     </Layout>
   );
 };
+
+// NotificationsPageContent reads ?id= via useSearchParams
+const NotificationsPage: NextPage = () => (
+  <Suspense fallback={<AuthLoadingState />}>
+    <NotificationsPageContent />
+  </Suspense>
+);
 
 export default NotificationsPage;
