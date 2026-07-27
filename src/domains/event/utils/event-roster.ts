@@ -71,6 +71,30 @@ export async function getRosterEntry(
 }
 
 /**
+ * How many `Roster` entries occupy each position on one event, keyed by position name.
+ *
+ * Replaces counting over an embedded `applicants[]` array — the shape callers need to
+ * decide whether a capped position still has room. Mongo stores the position as
+ * `position` while SP1 exposes it as `primaryPosition`, so both are read (same
+ * precedence the event-detail route uses for a single entry). Entries with no position
+ * are skipped rather than folded into a default, matching the old strict-equality
+ * comparison against `positionName`.
+ */
+export async function getRosterPositionCounts(
+  db: Db,
+  eventId: string | ObjectId
+): Promise<Record<string, number>> {
+  const entries = await getEventRosterEntries(db, eventId, { status: 'Roster' });
+  const counts: Record<string, number> = {};
+  for (const entry of entries) {
+    const name = String(entry.primaryPosition ?? entry.position ?? '').trim();
+    if (!name) continue;
+    counts[name] = (counts[name] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/**
  * Distinct event ids whose roster matches an entry-level filter — the building block
  * for every legacy `'applicants.id': x` / `$elemMatch` event query.
  * e.g. `findRosterEventIds(db, { id: applicantId, status: 'Roster' })`.

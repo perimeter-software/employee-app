@@ -9,7 +9,10 @@ import {
   EVENT_CALL_OFF_DOC_FILTER,
   EVENT_COVER_DOC_FILTER,
 } from '@/domains/event/services/event-cover-constants';
-import { getRosterEntry } from '@/domains/event/utils/event-roster';
+import {
+  getRosterEntry,
+  getRosterPositionCounts,
+} from '@/domains/event/utils/event-roster';
 
 async function getEventDetailHandler(
   request: AuthenticatedRequest,
@@ -89,6 +92,13 @@ async function getEventDetailHandler(
     }
 
     const event = convertToJSON(raw) as Record<string, unknown>;
+
+    // Per-position Roster headcount. This response deliberately omits the full roster,
+    // so the position picker cannot count occupancy itself — without these counts every
+    // capped position reads as available. Only needed when the event defines positions.
+    if (Array.isArray(event.positions) && event.positions.length > 0) {
+      event.positionRosterCounts = await getRosterPositionCounts(db, eventId);
+    }
 
     // Enrich with rosterStatus for the requesting user. The requester's roster entry
     // now lives in the `eventroster` collection, not an embedded `event.applicants` array.

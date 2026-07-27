@@ -123,6 +123,12 @@ export interface GignologyEvent {
   rosterStatus?: string;
   /** The requesting user's own applicant entry — populated by the event detail endpoint */
   currentApplicant?: EventApplicant | null;
+  /**
+   * Roster headcount per position name — populated by the event detail endpoint, which
+   * does not return the full roster. Use this (not `applicants`) to tell whether a
+   * capped position still has room.
+   */
+  positionRosterCounts?: Record<string, number>;
   /** Pending call-off row id in `swap-requests` for the current user, if any */
   pendingCallOffRequestId?: string | null;
   /** Pending “let someone cover” row id for the current user as requester */

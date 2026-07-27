@@ -144,17 +144,18 @@ function getDateChip(eventDate?: string, timezone?: string) {
   return { label: 'PAST', classes: 'bg-zinc-500 text-white' };
 }
 
+// Occupancy comes from `positionRosterCounts` on the detail response, not from
+// `event.applicants` — that array is no longer part of the payload, so counting it
+// yielded 0 for every position and made full positions look available.
 function getAvailablePositions(
   positions: EventPosition[] | undefined,
-  existingApplicants: GignologyEvent['applicants']
+  rosterCounts: GignologyEvent['positionRosterCounts']
 ): { label: string; value: string }[] {
   if (!positions?.length) return [];
   const filtered = positions.filter((pos) => {
     if (!pos.makePublic) return false;
     if (pos.numberPositions == null) return true;
-    const assigned = (existingApplicants ?? []).filter(
-      (a) => a.status === 'Roster' && a.primaryPosition === pos.positionName
-    ).length;
+    const assigned = rosterCounts?.[pos.positionName] ?? 0;
     return assigned < Number(pos.numberPositions);
   });
   const hasEventStaff = filtered.some(
@@ -475,8 +476,8 @@ export const EventDetailView = ({
   const isOnRoster = !!applicantEntry || enrollment?.type === 'Roster';
 
   const availablePositions = useMemo(
-    () => getAvailablePositions(event.positions, event.applicants),
-    [event.positions, event.applicants]
+    () => getAvailablePositions(event.positions, event.positionRosterCounts),
+    [event.positions, event.positionRosterCounts]
   );
   const isPositionLocked =
     isOnRoster ||
