@@ -31,6 +31,20 @@ function buildOrigin(clientDomain?: string): string {
     : `https://${domain}`;
 }
 
+/**
+ * Axios instance for sp1-api's `/outside-public/*` endpoints, which are
+ * unauthenticated by design (candidate-facing assessment / form links).
+ *
+ * No Authorization header is sent — exactly like the browser calls stadium-people
+ * and gignology-v4 make. sp1-api identifies the tenant from `origin` alone, so we
+ * send the configured tenant origin (there is no user session to read it from).
+ */
+export function getSp1PublicClient(contentType: string | false = 'application/json') {
+  const headers: Record<string, string> = { origin: buildOrigin() };
+  if (contentType !== false) headers['Content-Type'] = contentType;
+  return axios.create({ baseURL: BASE_URL, headers });
+}
+
 export function getSp1Client(
   userSub: string,
   email: string,
