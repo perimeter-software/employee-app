@@ -72,7 +72,22 @@ interface LoadData {
   isSurvey?: boolean;
 }
 
+/**
+ * Identifier the backend expects back for a question (answer-time / evaluate).
+ * Only ever used for request payloads.
+ */
 const qid = (q: Question) => (q._id ?? q.id ?? '') as string;
+
+/**
+ * Key for the local answers / shuffled-options maps.
+ *
+ * Deliberately NOT `qid`: a question with neither `_id` nor `id` would key on
+ * the empty string, so every such question would share one answer slot and
+ * appear pre-filled with the previous one's response. The position is a
+ * guaranteed-unique last resort.
+ */
+const qkey = (q: Question, index: number) =>
+  String(q._id ?? q.id ?? `__index_${index}`);
 const shuffle = <T,>(arr: T[]): T[] => [...arr].sort(() => Math.random() - 0.5);
 
 export default function RenderAssessmentPage() {
@@ -177,7 +192,10 @@ export default function RenderAssessmentPage() {
     if (!questions.length) return;
     setShuffled((prev) => {
       if (Object.keys(prev).length) return prev;
-      const mcIds = questions.filter((q) => q.type === 'Multiple Choice').map(qid);
+      const mcIds = questions
+        .map((q, i) => ({ q, i }))
+        .filter(({ q }) => q.type === 'Multiple Choice')
+        .map(({ q, i }) => qkey(q, i));
       try {
         const saved = JSON.parse(localStorage.getItem(orderKey) || 'null') as Record<
           string,
@@ -188,9 +206,9 @@ export default function RenderAssessmentPage() {
         /* ignore corrupt order cache */
       }
       const next: Record<string, AnswerOption[]> = {};
-      for (const q of questions) {
-        if (q.type === 'Multiple Choice' && q.answers) next[qid(q)] = shuffle(q.answers);
-      }
+      questions.forEach((q, i) => {
+        if (q.type === 'Multiple Choice' && q.answers) next[qkey(q, i)] = shuffle(q.answers);
+      });
       try {
         localStorage.setItem(orderKey, JSON.stringify(next));
       } catch {
@@ -230,9 +248,11 @@ export default function RenderAssessmentPage() {
     }
   };
 
+  // Only ever called for the question on screen, so the current `index` is the
+  // right position to key on.
   const setAnswer = (q: Question, value: string) => {
     setAnswers((prev) => {
-      const next = { ...prev, [qid(q)]: value };
+      const next = { ...prev, [qkey(q, index)]: value };
       persist(next, index);
       return next;
     });
@@ -717,7 +737,8 @@ export default function RenderAssessmentPage() {
 
   // Question flow
   const q = questions[index];
-  const answer = q ? (answers[qid(q)] ?? '') : '';
+  const currentKey = q ? qkey(q, index) : '';
+  const answer = q ? (answers[currentKey] ?? '') : '';
   const progress = questions.length ? ((index + 1) / questions.length) * 100 : 0;
   const mins = remaining != null ? Math.floor(remaining / 60) : null;
   const secs = remaining != null ? remaining % 60 : null;
@@ -741,7 +762,7 @@ export default function RenderAssessmentPage() {
       <label key={i} className={optionClass(answer === opt)}>
         <input
           type="radio"
-          name={qid(q!)}
+          name={currentKey}
           value={opt}
           checked={answer === opt}
           onChange={() => setAnswer(q!, opt)}
@@ -817,7 +838,7 @@ export default function RenderAssessmentPage() {
                 {q.type === 'Multiple Choice' && (
                   <div className="space-y-2">
                     {renderOptions(
-                      (shuffled[qid(q)] ?? q.answers ?? []).map((a) => a.answerText ?? '')
+                      (shuffled[currentKey] ?? q.answers ?? []).map((a) => a.answerText ?? '')
                     )}
                   </div>
                 )}
@@ -827,7 +848,10 @@ export default function RenderAssessmentPage() {
                 )}
 
                 {q.type === 'Fill-In' && (
+                  // `key` forces a fresh textarea per question so no uncontrolled
+                  // DOM state (selection, IME composition) survives navigation.
                   <Textarea
+                    key={currentKey}
                     value={answer}
                     onChange={(e) => setAnswer(q, e.target.value)}
                     onPaste={(e) => e.preventDefault()}
