@@ -1,7 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { NotificationApiService, notificationQueryKeys } from '../services';
 
-export const useUserNotifications = () => {
+export interface UserNotificationsOptions {
+  /**
+   * Opt out of the `refetchOnMount: false` default below. `/notifications` is rate
+   * limited to 30/min (tighter than the 60/min default), so this stays opt-in —
+   * only pass `'always'` on a screen the user navigates to, never on one that
+   * remounts in a loop.
+   */
+  refetchOnMount?: boolean | 'always';
+}
+
+export const useUserNotifications = (options: UserNotificationsOptions = {}) => {
   return useQuery({
     queryKey: notificationQueryKeys.list(),
     queryFn: () => NotificationApiService.getUserNotifications(),
@@ -10,6 +20,7 @@ export const useUserNotifications = () => {
     refetchOnWindowFocus: false, // ERROR-PROOF: Disabled to prevent rate limiting
     refetchOnMount: false, // ERROR-PROOF: Don't refetch on remount
     refetchOnReconnect: false, // ERROR-PROOF: Don't refetch on reconnect
+    ...options,
     retry: (failureCount, error) => {
       // Don't retry on auth errors (handled by interceptor)
       if (error.message.includes('401') || error.message.includes('403')) {

@@ -26,6 +26,8 @@ import { EventApiService } from '@/domains/event/services/event-service';
 import { ClientEventDetailModal } from './ClientEventDetailModal';
 import { EventRosterModal } from '@/domains/event/components/EventRosterModal/EventRosterModal';
 import type { GignologyEvent } from '@/domains/event/types/event.types';
+import { useDeepLink } from '@/lib/notifications/use-deep-link';
+import { DEEP_LINK_PARAMS } from '@/lib/notifications/deep-links';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -243,6 +245,34 @@ export default function ClientEventsView() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, sort, timeFrame]);
+
+  // Push deep link — gignology://events/<id>/details|roster arrives as
+  // ?eventId=<id> (optionally &view=roster). Fetched by id: the event is
+  // rarely on the page of the paginated table the user happens to be on.
+  const {
+    values: {
+      [DEEP_LINK_PARAMS.eventId]: deepLinkEventId,
+      [DEEP_LINK_PARAMS.view]: deepLinkView,
+    },
+    clear: clearDeepLink,
+  } = useDeepLink([DEEP_LINK_PARAMS.eventId, DEEP_LINK_PARAMS.view]);
+
+  const { data: deepLinkEvent } = useQuery({
+    queryKey: ['event-detail', deepLinkEventId],
+    queryFn: () => EventApiService.fetchEventDetail(deepLinkEventId as string),
+    enabled: !!deepLinkEventId,
+    staleTime: 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (!deepLinkEventId || !deepLinkEvent) return;
+    if (deepLinkView === 'roster') {
+      setRosterEvent(deepLinkEvent);
+    } else {
+      setSelectedEvent(deepLinkEvent);
+    }
+    clearDeepLink();
+  }, [deepLinkEventId, deepLinkEvent, deepLinkView, clearDeepLink]);
 
   const handleTimeFrameChange = useCallback((tf: TimeFrame) => {
     setTimeFrame(tf);
@@ -613,6 +643,11 @@ export default function ClientEventsView() {
           event={selectedEvent}
           open={!!selectedEvent}
           onClose={() => setSelectedEvent(null)}
+          onManageRoster={() => {
+            const target = selectedEvent;
+            setSelectedEvent(null);
+            setRosterEvent(target);
+          }}
         />
       )}
 
@@ -622,6 +657,7 @@ export default function ClientEventsView() {
           eventId={rosterEvent._id}
           eventName={rosterEvent.eventName}
           eventDate={rosterEvent.eventDate}
+          eventType={rosterEvent.eventType}
           venueSlug={rosterEvent.venueSlug}
           open={!!rosterEvent}
           onClose={() => setRosterEvent(null)}

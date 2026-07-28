@@ -55,7 +55,10 @@ const HomePage: NextPage = () => {
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    // Landing on Home re-checks the numbers. Cached data still paints immediately
+    // and the refetch lands in the background, so the tiles update in place rather
+    // than flashing a skeleton.
+    refetchOnMount: 'always',
   });
   const myVenuesCount = useMemo(
     () => allVenues.filter((v) => v.userVenueStatus === 'StaffingPool').length,
@@ -69,15 +72,23 @@ const HomePage: NextPage = () => {
 
   // 12-hour lookback — matches the clock-in window so events that started
   // recently (e.g. late last night) are still visible and clockable.
-  const windowStart = useMemo(
-    () => new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-    []
-  );
+  //
+  // Snapped to a 5-minute bucket (== useRosterEvents' staleTime) because this value
+  // is part of the React Query key. At millisecond precision every remount — HMR,
+  // StrictMode's double-mount, or any navigation back to /home — mints a brand-new
+  // key, guaranteeing a cache miss and another network call. That turns a remount
+  // loop into a request storm against /api/events/roster, which is rate-limited to
+  // 60/min per IP+path.
+  const windowStart = useMemo(() => {
+    const BUCKET_MS = 5 * 60 * 1000;
+    const start = Date.now() - 12 * 60 * 60 * 1000;
+    return new Date(Math.floor(start / BUCKET_MS) * BUCKET_MS).toISOString();
+  }, []);
 
-  const { data: rosterEvents = [], isLoading: eventsLoading } = useRosterEvents({
-    applicantId,
-    startDate: windowStart,
-  });
+  const { data: rosterEvents = [], isLoading: eventsLoading } = useRosterEvents(
+    { applicantId, startDate: windowStart },
+    { refetchOnMount: 'always' }
+  );
 
   // Client-side guard: drop events older than the 12-hour window
   const upcomingEvents: GignologyEvent[] = useMemo(() => {
@@ -95,9 +106,22 @@ const HomePage: NextPage = () => {
       );
   }, [rosterEvents]);
 
+  // "Upcoming" counts only shifts that haven't finished yet — the list above keeps
+  // the 12-hour lookback so a shift in progress stays clockable, but an event that
+  // already ended isn't upcoming.
+  const upcomingCount = useMemo(() => {
+    const now = Date.now();
+    return upcomingEvents.filter((e) => {
+      const end = new Date(e.eventEndTime ?? e.eventDate).getTime();
+      return Number.isNaN(end) ? true : end >= now;
+    }).length;
+  }, [upcomingEvents]);
+
   // ── Unread notifications ──────────────────────────────────────────────────
   // Mirrors the exact logic in NotificationBell.tsx
-  const { data: notifData, isLoading: notifLoading } = useUserNotifications();
+  const { data: notifData, isLoading: notifLoading } = useUserNotifications({
+    refetchOnMount: 'always',
+  });
   const { notifications: localNotifications } = useNotifications();
   const unreadCount = useMemo(() => {
     const server = notifData?.notifications || [];
@@ -152,18 +176,21 @@ const HomePage: NextPage = () => {
             label="My Venues"
             value={myVenuesCount}
             isLoading={venuesLoading}
+            href="/venues?tab=my"
           />
           <StatCard
             icon={CalendarRange}
             label="Upcoming"
-            value={upcomingEvents.length}
+            value={upcomingCount}
             isLoading={eventsLoading}
+            href="/events?tab=my"
           />
           <StatCard
             icon={Bell}
             label="Unread"
             value={unreadCount}
             isLoading={notifLoading}
+            href="/notifications"
           />
         </div>
 

@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { Suspense, useMemo, useState, useEffect } from 'react';
 import { Building2, ChevronDown, Search } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 // useQueryClient is used in EmployeeVenuesView
 
@@ -9,6 +10,10 @@ import Layout from '@/components/layout/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/ToggleGroup';
 import { useCurrentUser } from '@/domains/user';
+// Import the leaf module, NOT the `utils` barrel — the barrel re-exports
+// mongo-user-utils / mongo-attachment-utils, which are `server-only` and pull
+// the `mongodb` driver (and its `net` dependency) into the client bundle.
+import { isEventAdmin, managedVenueSlugs } from '@/domains/user/utils/event-admin';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { baseInstance } from '@/lib/api/instance';
 import { clsxm } from '@/lib/utils';
@@ -20,6 +25,8 @@ import {
 } from '@/domains/venue';
 import { ClientVenueCard } from '@/domains/venue/components/ClientVenueCard/ClientVenueCard';
 import { StaffingPoolModal } from '@/domains/staffing/components/StaffingPoolModal/StaffingPoolModal';
+import { useDeepLink } from '@/lib/notifications/use-deep-link';
+import { DEEP_LINK_PARAMS } from '@/lib/notifications/deep-links';
 
 // ─── Page-local constants ─────────────────────────────────────────────────────
 
@@ -30,6 +37,37 @@ const TABS: { value: TabValue; label: string }[] = [
   { value: 'my', label: 'My Venues' },
   { value: 'pending', label: 'Pending' },
 ];
+
+// ─── Push deep links ──────────────────────────────────────────────────────────
+
+/**
+ * Resolves `?venue=<slug>` (from gignology://venues/<slug>/details, sent when
+ * an admin adds someone to a venue) into a venue object. The venue is often
+ * not in the list the user currently sees — a Pending venue, or one outside
+ * their nearby radius — so it is fetched by slug.
+ */
+function useVenueDeepLink() {
+  const {
+    values: {
+      [DEEP_LINK_PARAMS.venueSlug]: slug,
+      [DEEP_LINK_PARAMS.view]: view,
+    },
+    clear,
+  } = useDeepLink([DEEP_LINK_PARAMS.venueSlug, DEEP_LINK_PARAMS.view]);
+
+  const { data: venue } = useQuery<VenueWithStatus | null>({
+    queryKey: ['venue-detail', slug],
+    queryFn: async () => {
+      const res = await baseInstance.get<VenueWithStatus>(`venues/${slug}`);
+      if (!res.success || !res.data) return null;
+      return res.data;
+    },
+    enabled: !!slug,
+    staleTime: 60 * 1000,
+  });
+
+  return { slug, view, venue, clear };
+}
 
 // ─── Client view ──────────────────────────────────────────────────────────────
 
@@ -52,6 +90,23 @@ function ClientVenuesView() {
     refetchOnWindowFocus: false,
     refetchOnMount: false,
   });
+
+  const {
+    slug: deepLinkSlug,
+    view: deepLinkView,
+    venue: deepLinkVenue,
+    clear: clearDeepLink,
+  } = useVenueDeepLink();
+
+  useEffect(() => {
+    if (!deepLinkSlug || !deepLinkVenue) return;
+    if (deepLinkView === 'staffingpool') {
+      setStaffingVenue(deepLinkVenue);
+    } else {
+      setSelectedVenue(deepLinkVenue);
+    }
+    clearDeepLink();
+  }, [deepLinkSlug, deepLinkVenue, deepLinkView, clearDeepLink]);
 
   const filtered = useMemo(() => {
     let list = venues;
@@ -186,12 +241,21 @@ function EmployeeVenuesView() {
   const { data: primaryCompany } = usePrimaryCompany();
   const queryClient = useQueryClient();
 
-  const [tab, setTab] = useState<TabValue>('all');
+  // Deep link support: /venues?tab=my (used by the Home "My Venues" stat card)
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<TabValue>(() => {
+    const t = searchParams.get('tab');
+    return t === 'my' || t === 'pending' ? t : 'all';
+  });
   const [search, setSearch] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedVenue, setSelectedVenue] = useState<VenueWithStatus | null>(null);
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [geoResolved, setGeoResolved] = useState(false);
+
+  // Event Admins: venues they manage (their clientOrgs) get a "Managed by you" flag.
+  const eventAdmin = isEventAdmin(currentUser);
+  const managedSlugs = useMemo(() => managedVenueSlugs(currentUser), [currentUser]);
 
   useEffect(() => {
     handleLocationServices().then(({ locationInfo }) => {
@@ -252,6 +316,20 @@ function EmployeeVenuesView() {
       prev?.slug === slug ? { ...prev, userVenueStatus: newStatus } : prev
     );
   };
+
+  const {
+    slug: deepLinkSlug,
+    venue: deepLinkVenue,
+    clear: clearDeepLink,
+  } = useVenueDeepLink();
+
+  // Employees have no staffing-pool screen, so any venue deep link opens the
+  // venue detail modal.
+  useEffect(() => {
+    if (!deepLinkSlug || !deepLinkVenue) return;
+    setSelectedVenue(deepLinkVenue);
+    clearDeepLink();
+  }, [deepLinkSlug, deepLinkVenue, clearDeepLink]);
 
   const isLoading =
     tab === 'all'
@@ -405,6 +483,7 @@ function EmployeeVenuesView() {
                     key={venue._id}
                     venue={venue}
                     imageBaseUrl={primaryCompany?.imageUrl}
+                    managed={eventAdmin && managedSlugs.has(venue.slug)}
                     onClick={() => setSelectedVenue(venue)}
                   />
                 ))}
@@ -429,7 +508,7 @@ function EmployeeVenuesView() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function VenueRequestsPage() {
+function VenuesPageContent() {
   const { data: currentUser } = useCurrentUser();
   const isClient = currentUser?.userType === 'Client';
 
@@ -437,5 +516,14 @@ export default function VenueRequestsPage() {
     <Layout>
       {isClient ? <ClientVenuesView /> : <EmployeeVenuesView />}
     </Layout>
+  );
+}
+
+export default function VenueRequestsPage() {
+  // EmployeeVenuesView reads ?tab= via useSearchParams
+  return (
+    <Suspense fallback={null}>
+      <VenuesPageContent />
+    </Suspense>
   );
 }

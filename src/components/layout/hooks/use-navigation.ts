@@ -199,14 +199,14 @@ export function useNavigation() {
 
     if (!isClient) {
       selfServiceItems.push(
-        {
-          name: 'Ask a Question',
-          href: '/conversation',
-          icon: MessageCircleQuestion,
-          current:
-            pathname === '/conversation' ||
-            pathname.startsWith('/conversation'),
-        },
+        // {
+        //   name: 'Ask a Question',
+        //   href: '/conversation',
+        //   icon: MessageCircleQuestion,
+        //   current:
+        //     pathname === '/conversation' ||
+        //     pathname.startsWith('/conversation'),
+        // },
         {
           name: 'Documents',
           href: '/documents',

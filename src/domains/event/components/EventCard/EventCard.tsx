@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { MapPin, Clock, ImageIcon } from 'lucide-react';
+import { MapPin, Clock, ImageIcon, Users, Hash, Check, HelpCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -26,7 +26,35 @@ type Props = {
   event: GignologyEvent;
   imageBaseUrl?: string;
   onClick?: () => void;
+  /** When true (Event Admin managing this venue), show roster numbers + a manage button. */
+  canManageRoster?: boolean;
+  onManageRoster?: () => void;
 };
+
+function RosterNumber({
+  icon,
+  value,
+  cls,
+  title,
+}: {
+  icon: React.ReactNode;
+  value?: number;
+  cls: string;
+  title: string;
+}) {
+  return (
+    <span
+      title={title}
+      className={clsxm(
+        'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white',
+        cls
+      )}
+    >
+      {icon}
+      {value ?? 0}
+    </span>
+  );
+}
 
 function rosterStatusBadge(status?: string) {
   if (!status) return null;
@@ -87,7 +115,13 @@ function getDateBadge(eventDate?: string, timezone?: string) {
   };
 }
 
-export const EventCard = ({ event, imageBaseUrl, onClick }: Props) => {
+export const EventCard = ({
+  event,
+  imageBaseUrl,
+  onClick,
+  canManageRoster,
+  onManageRoster,
+}: Props) => {
   const queryClient = useQueryClient();
   const [logoError, setLogoError] = useState(false);
   const [bannerError, setBannerError] = useState(false);
@@ -300,6 +334,50 @@ export const EventCard = ({ event, imageBaseUrl, onClick }: Props) => {
 
           {rosterStatusLabel && (
             <div className="mt-3">{rosterStatusBadge(rosterStatusLabel)}</div>
+          )}
+
+          {canManageRoster && (
+            <div
+              className="mt-3 flex flex-wrap items-center gap-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-1">
+                <RosterNumber
+                  icon={<Hash className="w-3 h-3" />}
+                  value={event.positionsRequested}
+                  cls="bg-blue-500"
+                  title="Positions Requested"
+                />
+                <RosterNumber
+                  icon={<Check className="w-3 h-3" />}
+                  value={event.numberOnRoster}
+                  cls="bg-emerald-500"
+                  title="On Roster"
+                />
+                <RosterNumber
+                  icon={<Users className="w-3 h-3" />}
+                  value={event.numberOnWaitlist}
+                  cls="bg-slate-400"
+                  title="On Waitlist"
+                />
+                <RosterNumber
+                  icon={<HelpCircle className="w-3 h-3" />}
+                  value={event.numberOnRequest}
+                  cls="bg-amber-500"
+                  title="On Request"
+                />
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="text-xs h-8 ml-auto"
+                onClick={onManageRoster}
+              >
+                <Users className="w-3.5 h-3.5 mr-1" />
+                Event Roster
+              </Button>
+            </div>
           )}
 
           {showCoverActions && (

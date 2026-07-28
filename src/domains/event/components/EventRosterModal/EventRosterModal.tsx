@@ -8,9 +8,8 @@ import {
   ChevronsUpDown,
   Mail,
   Check,
-  Clock,
-  HelpCircle,
-  X,
+  Plus,
+  Hourglass,
   StickyNote,
 } from 'lucide-react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,6 +24,10 @@ import { clsxm, userPhotoKey } from '@/lib/utils';
 import { useFileUrl } from '@/lib/hooks/use-file-url';
 import { SendMessageModal } from '@/domains/staffing/components/SendMessageModal/SendMessageModal';
 import type { StaffingEmployee } from '@/domains/staffing/components/EmployeeViewModal/EmployeeViewModal';
+import { useCurrentUser } from '@/domains/user';
+// Leaf import — the `utils` barrel is server-only (mongodb driver).
+import { isEventAdmin } from '@/domains/user/utils/event-admin';
+import { LogIn, LogOut } from 'lucide-react';
 
 const PAGE_LIMIT = 25;
 
@@ -46,6 +49,9 @@ export type RosterApplicant = {
   signupDate?: string | null;
   agent?: string | null;
   position?: string | null;
+  timeIn?: string | null;
+  timeOut?: string | null;
+  reportTime?: string | null;
 };
 
 type RosterCounts = {
@@ -91,14 +97,16 @@ const ROSTER_STATUS_OPTIONS = [
 
 // ─── Status badge (clickable) ─────────────────────────────────────────────────
 
+// Icons/colors mirror the legacy stadium-people EventStatusIcon:
+//   Not Roster → plus (blue) · Waitlist → hourglass · Request → check (orange) · Roster → check (green)
 const STATUS_CFG: Record<
   string,
   { label: string; cls: string; Icon: React.ComponentType<{ className?: string }> }
 > = {
-  Roster: { label: 'On Roster', cls: 'bg-emerald-100 text-emerald-700', Icon: Check },
-  Request: { label: 'Request', cls: 'bg-amber-100 text-amber-700', Icon: HelpCircle },
-  Waitlist: { label: 'Waitlist', cls: 'bg-blue-100 text-blue-700', Icon: Clock },
-  'Not Roster': { label: 'Not On Roster', cls: 'bg-slate-100 text-slate-500', Icon: X },
+  Roster: { label: 'On Roster', cls: 'text-emerald-600 hover:bg-emerald-50', Icon: Check },
+  Request: { label: 'Request', cls: 'text-amber-500 hover:bg-amber-50', Icon: Check },
+  Waitlist: { label: 'Waitlist', cls: 'text-violet-500 hover:bg-violet-50', Icon: Hourglass },
+  'Not Roster': { label: 'Not On Roster', cls: 'text-sky-600 hover:bg-sky-50', Icon: Plus },
 };
 
 function RosterStatusCell({
@@ -149,14 +157,14 @@ function RosterStatusCell({
         type="button"
         disabled={isPending}
         onClick={() => setOpen((o) => !o)}
-        title="Click to change roster status"
+        title={`${cfg.label} — click to change`}
+        aria-label={`Roster status: ${cfg.label}. Click to change.`}
         className={clsxm(
-          'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50',
+          'inline-flex items-center justify-center w-7 h-7 rounded-full transition-colors disabled:opacity-50',
           cfg.cls
         )}
       >
-        <Icon className="w-3 h-3" />
-        {cfg.label}
+        <Icon className="w-4 h-4" />
       </button>
       {open && (
         <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-md shadow-lg min-w-[140px] py-1">
@@ -183,6 +191,93 @@ function RosterStatusCell({
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Clock in/out cell ────────────────────────────────────────────────────────
+
+function fmtClock(iso?: string | null): string {
+  if (!iso) return '';
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date(iso));
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Roster-manager time-in / time-out cell for a single applicant. Shows the recorded
+ * time once set; otherwise a clock action button (gated to on-roster members within the
+ * event's clock window — see `clockEnabled`). Proxies the same sp1 roster endpoint the
+ * legacy app used. Clock Out is only offered after Clock In.
+ */
+function TimeCell({
+  field,
+  row,
+  eventId,
+  onSuccess,
+}: {
+  field: 'timeIn' | 'timeOut';
+  row: RosterApplicant;
+  eventId: string;
+  onSuccess: () => void;
+}) {
+  const { mutate, isPending } = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(
+        `/api/events/${eventId}/roster-applicants/${row._id}/clock`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ field }),
+        }
+      );
+      if (!res.ok) throw new Error('Failed to update clock');
+    },
+    onSuccess: () => {
+      toast.success('Time updated.');
+      onSuccess();
+    },
+    onError: () => toast.error('Failed to update time.'),
+  });
+
+  const value = field === 'timeIn' ? row.timeIn : row.timeOut;
+
+  // Recorded — show the time.
+  if (value) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 whitespace-nowrap">
+        <Check className="w-3 h-3 text-emerald-500 shrink-0" />
+        {fmtClock(value)}
+      </span>
+    );
+  }
+
+  // Clock Out requires a Clock In first.
+  if (field === 'timeOut' && !row.timeIn) {
+    return <span className="text-slate-300 text-xs">—</span>;
+  }
+
+  const isIn = field === 'timeIn';
+  const Icon = isIn ? LogIn : LogOut;
+  return (
+    <button
+      type="button"
+      disabled={isPending}
+      onClick={() => mutate()}
+      title={isIn ? 'Clock in' : 'Clock out'}
+      className={clsxm(
+        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50 whitespace-nowrap',
+        isIn ? 'bg-cyan-100 text-cyan-700' : 'bg-red-100 text-red-700'
+      )}
+    >
+      <Icon className="w-3 h-3" />
+      {isIn ? 'Clock In' : 'Clock Out'}
+    </button>
   );
 }
 
@@ -385,6 +480,8 @@ function RosterTable({
   onMessage,
   onNote,
   onStatusChange,
+  clockEnabled,
+  canMessage,
   sortKey,
   sortDir,
   onSort,
@@ -394,26 +491,12 @@ function RosterTable({
   onMessage: (a: RosterApplicant) => void;
   onNote: (a: RosterApplicant) => void;
   onStatusChange: () => void;
+  clockEnabled: boolean;
+  canMessage: boolean;
   sortKey: string;
   sortDir: SortDir;
   onSort: (key: string) => void;
 }) {
-  const formatDate = (d?: string | null) => {
-    if (!d) return '—';
-    try {
-      return new Intl.DateTimeFormat('en-US', {
-        month: '2-digit',
-        day: '2-digit',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      }).format(new Date(d));
-    } catch {
-      return '—';
-    }
-  };
-
   const sh = (key: string) => ({
     sortKey: key,
     active: sortKey === key,
@@ -433,10 +516,19 @@ function RosterTable({
           <SortableTH {...sh('firstName')}>First Name</SortableTH>
           <SortableTH {...sh('loginVerified')}>Login</SortableTH>
           <SortableTH {...sh('phone')}>Phone</SortableTH>
-          <SortableTH {...sh('signupDate')}>Signup Date</SortableTH>
           <th className="text-xs font-semibold text-slate-500 px-3 py-2.5 text-left whitespace-nowrap">
             Position
           </th>
+          {clockEnabled && (
+            <>
+              <th className="text-xs font-semibold text-slate-500 px-3 py-2.5 text-left whitespace-nowrap">
+                Time In
+              </th>
+              <th className="text-xs font-semibold text-slate-500 px-3 py-2.5 text-left whitespace-nowrap">
+                Time Out
+              </th>
+            </>
+          )}
           <th className="text-xs font-semibold text-slate-500 px-3 py-2.5 text-right">
             Actions
           </th>
@@ -476,17 +568,23 @@ function RosterTable({
               </td>
               <td className="px-3 py-2.5 text-slate-600">{row.phone || '—'}</td>
               <td className="px-3 py-2.5 text-slate-600 text-xs">
-                {row.signupDate ? (
-                  <span title={row.agent ? `Agent: ${row.agent}` : undefined}>
-                    {formatDate(row.signupDate)}
-                  </span>
-                ) : (
-                  '—'
-                )}
-              </td>
-              <td className="px-3 py-2.5 text-slate-600 text-xs">
                 {row.position || '—'}
               </td>
+              {clockEnabled &&
+                (['timeIn', 'timeOut'] as const).map((field) => (
+                  <td key={field} className="px-3 py-2.5">
+                    {row.rosterStatus === 'Roster' ? (
+                      <TimeCell
+                        field={field}
+                        row={row}
+                        eventId={eventId}
+                        onSuccess={onStatusChange}
+                      />
+                    ) : (
+                      <span className="text-slate-300 text-xs">—</span>
+                    )}
+                  </td>
+                ))}
               <td className="px-3 py-2.5">
                 <div className="flex items-center justify-end gap-1">
                   <button
@@ -497,14 +595,16 @@ function RosterTable({
                   >
                     <StickyNote className="w-4 h-4" />
                   </button>
-                  <button
-                    type="button"
-                    title="Send Message"
-                    onClick={() => onMessage(row)}
-                    className="p-1.5 rounded hover:bg-red-50 text-red-500 transition-colors"
-                  >
-                    <Mail className="w-4 h-4" />
-                  </button>
+                  {canMessage && (
+                    <button
+                      type="button"
+                      title="Send Message"
+                      onClick={() => onMessage(row)}
+                      className="p-1.5 rounded hover:bg-red-50 text-red-500 transition-colors"
+                    >
+                      <Mail className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </td>
             </tr>
@@ -521,6 +621,7 @@ type Props = {
   eventId: string;
   eventName: string;
   eventDate?: string;
+  eventType?: string;
   venueSlug?: string;
   open: boolean;
   onClose: () => void;
@@ -530,11 +631,26 @@ export function EventRosterModal({
   eventId,
   eventName,
   eventDate,
+  eventType,
   venueSlug,
   open,
   onClose,
 }: Props) {
   const queryClient = useQueryClient();
+  const { data: currentUser } = useCurrentUser();
+
+  // Event Admins get no messaging from the roster — matches legacy stadium-people,
+  // which hid the mail action for them (EventRosterActions: `!isEventAdmin`).
+  const eventAdmin = isEventAdmin(currentUser);
+
+  // Clock in/out is available only for actual "Event" events within the event-day
+  // window (matches legacy stadium-people: eventDate on/before today + 2 days).
+  const clockEnabled = useMemo(() => {
+    if (eventType !== 'Event' || !eventDate) return false;
+    const evt = new Date(eventDate).getTime();
+    if (Number.isNaN(evt)) return false;
+    return evt <= Date.now() + 2 * 24 * 60 * 60 * 1000;
+  }, [eventType, eventDate]);
 
   const [filter, setFilter] = useState<RosterFilter>('all');
   const [search, setSearch] = useState('');
@@ -564,7 +680,11 @@ export function EventRosterModal({
     },
     staleTime: 10 * 60 * 1000,
   });
-  const noteTypes = noteTypesRaw ?? [];
+  // Event Admins may not file Disciplinary notes (matches legacy stadium-people).
+  const noteTypes = useMemo(() => {
+    const all = noteTypesRaw ?? [];
+    return eventAdmin ? all.filter((t) => t !== 'Disciplinary') : all;
+  }, [noteTypesRaw, eventAdmin]);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 350);
@@ -680,7 +800,7 @@ export function EventRosterModal({
   return (
     <>
       <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-        <DialogContent className="max-w-5xl p-0 overflow-hidden max-h-[90vh] flex flex-col">
+        <DialogContent className="w-[calc(100vw-1rem)] sm:w-[calc(100vw-3rem)] max-w-6xl p-0 overflow-hidden max-h-[90vh] flex flex-col">
           <DialogHeader className="px-5 pt-5 pb-3 border-b border-slate-100 flex-shrink-0">
             <DialogTitle className="text-base font-semibold">
               Client Event Roster – Signups
@@ -765,6 +885,8 @@ export function EventRosterModal({
                   onMessage={setMessageApplicant}
                   onNote={setNoteApplicant}
                   onStatusChange={handleStatusChange}
+                  clockEnabled={clockEnabled}
+                  canMessage={!eventAdmin}
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={handleSort}

@@ -5,6 +5,7 @@ import {
   MapPin,
   Building2,
   ChevronLeft,
+  Users,
   Paperclip,
   Mail,
   Clock,
@@ -38,6 +39,9 @@ import { EventCallOffConfirmModal } from '@/domains/event/components/EventCallOf
 import { isEventCoverWindowOpen } from '@/domains/event/utils/event-cover-window';
 import { useEventClockIn, useEventClockOut } from '@/domains/event/hooks';
 import { useCurrentUser } from '@/domains/user';
+// Leaf import — the `utils` barrel is server-only (mongodb driver).
+import { isEventAdmin, managedVenueSlugs } from '@/domains/user/utils/event-admin';
+import { EventRosterModal } from '@/domains/event/components/EventRosterModal/EventRosterModal';
 import { clsxm } from '@/lib/utils';
 
 // ── Clock state ───────────────────────────────────────────────────────────────
@@ -140,17 +144,18 @@ function getDateChip(eventDate?: string, timezone?: string) {
   return { label: 'PAST', classes: 'bg-zinc-500 text-white' };
 }
 
+// Occupancy comes from `positionRosterCounts` on the detail response, not from
+// `event.applicants` — that array is no longer part of the payload, so counting it
+// yielded 0 for every position and made full positions look available.
 function getAvailablePositions(
   positions: EventPosition[] | undefined,
-  existingApplicants: GignologyEvent['applicants']
+  rosterCounts: GignologyEvent['positionRosterCounts']
 ): { label: string; value: string }[] {
   if (!positions?.length) return [];
   const filtered = positions.filter((pos) => {
     if (!pos.makePublic) return false;
     if (pos.numberPositions == null) return true;
-    const assigned = (existingApplicants ?? []).filter(
-      (a) => a.status === 'Roster' && a.primaryPosition === pos.positionName
-    ).length;
+    const assigned = rosterCounts?.[pos.positionName] ?? 0;
     return assigned < Number(pos.numberPositions);
   });
   const hasEventStaff = filtered.some(
@@ -342,6 +347,13 @@ export const EventDetailView = ({
   const [coverIntent, setCoverIntent] =
     useState<EventCoverModalIntent>('invite-cover');
   const [selectedPosition, setSelectedPosition] = useState(DEFAULT_POSITION);
+  const [rosterOpen, setRosterOpen] = useState(false);
+
+  // Event Admins can open the roster for events at venues they manage.
+  const canManageRoster =
+    isEventAdmin(currentUser) &&
+    !!initialEvent.venueSlug &&
+    managedVenueSlugs(currentUser).has(initialEvent.venueSlug);
 
   useEffect(() => {
     setDescExpanded(false);
@@ -464,8 +476,8 @@ export const EventDetailView = ({
   const isOnRoster = !!applicantEntry || enrollment?.type === 'Roster';
 
   const availablePositions = useMemo(
-    () => getAvailablePositions(event.positions, event.applicants),
-    [event.positions, event.applicants]
+    () => getAvailablePositions(event.positions, event.positionRosterCounts),
+    [event.positions, event.positionRosterCounts]
   );
   const isPositionLocked =
     isOnRoster ||
@@ -630,15 +642,28 @@ export const EventDetailView = ({
   return (
     <>
       <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 space-y-4 pb-10">
-        {/* Back to Events */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          Back to Events
-        </button>
+        {/* Back to Events + roster action */}
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back to Events
+          </button>
+
+          {canManageRoster && (
+            <button
+              type="button"
+              onClick={() => setRosterOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-600 transition-colors"
+            >
+              <Users className="w-4 h-4" />
+              Event Roster
+            </button>
+          )}
+        </div>
 
         {/* Hero card */}
         <div className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-slate-700 to-slate-950 min-h-[160px] flex flex-col justify-end">
@@ -1102,6 +1127,17 @@ export const EventDetailView = ({
         }}
         loading={callOffSubmitting}
       />
+      {rosterOpen && (
+        <EventRosterModal
+          eventId={event._id}
+          eventName={event.eventName}
+          eventDate={event.eventDate}
+          eventType={event.eventType}
+          venueSlug={event.venueSlug}
+          open={rosterOpen}
+          onClose={() => setRosterOpen(false)}
+        />
+      )}
     </>
   );
 };

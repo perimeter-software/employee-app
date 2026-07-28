@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarRange, ChevronLeft, Search } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -22,6 +22,10 @@ import {
   SelectValue,
 } from '@/components/ui/Select';
 import { useCurrentUser } from '@/domains/user';
+// Leaf import — see the note in app/venues/page.tsx: the `utils` barrel is
+// server-only and would pull the mongodb driver into this client bundle.
+import { isEventAdmin, managedVenueSlugs } from '@/domains/user/utils/event-admin';
+import { EventRosterModal } from '@/domains/event/components/EventRosterModal/EventRosterModal';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { clsxm } from '@/lib/utils';
 import {
@@ -34,6 +38,8 @@ import {
 import type { GignologyEvent, EventListPage } from '@/domains/event';
 import { baseInstance } from '@/lib/api/instance';
 import type { VenueWithStatus } from '@/domains/venue';
+import { useDeepLink } from '@/lib/notifications/use-deep-link';
+import { DEEP_LINK_PARAMS } from '@/lib/notifications/deep-links';
 
 // ─── Page-local constants ─────────────────────────────────────────────────────
 
@@ -63,12 +69,17 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [tab, setTab] = useState<TabValue>('all');
+  // Deep link support: /events?tab=my (used by the Home "Upcoming" stat card)
+  const [tab, setTab] = useState<TabValue>(() => {
+    const t = searchParams.get('tab');
+    return t === 'my' || t === 'past' ? t : 'all';
+  });
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 400);
   const [selectedEvent, setSelectedEvent] = useState<GignologyEvent | null>(
     null
   );
+  const [rosterEvent, setRosterEvent] = useState<GignologyEvent | null>(null);
   const savedScrollY = useRef(0);
   const [venueSlug, setVenueSlug] = useState(searchParams.get('venue') ?? '');
   const [venueName, setVenueName] = useState(
@@ -79,6 +90,59 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
 
   const applicantId = currentUser?.applicantId;
   const isEmployee = currentUser?.userType === 'User';
+
+  // Event Admins can manage rosters for events at their clientOrgs venues.
+  const eventAdmin = isEventAdmin(currentUser);
+  const managedSlugs = useMemo(
+    () => managedVenueSlugs(currentUser),
+    [currentUser]
+  );
+  const canManage = (e: GignologyEvent) =>
+    eventAdmin && !!e.venueSlug && managedSlugs.has(e.venueSlug);
+
+  // Push deep link — gignology://events/<id>/details and .../roster arrive as
+  // ?eventId=<id> (optionally &view=roster). The event is almost never on the
+  // page the list happens to have loaded, so fetch it by id.
+  const {
+    values: {
+      [DEEP_LINK_PARAMS.eventId]: deepLinkEventId,
+      [DEEP_LINK_PARAMS.view]: deepLinkView,
+    },
+    clear: clearDeepLink,
+  } = useDeepLink([DEEP_LINK_PARAMS.eventId, DEEP_LINK_PARAMS.view]);
+
+  const { data: deepLinkEvent } = useQuery({
+    queryKey: ['event-detail', deepLinkEventId],
+    queryFn: () => EventApiService.fetchEventDetail(deepLinkEventId as string),
+    enabled: !!deepLinkEventId,
+    staleTime: 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (!deepLinkEventId || !deepLinkEvent) return;
+    const wantsRoster =
+      deepLinkView === 'roster' &&
+      eventAdmin &&
+      !!deepLinkEvent.venueSlug &&
+      managedSlugs.has(deepLinkEvent.venueSlug);
+
+    if (wantsRoster) {
+      setRosterEvent(deepLinkEvent);
+    } else {
+      // Roster links for someone who can't manage that venue still show them
+      // the event they were notified about.
+      savedScrollY.current = window.scrollY;
+      setSelectedEvent(deepLinkEvent);
+    }
+    clearDeepLink();
+  }, [
+    deepLinkEventId,
+    deepLinkEvent,
+    deepLinkView,
+    eventAdmin,
+    managedSlugs,
+    clearDeepLink,
+  ]);
 
   const { data: incomingCoverList = [], isLoading: incomingCoverListLoading } =
     useQuery({
@@ -458,6 +522,8 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
                   key={event._id}
                   event={event}
                   imageBaseUrl={imageBaseUrl}
+                  canManageRoster={canManage(event)}
+                  onManageRoster={() => setRosterEvent(event)}
                   onClick={() => {
                     savedScrollY.current = window.scrollY;
                     setSelectedEvent(event);
@@ -481,6 +547,18 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
         items={incomingCoverList}
         isLoading={incomingCoverListLoading}
       />
+
+      {rosterEvent && (
+        <EventRosterModal
+          eventId={rosterEvent._id}
+          eventName={rosterEvent.eventName}
+          eventDate={rosterEvent.eventDate}
+          eventType={rosterEvent.eventType}
+          venueSlug={rosterEvent.venueSlug}
+          open={!!rosterEvent}
+          onClose={() => setRosterEvent(null)}
+        />
+      )}
     </div>
     </>
   );
@@ -488,7 +566,7 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
 
 // ─── Page shell — only decides which view to mount ───────────────────────────
 
-export default function EventsPage() {
+function EventsPageContent() {
   const { data: currentUser } = useCurrentUser();
   const { data: primaryCompany } = usePrimaryCompany();
 
@@ -510,5 +588,14 @@ export default function EventsPage() {
         <EmployeeEventsView imageBaseUrl={primaryCompany?.imageUrl} />
       )}
     </Layout>
+  );
+}
+
+export default function EventsPage() {
+  // EmployeeEventsView reads ?tab= / ?venue= / ?eventId= via useSearchParams
+  return (
+    <Suspense fallback={null}>
+      <EventsPageContent />
+    </Suspense>
   );
 }

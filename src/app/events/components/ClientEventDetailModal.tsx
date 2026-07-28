@@ -23,6 +23,7 @@ import {
   AlertCircle,
   Pencil,
   ChevronDown,
+  Users,
 } from 'lucide-react';
 import {
   useQuery,
@@ -2508,6 +2509,8 @@ export interface ClientEventDetailModalProps {
   onClose: () => void;
   onEventUpdated?: (updated: Partial<GignologyEvent>) => void;
   onCreated?: (newEvent: GignologyEvent) => void;
+  /** When provided (and not creating), shows an "Event Roster" action in the header. */
+  onManageRoster?: () => void;
 }
 
 export function ClientEventDetailModal({
@@ -2516,6 +2519,7 @@ export function ClientEventDetailModal({
   onClose,
   onEventUpdated,
   onCreated,
+  onManageRoster,
 }: ClientEventDetailModalProps) {
   const isCreateMode = !initialEvent?._id;
   const [activePanel, setActivePanel] = useState<PanelId>('details');
@@ -2610,14 +2614,26 @@ export function ClientEventDetailModal({
                   : `${activePanelDef.label} — ${formatDateTime(event?.eventDate, event?.timeZone)}`}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="rounded-full p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              {!isCreateMode && onManageRoster && (
+                <button
+                  type="button"
+                  onClick={onManageRoster}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-600 transition-colors"
+                >
+                  <Users className="w-4 h-4" />
+                  Event Roster
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="rounded-full p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Body: sidebar + content */}
