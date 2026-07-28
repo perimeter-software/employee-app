@@ -95,7 +95,7 @@ export const MobileBottomNav: React.FC = () => {
     <>
       {/* ── More fullscreen overlay ─────────────────────────────────────────── */}
       {isMoreOpen && (
-        <div className="fixed inset-x-0 top-0 bottom-16 z-50 bg-gray-50 flex flex-col lg:hidden">
+        <div className="fixed inset-x-0 top-0 bottom-16 z-40 bg-gray-50 flex flex-col lg:hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
             <Image
@@ -223,7 +223,7 @@ export const MobileBottomNav: React.FC = () => {
       )}
 
       {/* ── Bottom tab bar ──────────────────────────────────────────────────── */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-white border-t border-gray-200">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-white border-t border-gray-200">
         <div className="flex items-stretch h-16 overflow-visible max-w-lg mx-auto w-full">
           {bottomBarItems.map((item) => {
             const isFeatured =
