@@ -1,7 +1,6 @@
-// Types for the self-service "Privacy & My Data" surface (Right to Erasure,
-// Surface B). The erasure request/certificate shape is intentionally identical
-// to gignology-v4's admin types — per the plan, both apps talk to the same
-// `erasure-requests` collection on gig-v4-backend.
+// Types for the self-service "Privacy & My Data" surface (Right to Erasure /
+// Right to Access, Surface B). Shapes mirror the backend integration guide
+// (right-to-erasure-frontend-guide.md §2) exactly.
 
 export type ErasureStatus =
   | 'pending'
@@ -10,56 +9,86 @@ export type ErasureStatus =
   | 'completed'
   | 'completed_with_errors'
   | 'failed'
-  | 'cancelled'
-  | 'dry_run_completed';
+  | 'cancelled';
 
 export type ErasureSource = 'admin' | 'self-service';
 
-export interface ErasureRequest {
-  id: string;
+// ── Right to access: GET /me/data-export ────────────────────────────────────
+
+/**
+ * One source entry. `records` is present only on some entries — an array for
+ * personalData, but an object (e.g. `{ documentCount, keys }`) for external
+ * systems — so it's typed `unknown` and narrowed at the use site.
+ */
+export interface DataExportEntry {
+  source: string;
+  recordCount: number;
+  records?: unknown;
+}
+
+export interface DataExport {
+  generatedAt: string;
   subjectId: string;
-  subjectToken: string;
+  personalData: DataExportEntry[];
+  /** Aggregate only — retained under statutory payroll/tax retention. */
+  financialRecords: DataExportEntry[];
+  /** Existence/counts only — never contents. */
+  externalSystems: DataExportEntry[];
+  /** Non-empty even on 200 → some sources could not be read. */
+  errors: unknown[];
+}
+
+// ── Screen state: GET /me/erasure-requests/current (or literal null) ─────────
+
+export interface CurrentErasureRequest {
+  requestId: string;
   status: ErasureStatus;
   source: ErasureSource;
-  reason: string;
-  executeAfter?: string | null;
-  coolingOffDays?: number;
-  cancelledBy?: { actor: 'self' | 'admin'; at: string } | null;
+  executeAfter: string | null;
+  coolingOffDays: number | null;
   createdAt: string;
-  updatedAt: string;
+  completedAt: string | null;
+  cancelledBy: 'self' | 'admin' | null;
+  canCancel: boolean;
+  /** null when not scheduled. Drive the countdown from this. */
+  secondsUntilExecution: number | null;
 }
+
+// ── Impact preview: GET /me/erasure-requests/preview ─────────────────────────
+
+export interface ErasurePreviewTotals {
+  piiRecords: number;
+  financialRecords: number;
+  externalSystems: number;
+}
+
+export interface ErasurePreview {
+  totals: ErasurePreviewTotals;
+}
+
+// ── Create: POST /me/erasure-requests ────────────────────────────────────────
 
 export interface CreateErasureRequestInput {
   reason?: string;
-  /** UX guard — the typed-to-confirm value; identity always comes from the token. */
+  /** Audit-only echo of the typed value; not validated by the server. */
   confirm?: string;
 }
 
-/** One plain-language section of the "what we store about you" view. */
-export interface DataAccessSection {
-  key: string;
-  title: string;
-  /** Why we hold this data. */
-  purpose: string;
-  /** Human-readable items (label + value/summary). */
-  items: { label: string; value: string }[];
+export interface CreateErasureResult {
+  requestId: string;
+  status: ErasureStatus;
+  executeAfter: string | null;
+  coolingOffDays: number | null;
+  token: string;
+  queued?: boolean;
+  /** true → a request was already in flight; treat as success. */
+  alreadyExisted?: boolean;
 }
 
-export interface DataAccessSummary {
-  subjectId: string;
-  generatedAt: string;
-  sections: DataAccessSection[];
+export interface CancelErasureResult {
+  requestId: string;
+  status: ErasureStatus;
 }
-
-export const TERMINAL_STATUSES: ReadonlySet<ErasureStatus> = new Set<ErasureStatus>([
-  'completed',
-  'completed_with_errors',
-  'failed',
-  'cancelled',
-  'dry_run_completed',
-]);
-
-export const isTerminal = (s?: ErasureStatus): boolean => !!s && TERMINAL_STATUSES.has(s);
 
 export const isActive = (s?: ErasureStatus): boolean =>
   s === 'pending' || s === 'running' || s === 'scheduled';
