@@ -9,13 +9,13 @@ import {
   FileSpreadsheet,
   Home,
   CalendarClock,
-  MessageCircleQuestion,
   Receipt,
   ClipboardList,
   CalendarRange,
   MapPin,
   GraduationCap,
   User,
+  ShieldCheck,
 } from 'lucide-react';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { useCurrentUser } from '@/domains/user/hooks/use-current-user';
@@ -31,6 +31,15 @@ export interface NavigationGroup {
   label: string;
   items: NavigationItem[];
 }
+
+// Reachable in every account state — the right to access/erasure is not
+// status-gated. Added to both the applicant-only and full-user nav below.
+const privacyNavItem = (pathname: string): NavigationItem => ({
+  name: 'Privacy & My Data',
+  href: '/privacy',
+  icon: ShieldCheck,
+  current: pathname === '/privacy' || pathname.startsWith('/privacy'),
+});
 
 export function useNavigation() {
   const pathname = usePathname();
@@ -70,6 +79,8 @@ export function useNavigation() {
         current:
           pathname === '/applicant' || pathname.startsWith('/applicant/'),
       });
+
+      items.push(privacyNavItem(pathname));
 
       return [{ label: '', items }];
     }
@@ -219,6 +230,9 @@ export function useNavigation() {
       icon: User,
       current: pathname === '/profile' || pathname.startsWith('/profile'),
     });
+
+    // Every full user can access/erase their own data.
+    selfServiceItems.push(privacyNavItem(pathname));
 
     const groups: NavigationGroup[] = [];
     if (workspaceItems.length > 0)
