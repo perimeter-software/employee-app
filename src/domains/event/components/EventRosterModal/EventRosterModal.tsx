@@ -20,6 +20,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/Dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/DropdownMenu';
 import { clsxm, userPhotoKey } from '@/lib/utils';
 import { useFileUrl } from '@/lib/hooks/use-file-url';
 import { SendMessageModal } from '@/domains/staffing/components/SendMessageModal/SendMessageModal';
@@ -118,9 +124,6 @@ function RosterStatusCell({
   eventId: string;
   onSuccess: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
   const { mutate, isPending } = useMutation({
     mutationFn: async (requestType: string) => {
       const res = await fetch(`/api/events/${eventId}/roster-applicants`, {
@@ -139,58 +142,54 @@ function RosterStatusCell({
     },
   });
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
   const cfg = STATUS_CFG[row.rosterStatus] ?? STATUS_CFG['Not Roster'];
   const Icon = cfg.Icon;
 
+  // Radix portals the content out of the modal's `overflow-hidden` /
+  // `overflow-auto` ancestors and flips it above the trigger when there isn't
+  // room below — otherwise a short roster clips the menu at the modal border.
   return (
-    <div ref={ref} className="relative inline-block">
-      <button
-        type="button"
-        disabled={isPending}
-        onClick={() => setOpen((o) => !o)}
-        title={`${cfg.label} — click to change`}
-        aria-label={`Roster status: ${cfg.label}. Click to change.`}
-        className={clsxm(
-          'inline-flex items-center justify-center w-7 h-7 rounded-full transition-colors disabled:opacity-50',
-          cfg.cls
-        )}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={isPending}
+          title={`${cfg.label} — click to change`}
+          aria-label={`Roster status: ${cfg.label}. Click to change.`}
+          className={clsxm(
+            'inline-flex items-center justify-center w-7 h-7 rounded-full transition-colors disabled:opacity-50',
+            cfg.cls
+          )}
+        >
+          <Icon className="w-4 h-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        collisionPadding={8}
+        className="min-w-[140px] bg-white border-slate-200 py-1"
       >
-        <Icon className="w-4 h-4" />
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-md shadow-lg min-w-[140px] py-1">
-          {ROSTER_STATUS_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => { setOpen(false); mutate(opt.value); }}
-              className={clsxm(
-                'w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center gap-2',
-                row.rosterStatus === opt.value
-                  ? 'font-semibold text-appPrimary'
-                  : 'text-slate-700'
-              )}
-            >
-              {row.rosterStatus === opt.value ? (
-                <Check className="w-3 h-3" />
-              ) : (
-                <span className="w-3" />
-              )}
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+        {ROSTER_STATUS_OPTIONS.map((opt) => (
+          <DropdownMenuItem
+            key={opt.value}
+            onSelect={() => mutate(opt.value)}
+            className={clsxm(
+              'cursor-pointer px-3 py-1.5 text-xs flex items-center gap-2 focus:bg-slate-50 focus:text-inherit',
+              row.rosterStatus === opt.value
+                ? 'font-semibold text-appPrimary'
+                : 'text-slate-700'
+            )}
+          >
+            {row.rosterStatus === opt.value ? (
+              <Check className="w-3 h-3" />
+            ) : (
+              <span className="w-3" />
+            )}
+            {opt.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
