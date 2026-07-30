@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { outsidePublicFetch } from '@/lib/api/outside-public';
+import { createOutsidePublicClient } from '@/lib/api/outside-public';
 
 const IMG_SERVER = process.env.NEXT_PUBLIC_IMAGE_SERVER ?? '';
 
@@ -24,16 +24,17 @@ export interface CompanyBranding {
  * Branding is non-critical — failures leave the page unbranded rather than
  * blocking the flow.
  */
-export function useCompanyBranding(): CompanyBranding {
+export function useCompanyBranding(tenantDb: string): CompanyBranding {
   const [branding, setBranding] = useState<CompanyBranding>({
     name: '',
     bannerUrl: null,
   });
 
   useEffect(() => {
+    if (!tenantDb) return;
     let cancelled = false;
 
-    outsidePublicFetch<{ data?: PrimaryCompany } & PrimaryCompany>(
+    createOutsidePublicClient(tenantDb)<{ data?: PrimaryCompany } & PrimaryCompany>(
       '/companies/primary'
     )
       .then((res) => {
@@ -55,7 +56,7 @@ export function useCompanyBranding(): CompanyBranding {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tenantDb]);
 
   return branding;
 }

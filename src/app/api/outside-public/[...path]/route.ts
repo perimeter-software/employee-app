@@ -10,9 +10,19 @@
 // sp1-api.
 import { NextRequest, NextResponse } from 'next/server';
 import { getSp1PublicClient } from '@/lib/sp1Client';
+import { resolvePublicTenantOrigin } from '@/lib/tenant/public-tenant';
 import type { AxiosRequestConfig, AxiosResponse } from 'axios';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * Tenant `dbName`, taken from the leading segment of the public page URL.
+ *
+ * Sent as a header rather than a query param on purpose: this proxy forwards
+ * `nextUrl.search` to sp1-api verbatim, so a query param would leak into the
+ * upstream request.
+ */
+const TENANT_HEADER = 'x-tenant-db';
 
 type Method = 'GET' | 'POST' | 'PUT';
 
@@ -68,6 +78,25 @@ async function proxy(request: NextRequest, ctx: Ctx, method: Method) {
     );
   }
 
+  // Resolve the tenant before anything else — without it we cannot tell sp1-api
+  // which tenant owns this assessment/form, and guessing would be worse than
+  // failing.
+  const tenantDb = request.headers.get(TENANT_HEADER);
+  const tenantOrigin = await resolvePublicTenantOrigin(tenantDb);
+  if (!tenantOrigin) {
+    console.error(
+      `[outside-public proxy] unresolved tenant "${tenantDb ?? '(missing)'}" for ${method} ${path}`
+    );
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'unknown-tenant',
+        message: 'This link is not valid for any known tenant.',
+      },
+      { status: 400 }
+    );
+  }
+
   const upstream = `/outside-public/${path}`;
   const search = request.nextUrl.search;
 
@@ -87,7 +116,10 @@ async function proxy(request: NextRequest, ctx: Ctx, method: Method) {
       }
     }
 
-    const sp1 = getSp1PublicClient(isMultipart ? false : 'application/json');
+    const sp1 = getSp1PublicClient(
+      tenantOrigin,
+      isMultipart ? false : 'application/json'
+    );
     const config: AxiosRequestConfig = {};
     let res: AxiosResponse;
     switch (method) {

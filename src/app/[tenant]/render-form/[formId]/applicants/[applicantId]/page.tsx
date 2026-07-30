@@ -15,7 +15,7 @@ import {
   PublicCard,
   useCompanyBranding,
 } from '@/components/public/PublicPageShell';
-import { outsidePublicFetch } from '@/lib/api/outside-public';
+import { createOutsidePublicClient } from '@/lib/api/outside-public';
 
 /* ------------------------------------------------------------------ *
  * Public candidate-facing dynamic-form page. Ported from the legacy
@@ -24,6 +24,11 @@ import { outsidePublicFetch } from '@/lib/api/outside-public';
  * /outside-public/* endpoints through our own proxy, with identity
  * proven by the OTP step. Styling follows the employee app; the request
  * shapes are unchanged from stadium-people.
+ *
+ * URL: /:tenant/render-form/:formId/applicants/:applicantId
+ * `:tenant` is the tenant's dbName. Unlike the single-tenant-per-domain
+ * source app, this app cannot infer the tenant from the host and has no
+ * session to read it from, so it travels in the link.
  * ------------------------------------------------------------------ */
 
 interface FormApplicant {
@@ -42,9 +47,17 @@ interface LoadData {
 }
 
 export default function RenderFormPage() {
-  const params = useParams<{ formId: string; applicantId: string }>();
+  const params = useParams<{
+    tenant: string;
+    formId: string;
+    applicantId: string;
+  }>();
+  const tenant = (params?.tenant as string | undefined) ?? '';
   const formId = params?.formId as string | undefined;
   const applicantId = params?.applicantId as string | undefined;
+
+  // Bound to this link's tenant; every request carries it.
+  const api = useMemo(() => createOutsidePublicClient(tenant), [tenant]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +81,7 @@ export default function RenderFormPage() {
   const [completedDate, setCompletedDate] = useState<Date | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const { bannerUrl: companyBanner } = useCompanyBranding();
+  const { bannerUrl: companyBanner } = useCompanyBranding(tenant);
 
   const fields = useMemo(
     () => (form ? getAllFieldsFromSections(form.formData?.form?.sections ?? []) : []),
@@ -88,7 +101,7 @@ export default function RenderFormPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await outsidePublicFetch<{
+        const res = await api<{
           success: boolean;
           data?: LoadData;
           error?: string;
@@ -128,13 +141,13 @@ export default function RenderFormPage() {
     return () => {
       cancelled = true;
     };
-  }, [formId, applicantId]);
+  }, [api, formId, applicantId]);
 
   const sendOtp = useCallback(async () => {
     setSendingOtp(true);
     setOtpError(null);
     try {
-      const res = await outsidePublicFetch<{
+      const res = await api<{
         success?: boolean;
         data?: { expiresAt?: string };
       }>(`/forms/${formId}/applicants/${applicantId}/send-otp`, { method: 'POST' });
@@ -149,14 +162,14 @@ export default function RenderFormPage() {
     } finally {
       setSendingOtp(false);
     }
-  }, [formId, applicantId]);
+  }, [api, formId, applicantId]);
 
   const verifyOtp = useCallback(async () => {
     if (!otp) return;
     setVerifyingOtp(true);
     setOtpError(null);
     try {
-      await outsidePublicFetch(`/forms/${formId}/applicants/${applicantId}/verify-otp`, {
+      await api(`/forms/${formId}/applicants/${applicantId}/verify-otp`, {
         method: 'POST',
         body: JSON.stringify({ otp }),
       });
@@ -166,7 +179,7 @@ export default function RenderFormPage() {
     } finally {
       setVerifyingOtp(false);
     }
-  }, [otp, formId, applicantId]);
+  }, [api, otp, formId, applicantId]);
 
   const submitForm = useCallback(async () => {
     const validation = validateAllFields(true);
@@ -180,11 +193,11 @@ export default function RenderFormPage() {
     try {
       // Save the responses onto the applicant record first, then render the
       // filled PDF and attach it — same two-step sequence as stadium-people.
-      await outsidePublicFetch(
+      await api(
         `/forms/${formId}/applicants/${applicantId}/save-responses`,
         { method: 'POST', body: JSON.stringify({ formValues }) }
       );
-      await outsidePublicFetch('/llm/dynamicForms/applicant/generate-pdf', {
+      await api('/llm/dynamicForms/applicant/generate-pdf', {
         method: 'POST',
         body: JSON.stringify({ formId, applicantId, formValues }),
       });
@@ -194,7 +207,7 @@ export default function RenderFormPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [validateAllFields, formValues, formId, applicantId]);
+  }, [api, validateAllFields, formValues, formId, applicantId]);
 
   // ---------- render ----------
 

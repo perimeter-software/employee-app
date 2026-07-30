@@ -2,6 +2,7 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import type { NextFetchEvent, NextRequest } from 'next/server';
 import { routeConfig } from './routes';
+import { isPublicRenderRoute } from './utils';
 
 // Protect everything under a configured protected prefix so nested routes
 // (e.g. /dashboard/foo) inherit the guard.
@@ -10,7 +11,9 @@ const isProtected = createRouteMatcher(
 );
 
 const clerkHandler = clerkMiddleware(async (auth, req) => {
-  if (isProtected(req)) {
+  // The public /:tenant/render-* pages must work logged out, and their leading
+  // tenant segment could otherwise collide with a protected prefix.
+  if (isProtected(req) && !isPublicRenderRoute(req.nextUrl.pathname)) {
     const { userId, redirectToSignIn } = await auth();
     // V4 supports two session types: Clerk (userId) and the Redis-backed OTP
     // email-code flow (an `otp_session_id` cookie, no Clerk userId). Let an

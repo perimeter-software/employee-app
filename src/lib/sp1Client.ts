@@ -36,11 +36,19 @@ function buildOrigin(clientDomain?: string): string {
  * unauthenticated by design (candidate-facing assessment / form links).
  *
  * No Authorization header is sent — exactly like the browser calls stadium-people
- * and gignology-v4 make. sp1-api identifies the tenant from `origin` alone, so we
- * send the configured tenant origin (there is no user session to read it from).
+ * and gignology-v4 make.
+ *
+ * @param clientDomain - REQUIRED. sp1-api identifies the tenant from `origin`
+ *   alone, and this app is multi-tenant with no session on these routes, so the
+ *   caller must resolve the tenant itself (see `resolvePublicTenantOrigin`).
+ *   Deliberately not defaulted to SP1_API_ORIGIN: silently falling back would
+ *   send every tenant's candidates to one hard-coded tenant.
  */
-export function getSp1PublicClient(contentType: string | false = 'application/json') {
-  const headers: Record<string, string> = { origin: buildOrigin() };
+export function getSp1PublicClient(
+  clientDomain: string,
+  contentType: string | false = 'application/json'
+) {
+  const headers: Record<string, string> = { origin: buildOrigin(clientDomain) };
   if (contentType !== false) headers['Content-Type'] = contentType;
   return axios.create({ baseURL: BASE_URL, headers });
 }

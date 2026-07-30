@@ -29,7 +29,7 @@ import {
   PublicCard,
   useCompanyBranding,
 } from '@/components/public/PublicPageShell';
-import { outsidePublicFetch } from '@/lib/api/outside-public';
+import { createOutsidePublicClient } from '@/lib/api/outside-public';
 
 /* ------------------------------------------------------------------ *
  * Public candidate-facing assessment-taking page. Ported from the
@@ -37,6 +37,11 @@ import { outsidePublicFetch } from '@/lib/api/outside-public';
  * employee app, not the admin app. Unauthenticated: every call goes to
  * sp1-api's /outside-public/* endpoints through our own proxy, and
  * identity is proven by the OTP step when the assessment requires it.
+ *
+ * URL: /:tenant/render-assessment/:assessmentId/applicants/:applicantId
+ * `:tenant` is the tenant's dbName. Unlike the single-tenant-per-domain
+ * source apps, this app cannot infer the tenant from the host and has no
+ * session to read it from, so it travels in the link.
  * ------------------------------------------------------------------ */
 
 interface AnswerOption {
@@ -91,10 +96,18 @@ const qkey = (q: Question, index: number) =>
 const shuffle = <T,>(arr: T[]): T[] => [...arr].sort(() => Math.random() - 0.5);
 
 export default function RenderAssessmentPage() {
-  const params = useParams<{ assessmentId: string; applicantId: string }>();
+  const params = useParams<{
+    tenant: string;
+    assessmentId: string;
+    applicantId: string;
+  }>();
+  const tenant = (params?.tenant as string | undefined) ?? '';
   const assessmentId = params?.assessmentId as string | undefined;
   const applicantId = params?.applicantId as string | undefined;
-  const lsKey = `assessment-${assessmentId}-${applicantId}`;
+  const lsKey = `assessment-${tenant}-${assessmentId}-${applicantId}`;
+
+  // Bound to this link's tenant; every request carries it.
+  const api = useMemo(() => createOutsidePublicClient(tenant), [tenant]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +143,7 @@ export default function RenderAssessmentPage() {
   const [jobDescOpen, setJobDescOpen] = useState(false);
 
   // Branding banner + time's-up modal
-  const { name: companyName, bannerUrl: companyBanner } = useCompanyBranding();
+  const { name: companyName, bannerUrl: companyBanner } = useCompanyBranding(tenant);
   const [timeoutModalOpen, setTimeoutModalOpen] = useState(false);
 
   const orderKey = `${lsKey}-order`;
@@ -150,7 +163,7 @@ export default function RenderAssessmentPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await outsidePublicFetch<{
+      const res = await api<{
         success: boolean;
         data?: LoadData;
         error?: string;
@@ -180,7 +193,7 @@ export default function RenderAssessmentPage() {
     } finally {
       setLoading(false);
     }
-  }, [assessmentId, applicantId, lsKey]);
+  }, [api, assessmentId, applicantId, lsKey]);
 
   useEffect(() => {
     load();
@@ -262,7 +275,7 @@ export default function RenderAssessmentPage() {
     setSendingOtp(true);
     setOtpError(null);
     try {
-      await outsidePublicFetch(
+      await api(
         `/assessments/${assessmentId}/applicants/${applicantId}/send-otp`,
         { method: 'POST' }
       );
@@ -279,7 +292,7 @@ export default function RenderAssessmentPage() {
     setVerifyingOtp(true);
     setOtpError(null);
     try {
-      await outsidePublicFetch(
+      await api(
         `/assessments/${assessmentId}/applicants/${applicantId}/verify-otp`,
         { method: 'POST', body: JSON.stringify({ otp: otp.trim() }) }
       );
@@ -298,7 +311,7 @@ export default function RenderAssessmentPage() {
     setStarting(true);
     setError(null);
     try {
-      await outsidePublicFetch(
+      await api(
         `/assessments/${assessmentId}/applicants/${applicantId}/start`,
         { method: 'POST' }
       );
@@ -314,7 +327,7 @@ export default function RenderAssessmentPage() {
   const recordTime = async (q: Question) => {
     const elapsedTime = Math.floor((Date.now() - questionStartRef.current) / 1000);
     try {
-      await outsidePublicFetch(
+      await api(
         `/assessments/${assessmentId}/applicants/${applicantId}/answer-time`,
         { method: 'PUT', body: JSON.stringify({ questionId: qid(q), elapsedTime }) }
       );
@@ -329,7 +342,7 @@ export default function RenderAssessmentPage() {
     try {
       const current = questions[index];
       if (current && !auto) await recordTime(current);
-      await outsidePublicFetch(
+      await api(
         `/assessments/${assessmentId}/applicants/${applicantId}/evaluate`,
         {
           method: 'PUT',
@@ -373,7 +386,7 @@ export default function RenderAssessmentPage() {
   const downloadTemplate = async () => {
     setDownloadingTemplate(true);
     try {
-      const res = await outsidePublicFetch<{ url?: string }>(
+      const res = await api<{ url?: string }>(
         `/assessments/${assessmentId}/template-link`
       );
       if (res?.url) {
@@ -401,7 +414,7 @@ export default function RenderAssessmentPage() {
     try {
       const fd = new FormData();
       fd.append('file', excelFile);
-      await outsidePublicFetch(
+      await api(
         `/assessments/${assessmentId}/applicants/${applicantId}/submit-excel`,
         { method: 'POST', body: fd }
       );
