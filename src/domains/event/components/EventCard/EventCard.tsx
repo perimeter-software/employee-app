@@ -29,6 +29,11 @@ type Props = {
   /** When true (Event Admin managing this venue), show roster numbers + a manage button. */
   canManageRoster?: boolean;
   onManageRoster?: () => void;
+  /**
+   * True when the current user (Event Admin / Client) manages this event's venue —
+   * shows an "Admin" chip next to the TODAY/UPCOMING/PAST badge.
+   */
+  managed?: boolean;
 };
 
 function RosterNumber({
@@ -121,6 +126,7 @@ export const EventCard = ({
   onClick,
   canManageRoster,
   onManageRoster,
+  managed,
 }: Props) => {
   const queryClient = useQueryClient();
   const [logoError, setLogoError] = useState(false);
@@ -282,16 +288,25 @@ export const EventCard = ({
             )}
           </div>
 
-          {/* Date status badge */}
-          {dateBadge && (
-            <span
-              className={clsxm(
-                'absolute top-3 right-3 px-2.5 py-0.5 text-[11px] font-semibold rounded-md border',
-                dateBadge.classes
+          {/* Managed-venue chip + date status badge */}
+          {(managed || dateBadge) && (
+            <div className="absolute top-3 right-3 flex items-center gap-1.5">
+              {managed && (
+                <span className="px-2.5 py-0.5 text-[11px] font-semibold rounded-md border bg-white/90 text-appPrimary border-appPrimary/30 uppercase tracking-wide">
+                  Admin
+                </span>
               )}
-            >
-              {dateBadge.label}
-            </span>
+              {dateBadge && (
+                <span
+                  className={clsxm(
+                    'px-2.5 py-0.5 text-[11px] font-semibold rounded-md border',
+                    dateBadge.classes
+                  )}
+                >
+                  {dateBadge.label}
+                </span>
+              )}
+            </div>
           )}
 
           {/* Date label */}

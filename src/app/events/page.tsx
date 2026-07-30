@@ -24,7 +24,7 @@ import {
 import { useCurrentUser } from '@/domains/user';
 // Leaf import — see the note in app/venues/page.tsx: the `utils` barrel is
 // server-only and would pull the mongodb driver into this client bundle.
-import { isEventAdmin, managedVenueSlugs } from '@/domains/user/utils/event-admin';
+import { myManagedVenueSlugs } from '@/domains/user/utils/event-admin';
 import { EventRosterModal } from '@/domains/event/components/EventRosterModal/EventRosterModal';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { clsxm } from '@/lib/utils';
@@ -91,14 +91,15 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
   const applicantId = currentUser?.applicantId;
   const isEmployee = currentUser?.userType === 'User';
 
-  // Event Admins can manage rosters for events at their clientOrgs venues.
-  const eventAdmin = isEventAdmin(currentUser);
+  // Event Admins can manage rosters for events at their clientOrgs venues. Those
+  // venues also count as the user's own venues (venue filter + My Events).
   const managedSlugs = useMemo(
-    () => managedVenueSlugs(currentUser),
+    () => myManagedVenueSlugs(currentUser),
     [currentUser]
   );
+  const hasManagedVenues = managedSlugs.size > 0;
   const canManage = (e: GignologyEvent) =>
-    eventAdmin && !!e.venueSlug && managedSlugs.has(e.venueSlug);
+    !!e.venueSlug && managedSlugs.has(e.venueSlug);
 
   // Push deep link — gignology://events/<id>/details and .../roster arrive as
   // ?eventId=<id> (optionally &view=roster). The event is almost never on the
@@ -122,7 +123,6 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
     if (!deepLinkEventId || !deepLinkEvent) return;
     const wantsRoster =
       deepLinkView === 'roster' &&
-      eventAdmin &&
       !!deepLinkEvent.venueSlug &&
       managedSlugs.has(deepLinkEvent.venueSlug);
 
@@ -139,7 +139,6 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
     deepLinkEventId,
     deepLinkEvent,
     deepLinkView,
-    eventAdmin,
     managedSlugs,
     clearDeepLink,
   ]);
@@ -153,16 +152,26 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
     });
   const incomingCoverCount = incomingCoverList.length;
 
-  const { data: staffingVenues = [] } = useQuery<VenueWithStatus[]>({
-    queryKey: ['venues', 'staffing-pool'],
+  // Same query key as the venues page so the cache is shared.
+  const { data: visibleVenues = [] } = useQuery<VenueWithStatus[]>({
+    queryKey: ['venues', 'visible'],
     queryFn: async () => {
       const res = await baseInstance.get<VenueWithStatus[]>('venues');
       if (!res.success || !res.data) return [];
-      return res.data.filter((v) => v.userVenueStatus === 'StaffingPool');
+      return res.data;
     },
     enabled: !!currentUser && isEmployee,
     staleTime: 5 * 60 * 1000,
   });
+
+  // The venue filter offers the user's own venues: staffing pool + managed.
+  const venueOptions = useMemo(
+    () =>
+      visibleVenues.filter(
+        (v) => v.userVenueStatus === 'StaffingPool' || managedSlugs.has(v.slug)
+      ),
+    [visibleVenues, managedSlugs]
+  );
 
   const {
     data: allEventsData,
@@ -206,18 +215,25 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
     readonly unknown[],
     number
   >({
-    queryKey: ['events-my', applicantId, debouncedSearch, venueSlug],
+    queryKey: [
+      'events-my',
+      applicantId,
+      debouncedSearch,
+      venueSlug,
+      hasManagedVenues,
+    ],
     queryFn: ({ pageParam }) =>
       EventApiService.fetchMyEvents({
         applicantId,
         search: debouncedSearch,
         page: pageParam,
         venueSlug,
+        includeManagedVenues: hasManagedVenues,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.pagination?.next?.page ?? undefined,
-    enabled: tab === 'my' && !!applicantId,
+    enabled: tab === 'my' && (!!applicantId || hasManagedVenues),
     staleTime: 0,
     gcTime: 0,
   });
@@ -274,10 +290,13 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
         isEmployee
           ? e.makePublicAndSendNotification === 'Yes' ||
             (e.makePublicAndSendNotification === 'No' &&
-              (e.status === 'Roster' || e.status === 'Waitlist'))
+              (e.status === 'Roster' || e.status === 'Waitlist')) ||
+            // Events at a venue the user manages are theirs regardless of their
+            // own roster status on them.
+            (!!e.venueSlug && managedSlugs.has(e.venueSlug))
           : true
       );
-  }, [myEventsData?.pages, isEmployee]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [myEventsData?.pages, isEmployee, managedSlugs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pastEvents = useMemo<GignologyEvent[]>(() => {
     if (!pastEventsData?.pages) return [];
@@ -461,7 +480,7 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
                       placeholder="All Venues"
                       displayText={
                         venueSlug
-                          ? (staffingVenues.find((v) => v.slug === venueSlug)
+                          ? (venueOptions.find((v) => v.slug === venueSlug)
                               ?.name ?? 'All Venues')
                           : 'All Venues'
                       }
@@ -469,7 +488,7 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">All Venues</SelectItem>
-                    {staffingVenues.map((v) => (
+                    {venueOptions.map((v) => (
                       <SelectItem key={v.slug} value={v.slug}>
                         {v.name}
                       </SelectItem>
@@ -522,6 +541,7 @@ function EmployeeEventsView({ imageBaseUrl }: { imageBaseUrl?: string }) {
                   key={event._id}
                   event={event}
                   imageBaseUrl={imageBaseUrl}
+                  managed={canManage(event)}
                   canManageRoster={canManage(event)}
                   onManageRoster={() => setRosterEvent(event)}
                   onClick={() => {

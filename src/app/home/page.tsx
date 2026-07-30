@@ -7,6 +7,10 @@ import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Bell, MapPin, CalendarRange, QrCode } from 'lucide-react';
 import { useCurrentUser } from '@/domains/user';
+// Leaf import — see the note in app/venues/page.tsx: the `utils` barrel is
+// server-only and would pull the mongodb driver into this client bundle.
+import { myManagedVenueSlugs } from '@/domains/user/utils/event-admin';
+import { EventApiService } from '@/domains/event';
 import { useAppUser } from '@/domains/user/hooks/useAppUser';
 import { usePageAuth } from '@/domains/shared/hooks/use-page-auth';
 import {
@@ -60,9 +64,19 @@ const HomePage: NextPage = () => {
     // than flashing a skeleton.
     refetchOnMount: 'always',
   });
+  // Venues an Event Admin manages (their clientOrgs) count as My Venues too —
+  // same rule as the venues page My Venues tab.
+  const managedSlugs = useMemo(
+    () => myManagedVenueSlugs(currentUser),
+    [currentUser]
+  );
+  const hasManagedVenues = managedSlugs.size > 0;
   const myVenuesCount = useMemo(
-    () => allVenues.filter((v) => v.userVenueStatus === 'StaffingPool').length,
-    [allVenues]
+    () =>
+      allVenues.filter(
+        (v) => v.userVenueStatus === 'StaffingPool' || managedSlugs.has(v.slug)
+      ).length,
+    [allVenues, managedSlugs]
   );
 
   // ── Roster events (upcoming + today) ─────────────────────────────────────
@@ -109,13 +123,35 @@ const HomePage: NextPage = () => {
   // "Upcoming" counts only shifts that haven't finished yet — the list above keeps
   // the 12-hour lookback so a shift in progress stays clockable, but an event that
   // already ended isn't upcoming.
-  const upcomingCount = useMemo(() => {
+  const rosterUpcomingCount = useMemo(() => {
     const now = Date.now();
     return upcomingEvents.filter((e) => {
       const end = new Date(e.eventEndTime ?? e.eventDate).getTime();
       return Number.isNaN(end) ? true : end >= now;
     }).length;
   }, [upcomingEvents]);
+
+  // Event Admins: the tile links to /events?tab=my, which also lists events at the
+  // venues they manage. Take the count straight from that query's total so the
+  // number matches the list the user lands on. Page size 1 — only the total is used.
+  const { data: myEventsTotal, isLoading: myEventsTotalLoading } = useQuery({
+    queryKey: ['events-my', 'home-count', applicantId, hasManagedVenues],
+    queryFn: async () => {
+      const res = await EventApiService.fetchMyEvents({
+        applicantId,
+        includeManagedVenues: true,
+        limit: 1,
+      });
+      return res.pagination?.total ?? 0;
+    },
+    enabled: hasManagedVenues,
+    staleTime: 2 * 60 * 1000,
+    refetchOnMount: 'always',
+  });
+
+  const upcomingCount = hasManagedVenues
+    ? (myEventsTotal ?? 0)
+    : rosterUpcomingCount;
 
   // ── Unread notifications ──────────────────────────────────────────────────
   // Mirrors the exact logic in NotificationBell.tsx
@@ -182,7 +218,7 @@ const HomePage: NextPage = () => {
             icon={CalendarRange}
             label="Upcoming"
             value={upcomingCount}
-            isLoading={eventsLoading}
+            isLoading={hasManagedVenues ? myEventsTotalLoading : eventsLoading}
             href="/events?tab=my"
           />
           <StatCard

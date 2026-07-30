@@ -13,7 +13,7 @@ import { useCurrentUser } from '@/domains/user';
 // Import the leaf module, NOT the `utils` barrel — the barrel re-exports
 // mongo-user-utils / mongo-attachment-utils, which are `server-only` and pull
 // the `mongodb` driver (and its `net` dependency) into the client bundle.
-import { isEventAdmin, managedVenueSlugs } from '@/domains/user/utils/event-admin';
+import { myManagedVenueSlugs } from '@/domains/user/utils/event-admin';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 import { baseInstance } from '@/lib/api/instance';
 import { clsxm } from '@/lib/utils';
@@ -253,9 +253,14 @@ function EmployeeVenuesView() {
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [geoResolved, setGeoResolved] = useState(false);
 
-  // Event Admins: venues they manage (their clientOrgs) get a "Managed by you" flag.
-  const eventAdmin = isEventAdmin(currentUser);
-  const managedSlugs = useMemo(() => managedVenueSlugs(currentUser), [currentUser]);
+  // Event Admins: venues they manage (their clientOrgs) get a "Managed by you"
+  // flag and count as My Venues alongside the staffing-pool ones.
+  const managedSlugs = useMemo(
+    () => myManagedVenueSlugs(currentUser),
+    [currentUser]
+  );
+  const isMyVenue = (v: VenueWithStatus) =>
+    v.userVenueStatus === 'StaffingPool' || managedSlugs.has(v.slug);
 
   useEffect(() => {
     handleLocationServices().then(({ locationInfo }) => {
@@ -341,7 +346,7 @@ function EmployeeVenuesView() {
     if (tab === 'all') {
       list = nearbyVenues.length > 0 ? nearbyVenues : allVisibleVenues;
     } else if (tab === 'my') {
-      list = allVisibleVenues.filter((v) => v.userVenueStatus === 'StaffingPool');
+      list = allVisibleVenues.filter(isMyVenue);
     } else {
       list = allVisibleVenues.filter((v) => v.userVenueStatus === 'Pending');
     }
@@ -354,9 +359,9 @@ function EmployeeVenuesView() {
         ? a.name.localeCompare(b.name)
         : b.name.localeCompare(a.name)
     );
-  }, [nearbyVenues, allVisibleVenues, tab, search, sortOrder]);
+  }, [nearbyVenues, allVisibleVenues, tab, search, sortOrder, managedSlugs]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const myVenueCount = allVisibleVenues.filter((v) => v.userVenueStatus === 'StaffingPool').length;
+  const myVenueCount = allVisibleVenues.filter(isMyVenue).length;
   const pendingCount = allVisibleVenues.filter((v) => v.userVenueStatus === 'Pending').length;
   const tabCount = (t: TabValue) =>
     t === 'my' ? myVenueCount : t === 'pending' ? pendingCount : null;
@@ -483,7 +488,7 @@ function EmployeeVenuesView() {
                     key={venue._id}
                     venue={venue}
                     imageBaseUrl={primaryCompany?.imageUrl}
-                    managed={eventAdmin && managedSlugs.has(venue.slug)}
+                    managed={managedSlugs.has(venue.slug)}
                     onClick={() => setSelectedVenue(venue)}
                   />
                 ))}

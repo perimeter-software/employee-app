@@ -15,6 +15,12 @@ export interface FetchEventsParams {
   limit?: number;
   /** venueSlug to filter by; empty/undefined means show all accessible venues */
   venueSlug?: string;
+  /**
+   * Widen "my events" with the events of the venues the caller manages (an Event
+   * Admin's clientOrgs), not just the ones they are rostered on. The managed
+   * venues themselves are resolved server-side from the user doc.
+   */
+  includeManagedVenues?: boolean;
 }
 
 export interface RosterEventsParams {
@@ -204,16 +210,19 @@ export class EventApiService {
     page = 1,
     limit = 10,
     venueSlug = '',
+    includeManagedVenues = false,
   }: FetchEventsParams): Promise<EventListPage> {
-    if (!applicantId) return { data: [] };
-    const filterParts = [`timeFrame:Current`, `eventType:Event`, `applicants.id:${applicantId}`];
+    if (!applicantId && !includeManagedVenues) return { data: [] };
+    const filterParts = [`timeFrame:Current`, `eventType:Event`];
+    if (applicantId) filterParts.push(`applicants.id:${applicantId}`);
     if (venueSlug) filterParts.push(`venueSlug:${venueSlug}`);
     const qs = new URLSearchParams({
       filter: filterParts.join(','),
       limit: String(limit),
       sort: 'eventDate:asc',
       page: String(page),
-      applicantId,
+      ...(applicantId && { applicantId }),
+      ...(includeManagedVenues && { includeManagedVenues: 'true' }),
       ...(search && { search }),
     });
     const res = await baseInstance.get<EventListPage>(`/events?${qs}`);

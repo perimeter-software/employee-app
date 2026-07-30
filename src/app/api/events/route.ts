@@ -14,6 +14,7 @@ import {
   getRostersByEventIds,
   type EventRosterEntry,
 } from '@/domains/event/utils/event-roster';
+import { getRosterVenueAccess } from '@/domains/event/utils/roster-access';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,23 @@ function parseFilter(filterStr: string): Record<string, unknown> {
   return options;
 }
 
+/**
+ * ANDs `cond` onto the query without clobbering an `$or` a previous step wrote
+ * (search / roster visibility both use the top-level `$or`).
+ */
+function addCondition(
+  options: Record<string, unknown>,
+  cond: Record<string, unknown>
+) {
+  const and = (options.$and as unknown[]) ?? [];
+  if (options.$or) {
+    and.push({ $or: options.$or });
+    delete options.$or;
+  }
+  and.push(cond);
+  options.$and = and;
+}
+
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 async function getEventsHandler(request: AuthenticatedRequest) {
@@ -79,6 +97,10 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       Math.max(1, parseInt(searchParams.get('limit') ?? '10', 10))
     );
     const sortParam = searchParams.get('sort') ?? 'eventDate:asc';
+    // My Events: also return events at the venues an Event Admin manages, not just
+    // the ones the caller is rostered on.
+    const includeManagedVenues =
+      searchParams.get('includeManagedVenues') === 'true';
 
     // Parse filter string into mongo query
     const options = parseFilter(filterStr);
@@ -118,11 +140,25 @@ async function getEventsHandler(request: AuthenticatedRequest) {
           : { $lt: cutoffMidnight };
     }
 
+    const isEmployee = !user.userType || user.userType === 'User';
+    const isClient = user.userType === 'Client';
+    const requestApplicantId =
+      applicantId || (user.applicantId ? String(user.applicantId) : '');
+
+    // ── Managed venues (Event Admin clientOrgs) ───────────────────────────────
+    // Event Admins manage the venues in their clientOrgs; those count as the
+    // user's own venues, so their events are in scope exactly like the venues the
+    // user is in the staffing pool for.
+    const managedSlugs = isEmployee
+      ? [...(await getRosterVenueAccess(db, user)).slugs]
+      : [];
+
     // ── applicants.id + applicants.status → event _id set ────────────────────
     // Roster entries live in the `eventroster` collection, so these dotted keys can no
     // longer resolve against the events collection. Resolve them to the set of event
     // ids whose roster matches, then constrain events by _id (mirrors the backend's
-    // resolveApplicantsOptions).
+    // resolveApplicantsOptions). With `includeManagedVenues` the roster constraint is
+    // widened to "on my roster OR at a venue I manage".
     const applicantIdFilter = options['applicants.id'] as string | undefined;
     const applicantStatusFilter = options['applicants.status'] as
       | string
@@ -132,18 +168,32 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       if (applicantIdFilter) rosterFilter.id = applicantIdFilter;
       if (applicantStatusFilter) rosterFilter.status = applicantStatusFilter;
       const matchedEventIds = await findRosterEventIds(db, rosterFilter);
-      options._id = { $in: matchedEventIds };
+      if (includeManagedVenues && managedSlugs.length > 0) {
+        addCondition(options, {
+          $or: [
+            { _id: { $in: matchedEventIds } },
+            { venueSlug: { $in: managedSlugs } },
+          ],
+        });
+      } else {
+        options._id = { $in: matchedEventIds };
+      }
       delete options['applicants.id'];
       delete options['applicants.status'];
+    } else if (includeManagedVenues && managedSlugs.length > 0) {
+      // No roster filter to widen (an Event Admin without an applicant record):
+      // managed venues are the whole result set.
+      addCondition(options, { venueSlug: { $in: managedSlugs } });
     }
 
-    // ── Employee / Client scoping ─────────────────────────────────────────────
-    const isEmployee = !user.userType || user.userType === 'User';
-    const isClient = user.userType === 'Client';
-    const requestApplicantId =
-      applicantId || (user.applicantId ? String(user.applicantId) : '');
-
-    if (isEmployee && requestApplicantId && !options.venueSlug) {
+    // ── Employee venue scoping ───────────────────────────────────────────────
+    // Employees only see events at their own venues: the ones they are in the
+    // staffing pool for plus the ones they manage as an Event Admin.
+    if (
+      isEmployee &&
+      (requestApplicantId || managedSlugs.length > 0) &&
+      !options.venueSlug
+    ) {
       let staffingPoolSlugs: string[] = [];
 
       if (ObjectId.isValid(requestApplicantId)) {
@@ -160,14 +210,18 @@ async function getEventsHandler(request: AuthenticatedRequest) {
           .map((v) => v.venueSlug as string);
       }
 
-      if (staffingPoolSlugs.length === 0) {
+      const ownVenueSlugs = [
+        ...new Set([...staffingPoolSlugs, ...managedSlugs]),
+      ];
+
+      if (ownVenueSlugs.length === 0) {
         return NextResponse.json(
           { success: true, data: { data: [], pagination: {} } },
           { status: 200 }
         );
       }
 
-      options.venueSlug = { $in: staffingPoolSlugs };
+      options.venueSlug = { $in: ownVenueSlugs };
     }
 
     // ── Client venue scoping ──────────────────────────────────────────────────
@@ -225,20 +279,19 @@ async function getEventsHandler(request: AuthenticatedRequest) {
         id: requestApplicantId,
         status: { $in: ['Roster', 'Waitlist'] },
       });
-      const visibilityOr = [
+      const visibilityOr: Record<string, unknown>[] = [
         { makePublicAndSendNotification: { $ne: 'No' } },
         {
           makePublicAndSendNotification: { $eq: 'No' },
           _id: { $in: privateVisibleIds },
         },
       ];
-
-      if (options.$or) {
-        options.$and = [{ $or: options.$or }, { $or: visibilityOr }];
-        delete options.$or;
-      } else {
-        options.$or = visibilityOr;
+      // Event Admins see every event at a venue they manage, private or not.
+      if (managedSlugs.length > 0) {
+        visibilityOr.push({ venueSlug: { $in: managedSlugs } });
       }
+
+      addCondition(options, { $or: visibilityOr });
     }
 
     // ── Sort ─────────────────────────────────────────────────────────────────

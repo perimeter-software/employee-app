@@ -16,6 +16,21 @@ export function managedVenueSlugs(user?: { clientOrgs?: ClientOrg[] } | null): S
   return new Set(orgs.map((o) => o.slug).filter((s): s is string => !!s));
 }
 
+/**
+ * Managed venue slugs, but only for the roles that actually get managed-venue
+ * affordances (Event Admin / Client). Empty for a plain employee even if the
+ * user doc happens to carry `clientOrgs`.
+ *
+ * Managed venues count as "My Venues" — they show up in the venues page My
+ * Venues tab, the events page venue filter, My Events, and the Home stats.
+ */
+export function myManagedVenueSlugs(
+  user: (Pick<EnhancedUser, 'userType' | 'employeeType'> & { clientOrgs?: ClientOrg[] }) | undefined | null
+): Set<string> {
+  if (!isEventAdmin(user) && user?.userType !== 'Client') return new Set();
+  return managedVenueSlugs(user);
+}
+
 /** True when the given user can manage rosters for `venueSlug`. */
 export function canManageEventVenue(
   user: (Pick<EnhancedUser, 'userType' | 'employeeType'> & { clientOrgs?: ClientOrg[] }) | undefined | null,

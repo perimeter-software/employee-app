@@ -40,7 +40,7 @@ import { isEventCoverWindowOpen } from '@/domains/event/utils/event-cover-window
 import { useEventClockIn, useEventClockOut } from '@/domains/event/hooks';
 import { useCurrentUser } from '@/domains/user';
 // Leaf import — the `utils` barrel is server-only (mongodb driver).
-import { isEventAdmin, managedVenueSlugs } from '@/domains/user/utils/event-admin';
+import { myManagedVenueSlugs } from '@/domains/user/utils/event-admin';
 import { EventRosterModal } from '@/domains/event/components/EventRosterModal/EventRosterModal';
 import { clsxm } from '@/lib/utils';
 
@@ -349,11 +349,10 @@ export const EventDetailView = ({
   const [selectedPosition, setSelectedPosition] = useState(DEFAULT_POSITION);
   const [rosterOpen, setRosterOpen] = useState(false);
 
-  // Event Admins can open the roster for events at venues they manage.
+  // Event Admins (and Clients) can open the roster for events at venues they manage.
   const canManageRoster =
-    isEventAdmin(currentUser) &&
     !!initialEvent.venueSlug &&
-    managedVenueSlugs(currentUser).has(initialEvent.venueSlug);
+    myManagedVenueSlugs(currentUser).has(initialEvent.venueSlug);
 
   useEffect(() => {
     setDescExpanded(false);
@@ -678,16 +677,25 @@ export const EventDetailView = ({
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-slate-900/20 via-slate-900/50 to-slate-950/90" />
 
-          {/* TODAY / UPCOMING / PAST chip */}
-          {dateChip && (
-            <span
-              className={clsxm(
-                'absolute top-4 left-4 px-2.5 py-0.5 text-[11px] font-bold rounded-md',
-                dateChip.classes
+          {/* TODAY / UPCOMING / PAST chip + managed-venue chip */}
+          {(dateChip || canManageRoster) && (
+            <div className="absolute top-4 left-4 flex items-center gap-1.5">
+              {dateChip && (
+                <span
+                  className={clsxm(
+                    'px-2.5 py-0.5 text-[11px] font-bold rounded-md',
+                    dateChip.classes
+                  )}
+                >
+                  {dateChip.label}
+                </span>
               )}
-            >
-              {dateChip.label}
-            </span>
+              {canManageRoster && (
+                <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-md bg-white/90 text-appPrimary uppercase tracking-wide">
+                  Admin
+                </span>
+              )}
+            </div>
           )}
 
           {/* Content */}
