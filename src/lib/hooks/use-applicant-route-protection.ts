@@ -9,7 +9,8 @@ import { useMinStageToOnboarding } from '@/domains/applicant-onboarding/hooks/us
 import type { ApplicantSubType } from '@/domains/user/types';
 
 // Routes that are always accessible to any authenticated session
-const AUTH_ROUTES = ['/', '/api/auth'];
+// (/terms is legal copy linked from the footer on every screen, so it stays open)
+const AUTH_ROUTES = ['/', '/api/auth', '/terms'];
 
 // Routes accessible to applicant-only sessions with status="Employee"
 const EMPLOYEE_APPLICANT_ROUTES = ['/payroll', '/paycheck-stubs', '/applicant'];

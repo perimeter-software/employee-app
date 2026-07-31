@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import {
@@ -2017,9 +2018,9 @@ const PayrollPageContent: React.FC = () => {
               <button className="hover:text-gray-600 transition-colors">
                 Privacy Policy
               </button>
-              <button className="hover:text-gray-600 transition-colors">
+              <Link href="/terms" className="hover:text-gray-600 transition-colors">
                 Terms of Service
-              </button>
+              </Link>
               <button className="hover:text-gray-600 transition-colors">
                 Help &amp; Support
               </button>
