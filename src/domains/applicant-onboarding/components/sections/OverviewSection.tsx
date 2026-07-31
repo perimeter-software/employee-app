@@ -19,16 +19,12 @@ import { clsxm } from '@/lib/utils';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import { useApplicantOverviewInfo } from '../../hooks/use-applicant-overview-info';
 
-const APPLE_STORE_URL =
-  'https://apps.apple.com/us/app/gignology-employee-mobile-app/id6467892499';
-const GOOGLE_STORE_URL = 'https://play.google.com/store/apps/details?id=com.gigreactcli';
-
 interface Props {
   companyType?: string;
   currentApplicant?: { applicant?: unknown } | null;
 }
 
-const OverviewSection: React.FC<Props> = ({ companyType, currentApplicant }) => {
+const OverviewSection: React.FC<Props> = ({ currentApplicant }) => {
   const { applicant, setActiveStep } = useNewApplicantContext();
   const {
     profileCompletion,
@@ -42,39 +38,15 @@ const OverviewSection: React.FC<Props> = ({ companyType, currentApplicant }) => 
     assessmentLinks,
     recommendedJobCount,
   } = useApplicantOverviewInfo({
-    currentApplicant: currentApplicant as { applicant?: import('../../types').ApplicantRecord | null } | null | undefined,
+    currentApplicant: currentApplicant as
+      | { applicant?: import('../../types').ApplicantRecord | null }
+      | null
+      | undefined,
     applicant,
   });
 
-  const showAppPromo = applicant?.status === 'Employee' && companyType === 'Venue';
-
   return (
     <div className="my-4 flex flex-col gap-4">
-      {showAppPromo && (
-        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-600 to-sky-400 p-6 text-center text-white shadow-lg">
-          <h2 className="mb-2 text-xl font-semibold">Get Our Mobile App</h2>
-          <p className="mb-4 text-sm opacity-90">Manage your venues and events on the go</p>
-          <div className="flex flex-wrap justify-center gap-3">
-            <a
-              href={APPLE_STORE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg bg-white/95 px-5 py-3 text-sm font-medium text-gray-800 shadow transition hover:bg-white"
-            >
-              App Store
-            </a>
-            <a
-              href={GOOGLE_STORE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg bg-white/95 px-5 py-3 text-sm font-medium text-gray-800 shadow transition hover:bg-white"
-            >
-              Google Play
-            </a>
-          </div>
-        </div>
-      )}
-
       {/* Profile card */}
       <OverviewCard
         onClick={() => setActiveStep(2)}
@@ -137,11 +109,15 @@ const OverviewSection: React.FC<Props> = ({ companyType, currentApplicant }) => 
           {isLoadingFiltered ? (
             <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
           ) : (
-            <Badge className="bg-purple-100 text-purple-700">{recommendedJobCount}</Badge>
+            <Badge className="bg-purple-100 text-purple-700">
+              {recommendedJobCount}
+            </Badge>
           )}
         </div>
         {!resumeDataAvailable && (
-          <p className="mt-2 text-xs text-amber-700">Resume Info Not Available</p>
+          <p className="mt-2 text-xs text-amber-700">
+            Resume Info Not Available
+          </p>
         )}
       </OverviewCard>
 
@@ -163,12 +139,18 @@ const OverviewSection: React.FC<Props> = ({ companyType, currentApplicant }) => 
           <div className="flex items-center justify-between">
             <span className="text-gray-500">Interviews</span>
             <Badge className="bg-orange-100 text-orange-700">
-              {totalPendingInterviews ? `${totalPendingInterviews} Pending` : '0'}
+              {totalPendingInterviews
+                ? `${totalPendingInterviews} Pending`
+                : '0'}
             </Badge>
           </div>
           <div className="flex flex-wrap gap-2 pt-1 text-xs text-amber-700">
-            {!!(applicant as { availableAutoSchedulingJobs?: unknown[] } | null | undefined)
-              ?.availableAutoSchedulingJobs?.length && (
+            {!!(
+              applicant as
+                | { availableAutoSchedulingJobs?: unknown[] }
+                | null
+                | undefined
+            )?.availableAutoSchedulingJobs?.length && (
               <span>Interview Scheduling Available</span>
             )}
             {canStartAIInterview && <span>AI Screening Available</span>}
