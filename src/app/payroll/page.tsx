@@ -40,6 +40,7 @@ import {
   UnauthenticatedState,
 } from '@/components/shared/PageProtection';
 import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
+import { useSupportEmail } from '@/domains/company/hooks/use-support-email';
 import { useCurrentUser } from '@/domains/user';
 import { usePaycheckStubs } from '@/domains/paycheck-stubs';
 import { useEmployeePayrollHistory } from '@/domains/payroll';
@@ -1398,6 +1399,7 @@ const PayrollPageContent: React.FC = () => {
   const { data: primaryCompany, isLoading: companyLoading } =
     usePrimaryCompany();
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const supportEmail = useSupportEmail();
   const applicantId = currentUser?.applicantId;
   const isPrism = primaryCompany?.peoIntegration === 'Prism';
 
@@ -2021,9 +2023,12 @@ const PayrollPageContent: React.FC = () => {
               <Link href="/terms" className="hover:text-gray-600 transition-colors">
                 Terms of Service
               </Link>
-              <button className="hover:text-gray-600 transition-colors">
+              <a
+                href={`mailto:${supportEmail}`}
+                className="hover:text-gray-600 transition-colors"
+              >
                 Help &amp; Support
-              </button>
+              </a>
             </div>
           </footer>
         </div>

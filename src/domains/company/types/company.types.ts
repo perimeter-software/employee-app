@@ -21,5 +21,6 @@ export type Company = {
   onboardingCompletionText?: string; // HTML content shown on the Congratulations step
   name?: string;
   companyEmail?: string;
+  supportEmail?: string; // Address behind the "Help & Support" links; falls back to SUPPORT_EMAIL_FALLBACK
   attachments?: CompanyAttachment[];
 };

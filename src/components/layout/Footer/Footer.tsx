@@ -2,9 +2,11 @@
 
 import React from "react";
 import Link from "next/link";
+import { useSupportEmail } from "@/domains/company/hooks/use-support-email";
 
 const Footer: React.FC = () => {
   const currentYear = new Date().getFullYear();
+  const supportEmail = useSupportEmail();
 
   return (
     <footer className="bg-white border-t border-gray-200 mt-auto">
@@ -36,12 +38,12 @@ const Footer: React.FC = () => {
             >
               Terms of Service
             </Link>
-            <Link
-              href="/help"
+            <a
+              href={`mailto:${supportEmail}`}
               className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors"
             >
               Help & Support
-            </Link>
+            </a>
           </div>
         </div>
       </div>
