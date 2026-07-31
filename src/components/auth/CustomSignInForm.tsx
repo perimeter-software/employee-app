@@ -424,6 +424,11 @@ export function CustomSignInForm({ redirectUrl }: { redirectUrl: string }) {
         Continue with Apple
       </Button>
 
+      <p className="text-center text-xs text-gray-500">
+        Signing in with Apple? Choose &ldquo;Share My Email&rdquo; so we can
+        match your account.
+      </p>
+
       <div className="relative">
         <div className="absolute inset-0 flex items-center">
           <span className="w-full border-t" />
