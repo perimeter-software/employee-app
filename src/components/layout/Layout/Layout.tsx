@@ -1,6 +1,6 @@
 "use client";
 
-import React, { ReactNode } from "react";
+import React, { ReactNode, useEffect } from "react";
 import Head from "next/head";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
@@ -10,6 +10,15 @@ import { clsxm } from "@/lib/utils";
 import { useApplicantRouteProtection } from "@/lib/hooks/use-applicant-route-protection";
 import { AuthLoadingState } from "@/components/shared/PageProtection/AuthLoadingState";
 import { usePageAuth } from "@/domains/shared/hooks/use-page-auth";
+
+// App Router unmounts and remounts the Layout on every navigation, so its auth
+// hooks re-run from scratch each time and can report "loading" for a frame or
+// two before the cached session settles. Blocking on that repaints the whole
+// screen as a spinner mid-navigation.
+//
+// Module scope (not state) on purpose: it has to survive the remount. It is
+// reset for free on a real logout, because that is a full page navigation.
+let sessionResolvedOnce = false;
 
 interface LayoutProps {
   children: ReactNode;
@@ -60,10 +69,27 @@ const Layout: React.FC<LayoutProps> = ({
   // otherwise sit on their own spinner forever when the session is expired,
   // because their data requests just keep 401-ing. usePageAuth is route-aware:
   // on public routes (/, /terms, /sign-in) it is a no-op.
-  const { isLoading: isSessionLoading, shouldShowContent } = usePageAuth();
+  const {
+    isLoading: isSessionLoading,
+    shouldShowContent,
+    isAuthenticated,
+  } = usePageAuth();
 
   // Protect routes for applicant-only sessions and get loading state
   const { isLoading: isAuthLoading } = useApplicantRouteProtection();
+
+  useEffect(() => {
+    if (isAuthenticated) sessionResolvedOnce = true;
+  }, [isAuthenticated]);
+
+  // Full-screen loader only on the first entry into the app, when there is
+  // genuinely nothing to show yet. Once a session has resolved, navigations
+  // render the page immediately and let it show its own skeleton — and if the
+  // session has since died, usePageAuth redirects to login regardless of what
+  // is on screen.
+  const showSessionLoader =
+    !sessionResolvedOnce &&
+    (isSessionLoading || !shouldShowContent || isAuthLoading);
 
   // Generate full title
   const fullTitle =
@@ -80,9 +106,7 @@ const Layout: React.FC<LayoutProps> = ({
     nofollow ? "nofollow" : "follow",
   ].join(", ");
 
-  // Show loading state while the session resolves / a redirect to login is
-  // pending, and while user and company data are loading
-  if (isSessionLoading || !shouldShowContent || isAuthLoading) {
+  if (showSessionLoader) {
     return (
       <AuthLoadingState title="Loading" message="Preparing your account..." />
     );
