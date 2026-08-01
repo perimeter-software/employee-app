@@ -15,6 +15,15 @@ export type AppUserState = {
   user: Auth0SessionUser | null | undefined;
   isLoading: boolean;
   error: Error | undefined;
+  /**
+   * True once auth has actually produced an answer. `user` alone can't say:
+   * `undefined` means both "still resolving" and "no session", and treating a
+   * transient frame of the first as the second sends a signed-in user through
+   * a hard redirect to login.
+   *
+   * Only act on a missing session when this is true.
+   */
+  isResolved: boolean;
 };
 
 // Module-level pick — IS_V4 is a build-time constant, so hook identity is

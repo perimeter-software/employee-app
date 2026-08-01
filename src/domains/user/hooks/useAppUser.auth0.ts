@@ -12,5 +12,8 @@ export function useAppUserAuth0(): AppUserState {
     user: user as Auth0SessionUser | null | undefined,
     isLoading,
     error,
+    // Auth0's provider fetches once and holds the result in context, so
+    // "not loading" is the same as "settled".
+    isResolved: !isLoading,
   };
 }
