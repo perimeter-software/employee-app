@@ -4,10 +4,40 @@ import { NextRequest, NextResponse } from 'next/server';
 import { handleLogout } from '@auth0/nextjs-auth0';
 import redisService from '@/lib/cache/redis-client';
 import { IS_V4 } from '@/lib/config/auth-mode';
+import { normalizeReturnTo } from '@/lib/auth/return-to';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Builds the post-logout landing path: always the login screen (`/`), plus the
+ * `expired` notice and the `returnTo` path when the caller passed them (the
+ * client-side forced logout does, so the user is told why and resumes where
+ * they were after signing back in).
+ *
+ * `returnTo` is accepted only as a same-origin absolute path — never a full
+ * URL or a protocol-relative `//host` — so it can't be used as an open redirect.
+ */
+function buildLoginPath(request: NextRequest): string {
+  const params = new URLSearchParams();
+
+  if (request.nextUrl.searchParams.get('expired') === '1') {
+    params.set('expired', '1');
+  }
+
+  // normalizeReturnTo rejects anything that isn't a relative same-origin path.
+  // `set` re-encodes it exactly once.
+  const returnTo = normalizeReturnTo(request.nextUrl.searchParams.get('returnTo'));
+  if (returnTo) {
+    params.set('returnTo', returnTo);
+  }
+
+  const query = params.toString();
+  return query ? `/?${query}` : '/';
+}
+
 export async function GET(request: NextRequest) {
+  const loginPath = buildLoginPath(request);
+
   // V4: Clerk owns the session. Revoke all sessions for the signed-in user
   // server-side (so the cookie stops being valid even if the client never
   // calls signOut), then redirect home. Clerk itself clears the __session
@@ -50,7 +80,7 @@ export async function GET(request: NextRequest) {
     const redirectBase = forwardedHost
       ? `${forwardedProto}://${forwardedHost}`
       : request.nextUrl.origin;
-    const response = NextResponse.redirect(new URL('/', redirectBase));
+    const response = NextResponse.redirect(new URL(loginPath, redirectBase));
 
     // Clear Clerk + OTP cookies so the browser doesn't hold stale auth.
     ['__session', '__clerk_db_jwt', '__client_uat', 'otp_session_id'].forEach(
@@ -257,13 +287,14 @@ export async function GET(request: NextRequest) {
 
     if (locationHeader) {
       redirectUrl = new URL(locationHeader, request.url);
-      // If it's pointing to our domain (not Auth0's), ensure clean URL without parameters
+      // If it's pointing to our domain (not Auth0's), replace whatever Auth0
+      // put on the query string with our own login params (expired/returnTo)
       if (redirectUrl.pathname === '/') {
-        redirectUrl.search = ''; // Remove all query parameters
+        redirectUrl.search = new URL(loginPath, request.url).search;
       }
     } else {
-      // Fallback: redirect to clean home page
-      redirectUrl = new URL('/', request.url);
+      // Fallback: redirect to the login screen
+      redirectUrl = new URL(loginPath, request.url);
     }
 
     // Convert Response to NextResponse to access cookies
@@ -327,8 +358,8 @@ export async function GET(request: NextRequest) {
     console.error('Error during logout:', error);
 
     // Even if there's an error, try to clear cookies and redirect
-    // Redirect to clean home page
-    const redirectUrl = new URL('/', request.url);
+    // Redirect to the login screen
+    const redirectUrl = new URL(loginPath, request.url);
     const response = NextResponse.redirect(redirectUrl);
 
     // Clear all auth cookies

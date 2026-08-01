@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import './compatibility.css';
@@ -8,6 +9,7 @@ import { GlobalErrorBoundary } from '@/components/shared/GlobalErrorBoundary';
 import { Toaster } from 'sonner';
 import Script from 'next/script';
 import { NotificationsInit } from '@/components/shared/NotificationsInit';
+import { NavigationProgress } from '@/components/shared/NavigationProgress';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -35,6 +37,11 @@ export default function RootLayout({
             <ReactQueryProvider>
               <UserProvider>
                 <NotificationsInit />
+                {/* Suspense: reads useSearchParams, which would otherwise
+                    opt every page out of static rendering at build time. */}
+                <Suspense fallback={null}>
+                  <NavigationProgress />
+                </Suspense>
                 {children}
 
                 <Toaster
