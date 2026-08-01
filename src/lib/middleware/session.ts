@@ -3,8 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@auth0/nextjs-auth0';
 import { AuthenticatedRequest, RouteHandler } from './types';
 import { Auth0SessionUser, EnhancedUser } from '@/domains/user';
+import { TenantInfo } from '@/domains/tenant';
 import redisService from '@/lib/cache/redis-client';
 import { env } from '@/lib/config';
+import { IS_V4 } from '@/lib/config/auth-mode';
+import { resolveClerkAppUser } from '@/lib/auth/clerk-server';
 
 /**
  * Get user session from either Auth0 or OTP
@@ -14,10 +17,17 @@ async function getUserSession(
   request: NextRequest
 ): Promise<Auth0SessionUser | null> {
   try {
-    // First, try Auth0 session
-    const auth0Session = await getSession();
-    if (auth0Session?.user?.email) {
-      return auth0Session.user as Auth0SessionUser;
+    // V4: Clerk owns the session
+    if (IS_V4) {
+      const clerkUser = await resolveClerkAppUser();
+      if (clerkUser?.email) return clerkUser;
+      // Fall through to OTP session check
+    } else {
+      // Auth0 (legacy)
+      const auth0Session = await getSession();
+      if (auth0Session?.user?.email) {
+        return auth0Session.user as Auth0SessionUser;
+      }
     }
 
     // If no Auth0 session, try OTP session
@@ -40,6 +50,10 @@ async function getUserSession(
       userType?: string;
       employmentStatus?: string;
       status?: string;
+      applicantStatus?: string;
+      acknowledgedDate?: string | null;
+      tenant?: TenantInfo | null;
+      availableTenants?: TenantInfo[];
       createdAt: string;
     }>(`otp_session:${otpSessionId}`);
 
@@ -95,8 +109,10 @@ async function getUserSession(
       }
     }
 
-    // Convert OTP session to Auth0-compatible format
-    // Note: tenant objects are populated in withEnhancedAuthAPI when needed
+    // Convert OTP session to Auth0-compatible format.
+    // Tenant info is stored directly in the session so every wrapper
+    // (withAuthAPI and withEnhancedAuthAPI alike) has request.user.tenant
+    // without needing an extra Redis lookup or DB scan.
     return {
       sub: sessionData.userId,
       email: sessionData.email,
@@ -110,6 +126,10 @@ async function getUserSession(
       isApplicantOnly: sessionData.isApplicantOnly ?? false,
       employmentStatus: sessionData.employmentStatus,
       status: sessionData.status,
+      applicantStatus: sessionData.applicantStatus,
+      acknowledgedDate: sessionData.acknowledgedDate,
+      tenant: sessionData.tenant ?? undefined,
+      availableTenants: sessionData.availableTenants ?? [],
       ...(sessionData.userType && { userType: sessionData.userType }),
     } as Auth0SessionUser;
   } catch (error) {
@@ -245,7 +265,7 @@ export function withEnhancedAuthAPI<T = unknown>(
           if (
             cachedTenantData?.tenant &&
             cachedTenantData.isApplicantOnly === true &&
-            cachedTenantData.tenant.url
+            cachedTenantData.tenant.dbName
           ) {
             // Use cached tenant data for applicant
             enhancedUser = {

@@ -4,12 +4,11 @@ export interface TimeClockSettings {
   // Add other time clock settings here as needed
 }
 
-export interface PureBlueConfig {
-  apiUrl?: string;
-  chatUrl?: string;
-  apiKey?: string;
-  personaSlug?: string;
-}
+export type CompanyAttachment = {
+  filename: string;
+  docType?: string;
+  uploadDate?: string;
+};
 
 export type Company = {
   _id: string;
@@ -18,4 +17,10 @@ export type Company = {
   timeClockSettings: TimeClockSettings;
   peoIntegration?: string; // PEO integration type (e.g., 'Helm', 'Prism')
   companyType?: string; // Company type (e.g., 'Venue')
+  acknowledgmentText?: string; // HTML content shown in the Acknowledgement onboarding step
+  onboardingCompletionText?: string; // HTML content shown on the Congratulations step
+  name?: string;
+  companyEmail?: string;
+  supportEmail?: string; // Address behind the "Help & Support" links; falls back to SUPPORT_EMAIL_FALLBACK
+  attachments?: CompanyAttachment[];
 };

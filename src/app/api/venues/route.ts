@@ -5,6 +5,7 @@ import { getTenantAwareConnection } from '@/lib/db';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
 import { getApplicantId } from '@/domains/venue/utils/mongo-venue-utils';
+import { getRosterVenueAccess } from '@/domains/event/utils/roster-access';
 
 type ApplicantVenueEntry = {
   venueSlug: string;
@@ -24,6 +25,7 @@ type VenueDoc = {
   state?: string;
   zip?: string;
   distanceInMiles?: number;
+  otherUrls?: string[];
 };
 
 // Mirrors appendHiddenVenuesFilter — excludes venues with ShowVenueOnWebsite=No
@@ -168,13 +170,22 @@ async function getVenuesHandler(request: AuthenticatedRequest) {
       }
     }
 
+    // Venues the caller manages (Event Admin / Client clientOrgs). These count as
+    // "My Venues" for Event Admins, so they must always come back — even when the
+    // venue is hidden from the website or the admin's own applicant status is Locked.
+    const managedSlugs = isEmployee
+      ? [...(await getRosterVenueAccess(db, user)).slugs]
+      : [];
+
     // Build base filter
     const baseFilter: Record<string, unknown> = { status: 'Active' };
 
     // Exclude venues with ShowVenueOnWebsite=No for non-admin employees,
     // but always include venues where the user has StaffingPool or Pending status.
     if (!isAdmin && !isClient && isEmployee) {
-      const exceptionSlugs = [...new Set([...staffingPoolSlugs, ...pendingSlugs])];
+      const exceptionSlugs = [
+        ...new Set([...staffingPoolSlugs, ...pendingSlugs, ...managedSlugs]),
+      ];
       appendHiddenVenuesFilter(baseFilter, exceptionSlugs);
     }
 
@@ -217,6 +228,7 @@ async function getVenuesHandler(request: AuthenticatedRequest) {
             zip: 1,
             logoUrl: 1,
             description: 1,
+            otherUrls: 1,
             distanceInMiles: {
               $round: [{ $divide: ['$distanceInMeters', 1609.34] }, 1],
             },
@@ -240,6 +252,7 @@ async function getVenuesHandler(request: AuthenticatedRequest) {
             zip: 1,
             logoUrl: 1,
             description: 1,
+            otherUrls: 1,
           },
         })
         .toArray();
@@ -247,9 +260,16 @@ async function getVenuesHandler(request: AuthenticatedRequest) {
     }
 
     // Merge applicant venue status, filter out Locked for employees
+    const managedSlugSet = new Set(managedSlugs);
     const data = venues.flatMap((venue) => {
       const userVenueStatus = statusMap.get(venue.slug) ?? '';
-      if (isEmployee && userVenueStatus === 'Locked') return [];
+      if (
+        isEmployee &&
+        userVenueStatus === 'Locked' &&
+        !managedSlugSet.has(venue.slug)
+      ) {
+        return [];
+      }
       return [{ ...venue, userVenueStatus }];
     });
 

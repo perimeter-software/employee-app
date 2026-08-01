@@ -1,0 +1,80 @@
+# ──────────────────────────────────────────────
+# GitHub Actions — Daily E2E Tests with Slack Alerts
+# ──────────────────────────────────────────────
+#
+# Required Repository Secrets (Settings → Secrets and variables → Actions):
+#   BASE_URL            — Your production URL (e.g. https://your-app.com)
+#   TEST_USER_EMAIL     — Test account email
+#   TEST_USER_PASSWORD  — Test account password
+#   SLACK_WEBHOOK_URL   — Slack incoming webhook
+#
+
+name: Daily E2E Tests
+
+on:
+  schedule:
+    # Runs daily at 8am Central (1pm UTC)
+    - cron: '0 13 * * *'
+  workflow_dispatch: # Allow manual trigger from Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-tests:
+    name: Run E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox
+
+      - name: Run Playwright tests
+        id: tests
+        continue-on-error: true
+        run: npx playwright test --reporter=list,html,json
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 7
+
+      - name: Notify Slack on failure
+        if: steps.tests.outcome == 'failure'
+        run: node scripts/slack-notify.js
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CI_PIPELINE_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CI_PROJECT_NAME: ${{ github.repository }}
+
+      - name: Fail workflow if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1

@@ -10,11 +10,14 @@ type Props = {
   venue: VenueWithStatus;
   imageBaseUrl?: string;
   onClick: () => void;
+  /** True when the current user (Event Admin) manages this venue. */
+  managed?: boolean;
 };
 
-export const VenueCard = ({ venue, imageBaseUrl, onClick }: Props) => {
+export const VenueCard = ({ venue, imageBaseUrl, onClick, managed }: Props) => {
   const [logoError, setLogoError] = useState(false);
   const location = [venue.city, venue.state].filter(Boolean).join(', ');
+  const badge = venueBadge(venue.userVenueStatus);
 
   const fullLogoUrl =
     imageBaseUrl && venue.logoUrl && !logoError
@@ -22,9 +25,13 @@ export const VenueCard = ({ venue, imageBaseUrl, onClick }: Props) => {
       : null;
 
   return (
-    <button type="button" onClick={onClick} className="text-left w-full">
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left w-full min-w-0"
+    >
       <Card className="hover:shadow-md transition-shadow hover:border-appPrimary/40 cursor-pointer h-full">
-        <CardContent className="p-4 flex gap-4 items-start">
+        <CardContent className="p-4 flex gap-4 items-center">
           <div className="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-zinc-100 flex items-center justify-center">
             {fullLogoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -40,11 +47,10 @@ export const VenueCard = ({ venue, imageBaseUrl, onClick }: Props) => {
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              <h3 className="font-semibold text-zinc-900 text-sm leading-tight truncate">
+            <div className="flex items-center gap-2">
+              <h3 className="flex-1 min-w-0 font-semibold text-zinc-900 text-sm leading-tight truncate">
                 {venue.name}
               </h3>
-              {venueBadge(venue.userVenueStatus)}
             </div>
 
             {(location || venue.address) && (
@@ -58,9 +64,23 @@ export const VenueCard = ({ venue, imageBaseUrl, onClick }: Props) => {
             )}
 
             {venue.distanceInMiles != null && (
-              <p className="mt-1 text-xs text-zinc-400">{venue.distanceInMiles} mi away</p>
+              <p className="mt-1 text-xs text-zinc-400">
+                {venue.distanceInMiles} mi away
+              </p>
             )}
+
+            {badge && <div className="sm:hidden">{badge}</div>}
           </div>
+          {(managed || badge) && (
+            <div className="shrink-0 flex items-center gap-2">
+              {managed && (
+                <span className="inline-flex items-center leading-none rounded-full bg-appPrimary/10 text-appPrimary px-2 py-1 text-[10px] font-semibold uppercase tracking-wide">
+                  Admin
+                </span>
+              )}
+              {badge && <div className="hidden sm:block">{badge}</div>}
+            </div>
+          )}
         </CardContent>
       </Card>
     </button>

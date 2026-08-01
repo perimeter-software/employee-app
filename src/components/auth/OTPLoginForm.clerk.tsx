@@ -1,0 +1,215 @@
+// components/auth/OTPLoginForm.clerk.tsx — V4 path. Same UI as the Auth0/OTP
+// version but driven by Clerk's email_code first factor (Clerk v5 API:
+// signIn.create + prepareFirstFactor + attemptFirstFactor + setActive),
+// so the user experience is identical across auth modes.
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSignIn } from '@clerk/nextjs';
+import { Button } from '@/components/ui/Button';
+import { Mail, Lock, Loader2 } from 'lucide-react';
+import type { OTPLoginFormProps } from './OTPLoginForm.types';
+import { pickEmailFactor } from './pickEmailFactor';
+
+export function OTPLoginFormClerk({ returnUrl, onError }: OTPLoginFormProps) {
+  const { signIn, setActive, isLoaded } = useSignIn();
+  const router = useRouter();
+
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const fail = (message: string) => {
+    setError(message);
+    onError?.(message);
+  };
+
+  const handleSendOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isLoaded || !signIn) return;
+    setError('');
+    setIsLoading(true);
+    try {
+      // Create the sign-in attempt with the email identifier.
+      await signIn.create({ identifier: email });
+
+      // Find the email_code first-factor matching the email the user typed —
+      // not just "first email_code factor on the account" — so the OTP goes
+      // to the address the user wants to sign in with.
+      const emailFactor = pickEmailFactor<{
+        strategy: 'email_code';
+        emailAddressId: string;
+      }>(signIn.supportedFirstFactors ?? [], 'email_code', email);
+
+      if (!emailFactor) {
+        throw new Error('Email one-time code is not enabled for this account');
+      }
+
+      await signIn.prepareFirstFactor({
+        strategy: 'email_code',
+        emailAddressId: emailFactor.emailAddressId,
+      });
+      setStep('code');
+    } catch (err) {
+      const message =
+        (err as { errors?: Array<{ longMessage?: string; message?: string }> })
+          ?.errors?.[0]?.longMessage ??
+        (err as { errors?: Array<{ longMessage?: string; message?: string }> })
+          ?.errors?.[0]?.message ??
+        (err instanceof Error ? err.message : 'Failed to send code');
+      fail(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isLoaded || !signIn) return;
+    setError('');
+    setIsLoading(true);
+    try {
+      const result = await signIn.attemptFirstFactor({
+        strategy: 'email_code',
+        code,
+      });
+      if (result.status !== 'complete') {
+        throw new Error('Verification incomplete — please try again');
+      }
+      await setActive({ session: result.createdSessionId });
+      router.push(returnUrl || '/time');
+    } catch (err) {
+      const message =
+        (err as { errors?: Array<{ longMessage?: string; message?: string }> })
+          ?.errors?.[0]?.longMessage ??
+        (err as { errors?: Array<{ longMessage?: string; message?: string }> })
+          ?.errors?.[0]?.message ??
+        (err instanceof Error ? err.message : 'Invalid code');
+      fail(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleBack = () => {
+    setStep('email');
+    setCode('');
+    setError('');
+  };
+
+  if (step === 'email') {
+    return (
+      <form onSubmit={handleSendOTP} className="space-y-4">
+        <div>
+          <label
+            htmlFor="email"
+            className="block text-sm font-medium text-gray-700 mb-2"
+          >
+            Email Address
+          </label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter your email"
+              required
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-appPrimary focus:border-transparent outline-none transition-all"
+              disabled={isLoading}
+            />
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+
+        <Button
+          type="submit"
+          disabled={isLoading || !email || !signIn}
+          className="w-full bg-gradient-to-r from-appPrimary to-appPrimary/90 hover:from-appPrimary/90 hover:to-appPrimary text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 text-lg min-h-[60px] border-0 relative overflow-hidden group"
+        >
+          {isLoading ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Sending...
+            </span>
+          ) : (
+            <span className="relative z-10">Send Login Code</span>
+          )}
+        </Button>
+      </form>
+    );
+  }
+
+  return (
+    <form onSubmit={handleVerifyOTP} className="space-y-4">
+      <div>
+        <p className="text-sm text-gray-600 mb-4">
+          We sent a 6-digit code to <strong>{email}</strong>
+        </p>
+        <label
+          htmlFor="code"
+          className="block text-sm font-medium text-gray-700 mb-2"
+        >
+          Enter Code
+        </label>
+        <div className="relative">
+          <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            id="code"
+            type="text"
+            value={code}
+            onChange={(e) =>
+              setCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+            }
+            placeholder="000000"
+            required
+            maxLength={6}
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-appPrimary focus:border-transparent outline-none transition-all text-center text-2xl tracking-widest font-mono"
+            disabled={isLoading}
+          />
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <Button
+          type="submit"
+          disabled={isLoading || code.length !== 6}
+          className="w-full bg-gradient-to-r from-appPrimary to-appPrimary/90 hover:from-appPrimary/90 hover:to-appPrimary text-white font-semibold py-4 px-8 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 text-lg min-h-[60px] border-0 relative overflow-hidden group"
+        >
+          {isLoading ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Verifying...
+            </span>
+          ) : (
+            <span className="relative z-10">Verify Code</span>
+          )}
+        </Button>
+
+        <Button
+          type="button"
+          onClick={handleBack}
+          variant="ghost"
+          className="w-full text-gray-600 hover:text-gray-900"
+        >
+          Back to Email
+        </Button>
+      </div>
+    </form>
+  );
+}

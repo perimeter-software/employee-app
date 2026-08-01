@@ -24,18 +24,46 @@ function createBackendToken(userSub: string, email: string): string {
 function buildOrigin(clientDomain?: string): string {
   const domain = clientDomain || FALLBACK_ORIGIN;
   if (!domain) return '';
-  if (domain.startsWith('http://') || domain.startsWith('https://')) return domain;
-  return domain.startsWith('localhost') ? `http://${domain}` : `https://${domain}`;
+  if (domain.startsWith('http://') || domain.startsWith('https://'))
+    return domain;
+  return domain.startsWith('localhost')
+    ? `http://${domain}`
+    : `https://${domain}`;
 }
 
-export function getSp1Client(userSub: string, email: string, clientDomain?: string) {
+/**
+ * Axios instance for sp1-api's `/outside-public/*` endpoints, which are
+ * unauthenticated by design (candidate-facing assessment / form links).
+ *
+ * No Authorization header is sent — exactly like the browser calls stadium-people
+ * and gignology-v4 make.
+ *
+ * @param clientDomain - REQUIRED. sp1-api identifies the tenant from `origin`
+ *   alone, and this app is multi-tenant with no session on these routes, so the
+ *   caller must resolve the tenant itself (see `resolvePublicTenantOrigin`).
+ *   Deliberately not defaulted to SP1_API_ORIGIN: silently falling back would
+ *   send every tenant's candidates to one hard-coded tenant.
+ */
+export function getSp1PublicClient(
+  clientDomain: string,
+  contentType: string | false = 'application/json'
+) {
+  const headers: Record<string, string> = { origin: buildOrigin(clientDomain) };
+  if (contentType !== false) headers['Content-Type'] = contentType;
+  return axios.create({ baseURL: BASE_URL, headers });
+}
+
+export function getSp1Client(
+  userSub: string,
+  email: string,
+  clientDomain?: string,
+  contentType: string | false = 'application/json'
+) {
   const token = createBackendToken(userSub, email);
-  return axios.create({
-    baseURL: BASE_URL,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      origin: buildOrigin(clientDomain),
-      'Content-Type': 'application/json',
-    },
-  });
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    origin: buildOrigin(clientDomain),
+  };
+  if (contentType !== false) headers['Content-Type'] = contentType;
+  return axios.create({ baseURL: BASE_URL, headers });
 }

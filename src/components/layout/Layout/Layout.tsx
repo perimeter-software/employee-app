@@ -1,10 +1,11 @@
 "use client";
 
-import React, { ReactNode, useState } from "react";
+import React, { ReactNode } from "react";
 import Head from "next/head";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { clsxm } from "@/lib/utils";
 import { useApplicantRouteProtection } from "@/lib/hooks/use-applicant-route-protection";
 import { AuthLoadingState } from "@/components/shared/PageProtection/AuthLoadingState";
@@ -52,18 +53,8 @@ const Layout: React.FC<LayoutProps> = ({
   nofollow = false,
   schema,
 }) => {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
   // Protect routes for applicant-only sessions and get loading state
   const { isLoading: isAuthLoading } = useApplicantRouteProtection();
-
-  const toggleMobileMenu = () => {
-    setIsMobileMenuOpen(!isMobileMenuOpen);
-  };
-
-  const closeMobileMenu = () => {
-    setIsMobileMenuOpen(false);
-  };
 
   // Generate full title
   const fullTitle =
@@ -166,17 +157,20 @@ const Layout: React.FC<LayoutProps> = ({
       </Head>
 
       <div className={clsxm("min-h-screen bg-white flex flex-col", className)}>
-        {/* Sidebar */}
-        <Sidebar isOpen={isMobileMenuOpen} onClose={closeMobileMenu} />
+        {/* Sidebar — desktop only */}
+        <Sidebar />
+
+        {/* Mobile bottom navigation */}
+        <MobileBottomNav />
 
         {/* Main Content Area */}
         <div className="lg:pl-64 flex flex-col min-h-screen">
           {/* Header */}
-          <Header onMobileMenuToggle={toggleMobileMenu} />
+          <Header />
 
-          {/* Main Content */}
+          {/* Main Content — extra bottom padding on mobile for the bottom nav */}
           <main className="flex-1">
-            <div className="pt-4 pb-2 px-4 sm:px-6 lg:pt-6 lg:px-8">{children}</div>
+            <div className="pt-4 pb-20 px-4 sm:px-6 lg:pt-6 lg:px-8 lg:pb-2">{children}</div>
           </main>
 
           {/* Footer */}

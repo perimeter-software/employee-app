@@ -143,3 +143,35 @@
 .react-select__menu {
   z-index: 9999 !important;
 }
+
+/* ---- Clerk account modal: allow "Set as primary", block removal ----------
+   (Mirrors gignology-v4's index.css.) The "···" action menu inside
+   <UserProfile> (Manage account) holds BOTH "Set as primary email" (safe) and
+   destructive actions ("Remove email", "Remove connected account"). We KEEP
+   the "···" trigger so users can still set a primary email, and hide ONLY the
+   destructive menu items — removal desyncs them from the Mongo `users` record
+   and can cause lockout. Clerk portals the open menu to <body>, so these rules
+   are global (unscoped). COSMETIC guard only — Clerk's Frontend API still
+   permits removal; real enforcement stays server-side (user.updated webhook). */
+[class*="cl-menuItem__destructive"],
+[class*="cl-menuItem__danger"],
+[class*="cl-menuItem__remove"],
+.cl-menuItem[data-destructive],
+.cl-menuItem[data-color="danger"],
+.cl-menuItem[data-color="destructive"] {
+  display: none !important;
+}
+
+/* Hide the "···" trigger ONLY on the PRIMARY email row — its only action was
+   "Remove" (hidden above), so the menu would open empty. Non-primary rows keep
+   "···" for "Set as primary". `cl-profileSectionItem__` (trailing `__`) matches
+   an individual ROW, not the list wrapper `cl-profileSectionItemList`. */
+[class*="cl-profileSectionItem__"]:has([class*="cl-badge"]) [class*="cl-menuButton"] {
+  display: none !important;
+}
+
+/* Connected accounts (e.g. Google): hide the "···" on every row — its only
+   action, "Remove connection", is hidden above, so the menu would open empty. */
+[class*="cl-profileSection__connectedAccounts"] [class*="cl-menuButton"] {
+  display: none !important;
+}

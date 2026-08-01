@@ -1,12 +1,13 @@
 // lib/auth/session-refresh.ts - Auth0 v3 compatible
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0/client';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { useAppUser } from '@/domains/user/hooks/useAppUser';
+import { IS_V4 } from '@/lib/config/auth-mode';
 
 export function useSessionRefresh() {
-  const { user, error, isLoading } = useUser();
+  const { user, error, isLoading } = useAppUser();
   const router = useRouter();
 
   useEffect(() => {
@@ -22,7 +23,7 @@ export function useSessionRefresh() {
         sessionStorage.clear();
 
         // Force a hard refresh to clear everything
-        window.location.href = '/api/auth/login';
+        window.location.href = IS_V4 ? '/sign-in' : '/api/auth/login';
       }
     }
   }, [error, isLoading]);
@@ -37,12 +38,12 @@ export function useSessionRefresh() {
             .then((response) => {
               if (!response.ok) {
                 console.log('🔄 Session expired, refreshing...');
-                router.push('/api/auth/login');
+                router.push(IS_V4 ? '/sign-in' : '/api/auth/login');
               }
             })
             .catch(() => {
               console.log('🔄 Session check failed, refreshing...');
-              router.push('/api/auth/login');
+              router.push(IS_V4 ? '/sign-in' : '/api/auth/login');
             });
         },
         30 * 60 * 1000

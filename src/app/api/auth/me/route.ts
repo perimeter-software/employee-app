@@ -1,22 +1,31 @@
 // app/api/auth/me/route.ts
-// Custom /api/auth/me endpoint that supports both Auth0 and OTP sessions
+// Custom /api/auth/me endpoint that supports Auth0, OTP, and (V4) Clerk sessions.
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@auth0/nextjs-auth0';
 import redisService from '@/lib/cache/redis-client';
+import { IS_V4 } from '@/lib/config/auth-mode';
+import { resolveClerkAppUser } from '@/lib/auth/clerk-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    // First, try to get Auth0 session
-    const auth0Session = await getSession();
-    
-    if (auth0Session?.user) {
-      // Return Auth0 user data (Auth0's default behavior)
-      return NextResponse.json(auth0Session.user);
+    // V4: try Clerk first, then fall through to the shared OTP path.
+    if (IS_V4) {
+      const clerkUser = await resolveClerkAppUser();
+      if (clerkUser) {
+        return NextResponse.json(clerkUser);
+      }
+      // Fall through to OTP session check below.
+    } else {
+      // Auth0 (legacy)
+      const auth0Session = await getSession();
+      if (auth0Session?.user) {
+        return NextResponse.json(auth0Session.user);
+      }
     }
 
-    // If no Auth0 session, check for OTP session
+    // OTP session (shared across both auth modes — Redis-backed, provider-agnostic)
     const otpSessionId = request.cookies.get('otp_session_id')?.value;
 
     if (!otpSessionId) {

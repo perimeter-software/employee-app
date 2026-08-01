@@ -1,11 +1,11 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { baseInstance } from '@/lib/api/instance';
-import type { GignologyEvent } from '../types';
+import type { GignologyEvent, EventActivity } from '../types';
 import type { ClockInCoordinates } from '@/domains/job/types/location.types';
 
 export interface EventListPage {
   data: GignologyEvent[];
-  pagination?: { next?: { page: number } };
+  pagination?: { next?: { page: number }; total?: number };
 }
 
 export interface FetchEventsParams {
@@ -15,6 +15,12 @@ export interface FetchEventsParams {
   limit?: number;
   /** venueSlug to filter by; empty/undefined means show all accessible venues */
   venueSlug?: string;
+  /**
+   * Widen "my events" with the events of the venues the caller manages (an Event
+   * Admin's clientOrgs), not just the ones they are rostered on. The managed
+   * venues themselves are resolved server-side from the user doc.
+   */
+  includeManagedVenues?: boolean;
 }
 
 export interface RosterEventsParams {
@@ -73,12 +79,26 @@ export interface EnrollmentCheckResult {
   otherWaitlists?: unknown[];
 }
 
+export interface ShowClockInResult {
+  showClockIn: boolean;
+  showClockOut: boolean;
+  clockInButtonDisabled: boolean;
+  clockOutButtonDisabled: boolean;
+  showEarlyClockInWarning: boolean;
+  /** ISO string — returned by the server when the user has already clocked in */
+  clockInTime?: string;
+  /** ISO string — returned by the server when the user has already clocked out */
+  clockOutTime?: string;
+}
+
 export const eventQueryKeys = {
   all: ['event'] as const,
   roster: (params: RosterEventsParams) =>
     [...eventQueryKeys.all, 'roster', params] as const,
   detail: (eventId: string) => [...eventQueryKeys.all, 'detail', eventId] as const,
   enrollment: (eventId: string) => [...eventQueryKeys.all, 'enrollment', eventId] as const,
+  showClockIn: (eventId: string, applicantId: string) =>
+    [...eventQueryKeys.all, 'show-clock-in', eventId, applicantId] as const,
 } as const;
 
 /** React Query key for pending cover invites (incoming). */
@@ -107,6 +127,7 @@ export class EventApiService {
     ROSTER: () => `/events/roster`,
     CLOCK_IN: (eventId: string) => `/events/${eventId}/clock-in`,
     CLOCK_OUT: (eventId: string) => `/events/${eventId}/clock-out`,
+    SHOW_CLOCK_IN: (eventId: string) => `/events/${eventId}/show-clock-in`,
     DETAIL: (eventId: string) => `/events/${eventId}`,
     ENROLLMENT: (eventId: string) => `/events/${eventId}/enrollment`,
     EVENT_CALL_OFF: (eventId: string) => `/events/${eventId}/call-off`,
@@ -189,16 +210,19 @@ export class EventApiService {
     page = 1,
     limit = 10,
     venueSlug = '',
+    includeManagedVenues = false,
   }: FetchEventsParams): Promise<EventListPage> {
-    if (!applicantId) return { data: [] };
-    const filterParts = [`timeFrame:Current`, `eventType:Event`, `applicants.id:${applicantId}`];
+    if (!applicantId && !includeManagedVenues) return { data: [] };
+    const filterParts = [`timeFrame:Current`, `eventType:Event`];
+    if (applicantId) filterParts.push(`applicants.id:${applicantId}`);
     if (venueSlug) filterParts.push(`venueSlug:${venueSlug}`);
     const qs = new URLSearchParams({
       filter: filterParts.join(','),
       limit: String(limit),
       sort: 'eventDate:asc',
       page: String(page),
-      applicantId,
+      ...(applicantId && { applicantId }),
+      ...(includeManagedVenues && { includeManagedVenues: 'true' }),
       ...(search && { search }),
     });
     const res = await baseInstance.get<EventListPage>(`/events?${qs}`);
@@ -320,6 +344,110 @@ export class EventApiService {
       throw new Error(res.message || 'Unable to load cover requests.');
     }
     return Array.isArray(res.data) ? res.data : [];
+  }
+
+  static async fetchClientEvents({
+    venueSlugFilter,
+    timeFrame = 'Current',
+    search = '',
+    page = 1,
+    limit = 5,
+    sort,
+  }: {
+    venueSlugFilter: string;
+    timeFrame?: 'Current' | 'Past' | 'All';
+    search?: string;
+    page?: number;
+    limit?: number;
+    /** Sort string e.g. "eventDate:asc" or "venueSlug:desc". Defaults to eventDate direction based on timeFrame. */
+    sort?: string;
+  }): Promise<EventListPage> {
+    const filterParts = ['eventType:Event'];
+    if (venueSlugFilter) filterParts.push(`venueSlug:${venueSlugFilter}`);
+    if (timeFrame !== 'All') filterParts.push(`timeFrame:${timeFrame}`);
+    const resolvedSort = sort ?? (timeFrame === 'Past' ? 'eventDate:desc' : 'eventDate:asc');
+    const qs = new URLSearchParams({
+      filter: filterParts.join(','),
+      limit: String(limit),
+      sort: resolvedSort,
+      page: String(page),
+      ...(search && { search }),
+    });
+    const res = await baseInstance.get<EventListPage>(`/events?${qs}`);
+    if (!res.success || !res.data) throw new Error('Failed to fetch client events');
+    return res.data;
+  }
+
+  static async createEvent(
+    eventData: Partial<GignologyEvent>
+  ): Promise<{ id?: { name: string; value: string }; result?: { insertedId: string } }> {
+    const res = await baseInstance.post<{
+      id?: { name: string; value: string };
+      result?: { insertedId: string };
+    }>('/events', { eventData });
+    if (!res.success) throw new Error('Failed to create event');
+    return res.data ?? {};
+  }
+
+  static async updateEvent(
+    eventId: string,
+    updates: Partial<GignologyEvent>
+  ): Promise<GignologyEvent> {
+    const res = await baseInstance.put<GignologyEvent>(
+      EventApiService.ENDPOINTS.DETAIL(eventId),
+      updates
+    );
+    if (!res.success || !res.data) throw new Error('Failed to update event');
+    return res.data;
+  }
+
+  static async fetchEventActivities(
+    eventId: string,
+    page = 1,
+    limit = 25
+  ): Promise<{ data: EventActivity[]; pagination?: { next?: { page: number } } }> {
+    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+    const res = await baseInstance.get<{
+      data: EventActivity[];
+      pagination?: { next?: { page: number } };
+    }>(`/events/${eventId}/activities?${qs}`);
+    if (!res.success || !res.data) throw new Error('Failed to fetch activities');
+    return res.data;
+  }
+
+  static async uploadEventImage(
+    eventId: string,
+    file: File
+  ): Promise<{ filename: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`/api/events/${eventId}/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    const json = (await response.json()) as { success: boolean; filename?: string; message?: string };
+    if (!json.success) throw new Error(json.message ?? 'Upload failed');
+    return { filename: json.filename ?? '' };
+  }
+
+  static async getShowClockIn(
+    eventId: string,
+    agent: string,
+    createAgent: string,
+    coordinates?: { latitude: number; longitude: number } | null
+  ): Promise<ShowClockInResult> {
+    // The sp1 /showclockin endpoint returns the result object at the top level
+    // (not wrapped in { success, data }), so we return the raw response directly.
+    const res = await baseInstance.post<never>(
+      EventApiService.ENDPOINTS.SHOW_CLOCK_IN(eventId),
+      {
+        agent,
+        createAgent,
+        platform: 'web',
+        ...(coordinates && { coordinates }),
+      }
+    );
+    return res as unknown as ShowClockInResult;
   }
 
   static async clockOut(
