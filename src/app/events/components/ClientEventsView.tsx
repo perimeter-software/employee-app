@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { resolveImageUrl } from '@/lib/utils/resolve-image-url';
 import {
   Zap,
   History,
@@ -350,7 +351,8 @@ export default function ClientEventsView() {
 
   function getLogoUrl(event: GignologyEvent): string | null {
     if (!event.logoUrl) return null;
-    if (event.logoUrl.startsWith('http')) return event.logoUrl;
+    if (event.logoUrl.startsWith('http'))
+      return resolveImageUrl(event.logoUrl, imageBaseUrl) ?? null;
     return `${imageBaseUrl}/${event.venueSlug}/venues/logo/${event.logoUrl}`;
   }
 

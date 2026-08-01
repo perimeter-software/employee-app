@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { resolveImageUrl } from '@/lib/utils/resolve-image-url';
 import {
   MapPin,
   Calendar,
@@ -428,7 +429,7 @@ export const EventDetailModal = ({
   const fullLogoUrl =
     logoFilename && !logoError
       ? logoFilename.startsWith('http')
-        ? logoFilename
+        ? resolveImageUrl(logoFilename, imageBaseUrl)
         : `${imageBaseUrl}/${event.venueSlug}/venues/logo/${logoFilename}`
       : null;
 

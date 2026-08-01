@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { resolveImageUrl } from '@/lib/utils/resolve-image-url';
 import dynamic from 'next/dynamic';
 import 'react-quill/dist/quill.snow.css';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
@@ -1297,7 +1298,8 @@ function AttachmentsPanel({
     if (previewUrl) return previewUrl;
     const imgFile = event.eventImage || event.logoUrl;
     if (!imgFile) return null;
-    if (imgFile.startsWith('http')) return imgFile;
+    if (imgFile.startsWith('http'))
+      return resolveImageUrl(imgFile, imageBaseUrl) ?? null;
     return `${imageBaseUrl}/${event.venueSlug}/events/${event.eventUrl}/${imgFile}`;
   }
 
