@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { resolveImageUrl } from '@/lib/utils/resolve-image-url';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MapPin, Clock, ImageIcon, Users, Hash, Check, HelpCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
@@ -165,7 +166,7 @@ export const EventCard = ({
   const fullLogoUrl =
     logoFilename && !logoError
       ? logoFilename.startsWith('http')
-        ? logoFilename
+        ? resolveImageUrl(logoFilename, imageBaseUrl)
         : `${imageBaseUrl}/${event.venueSlug}/venues/logo/${logoFilename}`
       : null;
 
