@@ -124,6 +124,7 @@ const nextConfig = {
       'https://*.clerk.accounts.dev', // Clerk (dev)
       'https://*.clerk.com', // Clerk (prod)
       'https://clerk-telemetry.com',
+      'https://*.gignology.biz', // Clerk custom domains (clerk.employee.gignology.biz) + V4 API
     ];
 
     const frameSrc = [
@@ -145,7 +146,7 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://*.gstatic.com https://polyfill.io https://*.clerk.accounts.dev https://*.clerk.com",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://*.gstatic.com https://polyfill.io https://*.clerk.accounts.dev https://*.clerk.com https://*.gignology.biz",
               "worker-src 'self' blob:",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "img-src 'self' data: https: blob:",
