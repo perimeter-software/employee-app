@@ -63,7 +63,7 @@ export function usePageAuth(
 ) {
   const { requireAuth, redirectTo = '/', onAuthError } = options;
 
-  const { user, isLoading, error } = useAppUser();
+  const { user, error, isResolved } = useAppUser();
   const pathname = usePathname();
 
   // Determine if auth is required based on route or explicit option
@@ -83,8 +83,11 @@ export function usePageAuth(
       return;
     }
 
-    // If not loading and no user, redirect to login
-    if (!isLoading && !user) {
+    // Redirect only on a SETTLED "no session". Keying this off `!isLoading`
+    // instead meant a single unresolved frame — which happens on every route
+    // change, since each page mounts its own observer — hard-redirected a
+    // perfectly valid session to login, reloading the whole app.
+    if (isResolved && !user) {
       // Include query parameters in returnUrl to preserve them (e.g., ?stubId=...)
       const searchParams = typeof window !== 'undefined' ? window.location.search : '';
       const fullPath = pathname + searchParams;
@@ -93,19 +96,24 @@ export function usePageAuth(
       window.location.replace(loginUrl);
       return;
     }
-  }, [user, isLoading, error, pathname, authRequired, redirectTo, onAuthError]);
+  }, [user, isResolved, error, pathname, authRequired, redirectTo, onAuthError]);
 
   // While a redirect to login is pending, keep reporting isLoading=true so
   // pages render their loading state (spinner) instead of briefly flashing
-  // their UnauthenticatedState component before window.location.href takes
-  // effect. The useEffect above will fire the redirect on the next tick;
-  // until then the page should look like it's still resolving auth.
-  // An auth error also ends in a redirect (forced logout), so it counts.
-  const willRedirect = authRequired && (!!error || (!isLoading && !user));
+  // their UnauthenticatedState component before the redirect takes effect.
+  // The useEffect above fires it on the next tick; until then the page should
+  // look like it's still resolving auth. An auth error also ends in a redirect
+  // (forced logout), so it counts.
+  const willRedirect = authRequired && (!!error || (isResolved && !user));
+
+  // A user we already have is enough to render, even if the underlying query
+  // is refetching in the background — otherwise every revalidation would blank
+  // the screen back to a spinner.
+  const isResolving = !isResolved && !user;
 
   return {
     user,
-    isLoading: isLoading || willRedirect,
+    isLoading: isResolving || willRedirect,
     error,
     isAuthenticated: !!user,
     shouldShowContent: !authRequired || !!user,
