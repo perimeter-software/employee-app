@@ -236,18 +236,21 @@ export function CustomSignInForm({ redirectUrl }: { redirectUrl: string }) {
     }
   }
 
-  async function handleGoogle() {
+  async function handleOAuth(
+    strategy: 'oauth_google' | 'oauth_apple',
+    providerName: string,
+  ) {
     if (busy || !signIn) return;
     setBusy(true);
     setError(null);
     try {
       await signIn!.authenticateWithRedirect({
-        strategy: 'oauth_google',
+        strategy,
         redirectUrl: '/sign-in/sso-callback',
         redirectUrlComplete: redirectUrl,
       });
     } catch (err) {
-      setError(clerkMessage(err, 'Could not start Google sign-in.'));
+      setError(clerkMessage(err, `Could not start ${providerName} sign-in.`));
       setBusy(false);
     }
   }
@@ -396,7 +399,7 @@ export function CustomSignInForm({ redirectUrl }: { redirectUrl: string }) {
         type="button"
         variant="outline"
         fullWidth
-        onClick={handleGoogle}
+        onClick={() => handleOAuth('oauth_google', 'Google')}
         disabled={busy}
       >
         <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
@@ -407,6 +410,24 @@ export function CustomSignInForm({ redirectUrl }: { redirectUrl: string }) {
         </svg>
         Continue with Google
       </Button>
+
+      <Button
+        type="button"
+        variant="outline"
+        fullWidth
+        onClick={() => handleOAuth('oauth_apple', 'Apple')}
+        disabled={busy}
+      >
+        <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01ZM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25Z" fill="currentColor" />
+        </svg>
+        Continue with Apple
+      </Button>
+
+      <p className="text-center text-xs text-gray-500">
+        Signing in with Apple? Choose &ldquo;Share My Email&rdquo; so we can
+        match your account.
+      </p>
 
       <div className="relative">
         <div className="absolute inset-0 flex items-center">
