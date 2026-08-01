@@ -9,8 +9,13 @@ jobs:
   deploy:
     uses: ./.github/workflows/deploy-eb-reusable.yaml
     with:
-      environment: production
+      # V4 cutover (2026-07-31): use the v4-production GitHub environment
+      # (Clerk keys for clerk.employee.gignology.biz + V4 Mongo) and build the
+      # Clerk variant. The legacy Auth0 `production` environment is kept for
+      # rollback: revert this block to environment: production / no is_v4.
+      environment: v4-production
       eb_env_name: employee-app-production
       eb_app_name: employee-app-production
       s3_key_prefix: employee-app/prod
+      is_v4: 'true'
     secrets: inherit
