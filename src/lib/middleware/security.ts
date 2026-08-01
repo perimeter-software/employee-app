@@ -38,7 +38,7 @@ export async function securityMiddleware(): Promise<NextResponse | null> {
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://*.gstatic.com https://*.clerk.accounts.dev https://*.clerk.com",
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://maps.googleapis.com https://*.gstatic.com https://*.clerk.accounts.dev https://*.clerk.com https://*.gignology.biz",
       "worker-src 'self' blob:",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: https: blob:",
