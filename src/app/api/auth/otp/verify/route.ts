@@ -4,6 +4,7 @@ import { mongoConn } from '@/lib/db/mongodb';
 import { checkUserExistsByEmail } from '@/domains/user/utils/mongo-user-utils';
 import redisService from '@/lib/cache/redis-client';
 import { buildApplicantSessionData } from '@/lib/auth/applicant-session';
+import { normalizeReturnTo } from '@/lib/auth/return-to';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -110,11 +111,12 @@ export async function POST(request: NextRequest) {
 
       if (isTerminatedOrInactive) {
         redirectUrl = '/payroll';
-      } else if (returnTo) {
-        const decoded = decodeURIComponent(returnTo);
-        // Only allow relative paths to prevent open redirect
-        if (decoded.startsWith('/') && !decoded.startsWith('//')) {
-          redirectUrl = decoded;
+      } else {
+        // Relative paths only (open-redirect guard), and unwrapped if the
+        // value arrived still percent-encoded.
+        const safeReturnTo = normalizeReturnTo(returnTo);
+        if (safeReturnTo) {
+          redirectUrl = safeReturnTo;
         }
       }
     } else {
@@ -124,7 +126,7 @@ export async function POST(request: NextRequest) {
       // "Applicant"-status users (e.g. /applicant/jobs?run=aiscreening).
       const result = await buildApplicantSessionData(
         normalizedEmail,
-        returnTo ? decodeURIComponent(returnTo) : undefined
+        normalizeReturnTo(returnTo) ?? undefined
       );
 
       if (!result.ok) {

@@ -1,15 +1,19 @@
 // src/domains/shared/hooks/use-page-auth.ts - Fixed version (no server-side imports)
 import { useAppUser } from '@/domains/user/hooks/useAppUser';
-import { IS_V4 } from '@/lib/config/auth-mode';
+import { forceSessionLogout, isPublicPathname } from '@/lib/auth/force-logout';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 
 // Simple client-side route checking (no server imports)
 function isPublicRoute(pathname: string): boolean {
-  const publicRoutes = ['/', '/about', '/contact', '/api/health'];
+  const publicRoutes = ['/about', '/contact', '/api/health'];
 
-  return publicRoutes.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  return (
+    // `/`, `/sign-in`, `/terms`, … — the routes that render without a session
+    isPublicPathname(pathname) ||
+    publicRoutes.some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`)
+    )
   );
 }
 
@@ -70,20 +74,24 @@ export function usePageAuth(
     // Only apply auth logic if authentication is required
     if (!authRequired) return;
 
-    // If not loading and no user and no error, redirect to login
-    if (!isLoading && !user && !error) {
+    // Auth resolution itself failed (expired/invalid session, /api/auth/me
+    // rejected). Treat it as "no session": clear it and go to login instead of
+    // leaving the page on an error/loading screen firing doomed requests.
+    if (error) {
+      onAuthError?.(error);
+      forceSessionLogout();
+      return;
+    }
+
+    // If not loading and no user, redirect to login
+    if (!isLoading && !user) {
       // Include query parameters in returnUrl to preserve them (e.g., ?stubId=...)
       const searchParams = typeof window !== 'undefined' ? window.location.search : '';
       const fullPath = pathname + searchParams;
       const returnUrl = encodeURIComponent(fullPath);
       const loginUrl = `${redirectTo}?returnTo=${returnUrl}`;
-      window.location.href = loginUrl;
+      window.location.replace(loginUrl);
       return;
-    }
-
-    // Handle auth errors
-    if (error && onAuthError) {
-      onAuthError(error);
     }
   }, [user, isLoading, error, pathname, authRequired, redirectTo, onAuthError]);
 
@@ -92,7 +100,8 @@ export function usePageAuth(
   // their UnauthenticatedState component before window.location.href takes
   // effect. The useEffect above will fire the redirect on the next tick;
   // until then the page should look like it's still resolving auth.
-  const willRedirect = authRequired && !isLoading && !user && !error;
+  // An auth error also ends in a redirect (forced logout), so it counts.
+  const willRedirect = authRequired && (!!error || (!isLoading && !user));
 
   return {
     user,

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import Image from 'next/image';
 import { OTPLoginForm } from '@/components/auth/OTPLoginForm';
 import { IS_V4 } from '@/lib/config/auth-mode';
+import { resolveReturnTo } from '@/lib/auth/return-to';
 
 interface NotificationState {
   message: string;
@@ -86,9 +87,12 @@ function LoginFormContent({
   setNotification: (state: NotificationState) => void;
 }) {
   const searchParams = useSearchParams();
-  const [loginMethod, setLoginMethod] = useState<'auth0' | 'otp'>('otp');
-  const returnUrl =
-    searchParams.get('returnTo') || searchParams.get('returnUrl') || '/time';
+  const [loginMethod, setLoginMethod] = useState<'auth0' | 'otp'>('auth0');
+  // Normalized, so a returnTo that arrived double-encoded (or points off-site)
+  // can't be pushed as a literal path like /%2Fevents.
+  const returnUrl = resolveReturnTo(
+    searchParams.get('returnTo') ?? searchParams.get('returnUrl')
+  );
 
   return (
     <>

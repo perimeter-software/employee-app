@@ -66,8 +66,30 @@ export function requiresAuthentication(pathname: string): boolean {
   return isProtectedRoute(pathname);
 }
 
+// Returns the raw path — NOT encoded. `createRedirectUrl` puts it through
+// `searchParams.set`, which does the encoding. Encoding here too yielded
+// `returnTo=%252Fevents`, which the login screen then decoded to `%2Fevents`
+// and pushed as a route, landing the user on `/%2Fevents`.
 export function createReturnUrl(request: NextRequest): string {
-  return encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search);
+  return request.nextUrl.pathname + request.nextUrl.search;
+}
+
+/**
+ * Builds an absolute URL for `path` on the *public* origin.
+ *
+ * `request.url` carries the internal origin (localhost:3000) when nginx
+ * proxies to the Next.js server, so redirecting against it would send the
+ * browser somewhere it can't reach. The forwarded headers hold the real host.
+ */
+export function buildForwardedUrl(request: NextRequest, path: string): URL {
+  const forwardedHost =
+    request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  const forwardedProto = request.headers.get('x-forwarded-proto') ?? 'https';
+  const base = forwardedHost
+    ? `${forwardedProto}://${forwardedHost}`
+    : request.nextUrl.origin;
+
+  return new URL(path, base);
 }
 
 export function createRedirectUrl(
@@ -75,7 +97,7 @@ export function createRedirectUrl(
   path: string,
   returnUrl?: string
 ): URL {
-  const url = new URL(path, request.url);
+  const url = buildForwardedUrl(request, path);
   if (returnUrl) {
     url.searchParams.set("returnTo", returnUrl);
   }
