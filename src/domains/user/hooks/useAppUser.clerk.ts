@@ -61,9 +61,17 @@ export function useAppUserClerk(): AppUserState {
     query.isLoading ||
     (isSignedIn === true && !querySettled);
 
+  // "Auth gave an answer": Clerk is up AND /api/auth/me has completed at least
+  // once. Anything short of that is still resolving, however `isLoading` reads
+  // on a given frame — a remounted observer over cached data can report
+  // isLoading=false a tick before the data is attached.
+  const isResolved =
+    isClerkLoaded && (query.isFetched || query.isError || query.data !== undefined);
+
   return {
     user: query.data ?? undefined,
     isLoading,
     error: query.error instanceof Error ? query.error : undefined,
+    isResolved,
   };
 }
