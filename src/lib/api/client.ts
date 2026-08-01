@@ -1,6 +1,16 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from "axios";
 import { ApiClientOptions, ApiErrorWithDetails, ApiResponse } from "./types";
 
+// This interceptor converts AxiosErrors into plain Errors, which drops
+// `error.response`. Anything downstream that needs the HTTP status (the 401
+// logout interceptor, react-query's retry predicate) reads `error.status`, so
+// every error thrown from here has to carry it.
+function withStatus(error: Error, status: number): ApiErrorWithDetails {
+  const apiError = error as ApiErrorWithDetails;
+  apiError.status = status;
+  return apiError;
+}
+
 export class ApiClient {
   private axiosInstance: AxiosInstance;
 
@@ -67,7 +77,10 @@ export class ApiClient {
 
           // Legacy error handling for non-standardized responses
           if ("message" in apiResponse) {
-            throw new Error(apiResponse.message as string);
+            throw withStatus(
+              new Error(apiResponse.message as string),
+              error.response.status
+            );
           }
         }
 
@@ -77,11 +90,17 @@ export class ApiClient {
             message?: string;
             errors?: Record<string, string[]>;
           };
-          throw new Error(errorData.message || "Validation failed");
+          throw withStatus(
+            new Error(errorData.message || "Validation failed"),
+            422
+          );
         }
 
         // For other HTTP errors without proper API response format
-        throw new Error(`Request failed with status ${error.response.status}`);
+        throw withStatus(
+          new Error(`Request failed with status ${error.response.status}`),
+          error.response.status
+        );
       }
     );
   }

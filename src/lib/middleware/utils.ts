@@ -66,8 +66,12 @@ export function requiresAuthentication(pathname: string): boolean {
   return isProtectedRoute(pathname);
 }
 
+// Returns the raw path — NOT encoded. `createRedirectUrl` puts it through
+// `searchParams.set`, which does the encoding. Encoding here too yielded
+// `returnTo=%252Fevents`, which the login screen then decoded to `%2Fevents`
+// and pushed as a route, landing the user on `/%2Fevents`.
 export function createReturnUrl(request: NextRequest): string {
-  return encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search);
+  return request.nextUrl.pathname + request.nextUrl.search;
 }
 
 export function createRedirectUrl(

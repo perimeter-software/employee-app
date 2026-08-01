@@ -9,6 +9,7 @@ import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { clsxm } from "@/lib/utils";
 import { useApplicantRouteProtection } from "@/lib/hooks/use-applicant-route-protection";
 import { AuthLoadingState } from "@/components/shared/PageProtection/AuthLoadingState";
+import { usePageAuth } from "@/domains/shared/hooks/use-page-auth";
 
 interface LayoutProps {
   children: ReactNode;
@@ -53,6 +54,14 @@ const Layout: React.FC<LayoutProps> = ({
   nofollow = false,
   schema,
 }) => {
+  // Session gate for every screen that renders inside the Layout. Pages
+  // wrapped in withAuth run this too (harmless — same hook, same state), but
+  // the ones that aren't (events, venues, pto, paycheck-stubs, …) would
+  // otherwise sit on their own spinner forever when the session is expired,
+  // because their data requests just keep 401-ing. usePageAuth is route-aware:
+  // on public routes (/, /terms, /sign-in) it is a no-op.
+  const { isLoading: isSessionLoading, shouldShowContent } = usePageAuth();
+
   // Protect routes for applicant-only sessions and get loading state
   const { isLoading: isAuthLoading } = useApplicantRouteProtection();
 
@@ -71,8 +80,9 @@ const Layout: React.FC<LayoutProps> = ({
     nofollow ? "nofollow" : "follow",
   ].join(", ");
 
-  // Show loading state while user and company data are loading
-  if (isAuthLoading) {
+  // Show loading state while the session resolves / a redirect to login is
+  // pending, and while user and company data are loading
+  if (isSessionLoading || !shouldShowContent || isAuthLoading) {
     return (
       <AuthLoadingState title="Loading" message="Preparing your account..." />
     );
