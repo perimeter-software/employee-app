@@ -7,7 +7,23 @@ export function isPublicRoute(pathname: string): boolean {
   );
 }
 
+/**
+ * The candidate-facing public pages, whose first path segment is a tenant
+ * dbName: /:tenant/render-assessment/... and /:tenant/render-form/...
+ *
+ * Matched explicitly because the tenant segment is attacker-of-coincidence
+ * territory: a tenant whose dbName happened to be "admin", "jobs", "profile",
+ * etc. would otherwise trip the prefix check below and bounce candidates to
+ * login on a link that must work logged out.
+ */
+const PUBLIC_RENDER_ROUTE = /^\/[^/]+\/render-(assessment|form)(\/|$)/;
+
+export function isPublicRenderRoute(pathname: string): boolean {
+  return PUBLIC_RENDER_ROUTE.test(pathname);
+}
+
 export function isProtectedRoute(pathname: string): boolean {
+  if (isPublicRenderRoute(pathname)) return false;
   return routeConfig.protectedRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   );

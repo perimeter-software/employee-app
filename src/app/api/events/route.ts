@@ -2,12 +2,41 @@ import { NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
+import { getSp1Client } from '@/lib/sp1Client';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
 import {
   EVENT_CALL_OFF_DOC_FILTER,
   EVENT_COVER_DOC_FILTER,
 } from '@/domains/event/services/event-cover-constants';
+import {
+  findRosterEventIds,
+  getRostersByEventIds,
+  type EventRosterEntry,
+} from '@/domains/event/utils/event-roster';
+import { getRosterVenueAccess } from '@/domains/event/utils/roster-access';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Mirrors the external API's enrichEventsWithEventNumbers: computes roster counts from
+// each event's roster entries so clients see accurate numbers even when the stored
+// top-level counter fields are stale or absent. Roster entries now live in the
+// `eventroster` collection (keyed by event _id), not an embedded array.
+function enrichEventNumbers(
+  events: Record<string, unknown>[],
+  rostersByEventId: Map<string, EventRosterEntry[]>
+): Record<string, unknown>[] {
+  return events.map((event) => {
+    const applicants = rostersByEventId.get(String(event._id)) ?? [];
+    return {
+      ...event,
+      numberOnRoster: applicants.filter((a) => a.status === 'Roster').length,
+      numberOnWaitlist: applicants.filter((a) => a.status === 'Waitlist').length,
+      numberOnRequest: applicants.filter((a) => a.status === 'Request').length,
+      numberOnPremise: applicants.filter((a) => a.timeIn && !a.timeOut).length,
+    };
+  });
+}
 
 // ─── Filter parser ────────────────────────────────────────────────────────────
 // Parses "timeFrame:Current,eventType:Event,venueSlug:a;b,applicants.id:xxx"
@@ -34,6 +63,23 @@ function parseFilter(filterStr: string): Record<string, unknown> {
   return options;
 }
 
+/**
+ * ANDs `cond` onto the query without clobbering an `$or` a previous step wrote
+ * (search / roster visibility both use the top-level `$or`).
+ */
+function addCondition(
+  options: Record<string, unknown>,
+  cond: Record<string, unknown>
+) {
+  const and = (options.$and as unknown[]) ?? [];
+  if (options.$or) {
+    and.push({ $or: options.$or });
+    delete options.$or;
+  }
+  and.push(cond);
+  options.$and = and;
+}
+
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 async function getEventsHandler(request: AuthenticatedRequest) {
@@ -51,6 +97,10 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       Math.max(1, parseInt(searchParams.get('limit') ?? '10', 10))
     );
     const sortParam = searchParams.get('sort') ?? 'eventDate:asc';
+    // My Events: also return events at the venues an Event Admin manages, not just
+    // the ones the caller is rostered on.
+    const includeManagedVenues =
+      searchParams.get('includeManagedVenues') === 'true';
 
     // Parse filter string into mongo query
     const options = parseFilter(filterStr);
@@ -90,29 +140,60 @@ async function getEventsHandler(request: AuthenticatedRequest) {
           : { $lt: cutoffMidnight };
     }
 
-    // ── applicants.id + applicants.status → $elemMatch ───────────────────────
+    const isEmployee = !user.userType || user.userType === 'User';
+    const isClient = user.userType === 'Client';
+    const requestApplicantId =
+      applicantId || (user.applicantId ? String(user.applicantId) : '');
+
+    // ── Managed venues (Event Admin clientOrgs) ───────────────────────────────
+    // Event Admins manage the venues in their clientOrgs; those count as the
+    // user's own venues, so their events are in scope exactly like the venues the
+    // user is in the staffing pool for.
+    const managedSlugs = isEmployee
+      ? [...(await getRosterVenueAccess(db, user)).slugs]
+      : [];
+
+    // ── applicants.id + applicants.status → event _id set ────────────────────
+    // Roster entries live in the `eventroster` collection, so these dotted keys can no
+    // longer resolve against the events collection. Resolve them to the set of event
+    // ids whose roster matches, then constrain events by _id (mirrors the backend's
+    // resolveApplicantsOptions). With `includeManagedVenues` the roster constraint is
+    // widened to "on my roster OR at a venue I manage".
     const applicantIdFilter = options['applicants.id'] as string | undefined;
     const applicantStatusFilter = options['applicants.status'] as
       | string
       | undefined;
-    if (applicantIdFilter && applicantStatusFilter) {
-      options.applicants = {
-        $elemMatch: { id: applicantIdFilter, status: applicantStatusFilter },
-      };
+    if (applicantIdFilter || applicantStatusFilter) {
+      const rosterFilter: Record<string, unknown> = {};
+      if (applicantIdFilter) rosterFilter.id = applicantIdFilter;
+      if (applicantStatusFilter) rosterFilter.status = applicantStatusFilter;
+      const matchedEventIds = await findRosterEventIds(db, rosterFilter);
+      if (includeManagedVenues && managedSlugs.length > 0) {
+        addCondition(options, {
+          $or: [
+            { _id: { $in: matchedEventIds } },
+            { venueSlug: { $in: managedSlugs } },
+          ],
+        });
+      } else {
+        options._id = { $in: matchedEventIds };
+      }
       delete options['applicants.id'];
       delete options['applicants.status'];
-    } else if (applicantIdFilter) {
-      options['applicants.id'] = applicantIdFilter;
+    } else if (includeManagedVenues && managedSlugs.length > 0) {
+      // No roster filter to widen (an Event Admin without an applicant record):
+      // managed venues are the whole result set.
+      addCondition(options, { venueSlug: { $in: managedSlugs } });
     }
 
-    // ── Employee venue scoping ────────────────────────────────────────────────
-    // Mirrors mobile: employees only see events from their StaffingPool venues.
-    // The client no longer pre-fetches venues; we resolve them here server-side.
-    const isEmployee = !user.userType || user.userType === 'User';
-    const requestApplicantId =
-      applicantId || (user.applicantId ? String(user.applicantId) : '');
-
-    if (isEmployee && requestApplicantId && !options.venueSlug) {
+    // ── Employee venue scoping ───────────────────────────────────────────────
+    // Employees only see events at their own venues: the ones they are in the
+    // staffing pool for plus the ones they manage as an Event Admin.
+    if (
+      isEmployee &&
+      (requestApplicantId || managedSlugs.length > 0) &&
+      !options.venueSlug
+    ) {
       let staffingPoolSlugs: string[] = [];
 
       if (ObjectId.isValid(requestApplicantId)) {
@@ -129,36 +210,88 @@ async function getEventsHandler(request: AuthenticatedRequest) {
           .map((v) => v.venueSlug as string);
       }
 
-      if (staffingPoolSlugs.length === 0) {
+      const ownVenueSlugs = [
+        ...new Set([...staffingPoolSlugs, ...managedSlugs]),
+      ];
+
+      if (ownVenueSlugs.length === 0) {
         return NextResponse.json(
           { success: true, data: { data: [], pagination: {} } },
           { status: 200 }
         );
       }
 
-      options.venueSlug = { $in: staffingPoolSlugs };
+      options.venueSlug = { $in: ownVenueSlugs };
+    }
+
+    // ── Client venue scoping ──────────────────────────────────────────────────
+    // Mirrors external API's overrideFiltersForClients: clients can only see
+    // events for venues where seeEvents === 'Yes', regardless of what the
+    // caller sends in the venueSlug filter.
+    if (isClient) {
+      type ClientOrg = { slug?: string; seeEvents?: string };
+      const userId = user.userId ?? user._id;
+      let allowedSlugs: string[] = [];
+      if (userId && ObjectId.isValid(String(userId))) {
+        const clientDoc = await db
+          .collection('users')
+          .findOne(
+            { _id: new ObjectId(String(userId)) },
+            { projection: { clientOrgs: 1 } }
+          );
+        const clientOrgs =
+          ((clientDoc as { clientOrgs?: ClientOrg[] } | null)?.clientOrgs ?? []);
+        allowedSlugs = clientOrgs
+          .filter((org) => org.seeEvents === 'Yes')
+          .map((org) => org.slug ?? '')
+          .filter(Boolean);
+      }
+
+      if (allowedSlugs.length === 0) {
+        return NextResponse.json(
+          { success: true, data: { data: [], pagination: { total: 0 } } },
+          { status: 200 }
+        );
+      }
+
+      const existing = options.venueSlug;
+      if (existing) {
+        if (typeof existing === 'string') {
+          options.venueSlug = allowedSlugs.includes(existing)
+            ? existing
+            : { $in: [] };
+        } else if ((existing as Record<string, unknown>).$in) {
+          const requested = ((existing as Record<string, unknown>).$in as string[]);
+          options.venueSlug = { $in: requested.filter((s) => allowedSlugs.includes(s)) };
+        } else {
+          options.venueSlug = { $in: allowedSlugs };
+        }
+      } else {
+        options.venueSlug = { $in: allowedSlugs };
+      }
     }
 
     if (isEmployee && requestApplicantId) {
-      const visibilityOr = [
+      // Private events are visible only when the requester is on their Roster/Waitlist.
+      // That roster membership now lives in `eventroster`, so resolve it to an event
+      // _id set rather than an embedded $elemMatch.
+      const privateVisibleIds = await findRosterEventIds(db, {
+        id: requestApplicantId,
+        status: { $in: ['Roster', 'Waitlist'] },
+      });
+      const visibilityOr: Record<string, unknown>[] = [
         { makePublicAndSendNotification: { $ne: 'No' } },
         {
           makePublicAndSendNotification: { $eq: 'No' },
-          applicants: {
-            $elemMatch: {
-              id: requestApplicantId,
-              status: { $in: ['Roster', 'Waitlist'] },
-            },
-          },
+          _id: { $in: privateVisibleIds },
         },
       ];
-
-      if (options.$or) {
-        options.$and = [{ $or: options.$or }, { $or: visibilityOr }];
-        delete options.$or;
-      } else {
-        options.$or = visibilityOr;
+      // Event Admins see every event at a venue they manage, private or not.
+      if (managedSlugs.length > 0) {
+        visibilityOr.push({ venueSlug: { $in: managedSlugs } });
       }
+
+      addCondition(options, { $or: visibilityOr });
     }
 
     // ── Sort ─────────────────────────────────────────────────────────────────
@@ -187,16 +320,15 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       reportTimeTBD: 1,
       positionsRequested: 1,
       numberOnRoster: 1,
+      numberOnWaitlist: 1,
+      numberOnRequest: 1,
       numberOnPremise: 1,
       makePublicAndSendNotification: 1,
       allowEarlyClockin: 1,
-      applicants: 1,
       timeZone: 1,
       jobSlug: 1,
       eventUrl: 1,
     };
-
-    console.log('options', JSON.stringify(options));
 
     const rawEvents = await db
       .collection('events')
@@ -211,11 +343,18 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       .map((e) => convertToJSON(e))
       .filter(Boolean) as Record<string, unknown>[];
 
+    // ── Load roster entries for this page's events (single query) ────────────
+    // Drives both the per-user rosterStatus and the roster number badges. Entries
+    // live in the `eventroster` collection, so this replaces the old embedded array.
+    const pageEventIds = events
+      .map((e) => String(e._id))
+      .filter((id) => ObjectId.isValid(id));
+    const rostersByEventId = await getRostersByEventIds(db, pageEventIds);
+
     // ── Enrich with rosterStatus if applicantId provided ─────────────────────
     if (requestApplicantId) {
       events = events.map((event) => {
-        const applicants =
-          (event.applicants as { id: string; status: string }[]) ?? [];
+        const applicants = rostersByEventId.get(String(event._id)) ?? [];
         const found = applicants.find((a) => a.id === requestApplicantId);
         return { ...event, rosterStatus: found ? found.status : 'Not Roster' };
       });
@@ -308,12 +447,9 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       }
     }
 
-    // Strip applicants array from response (not needed on the listing page)
-    events = events.map((ev) => {
-      const rest = { ...ev };
-      delete rest.applicants;
-      return rest;
-    });
+    // Compute roster numbers from each event's roster entries.
+    // Mirrors enrichEventsWithEventNumbers in the external API.
+    events = enrichEventNumbers(events, rostersByEventId);
 
     // ── Pagination meta ──────────────────────────────────────────────────────
     const totalPages = Math.ceil(total / limit);
@@ -326,7 +462,10 @@ async function getEventsHandler(request: AuthenticatedRequest) {
         success: true,
         data: {
           data: events,
-          pagination: hasNextPage ? { next: { page: page + 1 } } : {},
+          pagination: {
+            total,
+            ...(hasNextPage ? { next: { page: page + 1 } } : {}),
+          },
         },
       },
       { status: 200 }
@@ -344,4 +483,39 @@ export const GET = withEnhancedAuthAPI(getEventsHandler, {
   requireDatabaseUser: true,
   requireTenant: true,
   allowApplicants: true,
+});
+
+// ─── POST (create event) ──────────────────────────────────────────────────────
+
+async function createEventHandler(request: AuthenticatedRequest) {
+  try {
+    const user = request.user;
+    if (!user?.sub || !user?.email) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid session' },
+        { status: 401 }
+      );
+    }
+    const body = await request.json();
+    const { tenant } = user;
+    const sp1 = getSp1Client(
+      user.sub,
+      user.email,
+      tenant?.clientDomain || tenant?.url
+    );
+    const res = await sp1.post('/events', body);
+    return NextResponse.json({ success: true, data: res.data }, { status: 201 });
+  } catch (error: unknown) {
+    const e = error as { response?: { status?: number; data?: unknown }; message?: string };
+    console.error('[Events Create API] Error:', e.message);
+    return NextResponse.json(
+      e.response?.data ?? { success: false, message: 'Internal server error' },
+      { status: e.response?.status ?? 500 }
+    );
+  }
+}
+
+export const POST = withEnhancedAuthAPI(createEventHandler, {
+  requireDatabaseUser: true,
+  requireTenant: true,
 });

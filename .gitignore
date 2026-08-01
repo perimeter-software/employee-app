@@ -13,6 +13,13 @@
 # testing
 /coverage
 
+# playwright
+/playwright-report/
+/test-results/
+/playwright/.auth/
+/blob-report/
+/.cache/
+
 # next.js
 /.next/
 /out/
@@ -35,6 +42,9 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# claude
+.claude
 
 # typescript
 *.tsbuildinfo

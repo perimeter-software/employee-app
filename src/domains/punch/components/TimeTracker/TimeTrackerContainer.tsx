@@ -1,6 +1,6 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useAppUser } from '@/domains/user/hooks/useAppUser';
 import { useUserApplicantJob } from '@/domains/job/hooks';
 import { useAllOpenPunches, useFindPunches } from '@/domains/punch/hooks';
 import { useCurrentUser } from '@/domains/user';
@@ -19,7 +19,7 @@ import {
 } from '@/domains/punch/utils/shift-job-utils';
 
 export const TimeTrackerContainer = () => {
-  const { user: auth0User, isLoading: auth0Loading } = useUser();
+  const { user: auth0User, isLoading: auth0Loading } = useAppUser();
 
   // Get company work week settings
   const { weekStartsOn, isLoading: companyLoading } = useCompanyWorkWeek();

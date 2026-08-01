@@ -1,0 +1,176 @@
+name: Deploy V4 (Clerk)
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-v4
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: v4-develop
+    steps:
+      - name: Deploy to V4 EC2 via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 3.136.160.66
+          username: ${{ secrets.V4_DEPLOY_USER }}
+          key: ${{ secrets.V4_DEPLOY_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            # Fail fast on any error so a broken yarn install / yarn build
+            # does NOT proceed to PM2 (which would otherwise restart against
+            # a stale or missing .next/ and serve 502s).
+            set -euo pipefail
+
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            # Isolate this app in its own PM2 daemon so deploys from sibling
+            # repos (e.g. gig-v4-backend) running `pm2 delete all` against the
+            # default PM2 daemon can't wipe v4-employee-app off the box.
+            export PM2_HOME="$HOME/.pm2-employee"
+
+            # Helper: free a TCP port by killing whoever's listening on it.
+            # Used only on the FRESH-start branches below — the reload branch
+            # keeps the same process and doesn't need it. Protects against
+            # orphan processes from manual runs or interrupted prior deploys.
+            free_port() {
+              local port="$1" pids
+              pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+              if [ -n "$pids" ]; then
+                echo "Freeing port $port (killing pids: $pids)"
+                kill -TERM $pids 2>/dev/null || true
+                sleep 2
+                kill -KILL $pids 2>/dev/null || true
+              fi
+            }
+
+            cd /var/node/v4-employee-app
+            git fetch origin
+            git checkout develop
+            git reset --hard origin/develop
+
+            cat > .env << ENVEOF
+            NODE_ENV=production
+            PORT=${{ vars.PORT }}
+            IS_V4=true
+            NEXT_PUBLIC_IS_V4=true
+            NEXT_PUBLIC_APP_ENV=${{ vars.NEXT_PUBLIC_APP_ENV }}
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+            HANDOFF_SHARED_SECRET=${{ secrets.HANDOFF_SHARED_SECRET }}
+            MONGODB_CONNECTION_STRING=${{ secrets.MONGODB_CONNECTION_STRING }}
+            REDIS_HOST=${{ vars.REDIS_HOST }}
+            REDIS_PORT=${{ vars.REDIS_PORT }}
+            REDIS_TLS=${{ vars.REDIS_TLS }}
+            API_REDIS_HOST=${{ vars.API_REDIS_HOST }}
+            API_REDIS_PORT=${{ vars.API_REDIS_PORT }}
+            API_REDIS_TLS=${{ vars.REDIS_TLS }}
+            BACKEND_JWT_SECRET_KEY=${{ secrets.BACKEND_JWT_SECRET_KEY }}
+            AWS_REGION=${{ vars.AWS_REGION }}
+            NEXT_PUBLIC_AWS_REGION=${{ vars.NEXT_PUBLIC_AWS_REGION || vars.AWS_REGION }}
+            AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
+            GOOGLE_MAPS_API_KEY_TWO=${{ secrets.GOOGLE_MAPS_API_KEY_TWO }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+            SES_FROM_EMAIL=${{ vars.SES_FROM_EMAIL }}
+            SES_SEND_IN_DEV=${{ vars.SES_SEND_IN_DEV }}
+            EMAIL_DIRECT_SEND=${{ vars.EMAIL_DIRECT_SEND }}
+            NEXT_PUBLIC_FIREBASE_API_KEY=${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
+            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+            NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+            NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+            NEXT_PUBLIC_FIREBASE_APP_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
+            NEXT_PUBLIC_FIREBASE_VAPID_KEY=${{ secrets.NEXT_PUBLIC_FIREBASE_VAPID_KEY }}
+            SP1_API_BASE_URL=${{ vars.SP1_API_BASE_URL }}
+            SP1_API_ORIGIN=${{ vars.SP1_API_ORIGIN }}
+            NEXT_PUBLIC_IMAGE_SERVER=${{ vars.NEXT_PUBLIC_IMAGE_SERVER }}
+            CLUSTER_ENABLED=${{ vars.CLUSTER_ENABLED }}
+            CLUSTER_WORKERS=${{ vars.CLUSTER_WORKERS }}
+            AUTH0_SECRET=${{ secrets.AUTH0_SECRET }}
+            AUTH0_BASE_URL=${{ vars.AUTH0_BASE_URL }}
+            AUTH0_ISSUER_BASE_URL=${{ vars.AUTH0_ISSUER_BASE_URL }}
+            AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }}
+            AUTH0_CLIENT_SECRET=${{ secrets.AUTH0_CLIENT_SECRET }}
+            AUTH0_AUDIENCE=${{ vars.AUTH0_AUDIENCE }}
+            SECRET_AUTH0_CLIENT_ID=${{ vars.SECRET_AUTH0_CLIENT_ID }}
+            SECRET_AUTH0_CLIENT_SECRET=${{ secrets.SECRET_AUTH0_CLIENT_SECRET }}
+            SECRET_AUTH0_DOMAIN=${{ vars.SECRET_AUTH0_DOMAIN }}
+            SECRET_AUTH0_AUDIENCE=${{ vars.SECRET_AUTH0_AUDIENCE }}
+            SECRET_AUTH0_SERVER_SECRET=${{ secrets.SECRET_AUTH0_SERVER_SECRET }}
+            ENVEOF
+
+            yarn install --frozen-lockfile
+
+            # Build with set -e in effect: a non-zero exit from `yarn build`
+            # aborts the script before PM2 is touched. The running PM2 process
+            # already has its .next/ loaded into memory and keeps serving the
+            # last good build (Next.js doesn't reload it mid-run), so a build
+            # failure is non-disruptive.
+            yarn build
+
+            # Sanity-check the new build emitted the manifest PM2 needs to
+            # start. If it didn't, fail before swapping/restarting.
+            if [ ! -f .next/prerender-manifest.json ]; then
+              echo "ERROR: build completed but .next/prerender-manifest.json missing"
+              exit 1
+            fi
+
+            # Migration safety: any v4-employee-app tracked by a DIFFERENT PM2
+            # daemon (typically the default ~/.pm2 from before isolation was
+            # introduced) would keep respawning a parallel process and steal
+            # port 3000 — making our `pm2 start` below fail with EADDRINUSE.
+            # Sweep other daemons AFTER the build, so the existing process
+            # keeps serving traffic while we build. Idempotent and silent if
+            # nothing's there.
+            for OTHER_PM2_HOME in "$HOME/.pm2"; do
+              if [ "$OTHER_PM2_HOME" != "$PM2_HOME" ] && [ -d "$OTHER_PM2_HOME" ]; then
+                PM2_HOME="$OTHER_PM2_HOME" pm2 delete v4-employee-app >/dev/null 2>&1 || true
+              fi
+            done
+
+            # Self-healing PM2 management:
+            #  - If the process is online → reload with new env.
+            #  - If it's tracked but stopped/errored (hit max restarts) →
+            #    delete and recreate so it doesn't stay dead forever.
+            #  - If it's not tracked at all → start fresh.
+            #
+            # --max-restarts 50 + --exp-backoff-restart-delay 5000 means
+            # PM2 will keep retrying with backoff (5s → 10s → 20s …) for a
+            # long time before giving up — so a transient runtime crash
+            # (e.g. Redis hiccup) doesn't permanently take the app down.
+            PM2_FLAGS="--name v4-employee-app --interpreter none --max-restarts 50 --exp-backoff-restart-delay 5000"
+            YARN_BIN="$(which yarn)"
+
+            if pm2 describe v4-employee-app > /dev/null 2>&1; then
+              # Tracked. Check if it's actually online; if not, recreate.
+              if pm2 jlist | python3 -c "import json,sys; sys.exit(0 if any(p['name']=='v4-employee-app' and p['pm2_env']['status']=='online' for p in json.load(sys.stdin)) else 1)"; then
+                pm2 reload v4-employee-app --update-env
+              else
+                echo "v4-employee-app is tracked but not online; recreating"
+                pm2 delete v4-employee-app || true
+                free_port 3000
+                pm2 start "$YARN_BIN" $PM2_FLAGS -- start
+              fi
+            else
+              free_port 3000
+              pm2 start "$YARN_BIN" $PM2_FLAGS -- start
+            fi
+            pm2 save
+
+            # Verify the process is actually online; fail the deploy if not.
+            sleep 5
+            if ! pm2 describe v4-employee-app | grep -q 'status.*online'; then
+              echo "ERROR: v4-employee-app is not online after deploy"
+              pm2 logs v4-employee-app --lines 50 --nostream
+              exit 1
+            fi

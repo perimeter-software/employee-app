@@ -42,6 +42,7 @@ async function getVenueDetailHandler(
           description: 1,
           venueContact1: 1,
           location: 1,
+          locations: 1,
           otherUrls: 1,
           videoUrls: 1,
         },

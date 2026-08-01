@@ -5,6 +5,7 @@ import { ObjectId } from 'mongodb';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
 import type { Document } from 'mongodb';
+import { getEventRosterEntries } from '@/domains/event/utils/event-roster';
 import {
   EVENT_CALL_OFF_DOC_FILTER,
   EVENT_COVER_STORAGE_COLLECTION,
@@ -100,7 +101,6 @@ export async function createEventCallOffRequest(
         eventDate: 1,
         eventUrl: 1,
         venueSlug: 1,
-        applicants: 1,
         eventType: 1,
         eventManager: 1,
       },
@@ -130,8 +130,9 @@ export async function createEventCallOffRequest(
 
   assertEventCoverTimeWindow(eventStart);
 
-  const applicants =
-    (event.applicants as Array<{ id?: string; status?: string }>) ?? [];
+  // Roster membership lives in the `eventroster` collection now, not on the event doc.
+  const rosterEntries = await getEventRosterEntries(db, event._id);
+  const applicants = rosterEntries as Array<{ id?: string; status?: string }>;
   const onRoster = applicants.some(
     (a) => rosterIdMatches(a.id, fromEmployeeId) && a.status === 'Roster'
   );

@@ -7,6 +7,9 @@ import { DateField } from './FormFieldTypes/DateField';
 import { CheckboxField } from './FormFieldTypes/CheckboxField';
 import { RadioField } from './FormFieldTypes/RadioField';
 import { SignatureField } from './FormFieldTypes/SignatureField';
+import { BooleanField } from './FormFieldTypes/BooleanField';
+import { AddressField } from './FormFieldTypes/AddressField';
+import { TableField } from './FormFieldTypes/TableField';
 
 interface FormFieldProps {
   field: FormFieldType;
@@ -45,6 +48,15 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, er
     return <hr className="my-4 border-gray-300" />;
   }
 
+  if (field.type === 'image') {
+    // Embedded form image — display-only (no fillable value). Show a caption.
+    return (
+      <p className="py-2 text-xs italic text-gray-400">
+        {field.content || field.name || 'Image'}
+      </p>
+    );
+  }
+
   // Render input fields based on type
   switch (field.type) {
     case 'input':
@@ -73,6 +85,15 @@ export const FormField: React.FC<FormFieldProps> = ({ field, value, onChange, er
 
     case 'signature':
       return <SignatureField field={field} value={value} onChange={onChange} error={error} />;
+
+    case 'boolean':
+      return <BooleanField field={field} value={value as string} onChange={onChange} error={error} />;
+
+    case 'address':
+      return <AddressField field={field} value={value as string} onChange={onChange} error={error} />;
+
+    case 'table':
+      return <TableField field={field} value={value} onChange={onChange} error={error} />;
 
     case 'file':
       // TODO: Implement file upload field

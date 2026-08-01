@@ -1,11 +1,12 @@
 // app/page.tsx
 'use client';
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useAppUser } from '@/domains/user/hooks/useAppUser';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
 import { Button } from '@/components/ui/Button';
 import Image from 'next/image';
 import { OTPLoginForm } from '@/components/auth/OTPLoginForm';
+import { IS_V4 } from '@/lib/config/auth-mode';
 
 interface NotificationState {
   message: string;
@@ -52,7 +53,15 @@ function SearchParamsHandler({
 // Component for login button that uses search params
 function LoginButton({ returnUrl }: { returnUrl: string }) {
   const handleLogin = () => {
-    // Using the correct API route for Auth0 login
+    // In V4, Clerk owns the hosted sign-in page; Auth0's /api/auth/login
+    // endpoint isn't mounted. Route to the Clerk-powered /sign-in instead
+    // and pass returnUrl through redirect_url so Clerk returns the user home.
+    if (IS_V4) {
+      window.location.href = `/sign-in?redirect_url=${encodeURIComponent(
+        returnUrl
+      )}`;
+      return;
+    }
     window.location.href = `/api/auth/login?returnTo=${encodeURIComponent(
       returnUrl
     )}`;
@@ -78,7 +87,8 @@ function LoginFormContent({
 }) {
   const searchParams = useSearchParams();
   const [loginMethod, setLoginMethod] = useState<'auth0' | 'otp'>('otp');
-  const returnUrl = searchParams.get('returnTo') || searchParams.get('returnUrl') || '/time-attendance';
+  const returnUrl =
+    searchParams.get('returnTo') || searchParams.get('returnUrl') || '/time';
 
   return (
     <>
@@ -138,7 +148,7 @@ function LoginFormContent({
 }
 
 export default function LoginPage() {
-  const { user, isLoading } = useUser();
+  const { user, isLoading } = useAppUser();
   const router = useRouter();
   const [notification, setNotification] = useState<NotificationState>({
     message: '',
@@ -156,11 +166,19 @@ export default function LoginPage() {
     }
   }, [notification.show]); // FIXED: Only depend on notification.show
 
-  // Redirect if user is already authenticated
+  // Redirect if user is already authenticated.
+  // Priority mirrors sidebar availability: /time-attendance for full users,
+  // /applicant for applicant-only sessions (sidebar never shows /time-attendance there).
   useEffect(() => {
-    // Only redirect if user is authenticated
     if (user && !isLoading) {
-      router.push('/time-attendance');
+      const isApplicantOnly = user.isApplicantOnly ?? false;
+      const isLimitedAccess = user.isLimitedAccess ?? false;
+
+      let dest = '/home'; // full user: lands on Home
+      if (isApplicantOnly) dest = '/applicant';
+      else if (isLimitedAccess) dest = '/payroll';
+
+      router.push(dest);
     }
   }, [user, isLoading, router]);
 

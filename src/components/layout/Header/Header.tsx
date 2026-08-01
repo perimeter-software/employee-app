@@ -2,7 +2,7 @@
 
 // components/layout/Header.tsx
 
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useAppUser } from '@/domains/user/hooks/useAppUser';
 import Image from 'next/image';
 import { useState } from 'react';
 import { Button } from '@/components/ui/Button/Button';
@@ -13,10 +13,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/DropdownMenu';
-import { ChevronDown, LogOut, Settings, User, Menu } from 'lucide-react';
+import { ChevronDown, LogOut, Settings, User } from 'lucide-react';
 import { TenantInfo, useSwitchTenant } from '@/domains/tenant';
 import { useCurrentUser } from '@/domains/user';
 import { NotificationBell } from '@/components/shared/NotificationBell';
+import { IS_V4 } from '@/lib/config/auth-mode';
+import { ClerkAccountMenuItem } from '@/components/auth/ClerkAccountMenuItem';
 
 function TenantLogo({
   src,
@@ -52,12 +54,8 @@ function TenantLogo({
   );
 }
 
-interface HeaderProps {
-  onMobileMenuToggle?: () => void;
-}
-
-const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
-  const { user } = useUser();
+const Header: React.FC = () => {
+  const { user } = useAppUser();
   const { data: enhancedUser, isLoading: userLoading } = useCurrentUser();
   const { mutate: switchTenant, isPending: tenantSwitchLoading } =
     useSwitchTenant();
@@ -114,16 +112,6 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
       <div className="flex items-center h-16 px-4 sm:px-6 gap-4">
         {/* Left Side - Mobile Menu + Welcome Text */}
         <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
-          {/* Mobile Menu Button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="lg:hidden flex-shrink-0"
-            onClick={onMobileMenuToggle}
-          >
-            <Menu className="w-5 h-5" />
-            <span className="sr-only">Open menu</span>
-          </Button>
 
           {/* Welcome Text Container */}
           <div className="min-w-0 flex-1 overflow-hidden">
@@ -356,10 +344,17 @@ const Header: React.FC<HeaderProps> = ({ onMobileMenuToggle }) => {
                 </div>
               )}
 
-              <DropdownMenuItem>
-                <User className="w-4 h-4 mr-2" />
-                Profile
-              </DropdownMenuItem>
+              {/* On V4 (Clerk), open the account modal (with our custom Email
+                  addresses tab) instead of a dead Profile link — no second
+                  avatar needed. */}
+              {IS_V4 ? (
+                <ClerkAccountMenuItem />
+              ) : (
+                <DropdownMenuItem>
+                  <User className="w-4 h-4 mr-2" />
+                  Profile
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem>
                 <Settings className="w-4 h-4 mr-2" />
                 Settings

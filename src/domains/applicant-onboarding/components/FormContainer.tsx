@@ -1,0 +1,210 @@
+'use client';
+
+// Ported skeleton of FormContainer. Next/Previous/Save buttons mirror the MUI version;
+// the form body slot renders NewApplicantForms which dispatches based on active step.
+import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'next/navigation';
+import { ArrowLeft, ArrowRight, Save } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { clsxm } from '@/lib/utils';
+import {
+  useNewApplicantContext,
+  ONBOARDING_OBJECTS_ENUM,
+  APPLICANT_OBJECTS_ENUM,
+} from '../state/new-applicant-context';
+import { URL_STEP_TO_ID } from '../utils/constants';
+import type { CurrentApplicantResponse } from '../types';
+import NewApplicantForms from './NewApplicantForms';
+import UnsavedChangesModal from './UnsavedChangesModal';
+import OverviewSection from './sections/OverviewSection';
+
+interface FormContainerProps {
+  currentApplicant: CurrentApplicantResponse | null | undefined;
+  companyType?: string;
+  isPreOnboarding: boolean;
+}
+
+const FormContainer: React.FC<FormContainerProps> = ({ currentApplicant, companyType, isPreOnboarding }) => {
+  const {
+    applicant,
+    onNextStep,
+    onPreviousStep,
+    onNextSubStep,
+    onPreviousSubStep,
+    getActiveRegistrationStep,
+    getActiveRegistrationSubStep,
+    getFirstAndLastRegistrationSubSteps,
+    buttonState,
+    currentFormState,
+    setApplicantSteps,
+    loadApplicantAction,
+    setActiveStep,
+    submitRef,
+  } = useNewApplicantContext();
+
+  const params = useParams();
+  const urlStep = (params?.step as string | undefined) ?? undefined;
+
+  const [unsavedOpen, setUnsavedOpen] = useState(false);
+  const [clickDirection, setClickDirection] = useState<'next' | 'previous' | null>(null);
+  const [redirectKey, setRedirectKey] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!submitRef.current) return;
+    setIsSubmitting(true);
+    try {
+      await submitRef.current();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const activeStep = useMemo(() => getActiveRegistrationStep(), [getActiveRegistrationStep]);
+  const activeSubStep = useMemo(
+    () => getActiveRegistrationSubStep(),
+    [getActiveRegistrationSubStep]
+  );
+  const [firstSubStep, lastSubStep] = getFirstAndLastRegistrationSubSteps();
+  const atFirstSub = activeSubStep?.id === firstSubStep?.id;
+  const atLastSub = activeSubStep?.id === lastSubStep?.id;
+  const isSubStep = activeStep?.applicantObject === APPLICANT_OBJECTS_ENUM.ONBOARDING;
+
+  // Onboarding-availability gating: stadium-people checks allowedStages + !acknowledged.
+  // Until useMinStageToOnboarding is ported, treat onboarding as available when the
+  // applicant exists and has not acknowledged.
+  const isOnboardingAvailable = !!applicant?._id && !applicant?.acknowledged;
+
+  const handleNext = () => {
+    if (currentFormState?.isDirty) {
+      setClickDirection('next');
+      setUnsavedOpen(true);
+    } else if (isSubStep) onNextSubStep();
+    else onNextStep();
+  };
+
+  const handlePrevious = () => {
+    if (currentFormState?.isDirty) {
+      setClickDirection('previous');
+      setUnsavedOpen(true);
+    } else if (isSubStep) onPreviousSubStep();
+    else onPreviousStep();
+  };
+
+  // Load applicant data into context — only when currentApplicant changes.
+  // Kept separate from the steps effect so that company data loading (which
+  // refreshes setApplicantSteps) does not re-dispatch the applicant update.
+  useEffect(() => {
+    if (!currentApplicant?.applicant) return;
+    loadApplicantAction(currentApplicant.applicant);
+  }, [currentApplicant, loadApplicantAction]);
+
+  // Set up registration steps — re-runs when setApplicantSteps changes (i.e. when
+  // allowedStages refreshes after company data loads) so steps always reflect the
+  // correct minStageToOnboarding value.
+  useEffect(() => {
+    if (!currentApplicant?.applicant) return;
+    const a = currentApplicant.applicant;
+    setApplicantSteps(a.status, a.applicantStatus, a.acknowledged);
+    if (urlStep && URL_STEP_TO_ID[urlStep]) setRedirectKey((k) => k + 1);
+  }, [currentApplicant, urlStep, setApplicantSteps]);
+
+  useEffect(() => {
+    if (redirectKey && urlStep && URL_STEP_TO_ID[urlStep]) {
+      const t = setTimeout(() => setActiveStep(URL_STEP_TO_ID[urlStep]), 100);
+      return () => clearTimeout(t);
+    }
+  }, [redirectKey, urlStep, setActiveStep]);
+
+  if (!activeStep) return null;
+
+  if (activeStep.applicantObject === 'overview')
+    return <OverviewSection companyType={companyType} currentApplicant={currentApplicant} />;
+
+  const submitLabel =
+    activeStep?.applicantObject === ONBOARDING_OBJECTS_ENUM.ACKNOWLEDGEMENT
+      ? 'Sign and Submit Application'
+      : activeStep?.applicantObject === ONBOARDING_OBJECTS_ENUM.I9_FORM
+        ? 'Sign and Save'
+        : 'Save';
+
+  return (
+    <>
+      <Card className="mt-8">
+        <CardHeader className="sticky top-16 z-20 flex flex-col gap-3 border-b bg-card sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="min-w-0 truncate text-base">
+            {activeStep?.label}
+            {isSubStep && activeSubStep?.label ? ` — ${activeSubStep.label}` : ''}
+          </CardTitle>
+          <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
+            {buttonState.submit.show && (
+              <Button
+                type="button"
+                form="current-form"
+                size="sm"
+                disabled={buttonState.submit.disabled}
+                loading={isSubmitting}
+                onClick={handleSubmit}
+                rightIcon={<Save className="h-4 w-4" />}
+                className="hidden lg:inline-flex"
+              >
+                {submitLabel}
+              </Button>
+            )}
+            <div className="flex items-center gap-2">
+              {buttonState.previous.show && !isPreOnboarding && (isOnboardingAvailable || isSubStep) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrevious}
+                  disabled={isSubStep ? atFirstSub : buttonState.previous.disabled}
+                  className="flex-1 sm:flex-none"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Previous
+                </Button>
+              )}
+              {buttonState.next.show && !isPreOnboarding && (isOnboardingAvailable || isSubStep) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleNext}
+                  disabled={isSubStep ? atLastSub : buttonState.next.disabled}
+                  className="flex-1 sm:flex-none"
+                >
+                  Next
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className={clsxm('relative border p-4')}>
+          <NewApplicantForms />
+          {buttonState.submit.show && (
+            <Button
+              type="button"
+              form="current-form"
+              disabled={buttonState.submit.disabled}
+              loading={isSubmitting}
+              onClick={handleSubmit}
+              rightIcon={<Save className="h-4 w-4" />}
+              className="mt-5 w-full lg:hidden"
+            >
+              {submitLabel}
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+      <UnsavedChangesModal
+        open={unsavedOpen}
+        onOpenChange={setUnsavedOpen}
+        clickDirection={clickDirection}
+      />
+    </>
+  );
+};
+
+export default FormContainer;

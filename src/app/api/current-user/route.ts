@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { ObjectId } from 'mongodb';
 import { AuthenticatedRequest, withEnhancedAuthAPI } from '@/lib/middleware';
 import { getTenantAwareConnection } from '@/lib/db';
 import {
@@ -25,6 +26,8 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
         lastName?: string;
         status?: string;
         employmentStatus?: string;
+        applicantStatus?: string;
+        acknowledgedDate?: string | null;
       } | null = null;
 
       // Fast path: when tenant is already known (from cache), single-DB lookup via same pattern as other API routes
@@ -39,6 +42,8 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
                 lastName: 1,
                 status: 1,
                 employmentStatus: 1,
+                applicantStatus: 1,
+                acknowledged: 1,
               },
             }
           );
@@ -48,6 +53,10 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
               lastName: applicant.lastName,
               status: applicant.status,
               employmentStatus: applicant.employmentStatus,
+              applicantStatus: applicant.applicantStatus,
+              acknowledgedDate: applicant.acknowledged?.date
+                ? new Date(applicant.acknowledged.date).toISOString()
+                : null,
             };
           }
         } catch {
@@ -87,6 +96,10 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
         name: user.name,
         status: applicantInfo?.status ?? user.status,
         employmentStatus: applicantInfo?.employmentStatus ?? user.employmentStatus,
+        applicantStatus: applicantInfo?.applicantStatus ?? (user.applicantStatus as string | undefined),
+        acknowledgedDate: applicantInfo?.acknowledgedDate !== undefined
+          ? applicantInfo.acknowledgedDate
+          : (user.acknowledgedDate as string | null | undefined),
         isApplicantOnly: true,
         isLimitedAccess: true,
       };
@@ -145,6 +158,24 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
       isApplicantOnly: false,
       hideEmployeesDetails: !!userExists?.hideEmployeesDetails,
     };
+
+    // clientOrgs (managed venues) are needed for Client users AND for Event Admins
+    // (userType 'User' + employeeType 'Event Admin'), who manage rosters on those venues.
+    const needsClientOrgs =
+      userExists?.userType === 'Client' ||
+      (userExists?.userType === 'User' &&
+        userExists?.employeeType === 'Event Admin');
+    if (needsClientOrgs && userExists._id) {
+      try {
+        const clientDoc = await db.collection('users').findOne(
+          { _id: new ObjectId(userExists._id) },
+          { projection: { clientOrgs: 1 } }
+        );
+        enhancedUser.clientOrgs = clientDoc?.clientOrgs ?? [];
+      } catch {
+        enhancedUser.clientOrgs = [];
+      }
+    }
 
     return NextResponse.json({
       success: true,

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mongoConn } from '@/lib/db/mongodb';
 import { checkUserExistsByEmail } from '@/domains/user/utils/mongo-user-utils';
 import redisService from '@/lib/cache/redis-client';
+import { buildApplicantSessionData } from '@/lib/auth/applicant-session';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
     const user = await checkUserExistsByEmail(db, normalizedEmail);
 
     let sessionData;
-    let redirectUrl = '/time-attendance';
+    let redirectUrl = '/time';
     let isApplicantOnly = false;
 
     if (user && user._id) {
@@ -117,47 +118,26 @@ export async function POST(request: NextRequest) {
         }
       }
     } else {
-      // NEW: APPLICANT-ONLY FLOW
-      const { findApplicantAndTenantsByEmail } = await import(
-        '@/domains/user/utils/mongo-user-utils'
+      // APPLICANT-ONLY FLOW
+      // Gating + session shape are shared with the handoff-consume route so the
+      // two entry points can never drift. A safe relative `returnTo` deep-links
+      // "Applicant"-status users (e.g. /applicant/jobs?run=aiscreening).
+      const result = await buildApplicantSessionData(
+        normalizedEmail,
+        returnTo ? decodeURIComponent(returnTo) : undefined
       );
-      const applicantData =
-        await findApplicantAndTenantsByEmail(normalizedEmail);
 
-      if (!applicantData || applicantData.tenants.length === 0) {
+      if (!result.ok) {
         await redisService.del(otpKey);
         return NextResponse.json(
-          { error: 'Account not found. Please contact your supervisor.' },
-          { status: 404 }
+          { error: result.error },
+          { status: result.status }
         );
       }
 
       isApplicantOnly = true;
-
-      sessionData = {
-        userId: applicantData.applicantId, // Use applicantId as userId (applicant._id)
-        applicantId: applicantData.applicantId, // Same as userId for applicants
-        email: normalizedEmail,
-        name:
-          applicantData.applicantInfo.firstName &&
-          applicantData.applicantInfo.lastName
-            ? `${applicantData.applicantInfo.firstName} ${applicantData.applicantInfo.lastName}`.trim()
-            : applicantData.applicantInfo.firstName ||
-              applicantData.applicantInfo.lastName ||
-              normalizedEmail,
-        firstName: applicantData.applicantInfo.firstName,
-        lastName: applicantData.applicantInfo.lastName,
-        loginMethod: 'otp',
-        isLimitedAccess: true, // Applicants only get paycheck stub access
-        isApplicantOnly: true, // Flag to indicate applicant-only session
-        userType: 'applicant', // Indicates applicant-only
-        status: applicantData.applicantInfo.status, // e.g., "Employee"
-        employmentStatus: applicantData.applicantInfo.employmentStatus, // e.g., "Active"
-        createdAt: new Date().toISOString(),
-      };
-
-      // Applicants always redirect to paycheck stubs
-      redirectUrl = '/payroll';
+      sessionData = result.sessionData;
+      redirectUrl = result.redirectUrl;
     }
 
     // Delete OTP after successful verification

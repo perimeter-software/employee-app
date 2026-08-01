@@ -10,6 +10,12 @@ export const env = {
     audience: process.env.AUTH0_AUDIENCE!,
   },
 
+  // Clerk (V4). Required only when IS_V4=true; otherwise unused.
+  clerk: {
+    publishableKey: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '',
+    secretKey: process.env.CLERK_SECRET_KEY || '',
+  },
+
   // Legacy Auth0 (for existing functions that haven't been migrated yet)
   legacyAuth0: {
     clientId: process.env.SECRET_AUTH0_CLIENT_ID!,
@@ -37,6 +43,8 @@ export const env = {
       }`,
     api_host: process.env.API_REDIS_HOST || '127.0.0.1',
     api_port: parseInt(process.env.API_REDIS_PORT || '6379'),
+    api_tls: process.env.API_REDIS_TLS === 'true',
+    tls: process.env.REDIS_TLS === 'true',
     api_url:
       process.env.API_REDIS_URL ||
       `redis://${process.env.API_REDIS_HOST || '127.0.0.1'}:${
@@ -81,14 +89,23 @@ export const env = {
 
 // Type-safe environment variable checker
 export function validateEnv() {
-  const requiredVars = [
-    'AUTH0_SECRET',
-    'AUTH0_BASE_URL',
-    'AUTH0_ISSUER_BASE_URL',
-    'AUTH0_CLIENT_ID',
-    'AUTH0_CLIENT_SECRET',
-    'MONGODB_CONNECTION_STRING',
-  ];
+  const isV4 =
+    process.env.NEXT_PUBLIC_IS_V4 === 'true' || process.env.IS_V4 === 'true';
+
+  const requiredVars = isV4
+    ? [
+        'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY',
+        'CLERK_SECRET_KEY',
+        'MONGODB_CONNECTION_STRING',
+      ]
+    : [
+        'AUTH0_SECRET',
+        'AUTH0_BASE_URL',
+        'AUTH0_ISSUER_BASE_URL',
+        'AUTH0_CLIENT_ID',
+        'AUTH0_CLIENT_SECRET',
+        'MONGODB_CONNECTION_STRING',
+      ];
 
   const missingVars = requiredVars.filter((varName) => !process.env[varName]);
 

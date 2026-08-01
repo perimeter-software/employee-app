@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { checkMongoConnection } from '@/lib/db';
 import redisService from '@/lib/cache/redis-client';
 
+// Force dynamic — health check must run at request time, not build time.
+// Otherwise Next tries to statically pre-render this route and times out
+// against services that aren't reachable from the build environment.
+export const dynamic = 'force-dynamic';
+
 interface HealthStatus {
   status: 'healthy' | 'unhealthy' | 'degraded';
   timestamp: string;

@@ -1,13 +1,21 @@
 // lib/middleware/core.ts - Auth0 v3 compatible with full middleware chain
-import type { NextRequest } from 'next/server';
+import type { NextFetchEvent, NextRequest } from 'next/server';
 import { authMiddleware } from './auth';
 import { loggingMiddleware } from './logging';
 import { securityMiddleware } from './security';
 import { sessionCleanerMiddleware } from './session-cleaner';
 import { isAuthRoute, isStaticAsset } from './utils';
 import { env } from '@/lib/config';
+import { IS_V4 } from '@/lib/config/auth-mode';
+import { clerkMiddlewareHandler } from './clerk';
 
-export async function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest, event: NextFetchEvent) {
+  // V4: Clerk owns session + auth-gating. The Auth0 chain (session-cleaner,
+  // auth cookie parsing, etc.) does not apply.
+  if (IS_V4) {
+    return clerkMiddlewareHandler(request, event);
+  }
+
   const { pathname } = request.nextUrl;
 
   // Always let Auth0 handle auth routes

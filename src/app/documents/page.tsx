@@ -1,6 +1,6 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useAppUser } from '@/domains/user/hooks/useAppUser';
 import Layout from '@/components/layout/Layout';
 import {
   Card,
@@ -42,7 +42,6 @@ import {
   useUploadDocument,
   Document as ApiDocument,
 } from '@/domains/document';
-import { usePrimaryCompany } from '@/domains/company/hooks/use-primary-company';
 
 interface DocumentUploadData {
   file: File;
@@ -204,27 +203,8 @@ const DocumentUploadModal: React.FC<{
 };
 
 const DocumentsPage: NextPage = () => {
-  const { user, error: authError, isLoading: authLoading } = useUser();
+  const { user, error: authError, isLoading: authLoading } = useAppUser();
   const { isLoading: userLoading, data: currentUserData } = useCurrentUser();
-
-  // Fetch primary company data for uploadPath
-  const { data: primaryCompany } = usePrimaryCompany();
-
-  // Setup image server URL based on environment
-  const getImageServerUrl = (): string => {
-    if (typeof window === 'undefined') return '';
-
-    const hostname = window.location.hostname;
-    if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) {
-      return 'https://images.dev.stadiumpeople.com';
-    } else if (hostname.includes('stage')) {
-      return 'https://images.stage.stadiumpeople.com';
-    } else {
-      return 'https://images.stadiumpeople.com';
-    }
-  };
-
-  const imageServerUrl = getImageServerUrl();
 
   // Auth check
   const {
@@ -576,10 +556,6 @@ const DocumentsPage: NextPage = () => {
                           currentApplicant={{
                             _id:
                               currentUserData?.applicantId || user?.sub || '',
-                          }}
-                          imageServer={imageServerUrl}
-                          company={{
-                            uploadPath: primaryCompany?.uploadPath,
                           }}
                           onView={() => {
                             console.log('Viewing document:', document.name);

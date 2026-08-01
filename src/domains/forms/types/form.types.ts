@@ -8,6 +8,7 @@ export type FieldType =
   | 'dropdown'
   | 'checkbox'
   | 'radio'
+  | 'boolean'
   | 'date'
   | 'time'
   | 'email'
@@ -16,9 +17,20 @@ export type FieldType =
   | 'currency'
   | 'signature'
   | 'file'
+  | 'address'
+  | 'table'
+  | 'image'
   | 'paragraph'
   | 'heading'
   | 'divider';
+
+// Column definition for a `table` field. Structurally matches DynamicFormTable's
+// TableColumn so the field.columns can be passed straight through.
+export interface FormTableColumn {
+  header?: string | null;
+  key?: string | null;
+  type?: string | null;
+}
 
 // Field Validation
 export interface FieldValidation {
@@ -48,6 +60,7 @@ export interface FormField {
   // Additional properties from stadium-people
   content?: string; // For paragraph/heading types
   level?: number; // For heading types
+  columns?: FormTableColumn[]; // For table types (column headers/keys)
   position?: {
     page?: number;
     x?: number;
@@ -139,8 +152,16 @@ export interface FormResponseMetadata {
   completedById?: string;
 }
 
-// Value type for a single form field (used in form state and field components)
-export type FormFieldValue = string | number | boolean | string[] | undefined;
+// Value type for a single form field (used in form state and field components).
+// `Record<string, string>[]` is a `table` field's value (array of row objects
+// keyed by column key — see DynamicFormTable).
+export type FormFieldValue =
+  | string
+  | number
+  | boolean
+  | string[]
+  | Record<string, string>[]
+  | undefined;
 
 // Form Response (stored in user.dynamicForms)
 export interface FormResponse {

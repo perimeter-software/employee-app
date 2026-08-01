@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Upload, Paperclip, X } from "lucide-react";
+import { toast } from "sonner";
 import { clsxm } from "@/lib/utils";
 import { Button } from "@/components/ui/Button/Button";
 
@@ -57,8 +58,8 @@ export const FileDropzone = React.forwardRef<HTMLDivElement, FileDropzoneProps>(
 
     const handleFile = (file: File) => {
       if (file.size > maxSize) {
-        // You might want to show an error message here
-        console.error("File is too large");
+        const maxMb = (maxSize / 1024 / 1024).toFixed(0);
+        toast.error(`File is too large. Maximum size is ${maxMb}MB.`);
         return;
       }
 
@@ -106,12 +107,15 @@ export const FileDropzone = React.forwardRef<HTMLDivElement, FileDropzoneProps>(
           onDragOver={handleDrag}
           onDrop={handleDrop}
         >
+          {/* Visually hidden instead of display:none — some iOS Safari
+              versions won't open the picker for a display:none file input
+              triggered programmatically. */}
           <input
             ref={inputRef}
             type="file"
             onChange={handleChange}
             accept={accept}
-            className="hidden"
+            className="sr-only"
             disabled={disabled}
           />
 

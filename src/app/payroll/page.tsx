@@ -2004,27 +2004,6 @@ const PayrollPageContent: React.FC = () => {
               }
             />
           )}
-
-          {/* ── Footer ───────────────────────────────────────────────────── */}
-          <footer className="flex items-center justify-between pt-4 border-t border-gray-200 text-xs text-gray-400">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                G
-              </div>
-              <p>© {currentYear} gig·nology. All rights reserved.</p>
-            </div>
-            <div className="flex items-center gap-4">
-              <button className="hover:text-gray-600 transition-colors">
-                Privacy Policy
-              </button>
-              <button className="hover:text-gray-600 transition-colors">
-                Terms of Service
-              </button>
-              <button className="hover:text-gray-600 transition-colors">
-                Help &amp; Support
-              </button>
-            </div>
-          </footer>
         </div>
       </Layout>
     </div>

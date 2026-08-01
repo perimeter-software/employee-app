@@ -1,24 +1,30 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Map } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { MapPin } from 'lucide-react';
 
 const MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
 
 type Props = {
   coordinates: [number, number]; // [longitude, latitude]
+  radius?: number;        // main geofence radius in meters
+  graceDistance?: number; // grace zone width in meters
+  showHeader?: boolean;
 };
 
-export const VenueMap = ({ coordinates }: Props) => {
+export const VenueMap = ({ coordinates, radius, graceDistance, showHeader = true }: Props) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
-  const [showMap, setShowMap] = useState(false);
+  const circlesRef = useRef<google.maps.Circle[]>([]);
 
   const [lng, lat] = coordinates;
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
   useEffect(() => {
-    if (!showMap || !mapRef.current) return;
+    // Reset before re-initialising so circles from a previous event are cleared first
+    circlesRef.current.forEach((c) => c.setMap(null));
+    circlesRef.current = [];
+    mapInstance.current = null;
 
     const initMap = () => {
       if (!mapRef.current || mapInstance.current) return;
@@ -30,6 +36,39 @@ export const VenueMap = ({ coordinates }: Props) => {
         zoomControl: true,
       });
       new google.maps.Marker({ position: { lat, lng }, map: mapInstance.current });
+
+      if (radius != null) {
+        circlesRef.current.push(
+          new google.maps.Circle({
+            map: mapInstance.current,
+            center: { lat, lng },
+            radius,
+            strokeColor: 'green',
+            strokeOpacity: 0.8,
+            strokeWeight: 2,
+            fillColor: 'green',
+            fillOpacity: 0.35,
+            zIndex: 1,
+          })
+        );
+
+        const graceRadius = radius + (graceDistance ?? 0);
+        if (graceRadius > radius) {
+          circlesRef.current.push(
+            new google.maps.Circle({
+              map: mapInstance.current,
+              center: { lat, lng },
+              radius: graceRadius,
+              strokeColor: '#F7C501',
+              strokeOpacity: 0.8,
+              strokeWeight: 2,
+              fillColor: 'yellow',
+              fillOpacity: 0.35,
+              zIndex: -1,
+            })
+          );
+        }
+      }
     };
 
     if (window.google?.maps) {
@@ -38,7 +77,6 @@ export const VenueMap = ({ coordinates }: Props) => {
     }
 
     if (document.querySelector('#gmaps-script')) {
-      // Script already injected — wait for it
       const poll = setInterval(() => {
         if (window.google?.maps) { clearInterval(poll); initMap(); }
       }, 100);
@@ -51,16 +89,13 @@ export const VenueMap = ({ coordinates }: Props) => {
     script.async = true;
     script.onload = initMap;
     document.head.appendChild(script);
-  }, [showMap, lat, lng]);
-
-  // Reset map instance when coordinates change so it re-initialises
-  useEffect(() => { mapInstance.current = null; }, [lat, lng]);
+  }, [lat, lng, radius, graceDistance]);
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-sm font-semibold text-slate-700">Location</h4>
-        <div className="flex items-center gap-2">
+      {showHeader && (
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-sm font-semibold text-slate-700">Location</h4>
           <a
             href={mapsUrl}
             target="_blank"
@@ -70,24 +105,14 @@ export const VenueMap = ({ coordinates }: Props) => {
             <MapPin className="w-3 h-3" />
             Get Directions
           </a>
-          <button
-            type="button"
-            onClick={() => setShowMap((p) => !p)}
-            className="text-xs font-medium text-appPrimary hover:underline inline-flex items-center gap-1"
-          >
-            <Map className="w-3 h-3" />
-            {showMap ? 'Hide Map' : 'Show Map'}
-          </button>
         </div>
-      </div>
-      {showMap && (
-        <div
-          ref={mapRef}
-          className="w-full h-48 rounded-lg overflow-hidden border border-zinc-200"
-          onWheel={(e) => e.stopPropagation()}
-          onTouchMove={(e) => e.stopPropagation()}
-        />
       )}
+      <div
+        ref={mapRef}
+        className="w-full h-48 rounded-lg overflow-hidden border border-zinc-200"
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+      />
     </div>
   );
 };

@@ -6,6 +6,11 @@ import { ObjectId } from 'mongodb';
 import type { AuthenticatedRequest } from '@/domains/user/types';
 import { convertToJSON } from '@/lib/utils/mongo-utils';
 import {
+  getEventRosterEntries,
+  getRosterEntry,
+  updateRosterEntries,
+} from '@/domains/event/utils/event-roster';
+import {
   EVENT_COVER_DOC_FILTER,
   EVENT_COVER_STORAGE_COLLECTION,
 } from '@/domains/event/services/event-cover-constants';
@@ -469,7 +474,6 @@ export async function createEventCoverRequest(
         eventDate: 1,
         eventUrl: 1,
         venueSlug: 1,
-        applicants: 1,
         eventType: 1,
         eventManager: 1,
       },
@@ -500,8 +504,9 @@ export async function createEventCoverRequest(
   assertEventCoverTimeWindow(eventStart);
 
   const venueSlug = String(event.venueSlug || '');
-  const applicants =
-    (event.applicants as Array<{ id?: string; status?: string }>) ?? [];
+  // Roster membership lives in the `eventroster` collection now, not on the event doc.
+  const rosterEntries = await getEventRosterEntries(db, event._id);
+  const applicants = rosterEntries as Array<{ id?: string; status?: string }>;
 
   const initiatorOnRoster = applicants.some(
     (a) => rosterIdMatches(a.id, fromEmployeeId) && a.status === 'Roster'
@@ -931,22 +936,19 @@ export async function applyEventCoverRosterOnApprove(
     );
   }
 
-  const ev = await db.collection('events').findOne(
-    { eventUrl: url },
-    { projection: { applicants: 1 } }
-  );
+  const ev = await db
+    .collection('events')
+    .findOne({ eventUrl: url }, { projection: { _id: 1 } });
 
-  if (!ev?.applicants || !Array.isArray(ev.applicants)) {
+  if (!ev?._id) {
     throw new EventCoverError('not-found', 'Event not found.', 404);
   }
 
-  const applicants = [...ev.applicants] as Array<Record<string, unknown>>;
-  const idx = applicants.findIndex(
-    (a) =>
-      rosterIdMatches(a.id, fromId) && String(a.status) === 'Roster'
-  );
-
-  if (idx < 0) {
+  // Roster entries live in the `eventroster` collection (one doc per entry). The cover
+  // swap reassigns the original employee's Roster entry to the replacement by changing
+  // its `id` — replacing the old embedded-array `$set { applicants }` write.
+  const fromEntry = await getRosterEntry(db, ev._id, fromId, { status: 'Roster' });
+  if (!fromEntry) {
     throw new EventCoverError(
       'roster-update-failed',
       'Original employee is no longer on the event roster.',
@@ -954,12 +956,11 @@ export async function applyEventCoverRosterOnApprove(
     );
   }
 
-  const next = [...applicants];
-  next[idx] = { ...next[idx], id: toId };
-
-  const res = await db.collection('events').updateOne(
-    { eventUrl: url },
-    { $set: { applicants: next } }
+  const res = await updateRosterEntries(
+    db,
+    ev._id,
+    { id: fromId, status: 'Roster' },
+    { $set: { id: toId } }
   );
 
   if (res.matchedCount === 0) {
