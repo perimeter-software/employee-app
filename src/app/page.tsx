@@ -87,7 +87,7 @@ function LoginFormContent({
   setNotification: (state: NotificationState) => void;
 }) {
   const searchParams = useSearchParams();
-  const [loginMethod, setLoginMethod] = useState<'auth0' | 'otp'>('otp');
+  const [loginMethod, setLoginMethod] = useState<'auth0' | 'otp'>('auth0');
   // Normalized, so a returnTo that arrived double-encoded (or points off-site)
   // can't be pushed as a literal path like /%2Fevents.
   const returnUrl = resolveReturnTo(
