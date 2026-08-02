@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { MapPin, ChevronDown, ChevronUp } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 
 const MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
 
@@ -185,20 +186,22 @@ export const VenueMap = ({ coordinates, radius, graceDistance, showHeader = true
         </div>
       )}
 
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
+        fullWidth
         onClick={handleToggle}
         aria-expanded={isVisible}
-        className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-zinc-50"
       >
-        <MapPin className="w-3.5 h-3.5" />
-        {isVisible ? 'Hide map' : 'Show map'}
+        <MapPin className="h-4 w-4" />
+        {isVisible ? 'Hide Map' : 'View Map'}
         {isVisible ? (
-          <ChevronUp className="w-3.5 h-3.5" />
+          <ChevronUp className="h-4 w-4" />
         ) : (
-          <ChevronDown className="w-3.5 h-3.5" />
+          <ChevronDown className="h-4 w-4" />
         )}
-      </button>
+      </Button>
 
       {hasError && (
         <p className="mt-2 text-xs text-slate-400 text-center">
