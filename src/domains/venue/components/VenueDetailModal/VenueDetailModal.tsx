@@ -25,6 +25,7 @@ import {
 import { baseInstance } from '@/lib/api/instance';
 import { VenueMap } from '../VenueMap';
 import { VenueVideo } from '../VenueVideo';
+import { LeaveVenueConfirmModal } from '../LeaveVenueConfirmModal';
 import { venueBadge, stripHtml, DESCRIPTION_LIMIT } from '../../utils';
 import type { VenueWithStatus } from '../../types';
 
@@ -50,6 +51,7 @@ export const VenueDetailModal = ({
   const [bannerError, setBannerError] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false);
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['venue-detail', initialVenue.slug],
@@ -95,6 +97,7 @@ export const VenueDetailModal = ({
     setDescExpanded(false);
     setBannerError(false);
     setLogoError(false);
+    setConfirmLeaveOpen(false);
   }, [initialVenue.slug]);
 
   const handleRequest = async () => {
@@ -119,7 +122,9 @@ export const VenueDetailModal = ({
     }
   };
 
-  const handleCancel = async () => {
+  // Shared by "Cancel Request" (Pending) and "Leave Venue" (StaffingPool) —
+  // both drop the user's venue association via the same endpoint.
+  const submitLeave = async (errorMessage: string, successMessage: string) => {
     setSubmitting(true);
     try {
       const res = await fetch(`/api/venues/${venue.slug}/request`, {
@@ -127,16 +132,29 @@ export const VenueDetailModal = ({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(json.message || 'Failed to cancel request');
-        return;
+        toast.error(json.message || errorMessage);
+        return false;
       }
-      toast.success('Request cancelled.');
+      toast.success(successMessage);
       onStatusChange(venue.slug, '');
+      return true;
     } catch {
       toast.error('Something went wrong. Please try again.');
+      return false;
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleCancel = () =>
+    submitLeave('Failed to cancel request', 'Request cancelled.');
+
+  const handleLeave = async () => {
+    const ok = await submitLeave(
+      'Failed to leave venue',
+      `You have left ${venue.name}.`
+    );
+    if (ok) setConfirmLeaveOpen(false);
   };
 
   const viewEventsButton = (
@@ -263,15 +281,19 @@ export const VenueDetailModal = ({
                   You are in the Staffing Pool
                 </span>
               </div>
-              <Button
-                variant="outline"
-                className="w-full text-red-600 border-red-200 hover:bg-red-50"
-                onClick={handleCancel}
-                disabled={submitting}
-              >
-                {submitting ? 'Leaving…' : 'Leave Venue'}
-              </Button>
               {viewEventsButton}
+              {/* Destructive action is intentionally de-emphasised and set apart
+                  from the primary actions so it can't be tapped by accident. */}
+              <div className="pt-1 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setConfirmLeaveOpen(true)}
+                  disabled={submitting}
+                  className="text-xs text-slate-400 underline underline-offset-2 hover:text-red-600 disabled:opacity-50 transition-colors"
+                >
+                  Leave venue
+                </button>
+              </div>
             </div>
           )}
 
@@ -393,6 +415,14 @@ export const VenueDetailModal = ({
           )}
         </div>
       </DialogContent>
+
+      <LeaveVenueConfirmModal
+        open={confirmLeaveOpen}
+        onClose={() => setConfirmLeaveOpen(false)}
+        onConfirm={handleLeave}
+        venueName={venue.name}
+        loading={submitting}
+      />
     </Dialog>
   );
 };
