@@ -249,6 +249,11 @@ export const MapModal = React.memo(function GoogleMapsModal({
 }: MapModalProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
+  // `initializeMap` is async and is re-created whenever userLocation changes, so
+  // the open/close effect can fire again while the first run is still awaiting
+  // the script. Without this guard that builds a second map on the same div —
+  // and Google bills every `new google.maps.Map(...)` as a separate map load.
+  const isInitializingRef = useRef(false);
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
@@ -272,6 +277,7 @@ export const MapModal = React.memo(function GoogleMapsModal({
     if (mapInstance.current) {
       mapInstance.current = null;
     }
+    isInitializingRef.current = false;
     setIsMapLoaded(false);
     setMapError(null);
     console.log('🧹 Map cleaned up');
@@ -280,6 +286,9 @@ export const MapModal = React.memo(function GoogleMapsModal({
   // Load Google Maps API and initialize map
   const initializeMap = useCallback(async () => {
     if (!mapRef.current || !GOOGLE_MAPS_API_KEY) return;
+    // Already building, or already built — either way, don't pay twice.
+    if (isInitializingRef.current || mapInstance.current) return;
+    isInitializingRef.current = true;
 
     try {
       // Load Google Maps if not already loaded
@@ -743,6 +752,8 @@ export const MapModal = React.memo(function GoogleMapsModal({
     } catch (error) {
       console.error('❌ Map initialization error:', error);
       setMapError('Failed to load map');
+    } finally {
+      isInitializingRef.current = false;
     }
   }, [
     GOOGLE_MAPS_API_KEY,
