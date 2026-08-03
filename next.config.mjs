@@ -76,6 +76,23 @@ const nextConfig = {
 
   productionBrowserSourceMaps: false,
 
+  // Disable ETags on Next-generated responses.
+  //
+  // Statically-rendered routes are served with an ETag and a long s-maxage, so
+  // once a client has an RSC payload cached it revalidates with If-None-Match
+  // and gets back `304 Not Modified`. A 304 carries no Content-Type, and the
+  // App Router only accepts a payload whose content-type is `text/x-component`
+  // — so it discards the response and flags the route for a full page reload
+  // (doMpaNavigation). The click that follows reloads the whole app with no
+  // further request, which is why it looked random and never reproduced
+  // locally, where responses are no-store and there is no validator to send.
+  //
+  // Without an ETag the browser has nothing to revalidate with, so every RSC
+  // request returns 200 + text/x-component and navigation stays client-side.
+  // Costs a little bandwidth (unchanged payloads re-download instead of 304ing)
+  // — the same trade Next itself made in 15.4.1 (vercel/next.js#85121).
+  generateEtags: false,
+
   // Webpack optimizations for faster dev builds (only when not using Turbopack)
   // Turbopack has its own optimizations, so webpack config is ignored when using --turbo
   webpack: (config, { dev, isServer }) => {

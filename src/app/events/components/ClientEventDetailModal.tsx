@@ -2478,7 +2478,8 @@ function GeofencingPanel({ event }: { event: GignologyEvent }) {
       {hasCoords && loc ? (
         <>
           <SectionHeader title="Map Preview" />
-          <div className="rounded-xl overflow-hidden border border-gray-200 h-64">
+          {/* No fixed height: the map is collapsed until the user opens it. */}
+          <div className="rounded-xl overflow-hidden">
             <VenueMap
               coordinates={[loc.longitude!, loc.latitude!]}
               radius={loc.radius}
