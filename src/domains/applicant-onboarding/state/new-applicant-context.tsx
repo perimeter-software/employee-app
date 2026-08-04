@@ -37,6 +37,7 @@ import { useMinStageToOnboarding } from '../hooks/use-min-stage-to-onboarding';
 import { OnboardingService } from '../services/onboarding-service';
 import type {
   ApplicantRecord,
+  BlankBackPrompt,
   CurrentFormState,
   NavButtonStates,
   NewApplicantState,
@@ -161,7 +162,7 @@ export interface NewApplicantContextValue extends NewApplicantState {
     applicantId: string,
     data: Partial<ApplicantRecord>,
     skipLocalUpdate?: boolean
-  ) => Promise<Partial<ApplicantRecord>>;
+  ) => Promise<ApplicantUpdateResult>;
   setApplicantSteps: (
     status?: string,
     applicantStatus?: string,
@@ -176,6 +177,15 @@ export interface NewApplicantContextValue extends NewApplicantState {
   pendingAIScreening: boolean;
   setPendingAIScreening: (v: boolean) => void;
 }
+
+/**
+ * What `updateApplicantAction` hands back: the payload that was saved (callers
+ * have always relied on that) plus any blank-page prompts the backend raised
+ * while classifying newly saved attachments.
+ */
+export type ApplicantUpdateResult = Partial<ApplicantRecord> & {
+  blankBackPrompts: BlankBackPrompt[];
+};
 
 const NewApplicantContext = createContext<NewApplicantContextValue | null>(null);
 
@@ -423,12 +433,16 @@ export const NewApplicantContextProvider: React.FC<ProviderProps> = ({
       applicantId: string,
       data: Partial<ApplicantRecord>,
       skipLocalUpdate?: boolean
-    ): Promise<Partial<ApplicantRecord>> => {
+    ): Promise<ApplicantUpdateResult> => {
       try {
+        // The response body is the raw Mongo UpdateResult, so `acknowledged` below
+        // is UpdateResult.acknowledged — not the applicant's own field. Blank-page
+        // prompts raised while classifying saved attachments sit alongside it.
         const res = (await OnboardingService.updateApplicant(applicantId, data)) as
           | (Partial<ApplicantRecord> & {
               acknowledged?: boolean;
               updatedApplicant?: Partial<ApplicantRecord>;
+              blankBackPrompts?: BlankBackPrompt[];
             })
           | undefined;
 
@@ -449,7 +463,7 @@ export const NewApplicantContextProvider: React.FC<ProviderProps> = ({
             error: { message: 'Update failed.' },
           });
         }
-        return data;
+        return { ...data, blankBackPrompts: res?.blankBackPrompts ?? [] };
       } catch (err: unknown) {
         const e = err as { response?: { status?: number }; message?: string };
         if (e?.response?.status === 401) {
