@@ -81,6 +81,52 @@ export interface ApplicantRecord {
   [k: string]: unknown;
 }
 
+/**
+ * Backend-computed I-9 completeness for the applicant's onboarding documents.
+ * Lives on the applicant record as `onboardingDocsComplete`, and is returned
+ * fresh by the blank-back selection endpoint.
+ */
+export interface OnboardingDocsCompleteness {
+  complete?: string;
+  validIDs?: string[];
+  passport?: string;
+  residentCard?: string;
+  requiredDocuments?: { type: string; description: string }[];
+}
+
+/** One document the blank page could be the reverse side of. */
+export interface BlankBackCandidate {
+  type: string;
+  front: string;
+  label: string;
+  description?: string;
+}
+
+export type BlankBackReason = 'BLANK_PAGE' | 'BLANK_PAGE_NO_MATCHING_FRONT';
+
+/**
+ * Returned by the upload endpoint (`blankBackPrompts`) when a page comes back
+ * blank. `BLANK_PAGE` carries >= 1 candidate and needs confirmation;
+ * `BLANK_PAGE_NO_MATCHING_FRONT` carries none and is informational only.
+ * The candidate list is the backend's decision — render it, never filter it.
+ */
+export interface BlankBackPrompt {
+  filename: string;
+  reason: BlankBackReason;
+  message: string;
+  /** Diagnostic only — never surfaced to applicants. */
+  inkCoverage?: number;
+  candidates: BlankBackCandidate[];
+}
+
+export interface BlankBackSelectionResult {
+  applicantId?: string;
+  filename: string;
+  type: string;
+  newPath?: string;
+  completeness?: OnboardingDocsCompleteness;
+}
+
 export interface CurrentApplicantResponse {
   applicant: ApplicantRecord | null;
   [k: string]: unknown;

@@ -1,5 +1,10 @@
 import axios from 'axios';
-import type { ApplicantRecord, CurrentApplicantResponse, OutsideMode } from '../types';
+import type {
+  ApplicantRecord,
+  BlankBackSelectionResult,
+  CurrentApplicantResponse,
+  OutsideMode,
+} from '../types';
 import type { Company } from '@/domains/company/types';
 
 const BASE = '/api/applicant-onboarding';
@@ -35,6 +40,21 @@ export const OnboardingService = {
   async addAttachment(applicantId: string, attachment: Record<string, unknown>): Promise<unknown> {
     const { data } = await axios.put(`${BASE}/applicants/${applicantId}/attachment`, { attachment });
     return data;
+  },
+
+  /**
+   * Confirms a blank uploaded page is the reverse side of `type`. Throws on 400 —
+   * the caller inspects `error.response.data.candidates` to re-render the picker.
+   */
+  async submitBlankBackSelection(
+    filename: string,
+    type: string
+  ): Promise<BlankBackSelectionResult> {
+    const { data } = await axios.put(`${BASE}/applicants/blank-back-selection`, {
+      filename,
+      type,
+    });
+    return (data?.data ?? data) as BlankBackSelectionResult;
   },
 
   async getJobAutoAssessmentLink(applicantId: string): Promise<unknown> {

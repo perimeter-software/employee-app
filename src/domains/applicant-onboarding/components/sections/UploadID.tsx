@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, X, FileText, File } from 'lucide-react';
+import { Plus, X, FileText, File, Info } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,12 @@ import { Button } from '@/components/ui/Button';
 import { useNewApplicantContext } from '../../state/new-applicant-context';
 import { type AttachmentFile } from '../../utils/attachment-helpers';
 import UploadFileModal from './UploadFileModal';
+import BlankBackConfirmModal from './BlankBackConfirmModal';
+import type {
+  BlankBackPrompt,
+  BlankBackSelectionResult,
+  OnboardingDocsCompleteness,
+} from '../../types';
 import { applicantFileKey, commonStaticAssetUrl } from '@/lib/utils';
 import { useFileUrl } from '@/lib/hooks/use-file-url';
 
@@ -143,25 +149,45 @@ const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, onDe
   );
 };
 
+// The backend names the stored file (it prefixes a timestamp), so a prompt's
+// filename may not be byte-identical to what the browser uploaded. A prompt always
+// refers to exactly ONE page, so this resolves to a single index — never a
+// predicate applied across the list, or a re-upload of the same original filename
+// would take its siblings with it. Exact match wins; otherwise the most recently
+// added suffix match, which is the page that was just uploaded.
+function findPromptAttachmentIndex(all: AttachmentFile[], promptFilename: string): number {
+  let looseMatch = -1;
+  for (let i = all.length - 1; i >= 0; i -= 1) {
+    const name = all[i].filename ?? all[i].name ?? '';
+    if (!name) continue;
+    if (name === promptFilename) return i;
+    if (looseMatch < 0 && promptFilename.endsWith(name)) looseMatch = i;
+  }
+  return looseMatch;
+}
+
 const UploadID: React.FC = () => {
-  const { applicant, updateButtons, updateCurrentFormState, submitRef, updateApplicantAction } =
-    useNewApplicantContext();
+  const {
+    applicant,
+    updateButtons,
+    updateCurrentFormState,
+    submitRef,
+    updateApplicantAction,
+    loadApplicantAction,
+  } = useNewApplicantContext();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Blank pages the backend wants confirmed, answered one at a time.
+  const [blankBackQueue, setBlankBackQueue] = useState<BlankBackPrompt[]>([]);
+  // Blank pages with no eligible front on file — informational only.
+  const [blankBackNotices, setBlankBackNotices] = useState<BlankBackPrompt[]>([]);
   const compressGuideUrl = commonStaticAssetUrl('How to Compress Your Images for Upload.pdf');
 
   const applicantId = applicant._id ?? '';
   const rawAttachments = applicant.attachments as AttachmentFile[] | undefined;
-  const { complete, validIDs = [], requiredDocuments = [] } = (
-    applicant.onboardingDocsComplete as
-      | {
-          complete?: string;
-          validIDs?: string[];
-          requiredDocuments?: { type: string; description: string }[];
-        }
-      | undefined
-  ) ?? {};
+  const { complete, validIDs = [], requiredDocuments = [] } =
+    (applicant.onboardingDocsComplete as OnboardingDocsCompleteness | undefined) ?? {};
 
   const isComplete = complete === 'Yes';
   const validUploadsMessage =
@@ -211,7 +237,54 @@ const UploadID: React.FC = () => {
   };
 
   const handleUploaded = async (updatedAttachments: AttachmentFile[]) => {
-    await updateApplicantAction(applicantId, { attachments: updatedAttachments });
+    // Classification happens on the save, not the upload — the prompts ride back
+    // on the applicant update response.
+    const res = await updateApplicantAction(applicantId, { attachments: updatedAttachments });
+    const blankBackPrompts = res?.blankBackPrompts ?? [];
+
+    const needsConfirmation = blankBackPrompts.filter((p) => (p.candidates ?? []).length > 0);
+    const informational = blankBackPrompts.filter((p) => (p.candidates ?? []).length === 0);
+    if (needsConfirmation.length) setBlankBackQueue((q) => [...q, ...needsConfirmation]);
+    if (informational.length) setBlankBackNotices((n) => [...n, ...informational]);
+  };
+
+  const shiftBlankBackQueue = useCallback(
+    () => setBlankBackQueue((q) => q.slice(1)),
+    []
+  );
+
+  // Confirmed: the backend already moved the file and recomputed completeness, so
+  // mirror both locally instead of re-fetching or re-saving the applicant.
+  const handleBlankBackConfirmed = (result: BlankBackSelectionResult) => {
+    const all = rawAttachments ?? [];
+    const idx = findPromptAttachmentIndex(all, result.filename);
+    const updated =
+      idx < 0 ? all : all.map((f, i) => (i === idx ? { ...f, type: result.type } : f));
+    loadApplicantAction({
+      attachments: updated,
+      ...(result.completeness ? { onboardingDocsComplete: result.completeness } : {}),
+    });
+    shiftBlankBackQueue();
+    toast.success('Thanks — we matched that page to your document.');
+  };
+
+  // Declined: the page was not the back of anything they uploaded. Discard it and
+  // send them straight back to the upload modal.
+  const handleBlankBackDeclined = async (filename: string) => {
+    shiftBlankBackQueue();
+    const all = rawAttachments ?? [];
+    const idx = findPromptAttachmentIndex(all, filename);
+    try {
+      if (idx >= 0) {
+        await updateApplicantAction(applicantId, {
+          attachments: all.filter((_, i) => i !== idx),
+        });
+      }
+    } catch {
+      toast.error('Failed to discard that page. Please delete it and try again.');
+      return;
+    }
+    setUploadOpen(true);
   };
 
   return (
@@ -246,6 +319,30 @@ const UploadID: React.FC = () => {
           </a>
         </div>
       </div>
+
+      {/* Blank pages with no eligible front on file — informational, nothing to confirm */}
+      {blankBackNotices.map((notice) => (
+        <div
+          key={`blank-notice-${notice.filename}`}
+          className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-3"
+        >
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <div className="flex-1">
+            <p className="text-sm text-amber-900">{notice.message}</p>
+            <p className="text-xs text-amber-700 break-all">{notice.filename}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              setBlankBackNotices((n) => n.filter((x) => x.filename !== notice.filename))
+            }
+            className="rounded p-0.5 hover:bg-amber-100"
+            aria-label="Dismiss notice"
+          >
+            <X className="h-4 w-4 text-amber-700" />
+          </button>
+        </div>
+      ))}
 
       {/* Attachment grid */}
       <div className="flex flex-wrap gap-4 items-start">
@@ -295,6 +392,13 @@ const UploadID: React.FC = () => {
         currentAttachments={rawAttachments ?? []}
         onUploaded={handleUploaded}
         defaultType="Onboarding_Documents"
+      />
+
+      <BlankBackConfirmModal
+        prompt={blankBackQueue[0] ?? null}
+        onConfirmed={handleBlankBackConfirmed}
+        onDeclined={handleBlankBackDeclined}
+        onDismiss={shiftBlankBackQueue}
       />
 
       <OnboardingGuideModal open={guideOpen} onOpenChange={setGuideOpen} />
