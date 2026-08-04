@@ -26,7 +26,9 @@ import { baseInstance } from '@/lib/api/instance';
 import { VenueMap } from '../VenueMap';
 import { VenueVideo } from '../VenueVideo';
 import { LeaveVenueConfirmModal } from '../LeaveVenueConfirmModal';
-import { venueBadge, stripHtml, DESCRIPTION_LIMIT } from '../../utils';
+import { venueBadge } from '../../utils';
+import { prepareRichText } from '@/lib/utils/rich-text-utils';
+import { isImageFilename } from '@/lib/utils/file-type-utils';
 import type { VenueWithStatus } from '../../types';
 
 type Props = {
@@ -85,8 +87,9 @@ export const VenueDetailModal = ({
       ? `${imageBaseUrl}/${venue.slug}/venues/logo/${venue.logoUrl}`
       : null;
 
-  const description = stripHtml(venue.description);
-  const descTooLong = description.length > DESCRIPTION_LIMIT;
+  const { html: descriptionHtml, isLong: descTooLong } = prepareRichText(
+    venue.description
+  );
   const contact = venue.venueContact1;
   const contactInitials =
     contact && (contact.firstName || contact.lastName)
@@ -311,16 +314,20 @@ export const VenueDetailModal = ({
           )}
 
           {/* Description */}
-          {description && (
+          {descriptionHtml && (
             <div>
               <h4 className="text-sm font-semibold text-slate-700 mb-1.5">
                 Description
               </h4>
-              <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
-                {descTooLong && !descExpanded
-                  ? `${description.slice(0, DESCRIPTION_LIMIT)}…`
-                  : description}
-              </p>
+              <div
+                className="prose prose-sm max-w-none break-words text-slate-600"
+                style={
+                  descTooLong && !descExpanded
+                    ? { maxHeight: 160, overflow: 'hidden' }
+                    : undefined
+                }
+                dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+              />
               {descTooLong && (
                 <button
                   type="button"
@@ -396,21 +403,42 @@ export const VenueDetailModal = ({
               <h4 className="text-sm font-semibold text-slate-700 mb-2">
                 Attachments
               </h4>
-              <ul className="space-y-1.5">
-                {venue.otherUrls.map((filename) => (
-                  <li key={filename}>
+              <div className="flex flex-wrap gap-2.5">
+                {venue.otherUrls.map((filename) => {
+                  const url = `${imageBaseUrl}/${venue.slug}/venues/other/${filename}`;
+                  if (isImageFilename(filename)) {
+                    return (
+                      <a
+                        key={filename}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={filename}
+                        className="block w-16 h-16 rounded-lg border border-slate-200 overflow-hidden hover:opacity-90 transition-opacity flex-shrink-0"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={url}
+                          alt={filename}
+                          className="w-full h-full object-cover"
+                        />
+                      </a>
+                    );
+                  }
+                  return (
                     <a
-                      href={`${imageBaseUrl}/${venue.slug}/venues/other/${filename}`}
+                      key={filename}
+                      href={url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-sm text-appPrimary hover:underline"
+                      className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm text-appPrimary hover:underline"
                     >
                       <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span className="truncate">{filename}</span>
+                      <span className="truncate max-w-[140px]">{filename}</span>
                     </a>
-                  </li>
-                ))}
-              </ul>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
