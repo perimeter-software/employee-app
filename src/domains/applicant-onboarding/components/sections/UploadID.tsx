@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, X, FileText, File, Info } from 'lucide-react';
+import { Plus, X, Info, CheckCircle2, AlertCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -20,13 +20,28 @@ import type {
   BlankBackSelectionResult,
   OnboardingDocsCompleteness,
 } from '../../types';
-import { applicantFileKey, commonStaticAssetUrl } from '@/lib/utils';
-import { useFileUrl } from '@/lib/hooks/use-file-url';
+import { commonStaticAssetUrl } from '@/lib/utils';
 
-const IMAGE_EXTS = ['jpeg', 'jpg', 'png', 'bmp', 'gif', 'webp'];
+// Stored document types are snake-ish identifiers (`US_Passport_Front`). Underscores
+// to spaces covers most of them; these are the ones that would read badly.
+const DOC_TYPE_LABELS: Record<string, string> = {
+  DLPhoto_Front: 'Driver License (Front)',
+  DLPhoto_Back: 'Driver License (Back)',
+  DD214_Front: 'DD-214 (Front)',
+  DD214_Back: 'DD-214 (Back)',
+  I_94: 'Form I-94',
+  Student_ID_Front: 'Student ID (Front)',
+  Student_ID_Back: 'Student ID (Back)',
+  US_Passport_Front: 'U.S. Passport (Front)',
+  US_Passport_Back: 'U.S. Passport (Back)',
+  Onboarding_Documents: 'Onboarding Document',
+};
 
-function getExt(filename: string): string {
-  return filename.split('.').pop()?.toLowerCase() ?? '';
+function friendlyDocType(type: string): string {
+  if (DOC_TYPE_LABELS[type]) return DOC_TYPE_LABELS[type];
+  const label = type.replace(/_/g, ' ').trim();
+  if (!label) return 'Uploaded document';
+  return label.replace(/\s(Front|Back)$/i, (_m, side: string) => ` (${side})`);
 }
 
 const OnboardingGuideModal: React.FC<{ open: boolean; onOpenChange: (v: boolean) => void }> = ({
@@ -91,64 +106,6 @@ const OnboardingGuideModal: React.FC<{ open: boolean; onOpenChange: (v: boolean)
   );
 };
 
-interface AttachmentCardProps {
-  file: AttachmentFile;
-  applicantId: string;
-  onDelete: () => void;
-}
-
-const AttachmentCard: React.FC<AttachmentCardProps> = ({ file, applicantId, onDelete }) => {
-  const filename = file.filename ?? file.name ?? '';
-  const type = file.type ?? '';
-  const ext = file.docType ?? getExt(filename);
-  const fileUrl = useFileUrl(
-    applicantId && type && filename
-      ? applicantFileKey(applicantId, type, filename)
-      : null
-  );
-  const isImage = IMAGE_EXTS.includes(ext);
-
-  return (
-    <div className="relative flex flex-col items-center gap-1 rounded border border-gray-200 p-2 w-[130px]">
-      <button
-        type="button"
-        onClick={onDelete}
-        className="absolute -right-2 -top-2 rounded-full bg-white p-0.5 shadow hover:bg-gray-100"
-        aria-label="Delete attachment"
-      >
-        <X className="h-4 w-4 text-gray-500" />
-      </button>
-
-      <button
-        type="button"
-        onClick={() => fileUrl && window.open(fileUrl, '_blank')}
-        disabled={!fileUrl}
-        className="flex flex-col items-center gap-1 hover:opacity-75"
-      >
-        {isImage && fileUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={fileUrl}
-            alt={type}
-            className="h-[80px] w-full object-cover rounded"
-          />
-        ) : ext === 'pdf' ? (
-          <FileText className="h-[80px] w-[60px] text-red-500" />
-        ) : (
-          <File className="h-[80px] w-[60px] text-gray-400" />
-        )}
-      </button>
-
-      <p className="w-full text-center text-xs font-semibold text-gray-700 truncate" title={type}>
-        {type.replace(/_/g, ' ')}
-      </p>
-      <p className="w-full text-center text-xs text-gray-500 truncate" title={filename}>
-        {filename}
-      </p>
-    </div>
-  );
-};
-
 // The backend names the stored file (it prefixes a timestamp), so a prompt's
 // filename may not be byte-identical to what the browser uploaded. A prompt always
 // refers to exactly ONE page, so this resolves to a single index — never a
@@ -177,7 +134,6 @@ const UploadID: React.FC = () => {
   } = useNewApplicantContext();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   // Blank pages the backend wants confirmed, answered one at a time.
   const [blankBackQueue, setBlankBackQueue] = useState<BlankBackPrompt[]>([]);
   // Blank pages with no eligible front on file — informational only.
@@ -195,10 +151,20 @@ const UploadID: React.FC = () => {
       ? `Valid uploads found: ${validIDs.join(', ')}`
       : 'No valid uploads found';
 
-  const visibleAttachments: AttachmentFile[] = useMemo(
-    () => (rawAttachments ?? []).filter((f) => f.hidden !== 'Yes'),
-    [rawAttachments]
-  );
+  // Applicants only get to see WHICH document types are on file — no previews, no
+  // opening, no deleting. One row per distinct type, in upload order.
+  const uploadedDocTypes: string[] = useMemo(() => {
+    const seen = new Set<string>();
+    const types: string[] = [];
+    for (const file of rawAttachments ?? []) {
+      if (file.hidden === 'Yes') continue;
+      const type = file.type ?? '';
+      if (!type || seen.has(type)) continue;
+      seen.add(type);
+      types.push(type);
+    }
+    return types;
+  }, [rawAttachments]);
 
   // The documents still required come straight from the backend (single source of
   // truth for the I-9 completeness rule); the frontend only renders them.
@@ -221,20 +187,6 @@ const UploadID: React.FC = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleDelete = async (idx: number) => {
-    if (deleting) return;
-    setDeleting(true);
-    try {
-      const all = rawAttachments ?? [];
-      const updated = all.filter((_, i) => i !== idx);
-      await updateApplicantAction(applicantId, { attachments: updated });
-    } catch {
-      toast.error('Failed to delete attachment. Please try again.');
-    } finally {
-      setDeleting(false);
-    }
-  };
 
   const handleUploaded = async (updatedAttachments: AttachmentFile[]) => {
     // Classification happens on the save, not the upload — the prompts ride back
@@ -344,46 +296,64 @@ const UploadID: React.FC = () => {
         </div>
       ))}
 
-      {/* Attachment grid */}
-      <div className="flex flex-wrap gap-4 items-start">
-        {visibleAttachments.map((file, idx) => (
-          <AttachmentCard
-            key={`${file.name ?? ''}_${file.type ?? ''}_${idx}`}
-            file={file}
-            applicantId={applicantId}
-            onDelete={() => handleDelete(idx)}
-          />
-        ))}
-
-        {/* Required empty boxes */}
-        {requiredEmptyBoxes.map((box, index) => (
-          <div key={`empty-${box.type}-${index}`} className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setUploadOpen(true)}
-              className="flex flex-col items-center justify-between gap-2 rounded border-2 border-dashed border-red-400 bg-gray-50 p-2 w-[130px] h-[160px] hover:bg-gray-100"
-            >
-              <Plus className="h-5 w-5 text-gray-400 mt-1" />
-              <span className="text-xs font-semibold text-red-600 text-center leading-tight">
-                {box.description}
-              </span>
-            </button>
-            {index < requiredEmptyBoxes.length - 1 && (
-              <span className="text-sm font-bold text-gray-500">OR</span>
-            )}
-          </div>
-        ))}
-
-        {/* Add button */}
-        <button
-          type="button"
-          onClick={() => setUploadOpen(true)}
-          className="flex items-center justify-center rounded-full bg-blue-600 text-white w-9 h-9 hover:bg-blue-700 self-start mt-1"
-          aria-label="Add attachment"
-        >
-          <Plus className="h-5 w-5" />
-        </button>
+      {/* Documents already on file — names only, no previews and no deleting */}
+      <div className="rounded border p-4 space-y-3">
+        <p className="text-sm font-semibold text-gray-700">Documents you have uploaded</p>
+        {uploadedDocTypes.length > 0 ? (
+          <ul className="space-y-2">
+            {uploadedDocTypes.map((type) => (
+              <li
+                key={`uploaded-${type}`}
+                className="flex items-center gap-2 rounded border border-green-200 bg-green-50 px-3 py-2"
+              >
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+                <span className="text-sm font-medium text-green-900">
+                  {friendlyDocType(type)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500">You have not uploaded any documents yet.</p>
+        )}
       </div>
+
+      {/* Documents still required */}
+      {requiredEmptyBoxes.length > 0 && (
+        <div className="rounded border p-4 space-y-3">
+          <p className="text-sm font-semibold text-gray-700">Still required</p>
+          <ul className="space-y-2">
+            {requiredEmptyBoxes.map((box, index) => (
+              <li key={`empty-${box.type}-${index}`} className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setUploadOpen(true)}
+                  className="flex w-full items-center gap-2 rounded border-2 border-dashed border-red-400 bg-gray-50 px-3 py-2 text-left hover:bg-gray-100"
+                >
+                  <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
+                  <span className="flex-1 text-sm font-semibold text-red-600">
+                    {box.description}
+                  </span>
+                  <Plus className="h-4 w-4 shrink-0 text-gray-400" />
+                </button>
+                {index < requiredEmptyBoxes.length - 1 && (
+                  <p className="text-center text-xs font-bold text-gray-500">OR</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Add button */}
+      <button
+        type="button"
+        onClick={() => setUploadOpen(true)}
+        className="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+      >
+        <Plus className="h-4 w-4" />
+        Upload a document
+      </button>
 
       <UploadFileModal
         open={uploadOpen}
