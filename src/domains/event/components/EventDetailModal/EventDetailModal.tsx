@@ -443,9 +443,21 @@ export const EventDetailModal = ({
     event.timeZone,
     dateOpts
   );
-  const startTime = formatEventDate(event.eventDate, event.timeZone, timeOpts);
-  const endTime = event.eventEndTime
-    ? formatEventDate(event.eventEndTime, event.timeZone, timeOpts)
+  // Rostered workers see THEIR shift times (assigned position's report/end),
+  // not the event-level times. `currentApplicant` comes from the detail fetch;
+  // `applicants` (already filtered to the viewer) covers the list payloads.
+  const rosterEntry =
+    event.currentApplicant?.status === 'Roster'
+      ? event.currentApplicant
+      : event.applicants?.find((a) => a.status === 'Roster');
+  const startTime = formatEventDate(
+    rosterEntry?.reportTime ?? event.eventDate,
+    event.timeZone,
+    timeOpts
+  );
+  const displayEndIso = rosterEntry?.endTime ?? event.eventEndTime;
+  const endTime = displayEndIso
+    ? formatEventDate(displayEndIso, event.timeZone, timeOpts)
     : null;
   const reportTimeTBD = event.reportTimeTBD?.trim();
 

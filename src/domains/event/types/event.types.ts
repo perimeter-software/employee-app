@@ -58,6 +58,8 @@ export interface EventApplicant {
   timeOut?: string | null;
   /** When the applicant is expected to report — falls back to event.eventDate if absent */
   reportTime?: string;
+  /** When the applicant's assigned position ends — falls back to event.eventEndTime if absent */
+  endTime?: string;
   agent?: string;
   createAgent?: string;
   eventUrl?: string;
