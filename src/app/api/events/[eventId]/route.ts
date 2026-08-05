@@ -113,6 +113,7 @@ async function getEventDetailHandler(
             // MongoDB stores the position as "position"; SP1 uses "primaryPosition"
             primaryPosition: found.primaryPosition ?? found.position ?? '',
             reportTime: found.reportTime,
+            endTime: found.endTime,
             timeIn: found.timeIn,
             timeOut: found.timeOut,
             agent: found.agent,
