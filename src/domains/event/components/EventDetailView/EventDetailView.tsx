@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { resolveImageUrl } from '@/lib/utils/resolve-image-url';
+import { prepareRichText } from '@/lib/utils/rich-text-utils';
+import { isImageFilename } from '@/lib/utils/file-type-utils';
 import {
   MapPin,
   Building2,
@@ -92,22 +94,6 @@ function buildGoogleCalendarUrl(event: GignologyEvent): string {
 // ── Misc helpers ─────────────────────────────────────────────────────────────
 
 const DEFAULT_POSITION = 'Event Staff';
-
-function stripHtml(html?: string): string {
-  if (!html) return '';
-  return html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<\/(p|div)>/gi, '\n\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]*>/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .trim();
-}
 
 function formatEventDate(
   dateStr: string | undefined,
@@ -437,15 +423,33 @@ export const EventDetailView = ({
     minute: '2-digit',
     hour12: true,
   };
+  // Applicant entry from event detail (position, reportTime, timeIn, timeOut).
+  // The detail endpoint strips the full applicants array but exposes the
+  // requesting user's own entry as currentApplicant.
+  const applicantEntry = useMemo(
+    () =>
+      event.currentApplicant?.status === 'Roster'
+        ? event.currentApplicant
+        : undefined,
+    [event.currentApplicant]
+  );
+
   const dateChip = getDateChip(event.eventDate, event.timeZone);
   const formattedShortDate = formatEventDate(event.eventDate, event.timeZone, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
   });
-  const startTime = formatEventDate(event.eventDate, event.timeZone, timeOpts);
-  const endTime = event.eventEndTime
-    ? formatEventDate(event.eventEndTime, event.timeZone, timeOpts)
+  // Rostered workers see THEIR shift times (assigned position's report/end),
+  // not the event-level times — an AM worker on a 4 PM event starts at 7 AM.
+  const startTime = formatEventDate(
+    applicantEntry?.reportTime ?? event.eventDate,
+    event.timeZone,
+    timeOpts
+  );
+  const displayEndIso = applicantEntry?.endTime ?? event.eventEndTime;
+  const endTime = displayEndIso
+    ? formatEventDate(displayEndIso, event.timeZone, timeOpts)
     : null;
   const reportTimeTBD = event.reportTimeTBD?.trim();
   const timeDisplay = reportTimeTBD
@@ -457,19 +461,8 @@ export const EventDetailView = ({
     .filter(Boolean)
     .join(', ');
 
-  const description = stripHtml(event.description);
-  const DESCRIPTION_LIMIT = 400;
-  const descTooLong = description.length > DESCRIPTION_LIMIT;
-
-  // Applicant entry from event detail (position, reportTime, timeIn, timeOut).
-  // The detail endpoint strips the full applicants array but exposes the
-  // requesting user's own entry as currentApplicant.
-  const applicantEntry = useMemo(
-    () =>
-      event.currentApplicant?.status === 'Roster'
-        ? event.currentApplicant
-        : undefined,
-    [event.currentApplicant]
+  const { html: descriptionHtml, isLong: descTooLong } = prepareRichText(
+    event.description
   );
 
   const userPosition = applicantEntry?.primaryPosition ?? DEFAULT_POSITION;
@@ -972,16 +965,20 @@ export const EventDetailView = ({
           {/* Left column */}
           <div className="space-y-4 min-w-0">
             {/* Description */}
-            {description ? (
+            {descriptionHtml ? (
               <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
                 <h3 className="font-bold text-slate-900 mb-2">
                   About this event
                 </h3>
-                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
-                  {descTooLong && !descExpanded
-                    ? `${description.slice(0, DESCRIPTION_LIMIT)}…`
-                    : description}
-                </p>
+                <div
+                  className="prose prose-sm max-w-none break-words text-slate-600"
+                  style={
+                    descTooLong && !descExpanded
+                      ? { maxHeight: 160, overflow: 'hidden' }
+                      : undefined
+                  }
+                  dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+                />
                 {descTooLong && (
                   <button
                     type="button"
@@ -1010,28 +1007,59 @@ export const EventDetailView = ({
               </div>
             ) : null}
 
-            {/* Attachments */}
-            {event.attachments &&
-              event.attachments.length > 0 &&
+            {/* Attachments (the "Event Image" field plus any additional
+                attachments — both are uploaded from the same Attachments tab
+                in the admin, so they're shown together here) */}
+            {(event.eventImage ||
+              (event.attachments && event.attachments.length > 0)) &&
               imageBaseUrl &&
               event.venueSlug && (
                 <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
                   <h3 className="font-bold text-slate-900 mb-3">Attachments</h3>
-                  <ul className="space-y-2">
-                    {event.attachments.map((att) => (
-                      <li key={att.filename}>
+                  <div className="flex flex-wrap gap-3">
+                    {[
+                      ...(event.eventImage
+                        ? [{ filename: event.eventImage }]
+                        : []),
+                      ...(event.attachments ?? []),
+                    ].map((att, idx) => {
+                      const url = `${imageBaseUrl}/${event.venueSlug}/events/${event.eventUrl}/${att.filename}`;
+                      const key = `${idx}-${att.filename}`;
+                      if (isImageFilename(att.filename)) {
+                        return (
+                          <a
+                            key={key}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={att.filename}
+                            className="block w-20 h-20 rounded-lg border border-slate-200 overflow-hidden hover:opacity-90 transition-opacity flex-shrink-0"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={url}
+                              alt={att.filename}
+                              className="w-full h-full object-cover"
+                            />
+                          </a>
+                        );
+                      }
+                      return (
                         <a
-                          href={`${imageBaseUrl}/${event.venueSlug}/events/${event.eventUrl}/${att.filename}`}
+                          key={key}
+                          href={url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 text-sm text-appPrimary hover:underline"
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-appPrimary hover:underline"
                         >
                           <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span className="truncate">{att.filename}</span>
+                          <span className="truncate max-w-[160px]">
+                            {att.filename}
+                          </span>
                         </a>
-                      </li>
-                    ))}
-                  </ul>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

@@ -174,7 +174,23 @@ export interface ShiftCardProps {
 export function ShiftCard({ event, applicantId, userId, agentName, onClick }: ShiftCardProps) {
   const today = isEventActive(event.eventDate);
   const location = [event.venueCity, event.venueState].filter(Boolean).join(', ');
-  const timeRange = formatTimeRange(event.eventDate, event.eventEndTime, event.timeZone);
+
+  // The worker's own roster entry. When their assigned position has its own
+  // report/end times, SHOW those — an AM-shift worker on a 4 PM event must see
+  // their 7 AM start, or they can't tell when clock-in opens (this mismatch is
+  // what stranded the Gateway Center AM crew on 2026-08-05).
+  const rosterEntry = useMemo(
+    () =>
+      event.applicants?.find(
+        (a: EventApplicant) => a.id === applicantId && a.status === 'Roster'
+      ),
+    [event.applicants, applicantId]
+  );
+  const timeRange = formatTimeRange(
+    rosterEntry?.reportTime ?? event.eventDate,
+    rosterEntry?.endTime ?? event.eventEndTime,
+    event.timeZone
+  );
 
   const clockInMutation = useEventClockIn();
   const clockOutMutation = useEventClockOut();
@@ -183,25 +199,23 @@ export function ShiftCard({ event, applicantId, userId, agentName, onClick }: Sh
   // can't be clocked in so there's no point running the logic.
   const within12h = useMemo(() => {
     try {
-      return new Date(event.eventDate).getTime() - Date.now() <= 12 * 60 * 60 * 1000;
+      const startIso = rosterEntry?.reportTime ?? event.eventDate;
+      return new Date(startIso).getTime() - Date.now() <= 12 * 60 * 60 * 1000;
     } catch {
       return false;
     }
-  }, [event.eventDate]);
+  }, [rosterEntry?.reportTime, event.eventDate]);
 
   const clockState = useMemo((): ClockState | null => {
     if (!within12h) return null;
-    const applicantEntry = event.applicants?.find(
-      (a: EventApplicant) => a.id === applicantId && a.status === 'Roster'
-    );
-    const reportTimeIso = applicantEntry?.reportTime ?? event.eventDate;
+    const reportTimeIso = rosterEntry?.reportTime ?? event.eventDate;
     return computeClockState(
       reportTimeIso,
       event.allowEarlyClockin === 'Yes',
-      applicantEntry?.timeIn,
-      applicantEntry?.timeOut
+      rosterEntry?.timeIn,
+      rosterEntry?.timeOut
     );
-  }, [within12h, event, applicantId]);
+  }, [within12h, event, rosterEntry]);
 
   const isMutating = clockInMutation.isPending || clockOutMutation.isPending;
   const showClockButton = clockState && (clockState.showClockIn || clockState.showClockOut);

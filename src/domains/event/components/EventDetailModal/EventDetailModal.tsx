@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { resolveImageUrl } from '@/lib/utils/resolve-image-url';
+import { prepareRichText } from '@/lib/utils/rich-text-utils';
+import { isImageFilename } from '@/lib/utils/file-type-utils';
 import {
   MapPin,
   Calendar,
@@ -48,21 +50,6 @@ import { isEventCoverWindowOpen } from '@/domains/event/utils/event-cover-window
 
 const DEFAULT_POSITION = 'Event Staff';
 
-function stripHtml(html?: string): string {
-  if (!html) return '';
-  return html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<\/(p|div)>/gi, '\n\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]*>/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .trim();
-}
 
 function formatEventDate(
   dateStr: string | undefined,
@@ -456,16 +443,28 @@ export const EventDetailModal = ({
     event.timeZone,
     dateOpts
   );
-  const startTime = formatEventDate(event.eventDate, event.timeZone, timeOpts);
-  const endTime = event.eventEndTime
-    ? formatEventDate(event.eventEndTime, event.timeZone, timeOpts)
+  // Rostered workers see THEIR shift times (assigned position's report/end),
+  // not the event-level times. `currentApplicant` comes from the detail fetch;
+  // `applicants` (already filtered to the viewer) covers the list payloads.
+  const rosterEntry =
+    event.currentApplicant?.status === 'Roster'
+      ? event.currentApplicant
+      : event.applicants?.find((a) => a.status === 'Roster');
+  const startTime = formatEventDate(
+    rosterEntry?.reportTime ?? event.eventDate,
+    event.timeZone,
+    timeOpts
+  );
+  const displayEndIso = rosterEntry?.endTime ?? event.eventEndTime;
+  const endTime = displayEndIso
+    ? formatEventDate(displayEndIso, event.timeZone, timeOpts)
     : null;
   const reportTimeTBD = event.reportTimeTBD?.trim();
 
   // ── Description ───────────────────────────────────────────────────────────
-  const description = stripHtml(event.description);
-  const DESCRIPTION_LIMIT = 400;
-  const descTooLong = description.length > DESCRIPTION_LIMIT;
+  const { html: descriptionHtml, isLong: descTooLong } = prepareRichText(
+    event.description
+  );
 
   // ── Enrollment action handler ─────────────────────────────────────────────
   const handleAction = async (
@@ -700,16 +699,20 @@ export const EventDetailModal = ({
             )}
 
             {/* Description */}
-            {description ? (
+            {descriptionHtml ? (
               <div>
                 <h4 className="text-sm font-semibold text-slate-700 mb-1.5">
                   Event Description
                 </h4>
-                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
-                  {descTooLong && !descExpanded
-                    ? `${description.slice(0, DESCRIPTION_LIMIT)}…`
-                    : description}
-                </p>
+                <div
+                  className="prose prose-sm max-w-none break-words text-slate-600"
+                  style={
+                    descTooLong && !descExpanded
+                      ? { maxHeight: 160, overflow: 'hidden' }
+                      : undefined
+                  }
+                  dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+                />
                 {descTooLong && (
                   <button
                     type="button"
@@ -742,30 +745,61 @@ export const EventDetailModal = ({
               </div>
             ) : null}
 
-            {/* Attachments */}
-            {event.attachments &&
-              event.attachments.length > 0 &&
+            {/* Attachments (the "Event Image" field plus any additional
+                attachments — both are uploaded from the same Attachments tab
+                in the admin, so they're shown together here) */}
+            {(event.eventImage ||
+              (event.attachments && event.attachments.length > 0)) &&
               imageBaseUrl &&
               event.venueSlug && (
                 <div>
                   <h4 className="text-sm font-semibold text-slate-700 mb-2">
                     Attachments
                   </h4>
-                  <ul className="space-y-1.5">
-                    {event.attachments.map((att) => (
-                      <li key={att.filename}>
+                  <div className="flex flex-wrap gap-2.5">
+                    {[
+                      ...(event.eventImage
+                        ? [{ filename: event.eventImage }]
+                        : []),
+                      ...(event.attachments ?? []),
+                    ].map((att, idx) => {
+                      const url = `${imageBaseUrl}/${event.venueSlug}/events/${event.eventUrl}/${att.filename}`;
+                      const key = `${idx}-${att.filename}`;
+                      if (isImageFilename(att.filename)) {
+                        return (
+                          <a
+                            key={key}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={att.filename}
+                            className="block w-16 h-16 rounded-lg border border-slate-200 overflow-hidden hover:opacity-90 transition-opacity flex-shrink-0"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={url}
+                              alt={att.filename}
+                              className="w-full h-full object-cover"
+                            />
+                          </a>
+                        );
+                      }
+                      return (
                         <a
-                          href={`${imageBaseUrl}/${event.venueSlug}/events/${event.eventUrl}/${att.filename}`}
+                          key={key}
+                          href={url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 text-sm text-appPrimary hover:underline"
+                          className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm text-appPrimary hover:underline"
                         >
                           <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span className="truncate">{att.filename}</span>
+                          <span className="truncate max-w-[140px]">
+                            {att.filename}
+                          </span>
                         </a>
-                      </li>
-                    ))}
-                  </ul>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
