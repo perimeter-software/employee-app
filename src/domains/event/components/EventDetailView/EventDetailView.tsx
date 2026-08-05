@@ -423,15 +423,33 @@ export const EventDetailView = ({
     minute: '2-digit',
     hour12: true,
   };
+  // Applicant entry from event detail (position, reportTime, timeIn, timeOut).
+  // The detail endpoint strips the full applicants array but exposes the
+  // requesting user's own entry as currentApplicant.
+  const applicantEntry = useMemo(
+    () =>
+      event.currentApplicant?.status === 'Roster'
+        ? event.currentApplicant
+        : undefined,
+    [event.currentApplicant]
+  );
+
   const dateChip = getDateChip(event.eventDate, event.timeZone);
   const formattedShortDate = formatEventDate(event.eventDate, event.timeZone, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
   });
-  const startTime = formatEventDate(event.eventDate, event.timeZone, timeOpts);
-  const endTime = event.eventEndTime
-    ? formatEventDate(event.eventEndTime, event.timeZone, timeOpts)
+  // Rostered workers see THEIR shift times (assigned position's report/end),
+  // not the event-level times — an AM worker on a 4 PM event starts at 7 AM.
+  const startTime = formatEventDate(
+    applicantEntry?.reportTime ?? event.eventDate,
+    event.timeZone,
+    timeOpts
+  );
+  const displayEndIso = applicantEntry?.endTime ?? event.eventEndTime;
+  const endTime = displayEndIso
+    ? formatEventDate(displayEndIso, event.timeZone, timeOpts)
     : null;
   const reportTimeTBD = event.reportTimeTBD?.trim();
   const timeDisplay = reportTimeTBD
@@ -445,17 +463,6 @@ export const EventDetailView = ({
 
   const { html: descriptionHtml, isLong: descTooLong } = prepareRichText(
     event.description
-  );
-
-  // Applicant entry from event detail (position, reportTime, timeIn, timeOut).
-  // The detail endpoint strips the full applicants array but exposes the
-  // requesting user's own entry as currentApplicant.
-  const applicantEntry = useMemo(
-    () =>
-      event.currentApplicant?.status === 'Roster'
-        ? event.currentApplicant
-        : undefined,
-    [event.currentApplicant]
   );
 
   const userPosition = applicantEntry?.primaryPosition ?? DEFAULT_POSITION;
