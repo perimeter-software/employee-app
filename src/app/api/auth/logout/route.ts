@@ -83,14 +83,28 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(new URL(loginPath, redirectBase));
 
     // Clear Clerk + OTP cookies so the browser doesn't hold stale auth.
-    ['__session', '__clerk_db_jwt', '__client_uat', 'otp_session_id'].forEach(
-      (name) => {
-        response.cookies.set(name, '', {
-          expires: new Date(0),
-          path: '/',
-        });
+    //
+    // Clerk suffixes __session/__client_uat/__refresh with an
+    // instance-specific token (e.g. `__session_YgcPoZLG`) whenever more than
+    // one Clerk instance/app shares this root domain — true here since
+    // employee-app and gignology-v4 share a Clerk instance, and both a dev
+    // and prod instance have been used on this domain. Clearing only the
+    // bare names leaves the real (suffixed) session cookie untouched, so the
+    // browser keeps looking signed-in even after the server-side revoke
+    // above. Match by prefix instead of hardcoding the unpredictable suffix.
+    const clerkCookiePrefixes = ['__session', '__client', '__refresh', 'clerk_'];
+    const cookieNamesToClear = new Set(['__clerk_db_jwt', 'otp_session_id']);
+    request.cookies.getAll().forEach(({ name }) => {
+      if (clerkCookiePrefixes.some((prefix) => name.startsWith(prefix))) {
+        cookieNamesToClear.add(name);
       }
-    );
+    });
+    cookieNamesToClear.forEach((name) => {
+      response.cookies.set(name, '', {
+        expires: new Date(0),
+        path: '/',
+      });
+    });
     return response;
   }
 
