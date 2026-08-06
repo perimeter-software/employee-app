@@ -37,8 +37,24 @@ export interface ApplicantSessionData {
   createdAt: string;
 }
 
+/** A tenant the applicant can choose between at login. Safe to send to the client. */
+export interface SelectableTenant {
+  clientDomain: string;
+  clientName: string;
+  tenantLogo?: string;
+}
+
 export type BuildApplicantSessionResult =
   | { ok: true; sessionData: ApplicantSessionData; redirectUrl: string }
+  | {
+      /**
+       * The email exists in more than one eligible tenant and no preference was
+       * supplied. The caller must ask which one, then call again with that
+       * tenant's clientDomain as `preferredTenantDomain`.
+       */
+      ok: 'needs-tenant-selection';
+      tenants: SelectableTenant[];
+    }
   | { ok: false; status: number; error: string };
 
 /**
@@ -75,6 +91,20 @@ function normalizeDomain(domain: string | null | undefined): string {
 }
 
 /**
+ * Project a candidate down to what the login screen may see. Deliberately does
+ * NOT include dbName or the applicant's per-tenant id.
+ */
+function toSelectableTenant(candidate: {
+  tenant: { clientDomain?: string; url: string; clientName: string; tenantLogo?: string };
+}): SelectableTenant {
+  return {
+    clientDomain: candidate.tenant.clientDomain || candidate.tenant.url,
+    clientName: candidate.tenant.clientName,
+    tenantLogo: candidate.tenant.tenantLogo,
+  };
+}
+
+/**
  * Validate an applicant by email and build the OTP session payload + default
  * redirect. Runs the exact status/stage gating used by the OTP flow.
  *
@@ -82,12 +112,13 @@ function normalizeDomain(domain: string | null | undefined): string {
  * @param destination  Optional deep-link (e.g. "/applicant/jobs?run=aiscreening").
  *                     Used as the redirect when it is a safe relative path AND the
  *                     applicant is eligible for the onboarding portal.
- * @param preferredTenantDomain  Optional canonical tenant domain (the handoff's
- *                     `tenantDomain`). When it matches one of the applicant's
- *                     tenants, that tenant is pinned as primary so the applicant
- *                     lands in the tenant they were handed off from — rather than
- *                     defaulting to the first tenant found (matters only for
- *                     applicants that exist in more than one tenant).
+ * @param preferredTenantDomain  Optional canonical tenant domain — the handoff's
+ *                     `tenantDomain`, or the tenant the applicant just picked at
+ *                     login. When it matches one of the applicant's tenants, that
+ *                     tenant is pinned and its own applicant record drives the
+ *                     session. Without it, an applicant who exists in more than
+ *                     one eligible tenant yields `ok: 'needs-tenant-selection'`
+ *                     instead of a silently-picked tenant.
  */
 export async function buildApplicantSessionData(
   email: string,
@@ -101,7 +132,7 @@ export async function buildApplicantSessionData(
   );
   const applicantData = await findApplicantAndTenantsByEmail(normalizedEmail);
 
-  if (!applicantData || applicantData.tenants.length === 0) {
+  if (!applicantData || applicantData.candidates.length === 0) {
     return {
       ok: false,
       status: 404,
@@ -109,27 +140,50 @@ export async function buildApplicantSessionData(
     };
   }
 
-  // Pin the handoff's intended tenant as primary when supplied and present.
-  let tenants = applicantData.tenants;
+  const { candidates } = applicantData;
+
+  // Resolve which tenant this session belongs to.
+  //  - explicit preference (handoff / login pick) wins, when it matches
+  //  - a single candidate needs no question
+  //  - otherwise the caller must ask; we refuse to guess
+  let selected = candidates[0];
   if (preferredTenantDomain) {
     const target = normalizeDomain(preferredTenantDomain);
-    const idx = tenants.findIndex(
-      (t) =>
-        normalizeDomain(
-          (t as { clientDomain?: string }).clientDomain
-        ) === target || normalizeDomain(t.url) === target
+    const match = candidates.find(
+      (c) =>
+        normalizeDomain(c.tenant.clientDomain) === target ||
+        normalizeDomain(c.tenant.url) === target
     );
-    if (idx > 0) {
-      tenants = [tenants[idx], ...tenants.slice(0, idx), ...tenants.slice(idx + 1)];
-    } else if (idx === -1) {
+    if (match) {
+      selected = match;
+    } else {
       console.warn(
-        `Handoff tenantDomain "${preferredTenantDomain}" not among applicant tenants for ${normalizedEmail}; using default order.`
+        `tenantDomain "${preferredTenantDomain}" is not one of ${normalizedEmail}'s eligible tenants; ignoring.`
       );
+      if (candidates.length > 1) {
+        return {
+          ok: 'needs-tenant-selection',
+          tenants: candidates.map(toSelectableTenant),
+        };
+      }
     }
+  } else if (candidates.length > 1) {
+    return {
+      ok: 'needs-tenant-selection',
+      tenants: candidates.map(toSelectableTenant),
+    };
   }
 
-  const { status, applicantStatus, acknowledgedDate } =
-    applicantData.applicantInfo;
+  // Order tenants with the selected one first; every consumer reads `tenant`
+  // explicitly, but `availableTenants` powers the in-app switcher.
+  const tenants = [
+    selected.tenant,
+    ...candidates.filter((c) => c !== selected).map((c) => c.tenant),
+  ];
+
+  // Gating uses the SELECTED tenant's applicant record — status and onboarding
+  // stage differ per tenant, so reading them off any other record is wrong.
+  const { status, applicantStatus } = selected.applicantInfo;
 
   // Block login if the applicant record status is not a recognized value
   if (status !== 'Employee' && status !== 'Applicant') {
@@ -155,11 +209,14 @@ export async function buildApplicantSessionData(
 
   // Cache tenant data immediately so withEnhancedAuthAPI can resolve tenant on
   // the very first authenticated request, without waiting for /api/current-user.
+  // `availableTenants` lists EVERY eligible tenant, current one included — the
+  // same shape the user flow produces, which is what the header switcher
+  // (`availableTenants.length > 1`) and /api/switch-tenant both assume.
   await redisService.setTenantData(
     normalizedEmail,
     {
-      tenant: tenants[0],
-      availableTenants: tenants.slice(1),
+      tenant: selected.tenant,
+      availableTenants: tenants,
       isApplicantOnly: true,
     },
     24 * 60 * 60
@@ -183,29 +240,29 @@ export async function buildApplicantSessionData(
     redirectUrl = '/payroll';
   }
 
+  // Everything below comes from the SELECTED candidate — including applicantId,
+  // which differs per tenant (each tenant holds its own applicant document).
+  const info = selected.applicantInfo;
   const sessionData: ApplicantSessionData = {
-    userId: applicantData.applicantId,
-    applicantId: applicantData.applicantId,
+    userId: selected.applicantId,
+    applicantId: selected.applicantId,
     email: normalizedEmail,
     name:
-      applicantData.applicantInfo.firstName &&
-      applicantData.applicantInfo.lastName
-        ? `${applicantData.applicantInfo.firstName} ${applicantData.applicantInfo.lastName}`.trim()
-        : applicantData.applicantInfo.firstName ||
-          applicantData.applicantInfo.lastName ||
-          normalizedEmail,
-    firstName: applicantData.applicantInfo.firstName,
-    lastName: applicantData.applicantInfo.lastName,
+      info.firstName && info.lastName
+        ? `${info.firstName} ${info.lastName}`.trim()
+        : info.firstName || info.lastName || normalizedEmail,
+    firstName: info.firstName,
+    lastName: info.lastName,
     loginMethod: 'otp',
     isLimitedAccess: true,
     isApplicantOnly: true,
     userType: 'applicant',
     status,
-    employmentStatus: applicantData.applicantInfo.employmentStatus,
-    applicantStatus: applicantData.applicantInfo.applicantStatus,
-    acknowledgedDate: applicantData.applicantInfo.acknowledgedDate,
-    tenant: tenants[0] ?? null,
-    availableTenants: tenants.slice(1),
+    employmentStatus: info.employmentStatus,
+    applicantStatus: info.applicantStatus,
+    acknowledgedDate: info.acknowledgedDate,
+    tenant: selected.tenant,
+    availableTenants: tenants,
     createdAt: new Date().toISOString(),
   };
 

@@ -1,7 +1,10 @@
 // app/api/auth/otp/send/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { mongoConn } from '@/lib/db/mongodb';
-import { checkUserExistsByEmail } from '@/domains/user/utils/mongo-user-utils';
+import {
+  checkUserExistsByEmail,
+  findUserAndTenantsByEmail,
+} from '@/domains/user/utils/mongo-user-utils';
 import redisService from '@/lib/cache/redis-client';
 import emailService from '@/lib/services/email-service';
 import crypto from 'crypto';
@@ -35,9 +38,20 @@ export async function POST(request: NextRequest) {
     // Normalize email
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Check if user exists in database
-    const { db } = await mongoConn();
-    const user = await checkUserExistsByEmail(db, normalizedEmail);
+    // Employees are resolved through usermaster, so someone whose user record
+    // lives in a non-default tenant is still recognized as an employee.
+    const resolvedUser = await findUserAndTenantsByEmail(normalizedEmail);
+
+    // The OTP email is templated per tenant; send it from the employee's own
+    // tenant rather than whatever DEFAULT_TENANT_DB_NAME points at.
+    const { db } = await mongoConn(resolvedUser?.tenant.dbName);
+
+    // Legacy fallback: usermaster can't always resolve a membership to a tenant
+    // (stale url, missing tenant doc). Check the default database exactly as
+    // this route used to, so nobody who could sign in before now can't.
+    const user =
+      resolvedUser?.user ??
+      (await checkUserExistsByEmail(db, normalizedEmail));
 
     // If user not found, check if applicant exists
     let isApplicant = false;

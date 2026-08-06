@@ -123,6 +123,17 @@ export async function GET(request: NextRequest) {
     safeDestination,
     tenantDomain
   );
+  // A handoff always names its tenant, so ambiguity here means the supplied
+  // `tenantDomain` didn't match any of the applicant's tenants. There's nobody
+  // to ask in a server-to-server redirect — send them through normal login,
+  // which offers the choice.
+  if (result.ok === 'needs-tenant-selection') {
+    console.error(
+      `Handoff consume: tenantDomain "${tenantDomain}" did not match any tenant for ${email}`
+    );
+    return redirectToLogin(request, 'handoff-tenant-ambiguous');
+  }
+
   if (!result.ok) {
     console.error(
       `Handoff consume: applicant not eligible (${result.status}) for ${email}`
