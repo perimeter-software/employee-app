@@ -1,6 +1,10 @@
 // app/api/auth/otp/verify/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { findUserAndTenantsByEmail } from '@/domains/user/utils/mongo-user-utils';
+import { mongoConn } from '@/lib/db/mongodb';
+import {
+  checkUserExistsByEmail,
+  findUserAndTenantsByEmail,
+} from '@/domains/user/utils/mongo-user-utils';
 import redisService from '@/lib/cache/redis-client';
 import { buildApplicantSessionData } from '@/lib/auth/applicant-session';
 import { createTenantSelectionTicket } from '@/lib/auth/tenant-selection-ticket';
@@ -84,7 +88,16 @@ export async function POST(request: NextRequest) {
     // any non-default tenant is invisible here and falls through to the
     // applicant flow, ending up with an applicant-only session.
     const resolvedUser = await findUserAndTenantsByEmail(normalizedEmail);
-    const user = resolvedUser?.user;
+
+    // Legacy fallback: usermaster can't always resolve a membership to a tenant
+    // (stale url, missing tenant doc). Check the default database exactly as
+    // this route used to, so nobody who could sign in before now can't.
+    const user =
+      resolvedUser?.user ??
+      (await checkUserExistsByEmail(
+        (await mongoConn()).db,
+        normalizedEmail
+      ));
 
     let sessionData;
     let redirectUrl = '/time';

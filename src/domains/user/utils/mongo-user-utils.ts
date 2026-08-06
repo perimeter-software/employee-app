@@ -385,35 +385,65 @@ export async function checkUserMasterEmail(
       };
     }
 
-    if (result.tenants.length === 1) {
-      if (result.tenants[0].status !== 'Active') {
-        console.log('email exists for employee app', email);
-        return {
-          success: false,
-          message: 'No active tenant found',
-        };
-      }
+    // ── Eligibility ───────────────────────────────────────────────────────────
+    // Deliberately narrow: only tenants explicitly marked `disabled: true` are
+    // dropped, so a not-yet-migrated tenant can't become the database every
+    // request writes to. A membership whose url resolves to no tenant doc (or to
+    // one without a dbName) is KEPT and behaves exactly as before — those were
+    // tolerated historically, and failing them closed here would 403 the person
+    // out of every route rather than fixing anything.
+    //
+    // Note: tenant docs that alias the same database are deliberately NOT
+    // collapsed here. That only matters for the applicant login prompt (see
+    // `findApplicantAndTenantsByEmail`), where it prevents asking a question
+    // with no effect. The employee switcher keeps listing both.
+    const activeMemberships: TenantInfo[] = result.tenants.filter(
+      (item: TenantInfo) => item?.status === 'Active' && item?.url
+    );
 
-      const tenantObject = await Tenants.findOne({
-        $or: [
-          {
-            clientDomain: result.tenants[0]?.url,
-          },
-          {
-            additionalDomains: result.tenants[0]?.url,
-          },
-        ],
-      });
+    const membershipUrls = activeMemberships.map((item) => item.url);
+    const membershipDocs = membershipUrls.length
+      ? await Tenants.find({
+          $or: [
+            { clientDomain: { $in: membershipUrls } },
+            { additionalDomains: { $in: membershipUrls } },
+          ],
+        }).toArray()
+      : [];
+
+    const docByUrl = new Map<string, TenantDocument>();
+    for (const doc of membershipDocs) {
+      if (doc.clientDomain) docByUrl.set(doc.clientDomain, doc);
+      for (const dom of doc.additionalDomains ?? []) {
+        if (dom) docByUrl.set(dom, doc);
+      }
+    }
+
+    const eligibleTenants: TenantInfo[] = activeMemberships.filter(
+      (item) => docByUrl.get(item.url)?.disabled !== true
+    );
+
+    if (eligibleTenants.length === 0) {
+      console.log('email exists for employee app', email);
+      return {
+        success: false,
+        message: 'No active tenant found',
+      };
+    }
+
+    if (eligibleTenants.length === 1) {
+      // Already resolved above; no need to re-query the tenants collection.
+      const tenantObject = docByUrl.get(eligibleTenants[0].url);
 
       return {
         success: true,
         tenant: {
-          _id: result.tenants[0]?._id ? result.tenants[0]._id.toString() : '',
-          url: result.tenants[0].url,
-          status: result.tenants[0].status,
+          _id: eligibleTenants[0]?._id ? eligibleTenants[0]._id.toString() : '',
+          url: eligibleTenants[0].url,
+          status: eligibleTenants[0].status,
           clientName: tenantObject?.clientName || '',
           type: tenantObject?.type || 'Venue',
-          lastLoginDate: result.tenants[0].lastLoginDate,
+          lastLoginDate: eligibleTenants[0].lastLoginDate,
           tenantLogo: await resolveS3LogoUrl(tenantObject?.tenantLogo),
           dbName: tenantObject?.dbName,
           peoIntegration: tenantObject?.peoIntegration || 'Helm',
@@ -423,9 +453,9 @@ export async function checkUserMasterEmail(
       };
     }
 
-    if (result.tenants.length > 1) {
-      // Find the most recent active tenant
-      const mostRecentActiveTenant = result.tenants.reduce<TenantInfo | null>(
+    if (eligibleTenants.length > 1) {
+      // Find the most recent active tenant (over eligible memberships only)
+      const mostRecentActiveTenant = eligibleTenants.reduce<TenantInfo | null>(
         (latest, current) => {
           if (current.status !== 'Active') {
             return latest;
@@ -446,9 +476,7 @@ export async function checkUserMasterEmail(
         null
       );
 
-      const activeTenants = result.tenants.filter(
-        (item: TenantInfo) => item.status === 'Active'
-      );
+      const activeTenants = eligibleTenants;
 
       const tenantObjectsIndexed: TenantObjectsIndexed = {};
       const tenantDocs = await Tenants.find({
@@ -531,11 +559,8 @@ export async function checkUserMasterEmail(
           clientDomain: tenantObjectsIndexed[item.url]?.clientDomain,
         }));
 
-      const availableTenants = result.tenants
-        .filter(
-          (item: TenantInfo) =>
-            item.status === 'Active' && item.url !== mostRecentActiveTenant?.url
-        )
+      const availableTenants = eligibleTenants
+        .filter((item: TenantInfo) => item.url !== mostRecentActiveTenant?.url)
         .map(
           (item: TenantInfo) =>
             `${item.url.includes('localhost') ? 'http' : 'https'}://${item.url}`
@@ -766,14 +791,15 @@ export async function findUserAndTenantsByEmail(
       (a, b) => toEpochMs(b.lastLoginDate) - toEpochMs(a.lastLoginDate)
     );
 
-    const seenDbNames = new Set<string>();
     const eligible: TenantInfo[] = [];
     for (const membership of ranked) {
       const doc = docByUrl.get(membership.url);
-      // Skip disabled/db-less tenants, and collapse aliases of one database.
-      if (!doc || !isTenantEligible(doc)) continue;
-      if (seenDbNames.has(doc.dbName!)) continue;
-      seenDbNames.add(doc.dbName!);
+      // Disabled tenants are never usable. A membership we can't resolve to a
+      // database is skipped here only because there's nothing to query — the
+      // callers fall back to the legacy default-database lookup, so nobody ends
+      // up worse off than before. Aliases of one database are left alone: that
+      // only matters for the applicant login prompt.
+      if (!doc || doc.disabled === true || !doc.dbName) continue;
 
       eligible.push({
         _id: doc._id?.toString() || '',
