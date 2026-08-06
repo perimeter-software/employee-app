@@ -93,6 +93,11 @@ async function getUserSession(
             userType: 'user',
             employmentStatus,
             status: employmentStatus,
+            // Carry the tenant across the promotion. Dropping it left the newly
+            // hired employee's session with no tenant, sending tenant resolution
+            // back to a fresh cross-tenant guess.
+            tenant: otpSessionData.tenant,
+            availableTenants: otpSessionData.availableTenants,
             createdAt: otpSessionData.createdAt,
           };
 
@@ -287,17 +292,18 @@ export function withEnhancedAuthAPI<T = unknown>(
             const { findApplicantAndTenantsByEmail } = await import(
               '@/domains/user/utils/mongo-user-utils'
             );
-            const applicantData =
-              await findApplicantAndTenantsByEmail(userEmail);
+            // The session already knows which tenant was chosen at login — honor
+            // it. Re-deriving a "primary" here is what let a cache miss silently
+            // move an applicant to a different tenant mid-session.
+            const applicantData = await findApplicantAndTenantsByEmail(
+              userEmail,
+              { preferredDbName: user.tenant?.dbName }
+            );
 
             if (applicantData && applicantData.tenants.length > 0) {
-              // Primary tenant is the first one (alphabetically sorted)
-              const primaryTenant = applicantData.tenants[0];
-              // Available tenants are the rest
-              const availableTenants =
-                applicantData.tenants.length > 1
-                  ? applicantData.tenants.slice(1)
-                  : [];
+              const primaryTenant = user.tenant ?? applicantData.tenants[0];
+              // Every eligible tenant, current one included (same shape as users).
+              const availableTenants = applicantData.tenants;
 
               enhancedUser = {
                 ...user,
