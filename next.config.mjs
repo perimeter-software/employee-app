@@ -106,7 +106,6 @@ const nextConfig = {
         // Disable minification in dev
         minimize: false,
       };
-
       // Reduce file watching overhead - more aggressive
       config.watchOptions = {
         poll: 2000,
@@ -120,7 +119,6 @@ const nextConfig = {
           '**/.DS_Store',
         ],
       };
-
       // Cache everything possible
       config.cache = {
         type: 'filesystem',

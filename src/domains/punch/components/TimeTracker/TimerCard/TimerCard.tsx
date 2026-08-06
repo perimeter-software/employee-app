@@ -170,7 +170,8 @@ export function TimerCard({
               {/* Warning: blocked by an active event clock-in */}
               {hasActiveEventClockIn && !isClocked && (
                 <p className="text-sm text-center text-orange-600 mb-4">
-                  You are clocked into an event. Please clock out of the event first.
+                  You are clocked into an event. Please clock out of the event
+                  first.
                 </p>
               )}
 

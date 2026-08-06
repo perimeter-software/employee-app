@@ -105,7 +105,6 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
       const endTime = endDateTime.getTime();
       const startTime = startDateTime.getTime();
       const dayDiff = Math.floor((endTime - startTime) / (1000 * 60 * 60 * 24));
-
       // If end is same day as start or next day at midnight, set to end of that day
       if (dayDiff <= 1) {
         endDateTime.setHours(23, 59, 59, 999);
@@ -529,7 +528,6 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
       modifiedByName?: string;
       [key: string]: unknown;
     };
-
     const convertedPunches: PunchData[] = punches.map((punch) => {
       const converted = convertToJSON(punch);
       const punchData = converted as {
@@ -565,7 +563,6 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
           const matchingShift = job.shifts.find(
             (shift) => shift.slug === punchData.shiftSlug
           );
-
           if (matchingShift) {
             resolvedShiftName = matchingShift.shiftName;
           } else {
@@ -873,12 +870,10 @@ async function findEmployeePunchesHandler(request: AuthenticatedRequest) {
                   }
                   return false;
                 });
-
                 if (roster.length === 0) {
                   continue;
                 }
                 debugInfo.shiftsWithRoster++;
-
                 // Store sample roster entry for debugging
                 if (!debugInfo.sampleRosterEntry && roster.length > 0) {
                   debugInfo.sampleRosterEntry = roster[0];

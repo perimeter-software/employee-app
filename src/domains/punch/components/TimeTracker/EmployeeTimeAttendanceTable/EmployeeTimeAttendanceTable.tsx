@@ -2091,7 +2091,6 @@ export function EmployeeTimeAttendanceTable({
         const preferredMaxHeight = 400;
         const padding = 16; // Space from edges
         const offset = 10; // Offset from click point
-
         // Calculate horizontal position - ensure it doesn't go off screen
         let x = clickEvent.clientX;
         if (x + dropdownWidth > window.innerWidth - padding) {
@@ -2100,12 +2099,10 @@ export function EmployeeTimeAttendanceTable({
         } else if (x < padding) {
           x = padding;
         }
-
         // Calculate vertical position - prefer below, but position above if not enough space
         let y = clickEvent.clientY;
         const spaceBelow = window.innerHeight - y - padding - offset;
         const spaceAbove = y - padding - offset;
-
         let maxHeight: number;
         if (spaceBelow >= preferredMaxHeight) {
           // Enough space below - position below click
@@ -3180,7 +3177,6 @@ export function EmployeeTimeAttendanceTable({
                   </div>
                 </div>
               </div>
-
               {/* Hover Tooltip with date-wise breakdown */}
               {Object.keys(shiftPositionSummary.dateDetails).length > 0 && (
                 <span

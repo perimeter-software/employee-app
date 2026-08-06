@@ -21,7 +21,7 @@ async function getPrimaryCompanyHandler(request: AuthenticatedRequest) {
         { status: 404 }
       );
     }
-    console.log('request.user', request.user)
+    console.log('request.user', request.user);
 
     // Get peoIntegration from tenant data (similar to sp1-api)
     // For applicants, tenant data might not be fully populated, so use default

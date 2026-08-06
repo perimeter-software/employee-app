@@ -58,7 +58,6 @@ export default function CalendarBodyWeek({
           {weekDays.map((day, index) => {
             const dateKey = format(day, 'yyyy-MM-dd');
             const badges = dayBadges?.[dateKey];
-
             return (
               <div
                 key={day.toISOString()}

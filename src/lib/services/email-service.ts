@@ -349,7 +349,6 @@ For development, the OTP code will be logged to console instead.`;
           'AWS credentials not found. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.'
         );
       }
-
       // Re-throw other errors
       throw error;
     }

@@ -907,7 +907,6 @@ export async function findApplicantAndTenantsByEmail(
 } | null> {
   try {
     const normalizedEmail = email.toLowerCase().trim();
-
     // Get all tenants
     const { mongoConn } = await import('@/lib/db/mongodb');
     const { dbTenant } = await mongoConn();

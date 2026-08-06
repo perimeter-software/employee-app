@@ -91,7 +91,15 @@ interface ShiftsTableProps {
   hasActiveEventClockIn?: boolean;
 }
 
-const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+const DAY_KEYS = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+] as const;
 
 // Helper functions to replace date-fns
 const formatDate = (date: Date, format: string) => {
@@ -255,8 +263,11 @@ export function ShiftsTable({
     performClockIn,
   } = useTimerCard({ userData, openPunches, hasActiveEventClockIn });
 
-  const callOffMutation = useCallOffShift(userData._id || userData.applicantId || '');
-  const [callOffConfirmRow, setCallOffConfirmRow] = useState<ShiftRowData | null>(null);
+  const callOffMutation = useCallOffShift(
+    userData._id || userData.applicantId || ''
+  );
+  const [callOffConfirmRow, setCallOffConfirmRow] =
+    useState<ShiftRowData | null>(null);
   const [swapModalRow, setSwapModalRow] = useState<ShiftRowData | null>(null);
   const createSwapMutation = useCreateSwapRequestMutation();
   const acceptSwapMutation = useAcceptSwapRequestMutation();
@@ -269,7 +280,12 @@ export function ShiftsTable({
 
   const confirmCallOff = useCallback(
     (reason: string) => {
-      if (!callOffConfirmRow?.dateYyyyMmDd || !callOffConfirmRow?.dayKey || !reason.trim()) return;
+      if (
+        !callOffConfirmRow?.dateYyyyMmDd ||
+        !callOffConfirmRow?.dayKey ||
+        !reason.trim()
+      )
+        return;
       callOffMutation.mutate(
         {
           jobId: callOffConfirmRow.jobId,
@@ -376,7 +392,11 @@ export function ShiftsTable({
     };
 
     for (const req of swapRequests) {
-      if (String(req.fromEmployeeId) === me && req.fromShiftSlug && req.fromShiftDate) {
+      if (
+        String(req.fromEmployeeId) === me &&
+        req.fromShiftSlug &&
+        req.fromShiftDate
+      ) {
         merge(`${req.fromShiftSlug}|${req.fromShiftDate}`, req, 'from');
       }
       if (
@@ -491,7 +511,9 @@ export function ShiftsTable({
       currentDate: Date;
       job: GignologyJob;
       shift: Shift;
-      daySchedule: Shift['defaultSchedule'][keyof Shift['defaultSchedule']] | undefined;
+      daySchedule:
+        | Shift['defaultSchedule'][keyof Shift['defaultSchedule']]
+        | undefined;
       isInDayRoster: boolean;
       isUserInShiftRoster: boolean;
       todayShiftStart: Date;
@@ -543,7 +565,10 @@ export function ShiftsTable({
                 dayOfWeek as keyof typeof shift.defaultSchedule
               ];
 
-            if (daySchedule?.roster == null || daySchedule.roster.length === 0) {
+            if (
+              daySchedule?.roster == null ||
+              daySchedule.roster.length === 0
+            ) {
               isInDayRoster = false;
             } else {
               isInDayRoster = isUserInRoster(
@@ -575,8 +600,10 @@ export function ShiftsTable({
               if (previousDaySchedule?.start && previousDaySchedule?.end) {
                 const prevStartTime = new Date(previousDaySchedule.start);
                 const prevEndTime = new Date(previousDaySchedule.end);
-                const prevEndMinutes = prevEndTime.getHours() * 60 + prevEndTime.getMinutes();
-                const prevStartMinutes = prevStartTime.getHours() * 60 + prevStartTime.getMinutes();
+                const prevEndMinutes =
+                  prevEndTime.getHours() * 60 + prevEndTime.getMinutes();
+                const prevStartMinutes =
+                  prevStartTime.getHours() * 60 + prevStartTime.getMinutes();
                 if (prevEndMinutes < prevStartMinutes) {
                   return;
                 }
@@ -631,7 +658,8 @@ export function ShiftsTable({
             const candidates = (allPunches || []).filter(
               (p) =>
                 p.jobId === job._id &&
-                (p.shiftSlug === shift.slug || p.shiftName === shift.shiftName) &&
+                (p.shiftSlug === shift.slug ||
+                  p.shiftName === shift.shiftName) &&
                 new Date(p.timeIn).getTime() >= candidateStart.getTime() &&
                 new Date(p.timeIn).getTime() <= candidateEnd.getTime()
             );
@@ -672,12 +700,7 @@ export function ShiftsTable({
                 punch.jobId === job._id &&
                 (punch.shiftSlug === shift.slug ||
                   punch.shiftName === shift.shiftName) &&
-                punchOverlapsWindow(
-                  punch,
-                  todayShiftStart,
-                  todayShiftEnd,
-                  now
-                )
+                punchOverlapsWindow(punch, todayShiftStart, todayShiftEnd, now)
             )
             .map(toRowPunch);
 
@@ -800,8 +823,7 @@ export function ShiftsTable({
         (input.isOvernightStartDay &&
           now >= input.todayShiftStart &&
           now <= input.todayShiftEnd);
-      const shiftHasEnded =
-        effectiveIsToday && now > input.todayShiftEnd;
+      const shiftHasEnded = effectiveIsToday && now > input.todayShiftEnd;
       const hasActivePunchForThisShift = todayPunches.some(
         (p) => p.status === 'active'
       );
@@ -878,7 +900,9 @@ export function ShiftsTable({
         );
         const hoursUntilShift =
           (input.todayShiftStart.getTime() - now.getTime()) / (1000 * 60 * 60);
-        const configuredSwapHours = Number(input.job.additionalConfig?.swapBeforeHours);
+        const configuredSwapHours = Number(
+          input.job.additionalConfig?.swapBeforeHours
+        );
         const minSwapLeadHours =
           Number.isFinite(configuredSwapHours) && configuredSwapHours >= 0
             ? configuredSwapHours
@@ -895,7 +919,7 @@ export function ShiftsTable({
           input.job.additionalConfig?.allowCallOff && !canCallOff
             ? todayPunches.length > 0
               ? 'You have already clocked in for this shift.'
-              : callOffCheck.reason ?? 'Call off is not available.'
+              : (callOffCheck.reason ?? 'Call off is not available.')
             : undefined;
 
         rows.push({
@@ -964,7 +988,17 @@ export function ShiftsTable({
 
       return 0;
     });
-  }, [userData, allPunches, startDate, endDate, selectedJob, selectedShift, isBlockedByJobPunch, hasActiveEventClockIn, pendingSwapRequestByShiftDay]);
+  }, [
+    userData,
+    allPunches,
+    startDate,
+    endDate,
+    selectedJob,
+    selectedShift,
+    isBlockedByJobPunch,
+    hasActiveEventClockIn,
+    pendingSwapRequestByShiftDay,
+  ]);
 
   // FIXED: Updated columns to properly show shift times instead of punch times
   const columns: TableColumn<ShiftRowData>[] = useMemo(
@@ -990,7 +1024,10 @@ export function ShiftsTable({
                 </Badge>
               )}
               {row.isOvernightShift && (
-                <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700">
+                <Badge
+                  variant="outline"
+                  className="text-xs bg-purple-50 text-purple-700"
+                >
                   Overnight
                 </Badge>
               )}
@@ -998,7 +1035,9 @@ export function ShiftsTable({
             <div className="text-xs text-gray-600">
               Scheduled: {row.startTime} – {row.endTime}
               {row.isOvernightShift && row.endDateDisplay && (
-                <span className="text-purple-600 ml-1">(ends {row.endDateDisplay})</span>
+                <span className="text-purple-600 ml-1">
+                  (ends {row.endDateDisplay})
+                </span>
               )}
             </div>
           </div>
@@ -1122,7 +1161,9 @@ export function ShiftsTable({
               !hasClockedInForShift &&
               !isSwapApproved
           );
-          const isSwapPending = row.swapStatus === 'pending_approval' || row.swapStatus === 'pending_match';
+          const isSwapPending =
+            row.swapStatus === 'pending_approval' ||
+            row.swapStatus === 'pending_match';
 
           const openCallOffConfirm = () => {
             if (!row.dateYyyyMmDd || !row.dayKey) return;

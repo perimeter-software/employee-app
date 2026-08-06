@@ -1,4 +1,4 @@
-import { ApiResponse } from "@/lib/api";
+import { ApiResponse } from '@/lib/api';
 
 export type TenantInfo = {
   _id: string;

@@ -74,7 +74,9 @@ export async function generateS3PresignedUrl(
   // Create S3 client
   const s3Client = new S3Client({
     region: process.env.AWS_REGION,
-    endpoint: process.env.AWS_S3_ENDPOINT || `https://s3.${process.env.AWS_REGION}.amazonaws.com`,
+    endpoint:
+      process.env.AWS_S3_ENDPOINT ||
+      `https://s3.${process.env.AWS_REGION}.amazonaws.com`,
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID,
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
@@ -94,4 +96,3 @@ export async function generateS3PresignedUrl(
 
   return presignedUrl;
 }
-

@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
           firstName?: string;
           lastName?: string;
         }>(`otp_session:${otpSessionId}`);
-        
+
         if (otpSessionData) {
           const activityEmail = otpSessionData.email?.toLowerCase().trim();
           let resolvedUserId: string | undefined;
@@ -159,7 +159,10 @@ export async function GET(request: NextRequest) {
           userInfoForLogging = {
             userId: resolvedUserId || otpSessionData.userId,
             applicantId: resolvedApplicantId || otpSessionData.userId,
-            agent: otpSessionData.name || otpSessionData.firstName || otpSessionData.email,
+            agent:
+              otpSessionData.name ||
+              otpSessionData.firstName ||
+              otpSessionData.email,
             email: otpSessionData.email,
           };
         }
@@ -224,9 +227,13 @@ export async function GET(request: NextRequest) {
     // Log logout activity before clearing session
     if (userInfoForLogging) {
       try {
-        const { logActivity, createActivityLogData } = await import('@/lib/services/activity-logger');
+        const { logActivity, createActivityLogData } = await import(
+          '@/lib/services/activity-logger'
+        );
         const { mongoConn } = await import('@/lib/db/mongodb');
-        const activityEmail = (userEmail || userInfoForLogging.email || '').toLowerCase().trim();
+        const activityEmail = (userEmail || userInfoForLogging.email || '')
+          .toLowerCase()
+          .trim();
         const tenantData = activityEmail
           ? await redisService.getTenantData(activityEmail)
           : null;
@@ -235,7 +242,10 @@ export async function GET(request: NextRequest) {
           console.warn(
             `Skipping logout activity log: tenant dbName unavailable for ${activityEmail || 'unknown email'}`
           );
-        } else if (!userInfoForLogging.userId || !userInfoForLogging.applicantId) {
+        } else if (
+          !userInfoForLogging.userId ||
+          !userInfoForLogging.applicantId
+        ) {
           console.warn(
             `Skipping logout activity log: missing resolved IDs for ${activityEmail || 'unknown email'}`
           );
@@ -288,7 +298,7 @@ export async function GET(request: NextRequest) {
     // Auth0 might redirect to its own logout endpoint first, then back to returnTo
     const locationHeader = auth0Response.headers.get('location');
     let redirectUrl: URL;
-    
+
     if (locationHeader) {
       redirectUrl = new URL(locationHeader, request.url);
       // If it's pointing to our domain (not Auth0's), replace whatever Auth0
@@ -338,7 +348,12 @@ export async function GET(request: NextRequest) {
     });
 
     // Clear appSession cookies (Auth0 session cookies)
-    const appSessionCookies = ['appSession', 'appSession.0', 'appSession.1', 'appSession.2'];
+    const appSessionCookies = [
+      'appSession',
+      'appSession.0',
+      'appSession.1',
+      'appSession.2',
+    ];
     appSessionCookies.forEach((cookieName) => {
       response.cookies.delete(cookieName);
       response.cookies.set(cookieName, '', {
@@ -355,12 +370,12 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error('Error during logout:', error);
-    
+
     // Even if there's an error, try to clear cookies and redirect
     // Redirect to the login screen
     const redirectUrl = new URL(loginPath, request.url);
     const response = NextResponse.redirect(redirectUrl);
-    
+
     // Clear all auth cookies
     const cookiesToClear = [
       'appSession',
@@ -385,4 +400,3 @@ export async function GET(request: NextRequest) {
     return response;
   }
 }
-

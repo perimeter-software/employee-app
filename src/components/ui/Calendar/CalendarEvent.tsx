@@ -58,7 +58,6 @@ function getOverlappingEvents(
       }
     }
   }
-
   return result;
 }
 
@@ -109,7 +108,6 @@ function calculateEventPosition(
     const totalGapPercent = (effectiveColumns - 1) * COLUMN_GAP_PERCENT;
     const totalMarginPercent = BASE_LEFT_PERCENT * 2;
     const availableWidthPercent = 100 - totalMarginPercent - totalGapPercent;
-
     // Calculate width per column, ensuring minimum readability
     // For week view, prioritize readability over showing more columns
     const columnWidthPercent = Math.max(
