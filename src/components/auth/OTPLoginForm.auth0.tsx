@@ -3,15 +3,25 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { Mail, Lock, Loader2 } from 'lucide-react';
+import { Mail, Lock, Loader2, Building2 } from 'lucide-react';
 import type { OTPLoginFormProps } from './OTPLoginForm.types';
+
+/** One choice offered when an email belongs to more than one client. */
+interface SelectableTenant {
+  clientDomain: string;
+  clientName: string;
+  tenantLogo?: string;
+}
 
 export function OTPLoginFormAuth0({ returnUrl, onError }: OTPLoginFormProps) {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [step, setStep] = useState<'email' | 'code' | 'tenant'>('email');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  // Populated only when the verified email exists in multiple tenants.
+  const [tenantOptions, setTenantOptions] = useState<SelectableTenant[]>([]);
+  const [tenantTicket, setTenantTicket] = useState('');
 
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,6 +85,15 @@ export function OTPLoginFormAuth0({ returnUrl, onError }: OTPLoginFormProps) {
         throw new Error(data.error || 'Invalid code');
       }
 
+      // The code was accepted, but the email belongs to more than one client —
+      // ask which one before a session is created.
+      if (data.needsTenantSelection) {
+        setTenantOptions(data.tenants ?? []);
+        setTenantTicket(data.ticket ?? '');
+        setStep('tenant');
+        return;
+      }
+
       // Redirect to the URL provided by the server
       if (data.success && data.redirectUrl) {
         window.location.href = data.redirectUrl;
@@ -93,10 +112,44 @@ export function OTPLoginFormAuth0({ returnUrl, onError }: OTPLoginFormProps) {
     }
   };
 
+  const handleSelectTenant = async (clientDomain: string) => {
+    setError('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/otp/select-tenant', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ticket: tenantTicket, tenantDomain: clientDomain }),
+        credentials: 'include',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Could not continue. Please try again.');
+      }
+
+      window.location.href = data.redirectUrl || returnUrl || '/applicant';
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Could not continue';
+      setError(errorMessage);
+      if (onError) {
+        onError(errorMessage);
+      }
+      setIsLoading(false);
+    }
+  };
+
   const handleBack = () => {
     setStep('email');
     setCode('');
     setError('');
+    setTenantOptions([]);
+    setTenantTicket('');
   };
 
   if (step === 'email') {
@@ -145,6 +198,70 @@ export function OTPLoginFormAuth0({ returnUrl, onError }: OTPLoginFormProps) {
           )}
         </Button>
       </form>
+    );
+  }
+
+  if (step === 'tenant') {
+    return (
+      <div className="space-y-4">
+        <div>
+          <p className="text-sm text-gray-600">
+            We found your account with more than one employer. Which one are you
+            signing in for?
+          </p>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {tenantOptions.map((tenant) => (
+            <button
+              key={tenant.clientDomain}
+              type="button"
+              onClick={() => handleSelectTenant(tenant.clientDomain)}
+              disabled={isLoading}
+              className="w-full flex items-center gap-3 px-4 py-4 border border-gray-300 rounded-xl text-left transition-all hover:border-appPrimary hover:bg-appPrimary/5 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {tenant.tenantLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={tenant.tenantLogo}
+                  alt=""
+                  className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                  <Building2 className="w-5 h-5 text-gray-500" />
+                </div>
+              )}
+              <span className="font-medium text-gray-900">
+                {tenant.clientName}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {isLoading && (
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Signing you in...
+          </div>
+        )}
+
+        <Button
+          type="button"
+          onClick={handleBack}
+          variant="ghost"
+          disabled={isLoading}
+          className="w-full text-gray-600 hover:text-gray-900"
+        >
+          Back to Email
+        </Button>
+      </div>
     );
   }
 

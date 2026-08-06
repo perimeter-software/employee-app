@@ -65,8 +65,12 @@ async function getUserDataHandler(request: AuthenticatedRequest) {
       }
 
       if (!applicantInfo) {
+        // Pin the lookup to the session's tenant — without it, an applicant who
+        // exists in several tenants could be described by a different tenant's
+        // record than the one the rest of the session is reading.
         const applicantData = await findApplicantAndTenantsByEmail(
-          normalizedEmail
+          normalizedEmail,
+          { preferredDbName: user.tenant?.dbName }
         );
         applicantInfo = applicantData?.applicantInfo ?? null;
       }

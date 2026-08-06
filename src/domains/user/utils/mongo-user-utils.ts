@@ -6,6 +6,7 @@ import {
   TenantInfo,
   TenantDocument,
   TenantObjectsIndexed,
+  isTenantEligible,
 } from '@/domains/tenant';
 import { EnhancedUser, GignologyUser } from '../types/user.types';
 import { ObjectId as ObjectIdFunction, Db } from 'mongodb';
@@ -384,35 +385,65 @@ export async function checkUserMasterEmail(
       };
     }
 
-    if (result.tenants.length === 1) {
-      if (result.tenants[0].status !== 'Active') {
-        console.log('email exists for employee app', email);
-        return {
-          success: false,
-          message: 'No active tenant found',
-        };
-      }
+    // ── Eligibility ───────────────────────────────────────────────────────────
+    // Deliberately narrow: only tenants explicitly marked `disabled: true` are
+    // dropped, so a not-yet-migrated tenant can't become the database every
+    // request writes to. A membership whose url resolves to no tenant doc (or to
+    // one without a dbName) is KEPT and behaves exactly as before — those were
+    // tolerated historically, and failing them closed here would 403 the person
+    // out of every route rather than fixing anything.
+    //
+    // Note: tenant docs that alias the same database are deliberately NOT
+    // collapsed here. That only matters for the applicant login prompt (see
+    // `findApplicantAndTenantsByEmail`), where it prevents asking a question
+    // with no effect. The employee switcher keeps listing both.
+    const activeMemberships: TenantInfo[] = result.tenants.filter(
+      (item: TenantInfo) => item?.status === 'Active' && item?.url
+    );
 
-      const tenantObject = await Tenants.findOne({
-        $or: [
-          {
-            clientDomain: result.tenants[0]?.url,
-          },
-          {
-            additionalDomains: result.tenants[0]?.url,
-          },
-        ],
-      });
+    const membershipUrls = activeMemberships.map((item) => item.url);
+    const membershipDocs = membershipUrls.length
+      ? await Tenants.find({
+          $or: [
+            { clientDomain: { $in: membershipUrls } },
+            { additionalDomains: { $in: membershipUrls } },
+          ],
+        }).toArray()
+      : [];
+
+    const docByUrl = new Map<string, TenantDocument>();
+    for (const doc of membershipDocs) {
+      if (doc.clientDomain) docByUrl.set(doc.clientDomain, doc);
+      for (const dom of doc.additionalDomains ?? []) {
+        if (dom) docByUrl.set(dom, doc);
+      }
+    }
+
+    const eligibleTenants: TenantInfo[] = activeMemberships.filter(
+      (item) => docByUrl.get(item.url)?.disabled !== true
+    );
+
+    if (eligibleTenants.length === 0) {
+      console.log('email exists for employee app', email);
+      return {
+        success: false,
+        message: 'No active tenant found',
+      };
+    }
+
+    if (eligibleTenants.length === 1) {
+      // Already resolved above; no need to re-query the tenants collection.
+      const tenantObject = docByUrl.get(eligibleTenants[0].url);
 
       return {
         success: true,
         tenant: {
-          _id: result.tenants[0]?._id ? result.tenants[0]._id.toString() : '',
-          url: result.tenants[0].url,
-          status: result.tenants[0].status,
+          _id: eligibleTenants[0]?._id ? eligibleTenants[0]._id.toString() : '',
+          url: eligibleTenants[0].url,
+          status: eligibleTenants[0].status,
           clientName: tenantObject?.clientName || '',
           type: tenantObject?.type || 'Venue',
-          lastLoginDate: result.tenants[0].lastLoginDate,
+          lastLoginDate: eligibleTenants[0].lastLoginDate,
           tenantLogo: await resolveS3LogoUrl(tenantObject?.tenantLogo),
           dbName: tenantObject?.dbName,
           peoIntegration: tenantObject?.peoIntegration || 'Helm',
@@ -422,9 +453,9 @@ export async function checkUserMasterEmail(
       };
     }
 
-    if (result.tenants.length > 1) {
-      // Find the most recent active tenant
-      const mostRecentActiveTenant = result.tenants.reduce<TenantInfo | null>(
+    if (eligibleTenants.length > 1) {
+      // Find the most recent active tenant (over eligible memberships only)
+      const mostRecentActiveTenant = eligibleTenants.reduce<TenantInfo | null>(
         (latest, current) => {
           if (current.status !== 'Active') {
             return latest;
@@ -445,9 +476,7 @@ export async function checkUserMasterEmail(
         null
       );
 
-      const activeTenants = result.tenants.filter(
-        (item: TenantInfo) => item.status === 'Active'
-      );
+      const activeTenants = eligibleTenants;
 
       const tenantObjectsIndexed: TenantObjectsIndexed = {};
       const tenantDocs = await Tenants.find({
@@ -530,11 +559,8 @@ export async function checkUserMasterEmail(
           clientDomain: tenantObjectsIndexed[item.url]?.clientDomain,
         }));
 
-      const availableTenants = result.tenants
-        .filter(
-          (item: TenantInfo) =>
-            item.status === 'Active' && item.url !== mostRecentActiveTenant?.url
-        )
+      const availableTenants = eligibleTenants
+        .filter((item: TenantInfo) => item.url !== mostRecentActiveTenant?.url)
         .map(
           (item: TenantInfo) =>
             `${item.url.includes('localhost') ? 'http' : 'https'}://${item.url}`
@@ -640,7 +666,8 @@ export async function findApplicantInTenantByDbName(
     const tenantDoc = await dbTenant
       .collection<TenantDocument>('tenants')
       .findOne({ dbName });
-    if (!tenantDoc) return null;
+    // Same gate as the cross-tenant scan: never hand back a disabled tenant.
+    if (!tenantDoc || !isTenantEligible(tenantDoc)) return null;
 
     const { db } = await mongoConn(dbName);
     const applicant = await db.collection('applicants').findOne(
@@ -664,7 +691,7 @@ export async function findApplicantInTenantByDbName(
     const tenantInfo: TenantInfo = {
       _id: tenantDoc._id?.toString() || '',
       url: tenantDoc.clientDomain || '',
-      status: 'active',
+      status: 'Active',
       clientName: tenantDoc.clientName,
       type: tenantDoc.type || '',
       dbName: tenantDoc.dbName,
@@ -694,6 +721,161 @@ export async function findApplicantInTenantByDbName(
   }
 }
 
+/** An employee resolved through usermaster, together with their tenants. */
+export interface UserTenantResolution {
+  user: EnhancedUser;
+  /** The tenant this login lands on — most recently used, eligible one. */
+  tenant: TenantInfo;
+  /** Every eligible + active tenant, most recently used first, current included. */
+  tenants: TenantInfo[];
+}
+
+/**
+ * Resolve an employee by email through the **usermaster** database, which is the
+ * authoritative membership list: one entry per email, carrying the tenants where
+ * that person has a user record.
+ *
+ * This exists because OTP login used to look for the `users` record in a single
+ * database (`DEFAULT_TENANT_DB_NAME`). An employee whose record lives in any
+ * other tenant was therefore invisible as a user, silently fell through to the
+ * applicant flow, and got an applicant-only session.
+ *
+ * Returns null when the email has no usermaster entry, no active membership in an
+ * eligible tenant, or no actual `users` record in any of them — all of which mean
+ * "not an employee", and the caller should try the applicant path.
+ */
+export async function findUserAndTenantsByEmail(
+  email: string
+): Promise<UserTenantResolution | null> {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { mongoConn } = await import('@/lib/db/mongodb');
+    const { dbTenant, userDb } = await mongoConn();
+
+    const master = await userDb
+      .collection('users')
+      .findOne({ emailAddress: normalizedEmail });
+
+    const memberships: TenantInfo[] = Array.isArray(master?.tenants)
+      ? master.tenants
+      : [];
+    const activeMemberships = memberships.filter(
+      (m) => m?.status === 'Active' && m?.url
+    );
+    if (activeMemberships.length === 0) return null;
+
+    // Resolve each membership url (which may be a clientDomain OR one of the
+    // tenant's additionalDomains) to its tenant document.
+    const urls = activeMemberships.map((m) => m.url);
+    const tenantDocs = await dbTenant
+      .collection<TenantDocument>('tenants')
+      .find({
+        $or: [
+          { clientDomain: { $in: urls } },
+          { additionalDomains: { $in: urls } },
+        ],
+      })
+      .toArray();
+
+    const docByUrl = new Map<string, TenantDocument>();
+    for (const doc of tenantDocs) {
+      if (doc.clientDomain) docByUrl.set(doc.clientDomain, doc);
+      for (const dom of doc.additionalDomains ?? []) {
+        if (dom) docByUrl.set(dom, doc);
+      }
+    }
+
+    // Most recently used first — the same rule the existing user flow applies.
+    const ranked = [...activeMemberships].sort(
+      (a, b) => toEpochMs(b.lastLoginDate) - toEpochMs(a.lastLoginDate)
+    );
+
+    const eligible: TenantInfo[] = [];
+    for (const membership of ranked) {
+      const doc = docByUrl.get(membership.url);
+      // Disabled tenants are never usable. A membership we can't resolve to a
+      // database is skipped here only because there's nothing to query — the
+      // callers fall back to the legacy default-database lookup, so nobody ends
+      // up worse off than before. Aliases of one database are left alone: that
+      // only matters for the applicant login prompt.
+      if (!doc || doc.disabled === true || !doc.dbName) continue;
+
+      eligible.push({
+        _id: doc._id?.toString() || '',
+        url: membership.url,
+        status: 'Active',
+        clientName: doc.clientName,
+        type: doc.type || 'Venue',
+        lastLoginDate: membership.lastLoginDate,
+        tenantLogo: await resolveS3LogoUrl(doc.tenantLogo),
+        dbName: doc.dbName,
+        peoIntegration: doc.peoIntegration || 'Helm',
+        clientDomain: doc.clientDomain,
+      });
+    }
+
+    if (eligible.length === 0) return null;
+
+    // Land on the first tenant that actually holds a user record — a usermaster
+    // entry can outlive the user document it points at.
+    for (const tenant of eligible) {
+      const { db } = await mongoConn(tenant.dbName);
+      const user = await checkUserExistsByEmail(db, normalizedEmail);
+      if (!user?._id) continue;
+
+      return {
+        user,
+        tenant,
+        // Selected tenant first, so `tenants[0]` is primary as elsewhere.
+        tenants: [tenant, ...eligible.filter((t) => t !== tenant)],
+      };
+    }
+
+    console.warn(
+      `[tenant-resolution] ${normalizedEmail} has usermaster memberships (${eligible
+        .map((t) => t.dbName)
+        .join(', ')}) but no user record in any of them.`
+    );
+    return null;
+  } catch (error) {
+    console.error('Error finding user and tenants:', error);
+    return null;
+  }
+}
+
+/** Per-tenant applicant summary used for session gating. */
+export interface ApplicantSummary {
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  status?: string;
+  employmentStatus?: string;
+  applicantStatus?: string;
+  acknowledgedDate?: string | null;
+}
+
+/**
+ * One (tenant, applicant record) pair for an email. Someone who applied to two
+ * clients has two of these — each with its own `_id` and its own onboarding
+ * state — which is why a session must be pinned to a specific candidate rather
+ * than to "whichever tenant happened to sort first".
+ */
+export interface ApplicantTenantCandidate {
+  applicantId: string;
+  tenant: TenantInfo;
+  applicantInfo: ApplicantSummary;
+  /** Epoch ms of the most recent activity on this record; used to rank candidates. */
+  lastActivity: number;
+}
+
+function toEpochMs(value: unknown): number {
+  if (!value) return 0;
+  const d = value instanceof Date ? value : new Date(value as string);
+  const ms = d.getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 /**
  * Find applicant and tenant(s) by searching applicants collection across all tenants
  *
@@ -706,21 +888,22 @@ export async function findApplicantInTenantByDbName(
  * - employmentStatus: string (e.g., "Active")
  *
  * IMPORTANT: An applicant can exist in multiple tenants!
- * This function returns ALL tenants where the applicant exists.
- * This is a generic function that can be used for any applicant-based functionality.
+ * Disabled tenants (not yet migrated to v4, or intentionally turned off) are
+ * skipped entirely — a session must never resolve onto one.
+ *
+ * `tenants[0]` / `applicantId` / `applicantInfo` describe the *preferred*
+ * candidate: `preferredDbName` when it matches, otherwise the most recently
+ * active record. Callers that must disambiguate explicitly (login) should read
+ * `candidates` rather than trusting the preferred one.
  */
-export async function findApplicantAndTenantsByEmail(email: string): Promise<{
+export async function findApplicantAndTenantsByEmail(
+  email: string,
+  options: { preferredDbName?: string } = {}
+): Promise<{
   applicantId: string; // This is the _id from applicants collection
   tenants: TenantInfo[];
-  applicantInfo: {
-    firstName?: string;
-    lastName?: string;
-    email: string;
-    status?: string;
-    employmentStatus?: string;
-    applicantStatus?: string;
-    acknowledgedDate?: string | null;
-  };
+  applicantInfo: ApplicantSummary;
+  candidates: ApplicantTenantCandidate[];
 } | null> {
   try {
     const normalizedEmail = email.toLowerCase().trim();
@@ -730,22 +913,18 @@ export async function findApplicantAndTenantsByEmail(email: string): Promise<{
     const Tenants = dbTenant.collection<TenantDocument>('tenants');
     const tenants = await Tenants.find({}).toArray();
 
-    const foundTenants: TenantInfo[] = [];
+    const candidates: ApplicantTenantCandidate[] = [];
+    // Several tenant docs can point at the SAME database (aliases, common on
+    // dev). They resolve to one applicant record, so only the first is kept:
+    // offering a choice between them would be a choice with no effect, and it
+    // would make someone present in a single database look multi-tenant.
+    const seenDbNames = new Set<string>();
 
-    let applicantInfo: {
-      firstName?: string;
-      lastName?: string;
-      email: string;
-      status?: string;
-      employmentStatus?: string;
-      applicantStatus?: string;
-      acknowledgedDate?: string | null;
-    } | null = null;
-    let applicantId: string | null = null;
-
-    // Search each tenant's applicants collection
+    // Search each eligible tenant's applicants collection
     for (const tenant of tenants) {
-      if (!tenant.dbName) continue;
+      // Disabled / db-less tenants are invisible to applicant login.
+      if (!isTenantEligible(tenant)) continue;
+      if (seenDbNames.has(tenant.dbName!)) continue;
 
       try {
         const { db } = await mongoConn(tenant.dbName);
@@ -764,54 +943,84 @@ export async function findApplicantAndTenantsByEmail(email: string): Promise<{
               employmentStatus: 1,
               applicantStatus: 1,
               acknowledged: 1,
+              modifiedDate: 1,
+              applicationDate: 1,
+              createdDate: 1,
             },
           }
         );
-        if (applicant) {
-          // Store applicant info (should be same across tenants, but use first found)
-          if (!applicantInfo) {
-            applicantInfo = {
-              firstName: applicant.firstName,
-              lastName: applicant.lastName,
-              email: applicant.email,
-              status: applicant.status,
-              employmentStatus: applicant.employmentStatus,
-              applicantStatus: applicant.applicantStatus,
-              acknowledgedDate: applicant.acknowledged?.date
-                ? new Date(applicant.acknowledged.date).toISOString()
-                : null,
-            };
-            applicantId = applicant._id.toString();
-          }
-          // Add tenant where applicant exists (convert TenantDocument to TenantInfo)
-          if (tenant.dbName) {
-            foundTenants.push({
-              _id: tenant._id?.toString() || '',
-              url: tenant.clientDomain || '',
-              status: 'active', // Default status for tenants
-              clientName: tenant.clientName,
-              type: tenant.type || '',
-              dbName: tenant.dbName,
-              peoIntegration: tenant.peoIntegration,
-              tenantLogo: await resolveS3LogoUrl(tenant.tenantLogo),
-            });
-          }
-        }
+        // Marked only once the lookup succeeded, so a transient failure lets a
+        // later alias of the same database retry.
+        seenDbNames.add(tenant.dbName!);
+        if (!applicant) continue;
+
+        candidates.push({
+          applicantId: applicant._id.toString(),
+          applicantInfo: {
+            firstName: applicant.firstName,
+            lastName: applicant.lastName,
+            email: applicant.email,
+            status: applicant.status,
+            employmentStatus: applicant.employmentStatus,
+            applicantStatus: applicant.applicantStatus,
+            acknowledgedDate: applicant.acknowledged?.date
+              ? new Date(applicant.acknowledged.date).toISOString()
+              : null,
+          },
+          lastActivity: Math.max(
+            toEpochMs(applicant.modifiedDate),
+            toEpochMs(applicant.applicationDate),
+            toEpochMs(applicant.createdDate)
+          ),
+          tenant: {
+            _id: tenant._id?.toString() || '',
+            url: tenant.clientDomain || '',
+            status: 'Active',
+            clientName: tenant.clientName,
+            type: tenant.type || '',
+            dbName: tenant.dbName,
+            peoIntegration: tenant.peoIntegration,
+            tenantLogo: await resolveS3LogoUrl(tenant.tenantLogo),
+            clientDomain: tenant.clientDomain,
+          },
+        });
       } catch (error) {
         console.warn(`Failed to check tenant ${tenant.dbName}:`, error);
         continue;
       }
     }
-    // If no tenants found, return null
-    if (foundTenants.length === 0 || !applicantId || !applicantInfo) {
-      return null;
+
+    if (candidates.length === 0) return null;
+
+    // Most recently active first, then by client name, so the order is stable
+    // across calls — the natural order of the tenants collection is not.
+    candidates.sort(
+      (a, b) =>
+        b.lastActivity - a.lastActivity ||
+        (a.tenant.clientName || '').localeCompare(b.tenant.clientName || '')
+    );
+
+    const preferred =
+      (options.preferredDbName
+        ? candidates.find((c) => c.tenant.dbName === options.preferredDbName)
+        : undefined) ?? candidates[0];
+
+    if (candidates.length > 1) {
+      console.warn(
+        `[tenant-resolution] ${normalizedEmail} exists in ${candidates.length} eligible tenants ` +
+          `(${candidates.map((c) => c.tenant.dbName).join(', ')}); preferring ${preferred.tenant.dbName}`
+      );
     }
-    // Return tenants in the order they were found (consistent with user tenant handling)
-    // Users don't sort tenants, so applicants shouldn't either
+
+    // Preferred candidate first — existing callers read `tenants[0]` as primary.
     return {
-      applicantId,
-      tenants: foundTenants,
-      applicantInfo,
+      applicantId: preferred.applicantId,
+      tenants: [
+        preferred.tenant,
+        ...candidates.filter((c) => c !== preferred).map((c) => c.tenant),
+      ],
+      applicantInfo: preferred.applicantInfo,
+      candidates,
     };
   } catch (error) {
     console.error('Error finding applicant and tenants:', error);
