@@ -15,7 +15,7 @@ import {
   Paperclip,
   Mail,
 } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/Button';
@@ -44,7 +44,11 @@ import {
   type EventCoverModalIntent,
 } from '@/domains/event/components/EventCoverRequestModal/EventCoverRequestModal';
 import { EventCallOffConfirmModal } from '@/domains/event/components/EventCallOffConfirmModal/EventCallOffConfirmModal';
+import { ContactEventManagerModal } from '@/domains/event/components/ContactEventManagerModal/ContactEventManagerModal';
+import { LeaveEventConfirmModal } from '@/domains/event/components/LeaveEventConfirmModal/LeaveEventConfirmModal';
+import { EventUnder48Notice } from '@/domains/event/components/EventUnder48Notice/EventUnder48Notice';
 import { isEventCoverWindowOpen } from '@/domains/event/utils/event-cover-window';
+import { useCurrentUser } from '@/domains/user';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -145,6 +149,12 @@ type ActionSectionProps = {
     positionName?: string
   ) => Promise<void>;
   submitting: boolean;
+  /** Opens the v3 "Contact Event Manager" note flow (< 48h to the event). */
+  onContactManager: () => void;
+  /** Opens the v3 "Attention!" confirmation before dropping a spot. */
+  onRequestLeave: (variant: 'roster' | 'waitlist') => void;
+  /** True when the Call off / cover buttons render below this section. */
+  showCoverActions: boolean;
 };
 
 function ActionSection({
@@ -152,6 +162,9 @@ function ActionSection({
   event,
   onAction,
   submitting,
+  onContactManager,
+  onRequestLeave,
+  showCoverActions,
 }: ActionSectionProps) {
   const { type, allowed, message, status } = enrollment;
   const [selectedPosition, setSelectedPosition] = useState(DEFAULT_POSITION);
@@ -167,11 +180,12 @@ function ActionSection({
   // ── Currently enrolled (Roster) ────────────────────────────────────────────
   if (type === 'Roster') {
     if (allowed === 'Roster' && status === 'Warning') {
-      // < 48h: cannot leave
+      // < 48h: cannot self-remove — v3's Contact Manager note is the way out.
       return (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-          {message}
-        </div>
+        <EventUnder48Notice
+          onContactManager={onContactManager}
+          hasOtherOptions={showCoverActions}
+        />
       );
     }
     // Can leave
@@ -187,7 +201,7 @@ function ActionSection({
           fullWidth
           size="sm"
           loading={submitting}
-          onClick={() => onAction('Not Roster')}
+          onClick={() => onRequestLeave('roster')}
         >
           Remove myself from this event
         </Button>
@@ -209,7 +223,7 @@ function ActionSection({
           fullWidth
           size="sm"
           loading={submitting}
-          onClick={() => onAction('Not Roster')}
+          onClick={() => onRequestLeave('waitlist')}
         >
           Remove myself from waitlist
         </Button>
@@ -345,6 +359,13 @@ export const EventDetailModal = ({
   const [callOffSubmitting, setCallOffSubmitting] = useState(false);
   const [coverIntent, setCoverIntent] =
     useState<EventCoverModalIntent>('invite-cover');
+  const [contactManagerOpen, setContactManagerOpen] = useState(false);
+  const [contactManagerSubmitting, setContactManagerSubmitting] =
+    useState(false);
+  const [leaveConfirm, setLeaveConfirm] = useState<
+    'roster' | 'waitlist' | null
+  >(null);
+  const { data: currentUser } = useCurrentUser();
 
   // Reset state when modal opens for a different event
   useEffect(() => {
@@ -498,6 +519,33 @@ export const EventDetailModal = ({
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleContactManager = async (message: string): Promise<boolean> => {
+    setContactManagerSubmitting(true);
+    try {
+      await EventApiService.sendEventManagerMessage(
+        initialEvent._id,
+        message,
+        [currentUser?.firstName, currentUser?.lastName]
+          .filter(Boolean)
+          .join(' ') ||
+          currentUser?.email ||
+          undefined,
+        currentUser?._id ? String(currentUser._id) : undefined
+      );
+      toast.success('Successfully sent a message to the Event manager!');
+      return true;
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : 'Something went wrong. Please try again later.'
+      );
+      return false;
+    } finally {
+      setContactManagerSubmitting(false);
     }
   };
 
@@ -657,6 +705,9 @@ export const EventDetailModal = ({
                 imageBaseUrl={imageBaseUrl}
                 onAction={handleAction}
                 submitting={submitting}
+                onContactManager={() => setContactManagerOpen(true)}
+                onRequestLeave={(variant) => setLeaveConfirm(variant)}
+                showCoverActions={showEventCoverActions}
               />
             ) : null}
 
@@ -876,6 +927,22 @@ export const EventDetailModal = ({
           if (ok) setCallOffConfirmOpen(false);
         }}
         loading={callOffSubmitting}
+      />
+      <ContactEventManagerModal
+        open={contactManagerOpen}
+        onClose={() => setContactManagerOpen(false)}
+        onSubmit={handleContactManager}
+        loading={contactManagerSubmitting}
+      />
+      <LeaveEventConfirmModal
+        open={leaveConfirm !== null}
+        onClose={() => setLeaveConfirm(null)}
+        variant={leaveConfirm ?? 'roster'}
+        loading={submitting}
+        onConfirm={async () => {
+          setLeaveConfirm(null);
+          await handleAction('Not Roster');
+        }}
       />
     </>
   );
