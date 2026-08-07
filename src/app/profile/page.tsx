@@ -26,6 +26,16 @@ import { Label } from '@/components/ui/Label';
 import { Toggle } from '@/components/ui/Toggle';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/Select';
+// Same source the onboarding contact step validates against, so the profile
+// can't save a state the onboarding schema would reject.
+import { STATE_CODES } from '@/domains/applicant-onboarding/utils/state-codes';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -34,13 +44,14 @@ import {
   DialogTitle,
 } from '@/components/ui/Dialog';
 
+// Mirrors the editable half of ProfileRecord: names live on the users doc, the
+// rest on the linked applicant. Field names match the applicant doc.
 type FormState = {
   firstName: string;
   lastName: string;
-  primaryPhone: string;
-  secondaryPhone: string;
-  mobile: string;
-  address: string;
+  phone: string;
+  altPhone: string;
+  address1: string;
   city: string;
   state: string;
   zip: string;
@@ -49,10 +60,9 @@ type FormState = {
 const EMPTY_FORM: FormState = {
   firstName: '',
   lastName: '',
-  primaryPhone: '',
-  secondaryPhone: '',
-  mobile: '',
-  address: '',
+  phone: '',
+  altPhone: '',
+  address1: '',
   city: '',
   state: '',
   zip: '',
@@ -116,6 +126,40 @@ function Field({
   );
 }
 
+function SelectField({
+  label,
+  value,
+  options,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly string[];
+  placeholder?: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs text-slate-500">{label}</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger>
+          {/* SelectValue falls back to the raw value, so a legacy entry that
+              isn't in the list still displays until the user picks one. */}
+          <SelectValue placeholder={placeholder ?? label} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => (
+            <SelectItem key={opt} value={opt}>
+              {opt}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-1.5">
@@ -150,10 +194,9 @@ const ProfilePage: NextPage = () => {
     const next: FormState = {
       firstName: profile.firstName ?? '',
       lastName: profile.lastName ?? '',
-      primaryPhone: profile.primaryPhone ?? '',
-      secondaryPhone: profile.secondaryPhone ?? '',
-      mobile: profile.mobile ?? '',
-      address: profile.address ?? '',
+      phone: profile.phone ?? '',
+      altPhone: profile.altPhone ?? '',
+      address1: profile.address1 ?? '',
       city: profile.city ?? '',
       state: profile.state ?? '',
       zip: profile.zip ?? '',
@@ -285,19 +328,24 @@ const ProfilePage: NextPage = () => {
         <SectionCard icon={Mail} iconColor="bg-emerald-600" title="Contact Information">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <ReadOnlyField label="Email" value={profile?.emailAddress ?? ''} />
-            <Field label="Primary Phone" value={form.primaryPhone} onChange={setField('primaryPhone')} />
-            <Field label="Secondary Phone" value={form.secondaryPhone} onChange={setField('secondaryPhone')} />
-            <Field label="Mobile" value={form.mobile} onChange={setField('mobile')} />
+            <Field label="Phone" value={form.phone} onChange={setField('phone')} />
+            <Field label="Alternate Phone" value={form.altPhone} onChange={setField('altPhone')} />
           </div>
         </SectionCard>
 
         {/* Address */}
         <SectionCard icon={MapPin} iconColor="bg-orange-600" title="Address">
           <div className="space-y-4">
-            <Field label="Address" value={form.address} onChange={setField('address')} />
+            <Field label="Address" value={form.address1} onChange={setField('address1')} />
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Field label="City" value={form.city} onChange={setField('city')} />
-              <Field label="State" value={form.state} onChange={setField('state')} />
+              <SelectField
+                label="State"
+                value={form.state}
+                options={STATE_CODES}
+                placeholder="Select a state"
+                onChange={setField('state')}
+              />
               <Field label="Zip Code" value={form.zip} onChange={setField('zip')} />
             </div>
           </div>
@@ -306,10 +354,20 @@ const ProfilePage: NextPage = () => {
         {/* Employment (read-only) */}
         <SectionCard icon={Briefcase} iconColor="bg-purple-600" title="Employment">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <ReadOnlyField label="Employee Type" value={profile?.employeeType ?? ''} />
             <ReadOnlyField label="Status" value={profile?.status ?? ''} />
-            <ReadOnlyField label="Start Date" value={fmtDate(profile?.startDate)} />
-            <ReadOnlyField label="End Date" value={fmtDate(profile?.endDate)} />
+            <ReadOnlyField label="Employment Status" value={profile?.employmentStatus ?? ''} />
+            <ReadOnlyField label="Employment Type" value={profile?.employmentType ?? ''} />
+            <ReadOnlyField label="Hire Date" value={fmtDate(profile?.hireDate)} />
+            {/* users-doc role — usually unset, so only shown when populated. */}
+            {profile?.employeeType && (
+              <ReadOnlyField label="Employee Type" value={profile.employeeType} />
+            )}
+            {(profile?.startDate || profile?.endDate) && (
+              <>
+                <ReadOnlyField label="Start Date" value={fmtDate(profile?.startDate)} />
+                <ReadOnlyField label="End Date" value={fmtDate(profile?.endDate)} />
+              </>
+            )}
           </div>
         </SectionCard>
 
