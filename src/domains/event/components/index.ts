@@ -4,3 +4,6 @@ export * from './EventDetailView';
 export * from './EventCoverRequestModal/EventCoverRequestModal';
 export * from './EventCallOffConfirmModal/EventCallOffConfirmModal';
 export * from './IncomingCoverRequestsModal/IncomingCoverRequestsModal';
+export * from './ContactEventManagerModal/ContactEventManagerModal';
+export * from './LeaveEventConfirmModal/LeaveEventConfirmModal';
+export * from './EventUnder48Notice/EventUnder48Notice';
