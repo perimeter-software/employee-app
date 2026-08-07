@@ -10,25 +10,35 @@ import { toast } from 'sonner';
  * the trusted session email.
  */
 
+/**
+ * Flattened profile: login identity comes from the `users` doc, everything
+ * person-level (phone / address / employment) from the linked applicant, which
+ * is the record the admin side reads. Field names match the applicant doc —
+ * `address1`, `phone`, `altPhone` — so nothing is renamed in transit.
+ */
 export type ProfileRecord = {
   _id?: string;
   applicantId?: string;
+  emailAddress?: string;
+  userType?: string;
   firstName?: string;
   lastName?: string;
-  emailAddress?: string;
-  primaryPhone?: string | null;
-  secondaryPhone?: string | null;
-  mobile?: string | null;
-  address?: string | null;
+  profileImg?: string | null;
+  phone?: string | null;
+  altPhone?: string | null;
+  address1?: string | null;
   city?: string | null;
   state?: string | null;
   zip?: string | null;
-  status?: string;
-  userType?: string;
+  // Read-only, admin-controlled. employeeType / startDate / endDate live on the
+  // users doc; the rest come from the applicant.
   employeeType?: string | null;
   startDate?: string | null;
   endDate?: string | null;
-  profileImg?: string | null;
+  status?: string | null;
+  employmentStatus?: string | null;
+  employmentType?: string | null;
+  hireDate?: string | null;
   [key: string]: unknown;
 };
 
@@ -36,14 +46,13 @@ export type ProfilePatch = Partial<
   Record<
     | 'firstName'
     | 'lastName'
-    | 'primaryPhone'
-    | 'secondaryPhone'
-    | 'mobile'
-    | 'address'
+    | 'profileImg'
+    | 'phone'
+    | 'altPhone'
+    | 'address1'
     | 'city'
     | 'state'
-    | 'zip'
-    | 'profileImg',
+    | 'zip',
     string | null
   >
 >;
@@ -73,8 +82,10 @@ export function useProfile() {
 export function useUpdateProfile() {
   const queryClient = useQueryClient();
   return useMutation({
+    // The PUT echoes sp1's write result, not the profile — the invalidation
+    // below is what refreshes the record.
     mutationFn: async (patch: ProfilePatch) => {
-      const res = await baseInstance.put<ProfileRecord>('/profile', patch);
+      const res = await baseInstance.put<unknown>('/profile', patch);
       return res.data;
     },
     onSuccess: () => {
