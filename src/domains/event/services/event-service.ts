@@ -130,6 +130,7 @@ export class EventApiService {
     SHOW_CLOCK_IN: (eventId: string) => `/events/${eventId}/show-clock-in`,
     DETAIL: (eventId: string) => `/events/${eventId}`,
     ENROLLMENT: (eventId: string) => `/events/${eventId}/enrollment`,
+    ENROLL_MESSAGE: (eventId: string) => `/events/${eventId}/enroll-message`,
     EVENT_CALL_OFF: (eventId: string) => `/events/${eventId}/call-off`,
     EVENT_CALL_OFF_REQUEST: (requestId: string) =>
       `/event-call-off-requests/${requestId}`,
@@ -282,6 +283,27 @@ export class EventApiService {
       { requestType, ...(positionName && { positionName }) }
     );
     return res as unknown as EnrollmentCheckResult;
+  }
+
+  /**
+   * Sends a call-off note to the event manager for an event the employee can no
+   * longer self-remove from (< 48h away). Ported from v3 (`sendMessageUnder48Hrs`).
+   * The BE flags the roster entry and files an "Event Call Off" note on the
+   * applicant record — the surfaces admins already watch.
+   */
+  static async sendEventManagerMessage(
+    eventId: string,
+    message: string,
+    agent?: string,
+    createAgent?: string
+  ): Promise<void> {
+    const res = await baseInstance.put<never>(
+      EventApiService.ENDPOINTS.ENROLL_MESSAGE(eventId),
+      { message, ...(agent && { agent }), ...(createAgent && { createAgent }) }
+    );
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to send message to event manager');
+    }
   }
 
   static async submitEventCallOff(

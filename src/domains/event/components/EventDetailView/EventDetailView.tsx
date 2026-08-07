@@ -39,6 +39,9 @@ import {
   type EventCoverModalIntent,
 } from '@/domains/event/components/EventCoverRequestModal/EventCoverRequestModal';
 import { EventCallOffConfirmModal } from '@/domains/event/components/EventCallOffConfirmModal/EventCallOffConfirmModal';
+import { ContactEventManagerModal } from '@/domains/event/components/ContactEventManagerModal/ContactEventManagerModal';
+import { LeaveEventConfirmModal } from '@/domains/event/components/LeaveEventConfirmModal/LeaveEventConfirmModal';
+import { EventUnder48Notice } from '@/domains/event/components/EventUnder48Notice/EventUnder48Notice';
 import { isEventCoverWindowOpen } from '@/domains/event/utils/event-cover-window';
 import { useEventClockIn, useEventClockOut } from '@/domains/event/hooks';
 import { useCurrentUser } from '@/domains/user';
@@ -167,6 +170,12 @@ type ActionSectionProps = {
   ) => Promise<void>;
   submitting: boolean;
   selectedPosition: string;
+  /** Opens the v3 "Contact Event Manager" note flow (< 48h to the event). */
+  onContactManager: () => void;
+  /** Opens the v3 "Attention!" confirmation before dropping a spot. */
+  onRequestLeave: (variant: 'roster' | 'waitlist') => void;
+  /** True when the Call off / cover buttons render below this section. */
+  showCoverActions: boolean;
 };
 
 function ActionSection({
@@ -174,15 +183,20 @@ function ActionSection({
   onAction,
   submitting,
   selectedPosition,
+  onContactManager,
+  onRequestLeave,
+  showCoverActions,
 }: ActionSectionProps) {
   const { type, allowed, message, status } = enrollment;
 
   if (type === 'Roster') {
     if (allowed === 'Roster' && status === 'Warning') {
+      // < 48h: cannot self-remove — v3's Contact Manager note is the way out.
       return (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-          {message}
-        </div>
+        <EventUnder48Notice
+          onContactManager={onContactManager}
+          hasOtherOptions={showCoverActions}
+        />
       );
     }
     return (
@@ -197,7 +211,7 @@ function ActionSection({
           fullWidth
           size="sm"
           loading={submitting}
-          onClick={() => onAction('Not Roster')}
+          onClick={() => onRequestLeave('roster')}
         >
           Remove myself from this event
         </Button>
@@ -218,7 +232,7 @@ function ActionSection({
           fullWidth
           size="sm"
           loading={submitting}
-          onClick={() => onAction('Not Roster')}
+          onClick={() => onRequestLeave('waitlist')}
         >
           Remove myself from waitlist
         </Button>
@@ -329,6 +343,12 @@ export const EventDetailView = ({
   const [bannerError, setBannerError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [coverModalOpen, setCoverModalOpen] = useState(false);
+  const [contactManagerOpen, setContactManagerOpen] = useState(false);
+  const [contactManagerSubmitting, setContactManagerSubmitting] =
+    useState(false);
+  const [leaveConfirm, setLeaveConfirm] = useState<
+    'roster' | 'waitlist' | null
+  >(null);
   const [callOffConfirmOpen, setCallOffConfirmOpen] = useState(false);
   const [callOffSubmitting, setCallOffSubmitting] = useState(false);
   const [coverIntent, setCoverIntent] =
@@ -582,6 +602,29 @@ export const EventDetailView = ({
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleContactManager = async (message: string): Promise<boolean> => {
+    setContactManagerSubmitting(true);
+    try {
+      await EventApiService.sendEventManagerMessage(
+        initialEvent._id,
+        message,
+        agentName || undefined,
+        userId ? String(userId) : undefined
+      );
+      toast.success('Successfully sent a message to the Event manager!');
+      return true;
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : 'Something went wrong. Please try again later.'
+      );
+      return false;
+    } finally {
+      setContactManagerSubmitting(false);
     }
   };
 
@@ -919,6 +962,9 @@ export const EventDetailView = ({
               onAction={handleAction}
               submitting={submitting}
               selectedPosition={selectedPosition}
+              onContactManager={() => setContactManagerOpen(true)}
+              onRequestLeave={(variant) => setLeaveConfirm(variant)}
+              showCoverActions={showEventCoverActions}
             />
             {enrollment.type === 'Roster' &&
               enrollment.status === 'Warning' &&
@@ -1163,6 +1209,22 @@ export const EventDetailView = ({
           if (ok) setCallOffConfirmOpen(false);
         }}
         loading={callOffSubmitting}
+      />
+      <ContactEventManagerModal
+        open={contactManagerOpen}
+        onClose={() => setContactManagerOpen(false)}
+        onSubmit={handleContactManager}
+        loading={contactManagerSubmitting}
+      />
+      <LeaveEventConfirmModal
+        open={leaveConfirm !== null}
+        onClose={() => setLeaveConfirm(null)}
+        variant={leaveConfirm ?? 'roster'}
+        loading={submitting}
+        onConfirm={async () => {
+          setLeaveConfirm(null);
+          await handleAction('Not Roster');
+        }}
       />
       {rosterOpen && (
         <EventRosterModal

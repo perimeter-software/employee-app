@@ -103,14 +103,14 @@ export function assertEventCoverTimeWindow(eventStart: Date): void {
   if (hours < 2) {
     throw new EventCoverError(
       'event-cover-window',
-      'Cover requests are only available at least 2 hours before the event.',
+      'This event starts in less than 2 hours. Contact your event manager.',
       400
     );
   }
   if (hours > 48) {
     throw new EventCoverError(
       'event-cover-window',
-      'Cover requests are only available within 48 hours before the event.',
+      'This event is more than 48 hours away — remove yourself from the roster instead.',
       400
     );
   }
