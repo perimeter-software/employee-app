@@ -476,6 +476,7 @@ export async function createEventCoverRequest(
         venueSlug: 1,
         eventType: 1,
         eventManager: 1,
+        allowShiftSwaps: 1,
       },
     }
   );
@@ -489,6 +490,15 @@ export async function createEventCoverRequest(
       'event-cover-invalid',
       'Unable to complete this request.',
       400
+    );
+  }
+
+  // Cover requests are opt-in per event (`allowShiftSwaps: 'Yes'`); absent means disabled.
+  if (String(event.allowShiftSwaps || '') !== 'Yes') {
+    throw new EventCoverError(
+      'swaps-disabled',
+      'Shift swaps are not enabled for this event.',
+      403
     );
   }
 

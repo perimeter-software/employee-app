@@ -325,6 +325,8 @@ async function getEventsHandler(request: AuthenticatedRequest) {
       numberOnPremise: 1,
       makePublicAndSendNotification: 1,
       allowEarlyClockin: 1,
+      allowShiftSwaps: 1,
+      applicants: 1,
       timeZone: 1,
       jobSlug: 1,
       eventUrl: 1,

@@ -159,8 +159,11 @@ export const EventCard = ({
 
   const onRoster =
     event.status === 'Roster' || event.rosterStatus === 'Roster';
+  // Cover requests are opt-in per event; a pending request stays visible so it can be managed.
+  const coverEnabled =
+    event.allowShiftSwaps === 'Yes' || Boolean(event.pendingCoverRequestId);
   const showCoverActions =
-    onRoster && isEventCoverWindowOpen(event.eventDate);
+    onRoster && coverEnabled && isEventCoverWindowOpen(event.eventDate);
 
   const logoFilename = event.logoUrl || venueDetail?.logoUrl;
   const fullLogoUrl =

@@ -77,6 +77,8 @@ export interface GignologyEvent {
   reportTimeTBD?: string;
   /** Whether employees may clock in up to 1 hour early */
   allowEarlyClockin?: string; // 'Yes' | 'No'
+  /** Whether employees may request shift covers/swaps for this event. Default: disabled. */
+  allowShiftSwaps?: string; // 'Yes' | 'No'
   venueName?: string;
   venueSlug?: string;
   venueCity?: string;

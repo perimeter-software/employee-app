@@ -441,8 +441,14 @@ export function EventsTable({
             row.actualTimeOut
           );
 
+          // Cover requests are opt-in per event; a pending request stays visible so it can be managed.
+          const coverEnabled =
+            row.rawEvent.allowShiftSwaps === 'Yes' ||
+            Boolean(row.rawEvent.pendingCoverRequestId);
           const showCover =
-            !row.isPast && isEventCoverWindowOpen(row.rawEvent.eventDate);
+            !row.isPast &&
+            coverEnabled &&
+            isEventCoverWindowOpen(row.rawEvent.eventDate);
 
           const clockButtons =
             !(clockInTime && clockOutTime) && (showClockIn || showClockOut) ? (

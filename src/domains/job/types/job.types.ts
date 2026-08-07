@@ -55,6 +55,8 @@ export type JobShiftSettings = {
     allowCallOff?: boolean;
     callOffBefore?: number;
     callOffBeforeUnit?: 'minutes' | 'hours' | 'days';
+    /** Whether employees may request shift swaps/giveaways/pickups. Default: disabled. */
+    allowShiftSwaps?: boolean;
     /** Minimum lead time (in hours) required to request a shift swap. */
     swapBeforeHours?: number;
     eventManagerNotificationRecipients?: EventManagerNotificationRecipient[];
@@ -79,6 +81,8 @@ export type AdditionalConfiguration = {
   allowCallOff?: boolean;
   callOffBefore?: number;
   callOffBeforeUnit?: 'minutes' | 'hours' | 'days';
+  /** Whether employees may request shift swaps/giveaways/pickups. Default: disabled. */
+  allowShiftSwaps?: boolean;
   /** Minimum lead time (in hours) required to request a shift swap. */
   swapBeforeHours?: number;
   /** Swap / event-style emails to job managers (see swap admin notifications). */

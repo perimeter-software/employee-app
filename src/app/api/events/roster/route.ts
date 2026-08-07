@@ -129,6 +129,20 @@ async function getRosterEventsHandler(request: AuthenticatedRequest) {
         status: 1,
         timeZone: 1,
         allowEarlyClockin: 1,
+        allowShiftSwaps: 1,
+        // Only return the applicant entry for this user
+        applicants: {
+          $filter: {
+            input: '$applicants',
+            as: 'a',
+            cond: {
+              $and: [
+                { $eq: ['$$a.id', applicantId] },
+                { $eq: ['$$a.status', 'Roster'] },
+              ],
+            },
+          },
+        },
       })
       .sort({ eventDate: 1 })
       .toArray();

@@ -1152,18 +1152,22 @@ export function ShiftsTable({
               !hasClockedInForShift &&
               (row.canSwapByLeadTime || hasEndedRequestOnThisShift)
           );
+          const isSwapPending =
+            row.swapStatus === 'pending_approval' ||
+            row.swapStatus === 'pending_match';
+          /** Swaps are opt-in per job; a pending request stays visible so it can be withdrawn. */
+          const swapsEnabledForJob =
+            row.job?.additionalConfig?.allowShiftSwaps === true;
           /** Spec 8.2 / 2.1: hide swap for past days, after clock-in, when approved, or when shift ended. */
           const canShowSwapControl = Boolean(
-            row.dateYyyyMmDd &&
+            (swapsEnabledForJob || isSwapPending) &&
+              row.dateYyyyMmDd &&
               row.dayKey &&
               !row.shiftHasEnded &&
               !isPastShiftDay &&
               !hasClockedInForShift &&
               !isSwapApproved
           );
-          const isSwapPending =
-            row.swapStatus === 'pending_approval' ||
-            row.swapStatus === 'pending_match';
 
           const openCallOffConfirm = () => {
             if (!row.dateYyyyMmDd || !row.dayKey) return;

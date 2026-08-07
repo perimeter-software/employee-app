@@ -598,8 +598,13 @@ export const EventDetailModal = ({
     .filter(Boolean)
     .join(', ');
 
+  // Cover requests are opt-in per event; a pending request stays visible so it can be managed.
+  const coverEnabled =
+    event.allowShiftSwaps === 'Yes' || Boolean(event.pendingCoverRequestId);
   const showEventCoverActions =
-    enrollment?.type === 'Roster' && isEventCoverWindowOpen(event.eventDate);
+    enrollment?.type === 'Roster' &&
+    coverEnabled &&
+    isEventCoverWindowOpen(event.eventDate);
 
   return (
     <>

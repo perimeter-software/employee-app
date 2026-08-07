@@ -79,6 +79,8 @@ async function getEventDetailHandler(
           secondaryLocation: 1,
           numberOnRoster: 1,
           numberOnPremise: 1,
+          allowShiftSwaps: 1,
+          applicants: 1,
           jobSlug: 1,
         },
       }

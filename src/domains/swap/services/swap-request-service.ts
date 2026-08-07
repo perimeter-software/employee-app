@@ -162,6 +162,17 @@ function assertNotClient(user: AuthenticatedRequest['user']): void {
   }
 }
 
+/** Shift swaps are opt-in per job (`additionalConfig.allowShiftSwaps`); absent means disabled. */
+function assertSwapsEnabledForJob(job: GignologyJob): void {
+  if (job.additionalConfig?.allowShiftSwaps !== true) {
+    throw new SwapRequestError(
+      'swaps-disabled',
+      'Shift swaps are not enabled for this job.',
+      403
+    );
+  }
+}
+
 function assertShiftDayNotPast(dateStr: string): void {
   const today = new Date();
   const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -361,6 +372,7 @@ async function createPickupInterestFromMatchedGiveaway(
   if (!job) {
     throw new SwapRequestError('job-not-found', 'Job not found.', 404);
   }
+  assertSwapsEnabledForJob(job);
 
   let fromSnap: ShiftDaySnapshot | null = null;
   if (input.fromShiftDay?.date && input.fromShiftDay?.dayOfWeek) {
@@ -602,6 +614,7 @@ export async function createSwapRequest(
   if (!job) {
     throw new SwapRequestError('job-not-found', 'Job not found.', 404);
   }
+  assertSwapsEnabledForJob(job);
 
   let fromSnap: ShiftDaySnapshot | null = null;
   if (input.fromShiftDay?.date && input.fromShiftDay?.dayOfWeek) {
