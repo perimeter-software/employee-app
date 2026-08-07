@@ -26,6 +26,16 @@ import { Label } from '@/components/ui/Label';
 import { Toggle } from '@/components/ui/Toggle';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/Avatar';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/Select';
+// Same source the onboarding contact step validates against, so the profile
+// can't save a state the onboarding schema would reject.
+import { STATE_CODES } from '@/domains/applicant-onboarding/utils/state-codes';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -112,6 +122,40 @@ function Field({
         placeholder={placeholder ?? label}
         onChange={(e) => onChange(e.target.value)}
       />
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly string[];
+  placeholder?: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs text-slate-500">{label}</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger>
+          {/* SelectValue falls back to the raw value, so a legacy entry that
+              isn't in the list still displays until the user picks one. */}
+          <SelectValue placeholder={placeholder ?? label} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => (
+            <SelectItem key={opt} value={opt}>
+              {opt}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -295,7 +339,13 @@ const ProfilePage: NextPage = () => {
             <Field label="Address" value={form.address1} onChange={setField('address1')} />
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Field label="City" value={form.city} onChange={setField('city')} />
-              <Field label="State" value={form.state} onChange={setField('state')} />
+              <SelectField
+                label="State"
+                value={form.state}
+                options={STATE_CODES}
+                placeholder="Select a state"
+                onChange={setField('state')}
+              />
               <Field label="Zip Code" value={form.zip} onChange={setField('zip')} />
             </div>
           </div>
