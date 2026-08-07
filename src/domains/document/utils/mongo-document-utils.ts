@@ -67,7 +67,8 @@ export async function getAllDocuments(
 
       documents = (applicantDoc.attachments as MongoAttachment[])
         .filter(
-          (attachment: MongoAttachment) => attachment && !attachment.deleted
+          (attachment: MongoAttachment) =>
+            attachment && !attachment.deleted && attachment.hidden !== 'Yes'
         )
         .map((attachment: MongoAttachment) =>
           attachmentToDocument(attachment, applicantId)

@@ -30,6 +30,7 @@ export interface MongoAttachment {
   uploadDate?: Date;
   uploadedAt?: Date;
   deleted?: boolean;
+  hidden?: string;
   deletedAt?: Date;
   recognition?: any;
   recognition_date?: string;
